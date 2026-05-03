@@ -2582,8 +2582,9 @@ export default function App() {
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif' }}>
       {/* Mobile Header — iOS Navigation Bar Style */}
       <div
-        className="sm:hidden px-4 py-3 flex items-center justify-between sticky top-0 z-30 border-b border-slate-200/30"
+        className="sm:hidden px-4 pb-3 flex items-center justify-between sticky top-0 z-30 border-b border-slate-200/30"
         style={{
+          paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)',
           background: 'rgba(242, 242, 247, 0.78)',
           backdropFilter: 'blur(20px) saturate(180%)',
           WebkitBackdropFilter: 'blur(20px) saturate(180%)'
@@ -2654,7 +2655,9 @@ export default function App() {
         </div>
       )}
 
-      <main className="flex-1 pb-28 sm:pb-8">
+      <main
+        className="flex-1 sm:pb-8"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 6.5rem)' }}>
         <div className="max-w-5xl mx-auto p-4 sm:p-8">{viewEl}</div>
       </main>
 
