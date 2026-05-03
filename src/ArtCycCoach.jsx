@@ -2457,7 +2457,10 @@ function calcExerciseTrainingStats(exercise, sessions) {
 // XLSX-Import: Maute-Sprung-Statistik
 // =============================================================
 // Erwartetes Format: Spalten "Datum", "Geklappt", "Getroffen", "Gefährlich"
-// Mapping für 3-Status-Übungen: Geklappt → success, Getroffen → fail, Gefährlich → third
+// Semantik (laut Maute-Sprung-Legende):
+//   Geklappt   = sauber gelandet           → success (bestes)
+//   Getroffen  = nicht geklappt aber ok    → third  (mittel)
+//   Gefährlich = Trainer musste eingreifen → fail   (schlechtestes)
 async function parseMauteXlsx(file) {
   const xlsx = await import('xlsx');
   const buf = await file.arrayBuffer();
@@ -2485,8 +2488,8 @@ async function parseMauteXlsx(file) {
       continue;
     }
     const success = Number(r['Geklappt'] ?? r['geklappt'] ?? 0);
-    const fail = Number(r['Getroffen'] ?? r['getroffen'] ?? 0);
-    const third = Number(r['Gefährlich'] ?? r['gefaehrlich'] ?? r['Gefaehrlich'] ?? 0);
+    const third = Number(r['Getroffen'] ?? r['getroffen'] ?? 0);
+    const fail = Number(r['Gefährlich'] ?? r['gefaehrlich'] ?? r['Gefaehrlich'] ?? 0);
     if (success + fail + third === 0) continue;
     const entries = [
       ...Array(success).fill('success'),
@@ -2610,7 +2613,7 @@ export default function App() {
       sessions: [],
       exercises: [
         { id: 'ex1', name: 'Lenkerhandstand', uci_code: '1124c', uci_disc: '1er', active: true, category_mode: 2, third_label: null, default_series: 10 },
-        { id: 'ex2', name: 'Maute-Sprung', uci_code: null, uci_disc: null, active: true, category_mode: 3, third_label: 'Gefährlich', default_series: 10 }
+        { id: 'ex2', name: 'Maute-Sprung', uci_code: null, uci_disc: null, active: true, category_mode: 3, third_label: 'Getroffen', default_series: 10 }
       ],
       programs: [
         {
@@ -4202,8 +4205,9 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                   ({importPreview.sessions[0]?.date} – {importPreview.sessions[importPreview.sessions.length - 1]?.date}).
                 </div>
                 <div className="text-xs text-slate-600">
-                  Mapping: <strong>Geklappt</strong>=geklappt, <strong>Getroffen</strong>=nicht,{' '}
-                  <strong>Gefährlich</strong>={exercise.third_label || 'mittel'}
+                  Mapping: <strong>Geklappt</strong>=geklappt,{' '}
+                  <strong>Getroffen</strong>={exercise.third_label || 'mittel'},{' '}
+                  <strong>Gefährlich</strong>=nicht
                 </div>
                 <div className="flex gap-2 pt-1 flex-wrap">
                   <button
