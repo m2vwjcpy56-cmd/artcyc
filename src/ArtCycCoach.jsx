@@ -4,8 +4,10 @@ import {
   Search, Info, Archive, AlertTriangle, ListChecks,
   Home, BarChart3, Users, Download, Sparkles, FileText, Lock,
   Settings as SettingsIcon, Menu, LogOut, Shield, User, RotateCcw,
-  TrendingUp, Calendar, Target, Activity, FileSpreadsheet
+  TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
+  Mail, KeyRound, UserCog
 } from 'lucide-react';
+import { supabase, getCurrentProfile } from './lib/supabase';
 
 // =============================================================
 // UCI 2026 Datenbank: Alle Disziplinen
@@ -2488,40 +2490,76 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
+  // Supabase-Session prüfen + Listener
   useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthChecked(true);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, sess) => {
+      setSession(sess);
+      if (!sess) { setProfile(null); setData(null); }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Profil laden bei Login
+  useEffect(() => {
+    if (session) getCurrentProfile().then(setProfile);
+  }, [session?.user?.id]);
+
+  // Lokale Daten erst nach Login laden (DATA_KEY pro User getrennt)
+  const userDataKey = session ? DATA_KEY + ':' + session.user.id : null;
+  useEffect(() => {
+    if (!session) { setLoading(false); return; }
+    setLoading(true);
     (async () => {
-      const r = await storage.get(DATA_KEY);
+      const r = await storage.get(userDataKey);
       if (r && r.value) {
         try {
           const parsed = JSON.parse(r.value);
           setActiveDb(parsed.uci_custom);
           setData(parsed);
-        } catch (_) {}
+        } catch (_) { setData(null); }
+      } else {
+        setData(null);
       }
       setLoading(false);
     })();
-  }, []);
+  }, [userDataKey]);
 
   const save = useCallback(async (next) => {
     setActiveDb(next.uci_custom);
     setData(next);
-    await storage.set(DATA_KEY, JSON.stringify(next));
-  }, []);
+    if (userDataKey) await storage.set(userDataKey, JSON.stringify(next));
+  }, [userDataKey]);
 
   const resetAll = useCallback(() => {
-    if (confirm('Wirklich ALLES zurücksetzen?')) {
-      localStorage.removeItem(DATA_KEY);
+    if (confirm('Wirklich ALLES lokale Daten zurücksetzen? (Account bleibt bestehen)')) {
+      if (userDataKey) localStorage.removeItem(userDataKey);
       window.location.reload();
     }
+  }, [userDataKey]);
+
+  const logout = useCallback(async () => {
+    await supabase.auth.signOut();
+    setData(null);
+    setView('dashboard');
   }, []);
 
-  if (loading) return (
+  if (!authChecked || loading) return (
     <div className="min-h-screen flex items-center justify-center bg-[#F2F2F7] text-[#8E8E93]"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif' }}>
       Lade ArtCyc Coach…
     </div>
   );
+
+  // Nicht eingeloggt → AuthScreen
+  if (!session) return <AuthScreen />;
 
   if (!data) {
     return <SetupScreen onStart={() => save({
@@ -2567,7 +2605,7 @@ export default function App() {
   else if (view === 'erfassen') viewEl = <Erfassen data={data} setData={save} onDone={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={data} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={data} setData={save} />;
-  else if (view === 'einstellungen') viewEl = <SettingsView data={data} setData={save} onResetAll={resetAll} />;
+  else if (view === 'einstellungen') viewEl = <SettingsView data={data} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} />;
   else if (view === 'sportler') viewEl = <SportlerView data={data} setData={save} />;
   else if (view === 'export') viewEl = <ExportView data={data} />;
   else if (view === 'kuer' || view === 'video') {
@@ -2750,6 +2788,190 @@ function IOSTag({ color = 'gray', children }) {
     <span className={'text-[10px] font-semibold px-2 py-0.5 rounded-full ' + (colors[color] || colors.gray)}>
       {children}
     </span>
+  );
+}
+
+// =============================================================
+// AUTH-SCREEN — Login / Signup mit Rollen-Wahl
+// =============================================================
+function AuthScreen() {
+  const [mode, setMode] = useState('login'); // 'login' | 'signup'
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [role, setRole] = useState('athlete'); // 'athlete' | 'coach'
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [info, setInfo] = useState('');
+
+  const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+  const validPwd = password.length >= 10;
+  const canSubmit = mode === 'login'
+    ? validEmail && password.length >= 1
+    : validEmail && validPwd && displayName.trim().length >= 2;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!canSubmit) return;
+    setBusy(true); setErr(''); setInfo('');
+    try {
+      if (mode === 'login') {
+        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        if (error) throw error;
+        // App reagiert auf onAuthStateChange — kein manueller Redirect nötig
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            data: {
+              display_name: displayName.trim(),
+              role
+            },
+            emailRedirectTo: window.location.origin
+          }
+        });
+        if (error) throw error;
+        if (data.user && !data.session) {
+          // Bestätigungs-E-Mail wurde geschickt
+          setInfo('Wir haben dir eine Bestätigungs-E-Mail an ' + email.trim() + ' geschickt. Klicke den Link in der E-Mail, dann kannst du dich einloggen.');
+        }
+      }
+    } catch (e) {
+      setErr(e.message || 'Es ist ein Fehler aufgetreten.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const forgot = async () => {
+    if (!validEmail) { setErr('Bitte E-Mail eintragen.'); return; }
+    setBusy(true); setErr(''); setInfo('');
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+      if (error) throw error;
+      setInfo('Falls die Adresse registriert ist, hast du gleich eine E-Mail mit einem Reset-Link.');
+    } catch (e) {
+      setErr(e.message || 'Fehler beim Reset.');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F2F2F7] flex items-center justify-center p-4"
+      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif' }}>
+      <div className="bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] p-8 max-w-md w-full">
+        <div className="text-center mb-6">
+          <div className="w-14 h-14 bg-gradient-to-br from-slate-900 to-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm">
+            <Trophy className="text-amber-400" size={26} />
+          </div>
+          <h1 className="text-[28px] font-bold tracking-tight">ArtCyc Coach</h1>
+          <p className="text-[#8E8E93] text-[14px]">Trainings- und Wettkampf-Tool für Kunstradsport</p>
+        </div>
+
+        {/* Mode-Tabs */}
+        <div className="bg-[#E5E5EA] rounded-xl p-1 flex gap-1 mb-5">
+          <button type="button" onClick={() => { setMode('login'); setErr(''); setInfo(''); }}
+            className={'flex-1 py-2 rounded-lg text-[14px] font-medium transition ' +
+              (mode === 'login' ? 'bg-white shadow-sm' : 'text-[#3C3C43] active:opacity-70')}>
+            Anmelden
+          </button>
+          <button type="button" onClick={() => { setMode('signup'); setErr(''); setInfo(''); }}
+            className={'flex-1 py-2 rounded-lg text-[14px] font-medium transition ' +
+              (mode === 'signup' ? 'bg-white shadow-sm' : 'text-[#3C3C43] active:opacity-70')}>
+            Registrieren
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="space-y-3">
+          {mode === 'signup' && (
+            <>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Anzeigename</label>
+                <input value={displayName} onChange={e => setDisplayName(e.target.value)}
+                  placeholder="z.B. Ruben"
+                  autoComplete="name"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Ich bin</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setRole('athlete')}
+                    className={'py-2.5 px-3 rounded-xl border text-sm font-medium flex items-center justify-center gap-1.5 ' +
+                      (role === 'athlete' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300')}>
+                    <Dumbbell size={16} /> Sportler:in
+                  </button>
+                  <button type="button" onClick={() => setRole('coach')}
+                    className={'py-2.5 px-3 rounded-xl border text-sm font-medium flex items-center justify-center gap-1.5 ' +
+                      (role === 'coach' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300')}>
+                    <UserCog size={16} /> Trainer:in
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {role === 'athlete'
+                    ? 'Du protokollierst dein eigenes Training.'
+                    : 'Du verwaltest deine Sportler und kannst für sie Trainings/Wettkämpfe eintragen.'}
+                </p>
+              </div>
+            </>
+          )}
+
+          <div>
+            <label className="text-xs font-medium text-slate-500 block mb-1">E-Mail</label>
+            <div className="relative">
+              <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="name@beispiel.de"
+                autoComplete="email"
+                inputMode="email"
+                className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-500 block mb-1">
+              Passwort {mode === 'signup' && <span className="text-slate-400">(min. 10 Zeichen)</span>}
+            </label>
+            <div className="relative">
+              <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                placeholder={mode === 'signup' ? 'mindestens 10 Zeichen' : 'Passwort'}
+                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+            </div>
+          </div>
+
+          {err && (
+            <div className="bg-rose-50 border border-rose-200 text-rose-900 text-sm rounded-xl p-3">
+              ✗ {err}
+            </div>
+          )}
+          {info && (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 text-sm rounded-xl p-3">
+              ✓ {info}
+            </div>
+          )}
+
+          <button type="submit" disabled={!canSubmit || busy}
+            className="bg-slate-900 text-white px-5 py-3 rounded-2xl font-semibold w-full active:scale-[0.98] transition shadow-sm disabled:opacity-50">
+            {busy ? '…' : (mode === 'login' ? 'Anmelden' : 'Account erstellen')}
+          </button>
+
+          {mode === 'login' && (
+            <button type="button" onClick={forgot} disabled={busy}
+              className="text-sm text-[#007AFF] block mx-auto mt-2 disabled:opacity-50">
+              Passwort vergessen?
+            </button>
+          )}
+        </form>
+
+        {mode === 'signup' && (
+          <p className="text-[11px] text-slate-500 text-center mt-4">
+            Mit der Registrierung akzeptierst du, dass deine Trainings-Daten in unserer
+            Datenbank in Frankfurt gespeichert werden. Du kannst deinen Account jederzeit löschen.
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -3111,13 +3333,29 @@ function TrainingView({ data, setData, setView }) {
 // =============================================================
 // EINSTELLUNGEN (Skeleton — wird in Stufe 8 ausgebaut)
 // =============================================================
-function SettingsView({ data, setData, onResetAll }) {
+function SettingsView({ data, setData, onResetAll, profile, session, onLogout }) {
+  const roleLabel = profile?.role === 'admin' ? 'Admin' : profile?.role === 'coach' ? 'Trainer:in' : 'Sportler:in';
   return (
     <div className="space-y-5">
       <header className="pt-2">
         <h1 className="text-[34px] font-bold tracking-tight leading-none">Einstellungen</h1>
-        <p className="text-slate-500 text-sm mt-1">Reglement, Datenverwaltung, App-Info</p>
+        <p className="text-slate-500 text-sm mt-1">Account, Reglement, Datenverwaltung</p>
       </header>
+
+      {session && (
+        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
+          <h2 className="font-semibold mb-3 flex items-center gap-2"><User size={16} /> Account</h2>
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between"><span className="text-slate-500">Angemeldet als</span><strong>{profile?.display_name || session.user.email}</strong></div>
+            <div className="flex justify-between"><span className="text-slate-500">E-Mail</span><span>{session.user.email}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Rolle</span><span className={'font-medium ' + (profile?.role === 'admin' ? 'text-amber-700' : 'text-slate-700')}>{roleLabel}</span></div>
+          </div>
+          <button onClick={onLogout}
+            className="mt-4 bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5">
+            <LogOut size={14} /> Abmelden
+          </button>
+        </div>
+      )}
 
       <ReglementSettings data={data} setData={setData} />
 
