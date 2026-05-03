@@ -2454,6 +2454,23 @@ function calcExerciseTrainingStats(exercise, sessions) {
 }
 
 // =============================================================
+// Status-Labels — eine Übung hat 2 oder 3 Status-Kategorien.
+// Default-Bezeichnungen können pro Übung überschrieben werden.
+// =============================================================
+function statusLabel(ex, status) {
+  if (status === 'success') {
+    return (ex && ex.success_label) || 'Geklappt';
+  }
+  if (status === 'third') {
+    return (ex && ex.third_label) || 'Mittel';
+  }
+  // fail
+  if (ex && ex.fail_label) return ex.fail_label;
+  if (ex && ex.category_mode === 3) return 'Gefährlich';
+  return 'Nicht geklappt';
+}
+
+// =============================================================
 // XLSX-Import: Maute-Sprung-Statistik
 // =============================================================
 // Erwartetes Format: Spalten "Datum", "Geklappt", "Getroffen", "Gefährlich"
@@ -2516,6 +2533,29 @@ const storage = {
   }
 };
 
+// Einmalige Migration: alte Maute-Sprung-Labels (third_label='Gefährlich')
+// auf neues Schema (third='Getroffen', fail='Gefährlich') anpassen.
+// Idempotent — mehrfacher Aufruf richtet keinen Schaden an.
+function migrateExerciseLabels(data) {
+  if (!data || !data.exercises) return { data, changed: false };
+  let changed = false;
+  const exercises = data.exercises.map(ex => {
+    const isMaute = (ex.name || '').toLowerCase().includes('maute');
+    if (isMaute && ex.category_mode === 3) {
+      const updates = {};
+      if (ex.third_label !== 'Getroffen') updates.third_label = 'Getroffen';
+      if (!ex.fail_label) updates.fail_label = 'Gefährlich';
+      if (!ex.success_label) updates.success_label = 'Geklappt';
+      if (Object.keys(updates).length > 0) {
+        changed = true;
+        return { ...ex, ...updates };
+      }
+    }
+    return ex;
+  });
+  return { data: { ...data, exercises }, changed };
+}
+
 function Brand({ size = 'md' }) {
   const iconSize = size === 'sm' ? 18 : 22;
   const titleClass = size === 'sm' ? 'text-[15px] font-semibold tracking-tight' : 'text-[17px] font-bold tracking-tight';
@@ -2569,8 +2609,13 @@ export default function App() {
       if (r && r.value) {
         try {
           const parsed = JSON.parse(r.value);
-          setActiveDb(parsed.uci_custom);
-          setData(parsed);
+          const { data: migrated, changed } = migrateExerciseLabels(parsed);
+          setActiveDb(migrated.uci_custom);
+          setData(migrated);
+          if (changed) {
+            // Migration zurückspeichern
+            await storage.set(userDataKey, JSON.stringify(migrated));
+          }
         } catch (_) { setData(null); }
       } else {
         setData(null);
@@ -2613,7 +2658,7 @@ export default function App() {
       sessions: [],
       exercises: [
         { id: 'ex1', name: 'Lenkerhandstand', uci_code: '1124c', uci_disc: '1er', active: true, category_mode: 2, third_label: null, default_series: 10 },
-        { id: 'ex2', name: 'Maute-Sprung', uci_code: null, uci_disc: null, active: true, category_mode: 3, third_label: 'Getroffen', default_series: 10 }
+        { id: 'ex2', name: 'Maute-Sprung', uci_code: null, uci_disc: null, active: true, category_mode: 3, third_label: 'Getroffen', fail_label: 'Gefährlich', success_label: 'Geklappt', default_series: 10 }
       ],
       programs: [
         {
@@ -3866,17 +3911,17 @@ function MauteStatsPanel({ exercise, sessions }) {
       <div className="grid grid-cols-3 gap-2 text-center text-xs">
         <div className="bg-emerald-50 rounded-lg py-2.5">
           <div className="text-emerald-700 font-bold text-2xl">{pct(total.success)}%</div>
-          <div className="text-slate-600">geklappt</div>
+          <div className="text-slate-600">{statusLabel(exercise, 'success')}</div>
           <div className="text-[10px] text-slate-400 mt-0.5">{total.success}× absolut</div>
         </div>
         <div className="bg-amber-50 rounded-lg py-2.5">
           <div className="text-amber-700 font-bold text-2xl">{pct(total.third)}%</div>
-          <div className="text-slate-600">{exercise.third_label || 'mittel'}</div>
+          <div className="text-slate-600">{statusLabel(exercise, 'third')}</div>
           <div className="text-[10px] text-slate-400 mt-0.5">{total.third}× absolut</div>
         </div>
         <div className="bg-rose-50 rounded-lg py-2.5">
           <div className="text-rose-700 font-bold text-2xl">{pct(total.fail)}%</div>
-          <div className="text-slate-600">nicht</div>
+          <div className="text-slate-600">{statusLabel(exercise, 'fail')}</div>
           <div className="text-[10px] text-slate-400 mt-0.5">{total.fail}× absolut</div>
         </div>
       </div>
@@ -3939,9 +3984,9 @@ function MauteStatsPanel({ exercise, sessions }) {
           <span>{months[months.length - 1].month}</span>
         </div>
         <div className="flex items-center gap-3 text-[10px] text-slate-500 mt-2 flex-wrap">
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />geklappt</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500" />{exercise.third_label || 'mittel'}</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500" />nicht</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />{statusLabel(exercise, 'success')}</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500" />{statusLabel(exercise, 'third')}</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500" />{statusLabel(exercise, 'fail')}</span>
           <span className="flex items-center gap-1 ml-auto"><span className="w-2.5 h-2.5 rounded-sm bg-slate-400 opacity-60" />Aktivität</span>
         </div>
       </div>
@@ -4046,22 +4091,22 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                 <div className={'text-4xl font-bold ' + (trainStats.rate >= 80 ? 'text-emerald-600' : trainStats.rate >= 60 ? 'text-amber-600' : 'text-rose-600')}>
                   {trainStats.rate}%
                 </div>
-                <div className="text-sm text-slate-600">geklappt insgesamt</div>
+                <div className="text-sm text-slate-600">{statusLabel(exercise, 'success').toLowerCase()} insgesamt</div>
               </div>
               <div className={'grid gap-2 text-center text-xs ' + (exercise.category_mode === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
                 <div className="bg-emerald-50 rounded-lg py-2">
                   <div className="text-emerald-700 font-bold text-base">{trainStats.success}</div>
-                  <div className="text-slate-600">geklappt</div>
+                  <div className="text-slate-600">{statusLabel(exercise, 'success')}</div>
                 </div>
                 {exercise.category_mode === 3 && (
                   <div className="bg-amber-50 rounded-lg py-2">
                     <div className="text-amber-700 font-bold text-base">{trainStats.third}</div>
-                    <div className="text-slate-600">{exercise.third_label}</div>
+                    <div className="text-slate-600">{statusLabel(exercise, 'third')}</div>
                   </div>
                 )}
                 <div className="bg-rose-50 rounded-lg py-2">
                   <div className="text-rose-700 font-bold text-base">{trainStats.fail}</div>
-                  <div className="text-slate-600">nicht</div>
+                  <div className="text-slate-600">{statusLabel(exercise, 'fail')}</div>
                 </div>
               </div>
               <div className="pt-3 border-t border-slate-100">
@@ -4727,12 +4772,12 @@ function Erfassen({ data, setData, onDone }) {
           <div className="grid grid-cols-2 gap-3 mb-3">
             <button onClick={() => setEntries([...entries, 'success'])}
               className="bg-emerald-600 hover:bg-emerald-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center gap-1 active:scale-95 transition-transform">
-              <Check size={28} /><span>Geklappt</span>
+              <Check size={28} /><span>{statusLabel(exercise, 'success')}</span>
               <span className="text-xs opacity-80">{success}</span>
             </button>
             <button onClick={() => setEntries([...entries, 'fail'])}
               className="bg-rose-600 hover:bg-rose-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center gap-1 active:scale-95 transition-transform">
-              <X size={28} /><span>Nicht geklappt</span>
+              <X size={28} /><span>{statusLabel(exercise, 'fail')}</span>
               <span className="text-xs opacity-80">{fail}</span>
             </button>
           </div>
