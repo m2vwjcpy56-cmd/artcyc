@@ -3880,17 +3880,30 @@ function MauteStatsPanel({ exercise, sessions }) {
   }), { success: 0, third: 0, fail: 0, total: 0 });
   const pct = (n) => total.total ? Math.round((n / total.total) * 100) : 0;
 
+  // Gefahren-Quote pro Zeitfenster (gesamt + letzte 30 Tage + letzte 90 Tage)
+  const today = new Date();
+  const cutoff30 = new Date(today.getTime() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const cutoff90 = new Date(today.getTime() - 90 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const window30 = exSessions.filter(s => s.date >= cutoff30).reduce((acc, s) => ({ fail: acc.fail + s.fail, total: acc.total + s.total }), { fail: 0, total: 0 });
+  const window90 = exSessions.filter(s => s.date >= cutoff90).reduce((acc, s) => ({ fail: acc.fail + s.fail, total: acc.total + s.total }), { fail: 0, total: 0 });
+  const gefPct30 = window30.total > 0 ? Math.round((window30.fail / window30.total) * 1000) / 10 : null;
+  const gefPct90 = window90.total > 0 ? Math.round((window90.fail / window90.total) * 1000) / 10 : null;
+  const gefPctTotal = total.total > 0 ? Math.round((total.fail / total.total) * 1000) / 10 : 0;
+
   // SVG-Maße für Trend-Linie
   const TW = 320, TH = 120, TP = 12;
   const trendPoints = months.map((m, i) => {
     const x = months.length === 1 ? TW / 2 : TP + (i / (months.length - 1)) * (TW - 2 * TP);
-    const rate = m.total > 0 ? m.success / m.total : 0;
-    const y = TH - TP - rate * (TH - 2 * TP);
-    return { x, y, rate, month: m.month };
+    const successRate = m.total > 0 ? m.success / m.total : 0;
+    const failRate = m.total > 0 ? m.fail / m.total : 0;
+    const ySuccess = TH - TP - successRate * (TH - 2 * TP);
+    const yFail = TH - TP - failRate * (TH - 2 * TP);
+    return { x, ySuccess, yFail, successRate, failRate, month: m.month };
   });
-  const trendPath = trendPoints.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
-  const areaPath = trendPoints.length > 0
-    ? trendPath + ' L' + trendPoints[trendPoints.length - 1].x.toFixed(1) + ',' + (TH - TP).toFixed(1) + ' L' + trendPoints[0].x.toFixed(1) + ',' + (TH - TP).toFixed(1) + ' Z'
+  const successPath = trendPoints.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.ySuccess.toFixed(1)).join(' ');
+  const failPath = trendPoints.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.yFail.toFixed(1)).join(' ');
+  const successAreaPath = trendPoints.length > 0
+    ? successPath + ' L' + trendPoints[trendPoints.length - 1].x.toFixed(1) + ',' + (TH - TP).toFixed(1) + ' L' + trendPoints[0].x.toFixed(1) + ',' + (TH - TP).toFixed(1) + ' Z'
     : '';
 
   // Stacked-Bars pro Monat
@@ -3905,6 +3918,43 @@ function MauteStatsPanel({ exercise, sessions }) {
           <Target size={18} className="text-amber-500" /> Sprung-Statistik
         </h2>
         <span className="text-xs text-slate-500">{exSessions.length} Sessions · seit {exSessions[0].date}</span>
+      </div>
+
+      {/* Headline: Gefahren-Quote — wichtigste Kennzahl */}
+      <div className="bg-gradient-to-br from-rose-50 to-rose-100 border-2 border-rose-200 rounded-2xl p-4">
+        <div className="flex items-center gap-1.5 mb-2">
+          <AlertTriangle size={14} className="text-rose-700" />
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-800">Gefahren-Quote</span>
+        </div>
+        <div className="flex items-baseline gap-2">
+          <div className="text-5xl font-bold text-rose-700 leading-none">{gefPctTotal.toFixed(1)}<span className="text-2xl">%</span></div>
+          <div className="text-xs text-rose-700/80">
+            <div className="font-medium">{total.fail} von {total.total}</div>
+            <div className="opacity-75">Trainer am Seil</div>
+          </div>
+        </div>
+        {(gefPct30 !== null || gefPct90 !== null) && (
+          <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-rose-200/60">
+            <div className="text-center">
+              <div className="text-[10px] uppercase tracking-wide text-rose-700/70 font-medium">Letzte 30 Tage</div>
+              <div className="font-bold text-rose-700">
+                {gefPct30 === null ? '—' : gefPct30.toFixed(1) + '%'}
+              </div>
+              {window30.total > 0 && (
+                <div className="text-[10px] text-rose-700/60">{window30.fail} / {window30.total} Sprünge</div>
+              )}
+            </div>
+            <div className="text-center">
+              <div className="text-[10px] uppercase tracking-wide text-rose-700/70 font-medium">Letzte 90 Tage</div>
+              <div className="font-bold text-rose-700">
+                {gefPct90 === null ? '—' : gefPct90.toFixed(1) + '%'}
+              </div>
+              {window90.total > 0 && (
+                <div className="text-[10px] text-rose-700/60">{window90.fail} / {window90.total} Sprünge</div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Gesamt-Zahlen */}
@@ -3926,11 +3976,17 @@ function MauteStatsPanel({ exercise, sessions }) {
         </div>
       </div>
 
-      {/* Geklappt-%-Trendlinie pro Monat */}
+      {/* Trend pro Monat — zwei Linien: Geklappt-% (grün) + Gefahren-% (rot) */}
       {months.length >= 2 && (
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-slate-500 font-medium mb-1">
-            Verlauf „geklappt" pro Monat
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-[10px] uppercase tracking-wide text-slate-500 font-medium">
+              Verlauf pro Monat
+            </div>
+            <div className="flex items-center gap-3 text-[10px] text-slate-500">
+              <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-emerald-500" />Geklappt</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-rose-500" />Gefahren</span>
+            </div>
           </div>
           <svg viewBox={'0 0 ' + TW + ' ' + TH} className="w-full" preserveAspectRatio="none">
             {/* Achsen */}
@@ -3938,10 +3994,14 @@ function MauteStatsPanel({ exercise, sessions }) {
               <line key={r} x1={TP} y1={TH - TP - r * (TH - 2 * TP)} x2={TW - TP} y2={TH - TP - r * (TH - 2 * TP)}
                 stroke="#E5E5EA" strokeWidth="1" strokeDasharray={r === 0 || r === 1 ? '' : '2 3'} />
             ))}
-            <path d={areaPath} fill="rgba(16, 185, 129, 0.12)" />
-            <path d={trendPath} fill="none" stroke="#10B981" strokeWidth="2" />
+            <path d={successAreaPath} fill="rgba(16, 185, 129, 0.10)" />
+            <path d={successPath} fill="none" stroke="#10B981" strokeWidth="2" />
+            <path d={failPath} fill="none" stroke="#F43F5E" strokeWidth="2" />
             {trendPoints.map((p, i) => (
-              <circle key={i} cx={p.x} cy={p.y} r="2.5" fill="#10B981" />
+              <g key={i}>
+                <circle cx={p.x} cy={p.ySuccess} r="2.2" fill="#10B981" />
+                <circle cx={p.x} cy={p.yFail} r="2.2" fill="#F43F5E" />
+              </g>
             ))}
             {/* Y-Beschriftung */}
             <text x={TP - 2} y={TP + 4} fontSize="9" fill="#8E8E93" textAnchor="end">100%</text>
