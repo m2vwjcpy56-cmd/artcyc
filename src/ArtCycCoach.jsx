@@ -7,7 +7,7 @@ import {
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog
 } from 'lucide-react';
-import { supabase, getCurrentProfile } from './lib/supabase';
+import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot } from './lib/supabase';
 
 // =============================================================
 // UCI 2026 Datenbank: Alle Disziplinen
@@ -2601,22 +2601,44 @@ export default function App() {
 
   // Lokale Daten erst nach Login laden (DATA_KEY pro User getrennt)
   const userDataKey = session ? DATA_KEY + ':' + session.user.id : null;
+  const [cloudStatus, setCloudStatus] = useState('idle'); // 'idle' | 'syncing' | 'error' | 'offline'
   useEffect(() => {
     if (!session) { setLoading(false); return; }
     setLoading(true);
     (async () => {
+      // 1. Lokale Daten laden (für sofortige Anzeige + Offline-Fallback)
+      let localData = null;
       const r = await storage.get(userDataKey);
       if (r && r.value) {
         try {
           const parsed = JSON.parse(r.value);
-          const { data: migrated, changed } = migrateExerciseLabels(parsed);
-          setActiveDb(migrated.uci_custom);
-          setData(migrated);
-          if (changed) {
-            // Migration zurückspeichern
-            await storage.set(userDataKey, JSON.stringify(migrated));
-          }
-        } catch (_) { setData(null); }
+          const { data: migrated } = migrateExerciseLabels(parsed);
+          localData = migrated;
+        } catch (_) { localData = null; }
+      }
+
+      // 2. Cloud-Snapshot ziehen
+      let cloud = null;
+      try { cloud = await fetchCloudSnapshot(); } catch (_) { cloud = null; }
+
+      let chosen = localData;
+      if (cloud && cloud.data) {
+        // Wenn Cloud vorhanden: Cloud gewinnt (other-device-Szenario).
+        // Falls lokal aber neuer (lokal hat lokales Bearbeitungs-Datum?), nehmen wir lokal.
+        // Vereinfachung: wenn lokal leer → Cloud nehmen. Wenn beides vorhanden → Cloud nehmen
+        // (da Cloud-Push bei jeder Änderung, sind sie in der Regel synchron).
+        if (!localData) chosen = migrateExerciseLabels(cloud.data).data;
+        else chosen = migrateExerciseLabels(cloud.data).data;
+      } else if (localData) {
+        // Cloud leer, lokal vorhanden → später wird beim ersten save() automatisch hochgeladen
+        chosen = localData;
+      }
+
+      if (chosen) {
+        setActiveDb(chosen.uci_custom);
+        setData(chosen);
+        // Lokal cachen
+        await storage.set(userDataKey, JSON.stringify(chosen));
       } else {
         setData(null);
       }
@@ -2624,11 +2646,21 @@ export default function App() {
     })();
   }, [userDataKey]);
 
+  // Cloud-Push debounced — bei jeder Änderung 2s warten, dann hochladen
+  const cloudPushTimer = useMemo(() => ({ id: null, last: null }), []);
+
   const save = useCallback(async (next) => {
     setActiveDb(next.uci_custom);
     setData(next);
     if (userDataKey) await storage.set(userDataKey, JSON.stringify(next));
-  }, [userDataKey]);
+    // Debounced Cloud-Push
+    if (cloudPushTimer.id) clearTimeout(cloudPushTimer.id);
+    setCloudStatus('syncing');
+    cloudPushTimer.id = setTimeout(async () => {
+      const { error } = await pushCloudSnapshot(next);
+      setCloudStatus(error ? 'error' : 'idle');
+    }, 2000);
+  }, [userDataKey, cloudPushTimer]);
 
   const resetAll = useCallback(() => {
     if (confirm('Wirklich ALLES lokale Daten zurücksetzen? (Account bleibt bestehen)')) {
@@ -2698,7 +2730,7 @@ export default function App() {
   else if (view === 'erfassen') viewEl = <Erfassen data={data} setData={save} onDone={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={data} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={data} setData={save} />;
-  else if (view === 'einstellungen') viewEl = <SettingsView data={data} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} />;
+  else if (view === 'einstellungen') viewEl = <SettingsView data={data} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} />;
   else if (view === 'sportler') viewEl = <SportlerView data={data} setData={save} />;
   else if (view === 'export') viewEl = <ExportView data={data} />;
   else if (view === 'kuer' || view === 'video') {
@@ -3426,8 +3458,10 @@ function TrainingView({ data, setData, setView }) {
 // =============================================================
 // EINSTELLUNGEN (Skeleton — wird in Stufe 8 ausgebaut)
 // =============================================================
-function SettingsView({ data, setData, onResetAll, profile, session, onLogout }) {
+function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus }) {
   const roleLabel = profile?.role === 'admin' ? 'Admin' : profile?.role === 'coach' ? 'Trainer:in' : 'Sportler:in';
+  const syncLabel = cloudStatus === 'syncing' ? '⏳ wird synchronisiert…' : cloudStatus === 'error' ? '⚠ Sync-Fehler' : '✓ synchronisiert';
+  const syncColor = cloudStatus === 'syncing' ? 'text-amber-600' : cloudStatus === 'error' ? 'text-rose-600' : 'text-emerald-600';
   return (
     <div className="space-y-5">
       <header className="pt-2">
@@ -3442,6 +3476,7 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout })
             <div className="flex justify-between"><span className="text-slate-500">Angemeldet als</span><strong>{profile?.display_name || session.user.email}</strong></div>
             <div className="flex justify-between"><span className="text-slate-500">E-Mail</span><span>{session.user.email}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Rolle</span><span className={'font-medium ' + (profile?.role === 'admin' ? 'text-amber-700' : 'text-slate-700')}>{roleLabel}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Cloud-Sync</span><span className={'font-medium ' + syncColor}>{syncLabel}</span></div>
           </div>
           <button onClick={onLogout}
             className="mt-4 bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5">
