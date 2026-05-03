@@ -1,0 +1,14 @@
+node_modules
+dist
+.DS_Store
+.env
+.env.local
+*.log
+.vscode
+.idea
+docs/node_modules
+docs/package-lock.json
+dev-dist
+public/test-*.pdf
+uploads/
+.claude/
