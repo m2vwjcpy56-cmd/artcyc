@@ -2453,6 +2453,50 @@ function calcExerciseTrainingStats(exercise, sessions) {
   return stats;
 }
 
+// =============================================================
+// XLSX-Import: Maute-Sprung-Statistik
+// =============================================================
+// Erwartetes Format: Spalten "Datum", "Geklappt", "Getroffen", "Gefährlich"
+// Mapping für 3-Status-Übungen: Geklappt → success, Getroffen → fail, Gefährlich → third
+async function parseMauteXlsx(file) {
+  const xlsx = await import('xlsx');
+  const buf = await file.arrayBuffer();
+  const wb = xlsx.read(new Uint8Array(buf), { type: 'array', cellDates: true });
+  const sheetName = wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const rows = xlsx.utils.sheet_to_json(ws, { defval: null });
+
+  const sessions = [];
+  const errors = [];
+  for (const r of rows) {
+    const rawDate = r['Datum'] ?? r['datum'] ?? r['Date'];
+    if (!rawDate) continue;
+    let dateStr;
+    if (rawDate instanceof Date) {
+      dateStr = rawDate.toISOString().slice(0, 10);
+    } else if (typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(rawDate)) {
+      dateStr = rawDate.slice(0, 10);
+    } else if (typeof rawDate === 'string' && /^\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}/.test(rawDate)) {
+      const [d, m, y] = rawDate.split(/[.\/]/);
+      const yyyy = y.length === 2 ? '20' + y : y;
+      dateStr = yyyy + '-' + m.padStart(2, '0') + '-' + d.padStart(2, '0');
+    } else {
+      errors.push('Datum unklar: ' + rawDate);
+      continue;
+    }
+    const success = Number(r['Geklappt'] ?? r['geklappt'] ?? 0);
+    const fail = Number(r['Getroffen'] ?? r['getroffen'] ?? 0);
+    const third = Number(r['Gefährlich'] ?? r['gefaehrlich'] ?? r['Gefaehrlich'] ?? 0);
+    if (success + fail + third === 0) continue;
+    const entries = [
+      ...Array(success).fill('success'),
+      ...Array(fail).fill('fail'),
+      ...Array(third).fill('third')
+    ];
+    sessions.push({ date: dateStr, entries });
+  }
+  return { sessions, errors };
+}
 
 const storage = {
   async get(key) {
@@ -2587,12 +2631,13 @@ export default function App() {
   }
 
   // Navigation
+  const isCoach = profile?.role === 'coach' || profile?.role === 'admin';
   const nav = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
     { id: 'training', label: 'Training', icon: Dumbbell },
     { id: 'wettkampf', label: 'Wettkampf', icon: Trophy },
     { id: 'uebungen', label: 'Übungen', icon: BarChart3 },
-    { id: 'sportler', label: 'Sportler', icon: Users },
+    ...(isCoach ? [{ id: 'sportler', label: 'Sportler', icon: Users }] : []),
     { id: 'export', label: 'Export', icon: Download },
     { id: 'kuer', label: 'Kür-Planung', icon: Sparkles, soon: true },
     { id: 'video', label: 'Video-Analyse', icon: FileText, soon: true }
@@ -3744,7 +3789,168 @@ function ComingSoon({ viewId }) {
 // =============================================================
 // ÜBUNGS-DETAIL — Statistik-Ansicht (Training + Wettkampf)
 // =============================================================
-function ExerciseDetail({ exercise, data, onBack, onEdit, onArchive, onDelete }) {
+// =============================================================
+// MAUTE-Spezial-Statistik (3-Kategorie-Visualisierung)
+// =============================================================
+function MauteStatsPanel({ exercise, sessions }) {
+  const exSessions = useMemo(() => {
+    return (sessions || [])
+      .filter(s => s.exerciseId === exercise.id)
+      .map(s => {
+        const e = s.entries || [];
+        return {
+          date: s.date,
+          success: e.filter(x => x === 'success').length,
+          third: e.filter(x => x === 'third').length,
+          fail: e.filter(x => x === 'fail').length,
+          total: e.length
+        };
+      })
+      .filter(s => s.total > 0)
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }, [exercise.id, sessions]);
+
+  if (exSessions.length === 0) return null;
+
+  // Aggregat pro Monat
+  const byMonth = new Map();
+  for (const s of exSessions) {
+    const m = (s.date || '').slice(0, 7);
+    if (!m) continue;
+    const cur = byMonth.get(m) || { month: m, success: 0, third: 0, fail: 0, total: 0, sessions: 0 };
+    cur.success += s.success; cur.third += s.third; cur.fail += s.fail; cur.total += s.total; cur.sessions += 1;
+    byMonth.set(m, cur);
+  }
+  const months = Array.from(byMonth.values()).sort((a, b) => a.month.localeCompare(b.month));
+
+  // Gesamt-Aggregat
+  const total = exSessions.reduce((acc, s) => ({
+    success: acc.success + s.success,
+    third: acc.third + s.third,
+    fail: acc.fail + s.fail,
+    total: acc.total + s.total
+  }), { success: 0, third: 0, fail: 0, total: 0 });
+  const pct = (n) => total.total ? Math.round((n / total.total) * 100) : 0;
+
+  // SVG-Maße für Trend-Linie
+  const TW = 320, TH = 120, TP = 12;
+  const trendPoints = months.map((m, i) => {
+    const x = months.length === 1 ? TW / 2 : TP + (i / (months.length - 1)) * (TW - 2 * TP);
+    const rate = m.total > 0 ? m.success / m.total : 0;
+    const y = TH - TP - rate * (TH - 2 * TP);
+    return { x, y, rate, month: m.month };
+  });
+  const trendPath = trendPoints.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
+  const areaPath = trendPoints.length > 0
+    ? trendPath + ' L' + trendPoints[trendPoints.length - 1].x.toFixed(1) + ',' + (TH - TP).toFixed(1) + ' L' + trendPoints[0].x.toFixed(1) + ',' + (TH - TP).toFixed(1) + ' Z'
+    : '';
+
+  // Stacked-Bars pro Monat
+  const BW = 320, BH = 110, BP = 10;
+  const barWidth = months.length > 0 ? (BW - 2 * BP) / months.length : 0;
+  const maxJumpsPerMonth = Math.max(1, ...months.map(m => m.total));
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 space-y-5">
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold flex items-center gap-2">
+          <Target size={18} className="text-amber-500" /> Sprung-Statistik
+        </h2>
+        <span className="text-xs text-slate-500">{exSessions.length} Sessions · seit {exSessions[0].date}</span>
+      </div>
+
+      {/* Gesamt-Zahlen */}
+      <div className="grid grid-cols-3 gap-2 text-center text-xs">
+        <div className="bg-emerald-50 rounded-lg py-2.5">
+          <div className="text-emerald-700 font-bold text-2xl">{pct(total.success)}%</div>
+          <div className="text-slate-600">geklappt</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">{total.success}× absolut</div>
+        </div>
+        <div className="bg-amber-50 rounded-lg py-2.5">
+          <div className="text-amber-700 font-bold text-2xl">{pct(total.third)}%</div>
+          <div className="text-slate-600">{exercise.third_label || 'mittel'}</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">{total.third}× absolut</div>
+        </div>
+        <div className="bg-rose-50 rounded-lg py-2.5">
+          <div className="text-rose-700 font-bold text-2xl">{pct(total.fail)}%</div>
+          <div className="text-slate-600">nicht</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">{total.fail}× absolut</div>
+        </div>
+      </div>
+
+      {/* Geklappt-%-Trendlinie pro Monat */}
+      {months.length >= 2 && (
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-slate-500 font-medium mb-1">
+            Verlauf „geklappt" pro Monat
+          </div>
+          <svg viewBox={'0 0 ' + TW + ' ' + TH} className="w-full" preserveAspectRatio="none">
+            {/* Achsen */}
+            {[0, 0.25, 0.5, 0.75, 1].map(r => (
+              <line key={r} x1={TP} y1={TH - TP - r * (TH - 2 * TP)} x2={TW - TP} y2={TH - TP - r * (TH - 2 * TP)}
+                stroke="#E5E5EA" strokeWidth="1" strokeDasharray={r === 0 || r === 1 ? '' : '2 3'} />
+            ))}
+            <path d={areaPath} fill="rgba(16, 185, 129, 0.12)" />
+            <path d={trendPath} fill="none" stroke="#10B981" strokeWidth="2" />
+            {trendPoints.map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y} r="2.5" fill="#10B981" />
+            ))}
+            {/* Y-Beschriftung */}
+            <text x={TP - 2} y={TP + 4} fontSize="9" fill="#8E8E93" textAnchor="end">100%</text>
+            <text x={TP - 2} y={TH / 2 + 3} fontSize="9" fill="#8E8E93" textAnchor="end">50%</text>
+            <text x={TP - 2} y={TH - TP + 4} fontSize="9" fill="#8E8E93" textAnchor="end">0%</text>
+          </svg>
+          <div className="flex justify-between text-[10px] text-slate-400 mt-1 px-3">
+            <span>{months[0].month}</span>
+            <span>{months[months.length - 1].month}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Stacked-Bars pro Monat: Anteile geklappt / dritter / fail */}
+      <div>
+        <div className="text-[10px] uppercase tracking-wide text-slate-500 font-medium mb-1">
+          Verteilung pro Monat (relativ)
+        </div>
+        <svg viewBox={'0 0 ' + BW + ' ' + BH} className="w-full" preserveAspectRatio="none">
+          {months.map((m, i) => {
+            const x = BP + i * barWidth;
+            const w = Math.max(1, barWidth - 1);
+            const sH = (m.success / m.total) * (BH - 2 * BP);
+            const tH = (m.third / m.total) * (BH - 2 * BP);
+            const fH = (m.fail / m.total) * (BH - 2 * BP);
+            const yStart = BP;
+            return (
+              <g key={i}>
+                <rect x={x} y={yStart} width={w} height={sH} fill="#10B981" />
+                <rect x={x} y={yStart + sH} width={w} height={tH} fill="#F59E0B" />
+                <rect x={x} y={yStart + sH + tH} width={w} height={fH} fill="#F43F5E" />
+                {/* Aktivitäts-Indikator: Größe = total Anzahl Sprünge in dem Monat */}
+                <rect x={x} y={BH - BP + 2} width={w} height={Math.max(1, 4 * (m.total / maxJumpsPerMonth))} fill="#94A3B8" opacity="0.6" />
+              </g>
+            );
+          })}
+        </svg>
+        <div className="flex justify-between text-[10px] text-slate-400 mt-1 px-3">
+          <span>{months[0].month}</span>
+          <span>{months[months.length - 1].month}</span>
+        </div>
+        <div className="flex items-center gap-3 text-[10px] text-slate-500 mt-2 flex-wrap">
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />geklappt</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500" />{exercise.third_label || 'mittel'}</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500" />nicht</span>
+          <span className="flex items-center gap-1 ml-auto"><span className="w-2.5 h-2.5 rounded-sm bg-slate-400 opacity-60" />Aktivität</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, onDelete }) {
+  const [importStatus, setImportStatus] = useState(null); // null | 'parsing' | 'preview' | 'error'
+  const [importPreview, setImportPreview] = useState(null);
+  const [importMsg, setImportMsg] = useState('');
+
   const trainStats = calcExerciseTrainingStats(exercise, data.sessions || []);
   const compStats = calcExerciseCompetitionStats(exercise, data.programs || [], data.competitions || []);
 
@@ -3964,6 +4170,116 @@ function ExerciseDetail({ exercise, data, onBack, onEdit, onArchive, onDelete })
           )}
         </div>
 
+        {/* Maute-Spezial-Statistik bei 3-Status-Übungen */}
+        {exercise.category_mode === 3 && (
+          <MauteStatsPanel exercise={exercise} sessions={data.sessions || []} />
+        )}
+
+        {/* XLSX-Import bei 3-Status-Übungen */}
+        {exercise.category_mode === 3 && setData && (
+          <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4 space-y-3">
+            <div className="flex items-start gap-2">
+              <FileSpreadsheet size={18} className="text-violet-700 shrink-0 mt-0.5" />
+              <div className="text-sm text-violet-900">
+                <strong>Statistik-Daten importieren</strong>
+                <p className="text-xs mt-0.5 opacity-90">
+                  Maute-Sprung-XLSX (Spalten: Datum, Geklappt, Getroffen, Gefährlich) hochladen.
+                </p>
+              </div>
+            </div>
+            {importStatus === 'parsing' && (
+              <div className="bg-white rounded-xl p-3 text-sm">⏳ {importMsg}</div>
+            )}
+            {importStatus === 'error' && (
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-900">
+                ✗ {importMsg}
+              </div>
+            )}
+            {importStatus === 'preview' && importPreview && (
+              <div className="bg-white rounded-xl p-3 space-y-2">
+                <div className="text-sm">
+                  ✓ <strong>{importPreview.sessions.length} Sessions</strong> erkannt
+                  ({importPreview.sessions[0]?.date} – {importPreview.sessions[importPreview.sessions.length - 1]?.date}).
+                </div>
+                <div className="text-xs text-slate-600">
+                  Mapping: <strong>Geklappt</strong>=geklappt, <strong>Getroffen</strong>=nicht,{' '}
+                  <strong>Gefährlich</strong>={exercise.third_label || 'mittel'}
+                </div>
+                <div className="flex gap-2 pt-1 flex-wrap">
+                  <button
+                    onClick={() => {
+                      const existing = (data.sessions || []).filter(s => s.exerciseId !== exercise.id);
+                      const newSessions = importPreview.sessions.map((s, idx) => ({
+                        id: 'imp_' + exercise.id + '_' + idx + '_' + Date.now(),
+                        exerciseId: exercise.id,
+                        athleteId: null,
+                        date: s.date,
+                        entries: s.entries
+                      }));
+                      setData({ ...data, sessions: [...existing, ...newSessions] });
+                      setImportStatus(null);
+                      setImportPreview(null);
+                    }}
+                    className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium">
+                    Ersetzen ({importPreview.sessions.length})
+                  </button>
+                  <button
+                    onClick={() => {
+                      const newSessions = importPreview.sessions.map((s, idx) => ({
+                        id: 'imp_' + exercise.id + '_' + idx + '_' + Date.now(),
+                        exerciseId: exercise.id,
+                        athleteId: null,
+                        date: s.date,
+                        entries: s.entries
+                      }));
+                      setData({ ...data, sessions: [...(data.sessions || []), ...newSessions] });
+                      setImportStatus(null);
+                      setImportPreview(null);
+                    }}
+                    className="bg-white border border-slate-300 px-3 py-1.5 rounded-lg text-sm font-medium">
+                    Hinzufügen
+                  </button>
+                  <button
+                    onClick={() => { setImportStatus(null); setImportPreview(null); }}
+                    className="bg-white border border-slate-300 px-3 py-1.5 rounded-lg text-sm font-medium">
+                    Verwerfen
+                  </button>
+                </div>
+              </div>
+            )}
+            {!importStatus && (
+              <label className="bg-white border border-violet-300 hover:bg-violet-50 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
+                <FileSpreadsheet size={14} /> XLSX-Datei auswählen
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={async (e) => {
+                    const file = e.target.files && e.target.files[0];
+                    if (!file) return;
+                    setImportStatus('parsing');
+                    setImportMsg('Lese XLSX…');
+                    try {
+                      const result = await parseMauteXlsx(file);
+                      if (result.sessions.length === 0) {
+                        setImportStatus('error');
+                        setImportMsg('Keine Sessions erkannt — Spalten "Datum/Geklappt/Getroffen/Gefährlich" prüfen.');
+                        return;
+                      }
+                      setImportPreview(result);
+                      setImportStatus('preview');
+                    } catch (err) {
+                      setImportStatus('error');
+                      setImportMsg('Fehler: ' + (err.message || 'Datei konnte nicht gelesen werden'));
+                    } finally {
+                      e.target.value = '';
+                    }
+                  }}
+                  className="hidden" />
+              </label>
+            )}
+          </div>
+        )}
+
         {/* Aktionen */}
         <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3 space-y-2">
           <button onClick={onEdit} className="w-full bg-slate-900 text-white px-4 py-3 rounded-xl font-medium flex items-center justify-center gap-2">
@@ -4039,6 +4355,7 @@ function UebungenView({ data, setData, onBack }) {
         <ExerciseDetail
           exercise={current}
           data={data}
+          setData={setData}
           onBack={() => setSelected(null)}
           onEdit={() => setEditing(current)}
           onArchive={() => toggleArchive(current.id)}
