@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgA" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bgA)"/>
+
+  <!-- Wheel: rim + spokes + hub -->
+  <g transform="translate(256 320)">
+    <circle r="120" fill="none" stroke="#FBBF24" stroke-width="14"/>
+    <g stroke="#FBBF24" stroke-width="3" stroke-linecap="round" opacity="0.9">
+      <line x1="0" y1="-110" x2="0" y2="110"/>
+      <line x1="-110" y1="0" x2="110" y2="0"/>
+      <line x1="-78" y1="-78" x2="78" y2="78"/>
+      <line x1="-78" y1="78" x2="78" y2="-78"/>
+    </g>
+    <circle r="14" fill="#FBBF24"/>
+  </g>
+
+  <!-- Rider doing handlebar handstand: simplified silhouette -->
+  <g fill="none" stroke="#FBBF24" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <!-- handlebar (top of wheel) -->
+    <path d="M 196 200 L 316 200" stroke-width="12"/>
+    <!-- arms straight down -->
+    <path d="M 218 200 L 218 130"/>
+    <path d="M 294 200 L 294 130"/>
+    <!-- body / legs (V-shape spread for trick visual) -->
+    <path d="M 218 130 L 218 80 L 196 56"/>
+    <path d="M 294 130 L 294 80 L 316 56"/>
+  </g>
+</svg>
