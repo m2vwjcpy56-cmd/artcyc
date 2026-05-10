@@ -2457,6 +2457,14 @@ function calcExerciseTrainingStats(exercise, sessions) {
 // Status-Labels — eine Übung hat 2 oder 3 Status-Kategorien.
 // Default-Bezeichnungen können pro Übung überschrieben werden.
 // =============================================================
+// Datum kompakt: "12.04.26"
+function formatDateShort(iso) {
+  if (!iso) return '';
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  return m[3] + '.' + m[2] + '.' + m[1].slice(2);
+}
+
 function statusLabel(ex, status) {
   if (status === 'success') {
     return (ex && ex.success_label) || 'Geklappt';
@@ -3253,31 +3261,46 @@ function SetupScreen({ onStart }) {
 // DASHBOARD
 // =============================================================
 function Dashboard({ data, setView }) {
-  // Gesamt-Stats berechnen
-  const stats = useMemo(() => {
-    const allEntries = data.sessions.flatMap(s => s.entries);
-    const total = allEntries.length;
-    const success = allEntries.filter(e => e === 'success').length;
-    const fail = allEntries.filter(e => e === 'fail').length;
-    const third = allEntries.filter(e => e === 'third').length;
-
-    // Diese Woche (letzte 7 Tage)
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    const weekStart = oneWeekAgo.toISOString().slice(0, 10);
-    const sessionsThisWeek = data.sessions.filter(s => s.date >= weekStart);
-    const entriesThisWeek = sessionsThisWeek.flatMap(s => s.entries);
-    const weekSuccess = entriesThisWeek.filter(e => e === 'success').length;
-
+  // Wettkampf-Stats: Bestleistung + Anzahl + letzter Wettkampf
+  const compStats = useMemo(() => {
+    const comps = data.competitions || [];
+    const programMap = new Map((data.programs || []).map(p => [p.id, p]));
+    const withResult = comps.map(c => {
+      const program = programMap.get(c.program_id);
+      if (!program) return null;
+      const t1 = calcTableResult(program, c.table1, c.t1_schwierigkeit);
+      const t2 = calcTableResult(program, c.table2, c.t2_schwierigkeit);
+      const final = Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100;
+      return { competition: c, final };
+    }).filter(Boolean);
+    const sorted = withResult.slice().sort((a, b) => b.final - a.final);
+    const byDate = withResult.slice().sort((a, b) => (b.competition.date || '').localeCompare(a.competition.date || ''));
     return {
-      total, success, fail, third,
-      successRate: total > 0 ? Math.round((success / total) * 100) : 0,
-      sessionsCount: data.sessions.length,
-      sessionsThisWeek: sessionsThisWeek.length,
-      seriesThisWeek: entriesThisWeek.length,
-      weekSuccessRate: entriesThisWeek.length > 0 ? Math.round((weekSuccess / entriesThisWeek.length) * 100) : 0
+      count: comps.length,
+      best: sorted[0] || null,
+      last: byDate[0] || null
     };
-  }, [data]);
+  }, [data.competitions, data.programs]);
+
+  // Trainings-Stats: Sessions gesamt + Trainingstage letzte 30 Tage
+  const trainStats = useMemo(() => {
+    const sessions = data.sessions || [];
+    const today = new Date();
+    const thirtyAgo = new Date(today);
+    thirtyAgo.setDate(thirtyAgo.getDate() - 29);
+    const thirtyAgoStr = thirtyAgo.toISOString().slice(0, 10);
+    const recentSessions = sessions.filter(s => s.date >= thirtyAgoStr);
+    const distinctDays = new Set(recentSessions.map(s => s.date)).size;
+
+    // Letzte Trainings-Session
+    const sortedByDate = sessions.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const lastSessionDate = sortedByDate[0]?.date || null;
+    return {
+      totalSessions: sessions.length,
+      daysLast30: distinctDays,
+      lastSessionDate
+    };
+  }, [data.sessions]);
 
   // Pro Übung: Quote + Trend über letzte 4 Wochen
   const perExercise = useMemo(() => {
@@ -3326,32 +3349,32 @@ function Dashboard({ data, setView }) {
       {/* Top Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
+          icon={Trophy}
+          label="Bestleistung"
+          value={compStats.best ? compStats.best.final.toFixed(2) : '—'}
+          sub={compStats.best ? compStats.best.competition.name.slice(0, 24) : 'Noch kein Wettkampf'}
+          color="amber"
+        />
+        <StatCard
           icon={Target}
-          label="Gesamtquote"
-          value={stats.total > 0 ? stats.successRate + '%' : '—'}
-          sub={stats.total + ' Serien'}
+          label="Wettkämpfe"
+          value={compStats.count}
+          sub={compStats.last ? 'zuletzt ' + formatDateShort(compStats.last.competition.date) : '—'}
           color="emerald"
         />
         <StatCard
           icon={Calendar}
-          label="Diese Woche"
-          value={stats.sessionsThisWeek}
-          sub="Sessions"
+          label="Trainingstage"
+          value={trainStats.daysLast30}
+          sub="letzte 30 Tage"
           color="sky"
         />
         <StatCard
-          icon={Activity}
-          label="Serien Woche"
-          value={stats.seriesThisWeek}
-          sub={stats.seriesThisWeek > 0 ? stats.weekSuccessRate + '% Quote' : '—'}
+          icon={Dumbbell}
+          label="Sessions gesamt"
+          value={trainStats.totalSessions}
+          sub={trainStats.lastSessionDate ? 'zuletzt ' + formatDateShort(trainStats.lastSessionDate) : '—'}
           color="violet"
-        />
-        <StatCard
-          icon={ListChecks}
-          label="Übungen aktiv"
-          value={data.exercises.filter(e => e.active).length}
-          sub="trainiert"
-          color="amber"
         />
       </div>
 
