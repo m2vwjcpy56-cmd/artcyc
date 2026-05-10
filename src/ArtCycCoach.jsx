@@ -3396,6 +3396,15 @@ function Dashboard({ data, setView }) {
         </button>
       </div>
 
+      {/* Wettkampf-Verlauf */}
+      {compStats.count >= 2 && (
+        <CompetitionTrendChart
+          competitions={data.competitions || []}
+          programs={data.programs || []}
+          best={compStats.best}
+          onTapWettkampf={() => setView('wettkampf')} />
+      )}
+
       {/* Pro Übung */}
       <section>
         <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
@@ -3423,6 +3432,101 @@ function Dashboard({ data, setView }) {
         Stufe 4 · Dashboard aktiv
       </div>
     </div>
+  );
+}
+
+// =============================================================
+// Wettkampf-Verlauf-Chart — Linie der Endergebnisse über Zeit
+// =============================================================
+function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf }) {
+  const points = useMemo(() => {
+    const programMap = new Map(programs.map(p => [p.id, p]));
+    return competitions
+      .map(c => {
+        const program = programMap.get(c.program_id);
+        if (!program) return null;
+        const t1 = calcTableResult(program, c.table1, c.t1_schwierigkeit);
+        const t2 = calcTableResult(program, c.table2, c.t2_schwierigkeit);
+        const final = Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100;
+        return { date: c.date, name: c.name, final, id: c.id };
+      })
+      .filter(Boolean)
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }, [competitions, programs]);
+
+  if (points.length < 2) return null;
+
+  // SVG-Maße
+  const W = 600, H = 180, P = 28;
+  const minY = Math.min(...points.map(p => p.final));
+  const maxY = Math.max(...points.map(p => p.final));
+  const yPadding = Math.max(2, (maxY - minY) * 0.1);
+  const yMin = Math.max(0, Math.floor((minY - yPadding) * 10) / 10);
+  const yMax = Math.ceil((maxY + yPadding) * 10) / 10;
+  const yRange = Math.max(1, yMax - yMin);
+
+  const svgPoints = points.map((p, i) => {
+    const x = points.length === 1 ? W / 2 : P + (i / (points.length - 1)) * (W - 2 * P);
+    const y = H - P - ((p.final - yMin) / yRange) * (H - 2 * P);
+    return { ...p, x, y };
+  });
+  const linePath = svgPoints.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
+  const areaPath = linePath + ' L' + svgPoints[svgPoints.length - 1].x.toFixed(1) + ',' + (H - P).toFixed(1) + ' L' + svgPoints[0].x.toFixed(1) + ',' + (H - P).toFixed(1) + ' Z';
+  const bestPoint = svgPoints.find(p => p.id === (best && best.competition && best.competition.id));
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <TrendingUp size={18} className="text-slate-700" /> Wettkampf-Verlauf
+        </h2>
+        <button onClick={onTapWettkampf} className="text-xs text-[#007AFF] font-medium">Alle ansehen ›</button>
+      </div>
+      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
+        <svg viewBox={'0 0 ' + W + ' ' + H} className="w-full" preserveAspectRatio="none" style={{ height: 'auto' }}>
+          {/* Y-Gridlines */}
+          {[0, 0.25, 0.5, 0.75, 1].map(r => {
+            const y = H - P - r * (H - 2 * P);
+            const val = yMin + r * yRange;
+            return (
+              <g key={r}>
+                <line x1={P} y1={y} x2={W - P} y2={y}
+                  stroke="#E5E5EA" strokeWidth="1"
+                  strokeDasharray={r === 0 || r === 1 ? '' : '2 3'} />
+                <text x={P - 4} y={y + 3} fontSize="9" fill="#8E8E93" textAnchor="end">
+                  {val.toFixed(0)}
+                </text>
+              </g>
+            );
+          })}
+          {/* Fläche unter der Linie */}
+          <path d={areaPath} fill="rgba(255, 149, 0, 0.12)" />
+          {/* Linie */}
+          <path d={linePath} fill="none" stroke="#FF9500" strokeWidth="2.5" strokeLinejoin="round" />
+          {/* Punkte */}
+          {svgPoints.map((p, i) => {
+            const isBest = bestPoint && p.id === bestPoint.id;
+            return (
+              <g key={i}>
+                <circle cx={p.x} cy={p.y} r={isBest ? 6 : 3.5} fill={isBest ? '#FBBF24' : '#FF9500'} stroke="#fff" strokeWidth="1.5" />
+                {isBest && (
+                  <text x={p.x} y={p.y - 12} fontSize="10" fontWeight="700" fill="#92400E" textAnchor="middle">
+                    Best
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+        <div className="flex justify-between text-[10px] text-slate-400 mt-1 px-7">
+          <span>{formatDateShort(svgPoints[0].date)}</span>
+          <span className="text-slate-500 font-medium">
+            {points.length} Wettkämpfe · Bestleistung {Math.max(...points.map(p => p.final)).toFixed(2)}
+          </span>
+          <span>{formatDateShort(svgPoints[svgPoints.length - 1].date)}</span>
+        </div>
+      </div>
+    </section>
   );
 }
 
