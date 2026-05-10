@@ -5586,47 +5586,70 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
     if (parsed.ausrichter) setHost(parsed.ausrichter);
     if (parsed.startnr) setStartNr(parsed.startnr);
 
-    // Programm aus Disziplin-Text auto-erkennen
     let activeProgram = pendingNewProgram || programs.find(p => p.id === programId);
     let createdNewProgram = null;
 
-    if (parsed.disziplin && programs && programs.length > 0) {
-      const dText = parsed.disziplin.toLowerCase();
-      let match = programs.find(p => p.name && dText.includes(p.name.toLowerCase()));
-      if (!match) {
-        const discMatch = ['1er', '2er', '4er', '6er'].find(d => dText.includes(d));
-        if (discMatch) match = programs.find(p => p.discipline === discMatch);
-      }
-      if (match && match.id !== programId) {
-        setProgramId(match.id);
-        activeProgram = match;
-      }
-    }
-
-    // Wenn kein passendes Programm: aus den PDF-Übungen ein neues erzeugen (PENDING — wird beim Speichern committet)
-    if (!activeProgram && parsed.exerciseRows && parsed.exerciseRows.length > 0) {
-      const disc = parsed.disziplin
-        ? (['1er', '2er', '4er', '6er'].find(d => parsed.disziplin.toLowerCase().includes(d)) || '1er')
-        : '1er';
-      const newProg = {
-        id: uid(),
-        name: parsed.disziplin
-          ? parsed.disziplin.replace('Kunstradsport', '').trim()
-          : (parsed.wettbewerb || 'Programm') + ' (' + disc + ')',
-        discipline: disc,
-        exercises: parsed.exerciseRows.map((r, idx) => ({
-          id: 'p_ex_' + idx + '_' + Date.now(),
-          nr: idx + 1,
-          name: r.name || ('Übung ' + (idx + 1)),
-          code: r.code || null,
-          points: Number(r.points || 0)
-        })),
-        created: new Date().toISOString()
+    // Wenn das PDF detaillierte Übungs-Zeilen liefert, ist es die Source-of-Truth
+    // für die Programm-Übungen + ihre Punkte. Wir matchen NICHT auf Disziplin-Basis,
+    // weil das zu falschen Aufgestellt-Werten führt wenn fremde Programme zufällig
+    // dieselbe Disziplin haben.
+    if (parsed.exerciseRows && parsed.exerciseRows.length > 0) {
+      // Prüfen ob ein bestehendes Programm zu 100% passt (gleiche Anzahl, Codes, Punkte)
+      const matchesExactly = (p) => {
+        if (!p.exercises || p.exercises.length !== parsed.exerciseRows.length) return false;
+        return p.exercises.every((e, idx) => {
+          const r = parsed.exerciseRows[idx];
+          const codeMatch = (e.code || '') === (r.code || '');
+          const pointsMatch = Math.abs(Number(e.points || 0) - Number(r.points || 0)) < 0.01;
+          return codeMatch && pointsMatch;
+        });
       };
-      setPendingNewProgram(newProg);
-      setProgramId(newProg.id);
-      activeProgram = newProg;
-      createdNewProgram = newProg;
+      const exactExisting = (programs || []).find(matchesExactly);
+
+      if (exactExisting) {
+        // 100% Match → bestehendes Programm wiederverwenden
+        activeProgram = exactExisting;
+        if (exactExisting.id !== programId) setProgramId(exactExisting.id);
+      } else {
+        // Frisches Programm aus PDF bauen (auch wenn Disziplin zu einem alten passt)
+        const disc = parsed.disziplin
+          ? (['1er', '2er', '4er', '6er'].find(d => parsed.disziplin.toLowerCase().includes(d)) || '1er')
+          : '1er';
+        const newProg = {
+          id: uid(),
+          name: parsed.disziplin
+            ? parsed.disziplin.replace('Kunstradsport', '').trim()
+            : (parsed.wettbewerb || 'Programm') + ' (' + disc + ')',
+          discipline: disc,
+          exercises: parsed.exerciseRows.map((r, idx) => ({
+            id: 'p_ex_' + idx + '_' + Date.now(),
+            nr: idx + 1,
+            name: r.name || ('Übung ' + (idx + 1)),
+            code: r.code || null,
+            points: Number(r.points || 0)
+          })),
+          created: new Date().toISOString()
+        };
+        setPendingNewProgram(newProg);
+        setProgramId(newProg.id);
+        activeProgram = newProg;
+        createdNewProgram = newProg;
+      }
+    } else {
+      // Fallback: kein detaillierter Parse → Disziplin-basiertes Matching wie bisher
+      // (aber nur als Lückenfüller — Aufgestellt wird ungenau sein)
+      if (parsed.disziplin && programs && programs.length > 0) {
+        const dText = parsed.disziplin.toLowerCase();
+        let match = programs.find(p => p.name && dText.includes(p.name.toLowerCase()));
+        if (!match) {
+          const discMatch = ['1er', '2er', '4er', '6er'].find(d => dText.includes(d));
+          if (discMatch) match = programs.find(p => p.discipline === discMatch);
+        }
+        if (match && match.id !== programId) {
+          setProgramId(match.id);
+          activeProgram = match;
+        }
+      }
     }
 
     // Übungen ermitteln, die NEU sind — beim Speichern committen
