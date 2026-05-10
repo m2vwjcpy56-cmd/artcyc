@@ -3261,9 +3261,41 @@ function SetupScreen({ onStart }) {
 // DASHBOARD
 // =============================================================
 function Dashboard({ data, setView }) {
-  // Wettkampf-Stats: Bestleistung + Anzahl + letzter Wettkampf
+  // Saison-Filter
+  const [season, setSeason] = useState('all'); // 'all' | '2026' | '2025' | '90d' | '30d'
+  const seasonRange = useMemo(() => {
+    const today = new Date();
+    if (season === 'all') return { from: null, to: null, label: 'Alle Zeit' };
+    if (season === '90d') {
+      const d = new Date(today); d.setDate(d.getDate() - 89);
+      return { from: d.toISOString().slice(0, 10), to: null, label: 'Letzte 90 Tage' };
+    }
+    if (season === '30d') {
+      const d = new Date(today); d.setDate(d.getDate() - 29);
+      return { from: d.toISOString().slice(0, 10), to: null, label: 'Letzte 30 Tage' };
+    }
+    // Year filter
+    return { from: season + '-01-01', to: season + '-12-31', label: season };
+  }, [season]);
+  const inRange = (date) => {
+    if (!date) return false;
+    const d = date.slice(0, 10);
+    if (seasonRange.from && d < seasonRange.from) return false;
+    if (seasonRange.to && d > seasonRange.to) return false;
+    return true;
+  };
+
+  // Verfügbare Jahre aus Daten ableiten
+  const availableYears = useMemo(() => {
+    const years = new Set();
+    for (const c of (data.competitions || [])) if (c.date) years.add(c.date.slice(0, 4));
+    for (const s of (data.sessions || [])) if (s.date) years.add(s.date.slice(0, 4));
+    return Array.from(years).sort((a, b) => b.localeCompare(a)); // neueste zuerst
+  }, [data.competitions, data.sessions]);
+
+  // Wettkampf-Stats (gefiltert nach Saison)
   const compStats = useMemo(() => {
-    const comps = data.competitions || [];
+    const comps = (data.competitions || []).filter(c => season === 'all' ? true : inRange(c.date));
     const programMap = new Map((data.programs || []).map(p => [p.id, p]));
     const withResult = comps.map(c => {
       const program = programMap.get(c.program_id);
@@ -3278,29 +3310,25 @@ function Dashboard({ data, setView }) {
     return {
       count: comps.length,
       best: sorted[0] || null,
-      last: byDate[0] || null
+      last: byDate[0] || null,
+      withResult
     };
-  }, [data.competitions, data.programs]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.competitions, data.programs, season]);
 
-  // Trainings-Stats: Sessions gesamt + Trainingstage letzte 30 Tage
+  // Trainings-Stats (gefiltert nach Saison)
   const trainStats = useMemo(() => {
-    const sessions = data.sessions || [];
-    const today = new Date();
-    const thirtyAgo = new Date(today);
-    thirtyAgo.setDate(thirtyAgo.getDate() - 29);
-    const thirtyAgoStr = thirtyAgo.toISOString().slice(0, 10);
-    const recentSessions = sessions.filter(s => s.date >= thirtyAgoStr);
-    const distinctDays = new Set(recentSessions.map(s => s.date)).size;
-
-    // Letzte Trainings-Session
+    const sessions = (data.sessions || []).filter(s => season === 'all' ? true : inRange(s.date));
+    const distinctDays = new Set(sessions.map(s => s.date)).size;
     const sortedByDate = sessions.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const lastSessionDate = sortedByDate[0]?.date || null;
     return {
       totalSessions: sessions.length,
-      daysLast30: distinctDays,
+      distinctDays,
       lastSessionDate
     };
-  }, [data.sessions]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.sessions, season]);
 
   // Pro Übung: Quote + Trend über letzte 4 Wochen
   const perExercise = useMemo(() => {
@@ -3346,6 +3374,26 @@ function Dashboard({ data, setView }) {
         <p className="text-slate-500 text-sm mt-1">Deine Trainings-Statistiken im Überblick</p>
       </header>
 
+      {/* Saison-Filter */}
+      <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1" data-no-swipe="true">
+        {[
+          { id: 'all', label: 'Alle Zeit' },
+          ...availableYears.map(y => ({ id: y, label: y })),
+          { id: '90d', label: '90 Tage' },
+          { id: '30d', label: '30 Tage' }
+        ].map(s => (
+          <button
+            key={s.id}
+            onClick={() => setSeason(s.id)}
+            className={'px-3 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition ' +
+              (season === s.id
+                ? 'bg-slate-900 text-white'
+                : 'bg-white border border-slate-200 text-slate-700')}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+
       {/* Top Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
@@ -3359,19 +3407,19 @@ function Dashboard({ data, setView }) {
           icon={Target}
           label="Wettkämpfe"
           value={compStats.count}
-          sub={compStats.last ? 'zuletzt ' + formatDateShort(compStats.last.competition.date) : '—'}
+          sub={compStats.last ? 'zuletzt ' + formatDateShort(compStats.last.competition.date) : (season === 'all' ? '—' : 'in ' + seasonRange.label)}
           color="emerald"
         />
         <StatCard
           icon={Calendar}
           label="Trainingstage"
-          value={trainStats.daysLast30}
-          sub="letzte 30 Tage"
+          value={trainStats.distinctDays}
+          sub={season === 'all' ? 'gesamt' : seasonRange.label}
           color="sky"
         />
         <StatCard
           icon={Dumbbell}
-          label="Sessions gesamt"
+          label="Sessions"
           value={trainStats.totalSessions}
           sub={trainStats.lastSessionDate ? 'zuletzt ' + formatDateShort(trainStats.lastSessionDate) : '—'}
           color="violet"
@@ -3399,7 +3447,7 @@ function Dashboard({ data, setView }) {
       {/* Wettkampf-Verlauf */}
       {compStats.count >= 2 && (
         <CompetitionTrendChart
-          competitions={data.competitions || []}
+          competitions={(data.competitions || []).filter(c => season === 'all' ? true : inRange(c.date))}
           programs={data.programs || []}
           best={compStats.best}
           onTapWettkampf={() => setView('wettkampf')} />
