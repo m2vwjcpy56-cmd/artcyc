@@ -7079,15 +7079,15 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
 }
 
 function SportlerView({ profile, session, athletes, profiles, refreshAthletes, ownData }) {
+  // ALLE Hooks MÜSSEN vor dem ersten conditional return aufgerufen werden
+  // (Rules-of-Hooks). Nach dem viewingAthlete-Early-Return waren ehemals
+  // weitere useState-Calls — das hat den weißen-Bildschirm-Crash erzeugt.
   const profileById = useMemo(() => {
     const m = new Map();
     (profiles || []).forEach(p => m.set(p.id, p));
     return m;
   }, [profiles]);
   const [viewingAthlete, setViewingAthlete] = useState(null);
-  if (viewingAthlete) {
-    return <AthleteDetailView athlete={viewingAthlete} ownData={ownData} onBack={() => setViewingAthlete(null)} />;
-  }
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -7095,6 +7095,10 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
   const [info, setInfo] = useState('');
   const [showRedeemModal, setShowRedeemModal] = useState(false);
   const [redeemCode, setRedeemCode] = useState('');
+
+  if (viewingAthlete) {
+    return <AthleteDetailView athlete={viewingAthlete} ownData={ownData} onBack={() => setViewingAthlete(null)} />;
+  }
 
   const isAdmin = profile?.role === 'admin';
   const isCoach = profile?.role === 'coach' || isAdmin;
