@@ -3728,8 +3728,13 @@ function StatCard({ icon: Icon, label, value, sub, color }) {
 }
 
 function ExerciseStatsCard({ ex, total, success, fail, third, rate, riskRate, sessions, trend }) {
+  const target = typeof ex.target_rate === 'number' ? ex.target_rate : null;
+  const belowTarget = target !== null && rate < target;
+  const aboveTarget = target !== null && rate >= target;
+  const cardClass = 'bg-white rounded-2xl border shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 ' +
+    (belowTarget ? 'border-rose-200 ring-1 ring-rose-100' : 'border-slate-200/60');
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
+    <div className={cardClass}>
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
@@ -3744,14 +3749,24 @@ function ExerciseStatsCard({ ex, total, success, fail, third, rate, riskRate, se
                 3-Status: {ex.third_label}
               </span>
             )}
+            {target !== null && (
+              <span className={'text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ' +
+                (aboveTarget ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700')}>
+                <Target size={11} /> Ziel {target}%
+              </span>
+            )}
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
             {sessions} Sessions · {total} Serien
           </div>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-3xl font-bold text-slate-900">{rate}%</div>
-          <div className="text-xs text-slate-500">Quote</div>
+          <div className={'text-3xl font-bold ' + (belowTarget ? 'text-rose-700' : aboveTarget ? 'text-emerald-700' : 'text-slate-900')}>{rate}%</div>
+          <div className="text-xs text-slate-500">
+            {target !== null
+              ? (rate >= target ? 'über Ziel ✓' : (target - rate) + '% unter Ziel')
+              : 'Quote'}
+          </div>
         </div>
       </div>
 
@@ -5029,6 +5044,9 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
   const [statusMode, setStatusMode] = useState((exercise && exercise.category_mode) || 2);
   const [thirdLabel, setThirdLabel] = useState((exercise && exercise.third_label) || 'Gefährlich');
   const [series, setSeries] = useState((exercise && exercise.default_series) || 10);
+  const [targetRate, setTargetRate] = useState(
+    exercise && typeof exercise.target_rate === 'number' ? String(exercise.target_rate) : ''
+  );
 
   const handleUciSelect = (selected) => {
     setUciCode(selected.c);
@@ -5046,7 +5064,8 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
       active: exercise ? exercise.active : true,
       category_mode: Number(statusMode),
       third_label: Number(statusMode) === 3 ? (thirdLabel.trim() || 'Dritte') : null,
-      default_series: Number(series) || 10
+      default_series: Number(series) || 10,
+      target_rate: targetRate.trim() === '' ? null : Math.max(0, Math.min(100, Number(targetRate) || 0))
     });
   };
 
@@ -5122,6 +5141,17 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
             <label className="text-sm font-medium block mb-1.5">Standard-Serienanzahl</label>
             <input type="number" value={series} onChange={e => setSeries(e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium block mb-1.5 flex items-center gap-1.5">
+              <Target size={14} className="text-slate-500" /> Ziel-Quote <span className="text-xs text-slate-400 font-normal">(optional, in %)</span>
+            </label>
+            <input type="number" min="0" max="100" inputMode="numeric"
+              value={targetRate} onChange={e => setTargetRate(e.target.value)}
+              placeholder="z.B. 80"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+            <p className="text-xs text-slate-500 mt-1">Dashboard markiert die Übung farblich, wenn deine Quote unter dem Ziel liegt — Trainings-Bedarf auf einen Blick.</p>
           </div>
         </div>
 
