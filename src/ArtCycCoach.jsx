@@ -7,7 +7,7 @@ import {
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog
 } from 'lucide-react';
-import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete } from './lib/supabase';
+import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode } from './lib/supabase';
 
 // =============================================================
 // UCI 2026 Datenbank: Alle Disziplinen
@@ -6803,14 +6803,53 @@ function SportlerView({ profile, session, athletes, refreshAthletes }) {
   const [showNew, setShowNew] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [info, setInfo] = useState('');
+  const [showRedeemModal, setShowRedeemModal] = useState(false);
+  const [redeemCode, setRedeemCode] = useState('');
 
   const isAdmin = profile?.role === 'admin';
+  const isCoach = profile?.role === 'coach' || isAdmin;
   const myUserId = session?.user?.id;
   const myAthlete = athletes.find(a => a.auth_user_id === myUserId);
   const managedAthletes = athletes.filter(a => a.created_by_coach_id === myUserId && a.id !== (myAthlete?.id));
   const otherAthletesAdminView = isAdmin
     ? athletes.filter(a => a.id !== (myAthlete?.id) && a.created_by_coach_id !== myUserId)
     : [];
+
+  const onGenerateCode = async (athleteId) => {
+    setBusy(true); setErr(''); setInfo('');
+    const { error } = await generateClaimCodeForAthlete(athleteId);
+    if (error) setErr(error.message);
+    else setInfo('Code generiert. Gib ihn an den Sportler weiter.');
+    await refreshAthletes();
+    setBusy(false);
+  };
+
+  const onClearCode = async (athleteId) => {
+    if (!confirm('Code zurückziehen? Wer den alten Code hat, kann sich dann nicht mehr verknüpfen.')) return;
+    setBusy(true); setErr(''); setInfo('');
+    const { error } = await clearClaimCodeForAthlete(athleteId);
+    if (error) setErr(error.message);
+    else setInfo('Code wurde widerrufen.');
+    await refreshAthletes();
+    setBusy(false);
+  };
+
+  const onRedeemCode = async () => {
+    if (!redeemCode.trim()) return;
+    setBusy(true); setErr(''); setInfo('');
+    const { data, error } = await redeemAthleteCode(redeemCode.trim());
+    if (error) {
+      setErr(error.message);
+    } else if (data) {
+      const role = data.role_granted === 'coach' ? 'als Trainer' : 'als Sportler';
+      setInfo('✓ „' + data.athlete_name + '" wurde verknüpft (' + role + ').');
+      setShowRedeemModal(false);
+      setRedeemCode('');
+    }
+    await refreshAthletes();
+    setBusy(false);
+  };
 
   const onSaveAthlete = async (formData) => {
     setBusy(true); setErr('');
@@ -6841,9 +6880,18 @@ function SportlerView({ profile, session, athletes, refreshAthletes }) {
   };
 
   const renderAthleteCard = (a, badges) => {
+    const isMine = a.auth_user_id === myUserId;
+    const isManagedByMe = a.created_by_coach_id === myUserId;
     const linkedToUser = !!a.auth_user_id;
-    const canEdit = a.auth_user_id === myUserId || a.created_by_coach_id === myUserId || isAdmin;
-    const canDelete = a.created_by_coach_id === myUserId || isAdmin;
+    const linkedToCoach = !!a.created_by_coach_id;
+    const canEdit = isMine || isManagedByMe || isAdmin;
+    const canDelete = isManagedByMe || isAdmin;
+    // Wer kann Code generieren?
+    // - Trainer/Admin auf einem managed Athleten ohne Account → für Sportler-Claim
+    // - Sportler auf seinem eigenen Eintrag ohne Coach → um Trainer einzuladen
+    const canGenerateCode =
+      (isManagedByMe && !linkedToUser) ||
+      (isMine && !linkedToCoach);
     return (
       <div key={a.id} className="px-4 py-3.5">
         <div className="flex items-start justify-between gap-3">
@@ -6859,12 +6907,21 @@ function SportlerView({ profile, session, athletes, refreshAthletes }) {
               ) : (
                 <IOSTag color="orange">ohne Account</IOSTag>
               )}
+              {linkedToCoach && !isMine && (
+                <IOSTag color="purple">Trainer da</IOSTag>
+              )}
             </div>
             {a.email && <div className="text-[13px] text-[#8E8E93] mt-1 truncate">{a.email}</div>}
             {a.notes && <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">{a.notes}</div>}
             {a.claim_code && (
-              <div className="text-[12px] text-amber-700 mt-1 font-mono">
-                Code: <strong>{a.claim_code}</strong> <span className="opacity-70">(noch nicht eingelöst)</span>
+              <div className="text-[12px] mt-2 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                <div className="text-amber-900 font-medium mb-0.5">Claim-Code (noch offen)</div>
+                <div className="font-mono text-base text-amber-900 tracking-wider">{a.claim_code}</div>
+                <div className="text-[11px] text-amber-700 mt-0.5">
+                  {!linkedToUser
+                    ? 'Sportler gibt diesen Code in seinen Einstellungen ein um sich zu verknüpfen.'
+                    : 'Trainer:in gibt diesen Code in seinen Einstellungen ein um Zugriff zu erhalten.'}
+                </div>
               </div>
             )}
           </div>
@@ -6883,6 +6940,21 @@ function SportlerView({ profile, session, athletes, refreshAthletes }) {
             </div>
           )}
         </div>
+        {canGenerateCode && (
+          <div className="mt-2 flex gap-2 flex-wrap">
+            {a.claim_code ? (
+              <button onClick={() => onClearCode(a.id)} disabled={busy}
+                className="text-[13px] text-[#FF3B30] px-2 py-1 active:opacity-70 font-medium">
+                Code widerrufen
+              </button>
+            ) : (
+              <button onClick={() => onGenerateCode(a.id)} disabled={busy}
+                className="text-[13px] bg-amber-100 text-amber-900 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
+                <KeyRound size={13} /> {!linkedToUser ? 'Code für Sportler generieren' : 'Trainer einladen'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -6896,18 +6968,29 @@ function SportlerView({ profile, session, athletes, refreshAthletes }) {
             {managedAthletes.length} verwaltet{isAdmin && otherAthletesAdminView.length > 0 ? ` · ${otherAthletesAdminView.length} weitere` : ''}
           </p>
         </div>
-        <button onClick={() => setShowNew(true)}
-          className="bg-slate-900 text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-sm active:scale-95 transition">
-          <Plus size={16} /> Sportler anlegen
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => { setShowRedeemModal(true); setRedeemCode(''); }}
+            className="bg-white border border-slate-300 px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 active:scale-95 transition">
+            <KeyRound size={16} /> Code einlösen
+          </button>
+          {isCoach && (
+            <button onClick={() => setShowNew(true)}
+              className="bg-slate-900 text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-sm active:scale-95 transition">
+              <Plus size={16} /> Sportler anlegen
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="bg-sky-50/80 backdrop-blur rounded-2xl p-4 text-sm text-sky-900">
         <div className="flex gap-2 items-start">
           <Info size={18} className="shrink-0 mt-0.5" />
           <div>
-            <strong>Sportler verwalten</strong> — du kannst Sportler ohne eigenen Account anlegen (für Trainer-Verwaltung von Junioren etc.).
-            Die Claim-Code-Funktion zum späteren Verknüpfen mit einem echten Account kommt in der nächsten Version.
+            <strong>So funktionieren Codes:</strong>
+            <ul className="list-disc ml-4 mt-1 space-y-0.5 text-[13px]">
+              <li><strong>Trainer:in</strong> legt Sportler ohne Account an → generiert Code → Sportler löst ein.</li>
+              <li><strong>Sportler:in</strong> generiert Code an eigenem Profil → Trainer:in löst ein → bekommt Zugriff.</li>
+            </ul>
           </div>
         </div>
       </div>
@@ -6915,6 +6998,11 @@ function SportlerView({ profile, session, athletes, refreshAthletes }) {
       {err && (
         <div className="bg-rose-50 border border-rose-200 text-rose-900 text-sm rounded-xl p-3">
           ✗ {err}
+        </div>
+      )}
+      {info && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 text-sm rounded-xl p-3">
+          {info}
         </div>
       )}
 
@@ -6958,6 +7046,52 @@ function SportlerView({ profile, session, athletes, refreshAthletes }) {
         onClose={() => { setShowNew(false); setEditing(null); setErr(''); }}
         onSave={onSaveAthlete}
       />
+
+      {/* Redeem-Code Modal */}
+      {showRedeemModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40"
+          onClick={() => setShowRedeemModal(false)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="font-semibold text-lg">Claim-Code einlösen</h3>
+              <button onClick={() => setShowRedeemModal(false)} className="p-2 -m-2 text-slate-500"><X size={20} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-slate-600">
+                Gib den 6-stelligen Code ein, den du erhalten hast.
+                Je nachdem wer den Code erstellt hat, wird der Sportler-Eintrag mit deinem Account
+                verknüpft <em>oder</em> du bekommst Trainer-Zugriff darauf.
+              </p>
+              <input
+                type="text"
+                value={redeemCode}
+                onChange={e => setRedeemCode(e.target.value.toUpperCase())}
+                placeholder="z.B. AB23CD"
+                maxLength={8}
+                autoFocus
+                inputMode="latin"
+                autoCapitalize="characters"
+                style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}
+                className="w-full px-3 py-3 text-center text-xl tracking-widest border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 uppercase" />
+              {err && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-900 text-sm rounded-xl p-3">
+                  ✗ {err}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button onClick={() => setShowRedeemModal(false)}
+                  className="flex-1 bg-white border border-slate-300 px-5 py-3 rounded-xl font-medium">
+                  Abbrechen
+                </button>
+                <button onClick={onRedeemCode} disabled={busy || !redeemCode.trim()}
+                  className="flex-1 bg-emerald-600 text-white px-5 py-3 rounded-xl font-medium disabled:opacity-50">
+                  {busy ? '…' : 'Einlösen'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

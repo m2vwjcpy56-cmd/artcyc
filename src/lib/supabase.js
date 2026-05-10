@@ -121,3 +121,22 @@ export async function generateClaimCodeForAthlete(athleteId) {
     .single();
   return { data, error };
 }
+
+// Setzt den Claim-Code wieder zurück (z.B. wenn User den Code nicht mehr teilen will)
+export async function clearClaimCodeForAthlete(athleteId) {
+  const { data, error } = await supabase
+    .from('athletes')
+    .update({ claim_code: null })
+    .eq('id', athleteId)
+    .select()
+    .single();
+  return { data, error };
+}
+
+// Bidirektionaler Code-Einlöser (Phase 9b):
+// - Wenn der gefundene Athlet keinen User-Account hat → setzt eigenen User als auth_user_id
+// - Wenn der gefundene Athlet keinen Coach hat → setzt eigenen User als coach (nur für coach/admin)
+export async function redeemAthleteCode(code) {
+  const { data, error } = await supabase.rpc('redeem_athlete_code', { input_code: code });
+  return { data, error };
+}
