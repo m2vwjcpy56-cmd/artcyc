@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Trophy, Dumbbell, Plus, ChevronLeft, ChevronRight, Save, Check, X, Edit2, Trash2,
   Search, Info, Archive, AlertTriangle, ListChecks,
@@ -2556,6 +2556,52 @@ function migrateExerciseLabels(data) {
   return { data: { ...data, exercises }, changed };
 }
 
+// =============================================================
+// SwipeableMain — Hauptbereich mit horizontalem Swipe für Tab-Wechsel
+// =============================================================
+// Erkennt seitliche Wisch-Gesten und schaltet zur Nachbar-Tab.
+// Schwellen: |dx| > 60px, |dy| < 50px, Dauer < 600ms.
+// Swipes innerhalb scrollbarer Bereiche werden ignoriert (data-no-swipe).
+function SwipeableMain({ view, setView, visibleNav, children }) {
+  const startRef = useRef(null);
+
+  const onTouchStart = (e) => {
+    const t = e.touches[0];
+    // Wenn das Touch-Target oder ein Vorfahre als „kein Swipe-Bereich" markiert ist, abbrechen
+    let el = e.target;
+    while (el) {
+      if (el.dataset && el.dataset.noSwipe) { startRef.current = null; return; }
+      el = el.parentElement;
+    }
+    startRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
+  };
+
+  const onTouchEnd = (e) => {
+    const start = startRef.current;
+    startRef.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    const dt = Date.now() - start.time;
+    if (Math.abs(dx) < 60 || Math.abs(dy) > 50 || dt > 600) return;
+    const idx = visibleNav.findIndex((n) => n.id === view);
+    if (idx === -1) return;
+    if (dx < 0 && idx < visibleNav.length - 1) setView(visibleNav[idx + 1].id);
+    else if (dx > 0 && idx > 0) setView(visibleNav[idx - 1].id);
+  };
+
+  return (
+    <main
+      className="flex-1 sm:pb-8"
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 6.5rem)' }}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}>
+      {children}
+    </main>
+  );
+}
+
 function Brand({ size = 'md' }) {
   const iconSize = size === 'sm' ? 18 : 22;
   const titleClass = size === 'sm' ? 'text-[15px] font-semibold tracking-tight' : 'text-[17px] font-bold tracking-tight';
@@ -2818,15 +2864,22 @@ export default function App() {
         </div>
       )}
 
-      <main
-        className="flex-1 sm:pb-8"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 6.5rem)' }}>
+      <SwipeableMain
+        view={view}
+        setView={setView}
+        visibleNav={nav.filter(n => !n.soon).slice(0, 5)}>
         <div className="max-w-5xl mx-auto p-4 sm:p-8">{viewEl}</div>
-      </main>
+      </SwipeableMain>
 
       {/* Mobile Bottom-Nav — iOS 26 Liquid Glass Pill */}
-      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-30 px-4"
-        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+      <nav
+        className="sm:hidden fixed bottom-0 left-0 right-0 z-30 px-4 select-none"
+        style={{
+          paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+          WebkitUserSelect: 'none',
+          userSelect: 'none',
+          WebkitTouchCallout: 'none'
+        }}>
         <div
           className="rounded-full flex justify-around items-stretch py-2 px-2"
           style={{
@@ -2840,8 +2893,11 @@ export default function App() {
             const Icon = n.icon;
             const active = view === n.id;
             return (
-              <button key={n.id} onClick={() => setView(n.id)}
-                className={'flex flex-col items-center justify-center gap-1 flex-1 py-1.5 px-1 rounded-full transition-all duration-150 active:scale-[0.92] ' +
+              <button
+                key={n.id}
+                onClick={() => setView(n.id)}
+                style={{ WebkitTapHighlightColor: 'transparent', WebkitTouchCallout: 'none' }}
+                className={'flex flex-col items-center justify-center gap-1 flex-1 py-1.5 px-1 rounded-full transition-all duration-150 active:scale-[0.92] select-none ' +
                   (active ? 'text-[#FF9500]' : 'text-[#8E8E93]')}>
                 <Icon size={24} strokeWidth={active ? 2.4 : 1.8} />
                 <span className={'text-[10px] tracking-tight leading-none ' + (active ? 'font-semibold' : 'font-medium')}>{n.label}</span>
