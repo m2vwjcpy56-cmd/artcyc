@@ -7,7 +7,7 @@ import {
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog
 } from 'lucide-react';
-import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode } from './lib/supabase';
+import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode } from './lib/supabase';
 
 // =============================================================
 // UCI 2026 Datenbank: Alle Disziplinen
@@ -2756,10 +2756,12 @@ export default function App() {
 
   // Athletes aus Supabase laden (Phase 9a — DB-basiert statt JSONB-Blob)
   const [dbAthletes, setDbAthletes] = useState([]);
+  const [dbProfiles, setDbProfiles] = useState([]);
   const refreshAthletes = useCallback(async () => {
-    if (!session) { setDbAthletes([]); return; }
-    const list = await fetchAthletes();
+    if (!session) { setDbAthletes([]); setDbProfiles([]); return; }
+    const [list, profs] = await Promise.all([fetchAthletes(), fetchProfiles()]);
     setDbAthletes(list);
+    setDbProfiles(profs);
   }, [session]);
   useEffect(() => { refreshAthletes(); }, [refreshAthletes]);
 
@@ -2882,9 +2884,7 @@ export default function App() {
     { id: 'wettkampf', label: 'Wettkampf', icon: Trophy },
     { id: 'uebungen', label: 'Übungen', icon: BarChart3 },
     ...(isCoach ? [{ id: 'sportler', label: 'Sportler', icon: Users }] : []),
-    { id: 'export', label: 'Export', icon: Download },
-    { id: 'kuer', label: 'Kür-Planung', icon: Sparkles, soon: true },
-    { id: 'video', label: 'Video-Analyse', icon: FileText, soon: true }
+    { id: 'export', label: 'Export', icon: Download }
   ];
 
   // View dispatcher
@@ -2894,8 +2894,8 @@ export default function App() {
   else if (view === 'erfassen') viewEl = <Erfassen data={data} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={data} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={data} setData={save} dbAthletes={dbAthletes} />;
-  else if (view === 'einstellungen') viewEl = <SettingsView data={data} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} />;
-  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} refreshAthletes={refreshAthletes} />;
+  else if (view === 'einstellungen') viewEl = <SettingsView data={data} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} />;
+  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} />;
   else if (view === 'export') viewEl = <ExportView data={data} />;
   else if (view === 'kuer' || view === 'video') {
     viewEl = <ComingSoon viewId={view} />;
@@ -3914,10 +3914,29 @@ function TrainingView({ data, setData, setView }) {
 // =============================================================
 // EINSTELLUNGEN (Skeleton — wird in Stufe 8 ausgebaut)
 // =============================================================
-function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus }) {
+function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, refreshAthletes }) {
   const roleLabel = profile?.role === 'admin' ? 'Admin' : profile?.role === 'coach' ? 'Trainer:in' : 'Sportler:in';
   const syncLabel = cloudStatus === 'syncing' ? '⏳ wird synchronisiert…' : cloudStatus === 'error' ? '⚠ Sync-Fehler' : '✓ synchronisiert';
   const syncColor = cloudStatus === 'syncing' ? 'text-amber-600' : cloudStatus === 'error' ? 'text-rose-600' : 'text-emerald-600';
+
+  // Trainer-Verknüpfungen: zeigen wer Zugriff auf MEINE Daten hat
+  const myUserId = session?.user?.id;
+  const myAthletes = (dbAthletes || []).filter(a => a.auth_user_id === myUserId);
+  const trainerLinks = myAthletes
+    .filter(a => a.created_by_coach_id)
+    .map(a => {
+      const coachProfile = (dbProfiles || []).find(p => p.id === a.created_by_coach_id);
+      return { athleteId: a.id, athleteName: a.name, coachId: a.created_by_coach_id, coachName: coachProfile?.display_name || 'Unbekannt' };
+    });
+  const [revokeBusy, setRevokeBusy] = useState(false);
+  const onRevokeTrainer = async (athleteId, coachName) => {
+    if (!confirm('Trainer „' + coachName + '" den Zugriff auf deine Daten entziehen?')) return;
+    setRevokeBusy(true);
+    const { error } = await updateAthlete(athleteId, { created_by_coach_id: null });
+    if (error) alert('Fehler: ' + error.message);
+    await refreshAthletes();
+    setRevokeBusy(false);
+  };
   return (
     <div className="space-y-5">
       <header className="pt-2">
@@ -3938,6 +3957,53 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
             className="mt-4 bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5">
             <LogOut size={14} /> Abmelden
           </button>
+        </div>
+      )}
+
+      {/* Trainer-Verknüpfungen — wer hat Zugriff auf meine Daten? */}
+      {session && (
+        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
+          <h2 className="font-semibold mb-3 flex items-center gap-2">
+            <Shield size={16} /> Trainer-Zugriff
+          </h2>
+          {trainerLinks.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              Aktuell hat <strong>kein Trainer</strong> Zugriff auf deine Trainings- und Wettkampfdaten.
+              {profile?.role === 'athlete' && (
+                <span className="block mt-1.5 text-[13px]">
+                  Falls du einem Trainer Zugriff geben möchtest: <strong>Sportler-Tab</strong> →
+                  „Trainer einladen" generiert dir einen Code.
+                </span>
+              )}
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-slate-600 mb-3">
+                Folgende Trainer:innen können deine Trainings/Wettkämpfe sehen und bearbeiten:
+              </p>
+              <div className="space-y-2">
+                {trainerLinks.map(link => (
+                  <div key={link.athleteId} className="flex items-center justify-between gap-3 bg-slate-50 rounded-xl px-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-sm truncate">{link.coachName}</div>
+                      <div className="text-xs text-slate-500 truncate">
+                        Zugriff auf Sportler-Eintrag „{link.athleteName}"
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => onRevokeTrainer(link.athleteId, link.coachName)}
+                      disabled={revokeBusy}
+                      className="text-[13px] text-[#FF3B30] px-3 py-1.5 rounded-full font-medium active:opacity-70 disabled:opacity-40 shrink-0">
+                      Widerrufen
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[12px] text-slate-500 mt-3">
+                Beim Widerrufen verliert die Person sofort den Zugriff. Du kannst sie später erneut einladen.
+              </p>
+            </>
+          )}
         </div>
       )}
 
@@ -6798,7 +6864,12 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
 // =============================================================
 // SPORTLER & EINLADUNGEN
 // =============================================================
-function SportlerView({ profile, session, athletes, refreshAthletes }) {
+function SportlerView({ profile, session, athletes, profiles, refreshAthletes }) {
+  const profileById = useMemo(() => {
+    const m = new Map();
+    (profiles || []).forEach(p => m.set(p.id, p));
+    return m;
+  }, [profiles]);
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -6903,13 +6974,20 @@ function SportlerView({ profile, session, athletes, refreshAthletes }) {
               </IOSTag>
               {badges}
               {linkedToUser ? (
-                <IOSTag color="green">verknüpft</IOSTag>
+                <IOSTag color="green">eigener Account</IOSTag>
               ) : (
                 <IOSTag color="orange">ohne Account</IOSTag>
               )}
-              {linkedToCoach && !isMine && (
-                <IOSTag color="purple">Trainer da</IOSTag>
-              )}
+              {linkedToCoach && (() => {
+                const coach = profileById.get(a.created_by_coach_id);
+                const coachName = coach?.display_name || 'Trainer';
+                if (isMine) {
+                  return <IOSTag color="purple">Trainer: {coachName}</IOSTag>;
+                }
+                return isManagedByMe
+                  ? <IOSTag color="blue">von mir</IOSTag>
+                  : <IOSTag color="purple">{coachName}</IOSTag>;
+              })()}
             </div>
             {a.email && <div className="text-[13px] text-[#8E8E93] mt-1 truncate">{a.email}</div>}
             {a.notes && <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">{a.notes}</div>}

@@ -64,6 +64,19 @@ export async function pushCloudSnapshot(appData) {
 // Sichtbar für: eigenen Eintrag, vom Coach erstellte Einträge, Admin sieht alle.
 // Schreibrechte: Coach/Admin können anlegen, eigener User + Coach können editieren.
 
+// Lädt alle Profiles (Display-Name + Rolle) für Anzeige.
+// RLS erlaubt allen Authenticated das Lesen der Profile-Tabelle.
+export async function fetchProfiles() {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, role, display_name');
+  if (error) {
+    console.warn('Profiles fetch fehlgeschlagen:', error.message);
+    return [];
+  }
+  return data || [];
+}
+
 export async function fetchAthletes() {
   const { data, error } = await supabase
     .from('athletes')
