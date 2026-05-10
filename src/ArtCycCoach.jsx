@@ -7,7 +7,7 @@ import {
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog
 } from 'lucide-react';
-import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot } from './lib/supabase';
+import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete } from './lib/supabase';
 
 // =============================================================
 // UCI 2026 Datenbank: Alle Disziplinen
@@ -2754,6 +2754,15 @@ export default function App() {
     if (session) getCurrentProfile().then(setProfile);
   }, [session?.user?.id]);
 
+  // Athletes aus Supabase laden (Phase 9a — DB-basiert statt JSONB-Blob)
+  const [dbAthletes, setDbAthletes] = useState([]);
+  const refreshAthletes = useCallback(async () => {
+    if (!session) { setDbAthletes([]); return; }
+    const list = await fetchAthletes();
+    setDbAthletes(list);
+  }, [session]);
+  useEffect(() => { refreshAthletes(); }, [refreshAthletes]);
+
   // Lokale Daten erst nach Login laden (DATA_KEY pro User getrennt)
   const userDataKey = session ? DATA_KEY + ':' + session.user.id : null;
   const [cloudStatus, setCloudStatus] = useState('idle'); // 'idle' | 'syncing' | 'error' | 'offline'
@@ -2882,11 +2891,11 @@ export default function App() {
   let viewEl;
   if (view === 'dashboard') viewEl = <Dashboard data={data} setView={setView} />;
   else if (view === 'training') viewEl = <TrainingView data={data} setData={save} setView={setView} />;
-  else if (view === 'erfassen') viewEl = <Erfassen data={data} setData={save} onDone={() => setView('training')} />;
+  else if (view === 'erfassen') viewEl = <Erfassen data={data} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={data} setData={save} onBack={() => setView('dashboard')} />;
-  else if (view === 'wettkampf') viewEl = <WettkampfView data={data} setData={save} />;
+  else if (view === 'wettkampf') viewEl = <WettkampfView data={data} setData={save} dbAthletes={dbAthletes} />;
   else if (view === 'einstellungen') viewEl = <SettingsView data={data} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} />;
-  else if (view === 'sportler') viewEl = <SportlerView data={data} setData={save} />;
+  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} refreshAthletes={refreshAthletes} />;
   else if (view === 'export') viewEl = <ExportView data={data} />;
   else if (view === 'kuer' || view === 'video') {
     viewEl = <ComingSoon viewId={view} />;
@@ -5230,9 +5239,10 @@ function UciPicker({ discipline, onSelect, selectedCode }) {
 // =============================================================
 // SERIE PROTOKOLLIEREN (Erfassen)
 // =============================================================
-function Erfassen({ data, setData, onDone }) {
+function Erfassen({ data, setData, dbAthletes, onDone }) {
   const activeExercises = data.exercises.filter(e => e.active);
-  const athletes = data.athletes || [];
+  // Athletes aus DB (Phase 9a). Fallback auf data.athletes für legacy
+  const athletes = (dbAthletes && dbAthletes.length > 0) ? dbAthletes : (data.athletes || []);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [exerciseId, setExerciseId] = useState((activeExercises[0] && activeExercises[0].id) || '');
   const [athleteId, setAthleteId] = useState((athletes[0] && athletes[0].id) || '');
@@ -5680,7 +5690,7 @@ function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onRemove }) {
 // =============================================================
 // WETTKAMPF
 // =============================================================
-function WettkampfView({ data, setData }) {
+function WettkampfView({ data, setData, dbAthletes }) {
   const [tab, setTab] = useState('wettkaempfe'); // 'wettkaempfe' | 'programme'
   const [editId, setEditId] = useState(null);
   const [viewId, setViewId] = useState(null);
@@ -5710,7 +5720,8 @@ function WettkampfView({ data, setData }) {
 
   const competitions = data.competitions || [];
   const programs = data.programs || [];
-  const athletes = data.athletes || [];
+  // Athletes aus DB (Phase 9a). Fallback auf data.athletes für legacy
+  const athletes = (dbAthletes && dbAthletes.length > 0) ? dbAthletes : (data.athletes || []);
 
   const upsert = (comp) => {
     const exists = competitions.find(c => c.id === comp.id);
@@ -6787,60 +6798,93 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
 // =============================================================
 // SPORTLER & EINLADUNGEN
 // =============================================================
-function SportlerView({ data, setData }) {
+function SportlerView({ profile, session, athletes, refreshAthletes }) {
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
-  const [inviteFor, setInviteFor] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
 
-  const athletes = data.athletes || [];
+  const isAdmin = profile?.role === 'admin';
+  const myUserId = session?.user?.id;
+  const myAthlete = athletes.find(a => a.auth_user_id === myUserId);
+  const managedAthletes = athletes.filter(a => a.created_by_coach_id === myUserId && a.id !== (myAthlete?.id));
+  const otherAthletesAdminView = isAdmin
+    ? athletes.filter(a => a.id !== (myAthlete?.id) && a.created_by_coach_id !== myUserId)
+    : [];
 
-  const upsert = (a) => {
-    const exists = athletes.find(x => x.id === a.id);
-    setData({
-      ...data,
-      athletes: exists ? athletes.map(x => x.id === a.id ? a : x) : [...athletes, a]
-    });
+  const onSaveAthlete = async (formData) => {
+    setBusy(true); setErr('');
+    try {
+      if (formData.id) {
+        const { error } = await updateAthlete(formData.id, {
+          name: formData.name, type: formData.type, notes: formData.notes, email: formData.email
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await createAthlete(formData);
+        if (error) throw error;
+      }
+      await refreshAthletes();
+      setShowNew(false); setEditing(null);
+    } catch (e) {
+      setErr(e.message || 'Speichern fehlgeschlagen');
+    } finally { setBusy(false); }
   };
 
-  const remove = (id) => {
-    if (!confirm('Sportler wirklich löschen?')) return;
-    setData({ ...data, athletes: athletes.filter(a => a.id !== id) });
+  const onDeleteAthlete = async (a) => {
+    if (!confirm('Sportler „' + a.name + '" wirklich löschen?\n\nTrainings/Wettkämpfe von diesem Sportler bleiben in deinen Daten erhalten, sind aber nicht mehr zugeordnet.')) return;
+    setBusy(true); setErr('');
+    const { error } = await deleteAthlete(a.id);
+    if (error) setErr(error.message);
+    await refreshAthletes();
+    setBusy(false);
   };
 
-  const generateCode = () => String(Math.floor(100000 + Math.random() * 900000));
-
-  const invite = (athleteId, email) => {
-    const ath = athletes.find(a => a.id === athleteId);
-    if (!ath) return;
-    const code = generateCode();
-    const updated = {
-      ...ath,
-      email: email.toLowerCase(),
-      login_code: code,
-      invite_status: 'invited',
-      invited_at: new Date().toISOString()
-    };
-    setData({ ...data, athletes: athletes.map(a => a.id === athleteId ? updated : a) });
-    setInviteFor(updated);
-  };
-
-  const revoke = (id) => {
-    if (!confirm('Einladung widerrufen?')) return;
-    setData({
-      ...data,
-      athletes: athletes.map(a => a.id === id
-        ? { ...a, email: '', login_code: '', invite_status: 'none' }
-        : a)
-    });
-  };
-
-  const regenCode = (id) => {
-    const ath = athletes.find(a => a.id === id);
-    if (!ath) return;
-    const code = generateCode();
-    const u = { ...ath, login_code: code };
-    setData({ ...data, athletes: athletes.map(a => a.id === id ? u : a) });
-    setInviteFor(u);
+  const renderAthleteCard = (a, badges) => {
+    const linkedToUser = !!a.auth_user_id;
+    const canEdit = a.auth_user_id === myUserId || a.created_by_coach_id === myUserId || isAdmin;
+    const canDelete = a.created_by_coach_id === myUserId || isAdmin;
+    return (
+      <div key={a.id} className="px-4 py-3.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-medium text-[15px] text-[#000] truncate">{a.name}</h3>
+              <IOSTag color={a.type === 'team' ? 'blue' : 'gray'}>
+                {a.type === 'team' ? 'Team' : 'Sportler'}
+              </IOSTag>
+              {badges}
+              {linkedToUser ? (
+                <IOSTag color="green">verknüpft</IOSTag>
+              ) : (
+                <IOSTag color="orange">ohne Account</IOSTag>
+              )}
+            </div>
+            {a.email && <div className="text-[13px] text-[#8E8E93] mt-1 truncate">{a.email}</div>}
+            {a.notes && <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">{a.notes}</div>}
+            {a.claim_code && (
+              <div className="text-[12px] text-amber-700 mt-1 font-mono">
+                Code: <strong>{a.claim_code}</strong> <span className="opacity-70">(noch nicht eingelöst)</span>
+              </div>
+            )}
+          </div>
+          {canEdit && (
+            <div className="flex gap-1">
+              <button onClick={() => setEditing(a)}
+                className="p-2 text-[#007AFF] active:bg-[#D1D1D6]/40 rounded-full">
+                <Edit2 size={16} />
+              </button>
+              {canDelete && (
+                <button onClick={() => onDeleteAthlete(a)}
+                  className="p-2 text-[#FF3B30] active:bg-[#D1D1D6]/40 rounded-full">
+                  <Trash2 size={16} />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -6849,12 +6893,12 @@ function SportlerView({ data, setData }) {
         <div>
           <h1 className="text-[34px] font-bold tracking-tight leading-none">Sportler</h1>
           <p className="text-slate-500 text-sm mt-1">
-            {athletes.length} Einträge · {athletes.filter(a => a.invite_status === 'invited').length} eingeladen
+            {managedAthletes.length} verwaltet{isAdmin && otherAthletesAdminView.length > 0 ? ` · ${otherAthletesAdminView.length} weitere` : ''}
           </p>
         </div>
         <button onClick={() => setShowNew(true)}
           className="bg-slate-900 text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-sm active:scale-95 transition">
-          <Plus size={16} /> Neu
+          <Plus size={16} /> Sportler anlegen
         </button>
       </header>
 
@@ -6862,104 +6906,63 @@ function SportlerView({ data, setData }) {
         <div className="flex gap-2 items-start">
           <Info size={18} className="shrink-0 mt-0.5" />
           <div>
-            <strong>Einladen:</strong> Du erstellst E-Mail + 6-stelligen Code, teilst ihn persönlich oder per Messenger. Sportler sieht später nur eigene Daten.
-            <div className="text-xs mt-1 opacity-80">Hinweis: Login-System funktioniert in dieser Test-Version lokal. Echte Trennung kommt mit Backend.</div>
+            <strong>Sportler verwalten</strong> — du kannst Sportler ohne eigenen Account anlegen (für Trainer-Verwaltung von Junioren etc.).
+            Die Claim-Code-Funktion zum späteren Verknüpfen mit einem echten Account kommt in der nächsten Version.
           </div>
         </div>
       </div>
 
-      {athletes.length === 0 ? (
+      {err && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-900 text-sm rounded-xl p-3">
+          ✗ {err}
+        </div>
+      )}
+
+      {/* Eigener Sportler-Eintrag */}
+      {myAthlete && (
+        <IOSList header="Mein Profil">
+          {renderAthleteCard(myAthlete, <IOSTag color="blue">ich</IOSTag>)}
+        </IOSList>
+      )}
+
+      {/* Vom User verwaltete Sportler */}
+      {managedAthletes.length > 0 && (
+        <IOSList header="Von mir verwaltet">
+          {managedAthletes.map(a => renderAthleteCard(a, null))}
+        </IOSList>
+      )}
+
+      {/* Admin-Sicht: alle anderen */}
+      {isAdmin && otherAthletesAdminView.length > 0 && (
+        <IOSList header="Alle anderen (Admin-Sicht)">
+          {otherAthletesAdminView.map(a => renderAthleteCard(a, null))}
+        </IOSList>
+      )}
+
+      {(managedAthletes.length === 0 && !myAthlete) && (
         <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-8 text-center">
           <Users size={32} className="mx-auto text-slate-300 mb-3" />
           <h3 className="font-semibold mb-1">Noch keine Sportler</h3>
-          <p className="text-sm text-slate-500 mb-4">Lege deinen ersten Sportler oder ein Team an.</p>
+          <p className="text-sm text-slate-500 mb-4">Lege deinen ersten Sportler an.</p>
           <button onClick={() => setShowNew(true)}
             className="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-medium">
             Sportler anlegen
           </button>
         </div>
-      ) : (
-        <IOSList>
-          {athletes.map(a => {
-            const sessions = data.sessions.filter(s => s.athleteId === a.id);
-            const competitions = (data.competitions || []).filter(c => c.athlete_id === a.id);
-            return (
-              <div key={a.id} className="px-4 py-3.5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-medium text-[15px] text-[#000] truncate">{a.name}</h3>
-                      <IOSTag color={a.type === 'team' ? 'blue' : 'gray'}>
-                        {a.type === 'team' ? 'Team' : 'Sportler'}
-                      </IOSTag>
-                      {a.invite_status === 'invited' && (
-                        <IOSTag color="purple">eingeladen</IOSTag>
-                      )}
-                    </div>
-                    {a.email && <div className="text-[13px] text-[#8E8E93] mt-1 truncate">{a.email}</div>}
-                    {a.notes && <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">{a.notes}</div>}
-                    <div className="text-[13px] text-[#8E8E93] mt-1">
-                      {sessions.length} Sessions · {competitions.length} Wettkämpfe
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => setEditing(a)}
-                      className="p-2 text-[#007AFF] active:bg-[#D1D1D6]/40 rounded-full">
-                      <Edit2 size={16} />
-                    </button>
-                    <button onClick={() => remove(a.id)}
-                      className="p-2 text-[#FF3B30] active:bg-[#D1D1D6]/40 rounded-full">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-3 flex gap-2 flex-wrap">
-                  {a.invite_status === 'invited' ? (
-                    <>
-                      <button onClick={() => setInviteFor(a)}
-                        className="text-[13px] bg-[#E5E5EA] text-[#000] px-3 py-1.5 rounded-full font-medium active:opacity-70">
-                        Code anzeigen
-                      </button>
-                      <button onClick={() => regenCode(a.id)}
-                        className="text-[13px] text-[#007AFF] px-2 py-1.5 active:opacity-70 font-medium">
-                        Neuer Code
-                      </button>
-                      <button onClick={() => revoke(a.id)}
-                        className="text-[13px] text-[#FF3B30] px-2 py-1.5 active:opacity-70 font-medium">
-                        Widerrufen
-                      </button>
-                    </>
-                  ) : (
-                    <button onClick={() => setInviteFor({ ...a, _new: true })}
-                      className="text-[13px] bg-slate-900 text-white px-3 py-1.5 rounded-full flex items-center gap-1 font-medium active:scale-95 transition">
-                      Einladen
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </IOSList>
       )}
 
       <AthleteEditor
         open={showNew || !!editing}
         athlete={editing}
-        onClose={() => { setShowNew(false); setEditing(null); }}
-        onSave={(a) => { upsert(a); setShowNew(false); setEditing(null); }}
-      />
-
-      <InviteModal
-        open={!!inviteFor}
-        athlete={inviteFor}
-        onClose={() => setInviteFor(null)}
-        onInvite={(email) => invite(inviteFor.id, email)}
+        busy={busy}
+        onClose={() => { setShowNew(false); setEditing(null); setErr(''); }}
+        onSave={onSaveAthlete}
       />
     </div>
   );
 }
 
-function AthleteEditor({ open, athlete, onClose, onSave }) {
+function AthleteEditor({ open, athlete, onClose, onSave, busy = false }) {
   const [name, setName] = useState('');
   const [type, setType] = useState('athlete');
   const [notes, setNotes] = useState('');
@@ -7009,16 +7012,14 @@ function AthleteEditor({ open, athlete, onClose, onSave }) {
               Abbrechen
             </button>
             <button onClick={() => name.trim() && onSave({
-              id: (athlete && athlete.id) || uid(),
+              id: athlete && athlete.id ? athlete.id : null,
               name: name.trim(),
-              type, notes,
-              email: (athlete && athlete.email) || '',
-              login_code: (athlete && athlete.login_code) || '',
-              invite_status: (athlete && athlete.invite_status) || 'none',
-              invited_at: athlete && athlete.invited_at
-            })} disabled={!name.trim()}
+              type,
+              notes,
+              email: (athlete && athlete.email) || ''
+            })} disabled={!name.trim() || busy}
               className="flex-1 bg-emerald-600 text-white px-5 py-3 rounded-xl font-medium disabled:opacity-50">
-              Speichern
+              {busy ? '…' : 'Speichern'}
             </button>
           </div>
         </div>
