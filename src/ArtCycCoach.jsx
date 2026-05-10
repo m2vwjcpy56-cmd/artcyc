@@ -2557,34 +2557,131 @@ function migrateExerciseLabels(data) {
 }
 
 // =============================================================
+// BottomNav — Liquid-Glass-Pille mit Finger-Drag-Tab-Wechsel
+// =============================================================
+// Finger irgendwo auf der Bar runterdrücken und über die Symbole ziehen —
+// die aktive Tab folgt dem Finger. Beim Loslassen bleibt es bei der zuletzt
+// angefahrenen Tab. Tap funktioniert wie gehabt.
+function BottomNav({ items, view, setView }) {
+  const navRef = useRef(null);
+  const draggingRef = useRef(false);
+
+  const updateFromTouch = (clientX) => {
+    const root = navRef.current;
+    if (!root) return;
+    const buttons = root.querySelectorAll('[data-nav-id]');
+    let closest = null;
+    let closestDist = Infinity;
+    for (const b of buttons) {
+      const rect = b.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const dist = Math.abs(clientX - cx);
+      if (dist < closestDist) { closestDist = dist; closest = b; }
+    }
+    if (closest) {
+      const id = closest.dataset.navId;
+      if (id !== view) setView(id);
+    }
+  };
+
+  const onTouchStart = (e) => {
+    if (e.touches.length !== 1) return;
+    draggingRef.current = true;
+    updateFromTouch(e.touches[0].clientX);
+  };
+  const onTouchMove = (e) => {
+    if (!draggingRef.current || e.touches.length !== 1) return;
+    updateFromTouch(e.touches[0].clientX);
+  };
+  const onTouchEnd = () => { draggingRef.current = false; };
+
+  return (
+    <nav
+      ref={navRef}
+      className="sm:hidden fixed bottom-0 left-0 right-0 z-30 px-4 select-none"
+      style={{
+        paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
+        WebkitTouchCallout: 'none',
+        touchAction: 'none' // verhindert dass iOS scroll/zoom auf der Bar triggert
+      }}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchEnd}>
+      <div
+        className="rounded-full flex justify-around items-stretch py-2 px-2"
+        style={{
+          background: 'rgba(255, 255, 255, 0.72)',
+          backdropFilter: 'blur(40px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+          border: '0.5px solid rgba(255, 255, 255, 0.5)',
+          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.08), 0 1px 0 rgba(255, 255, 255, 0.6) inset'
+        }}>
+        {items.map((n) => {
+          const Icon = n.icon;
+          const active = view === n.id;
+          return (
+            <button
+              key={n.id}
+              type="button"
+              data-nav-id={n.id}
+              onClick={() => setView(n.id)}
+              style={{ WebkitTapHighlightColor: 'transparent', WebkitTouchCallout: 'none' }}
+              className={'flex flex-col items-center justify-center gap-1 flex-1 py-1.5 px-1 rounded-full transition-all duration-150 active:scale-[0.92] select-none ' +
+                (active ? 'text-[#FF9500]' : 'text-[#8E8E93]')}>
+              <Icon size={24} strokeWidth={active ? 2.4 : 1.8} />
+              <span className={'text-[10px] tracking-tight leading-none ' + (active ? 'font-semibold' : 'font-medium')}>{n.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+// =============================================================
 // SwipeableMain — Hauptbereich mit horizontalem Swipe für Tab-Wechsel
 // =============================================================
 // Erkennt seitliche Wisch-Gesten und schaltet zur Nachbar-Tab.
 // Schwellen: |dx| > 60px, |dy| < 50px, Dauer < 600ms.
 // Swipes innerhalb scrollbarer Bereiche werden ignoriert (data-no-swipe).
 function SwipeableMain({ view, setView, visibleNav, children }) {
-  const startRef = useRef(null);
+  const stateRef = useRef({ x: 0, y: 0, time: 0, lock: null, active: false });
 
   const onTouchStart = (e) => {
-    const t = e.touches[0];
-    // Wenn das Touch-Target oder ein Vorfahre als „kein Swipe-Bereich" markiert ist, abbrechen
+    if (e.touches.length !== 1) { stateRef.current.active = false; return; }
     let el = e.target;
     while (el) {
-      if (el.dataset && el.dataset.noSwipe) { startRef.current = null; return; }
+      if (el.dataset && el.dataset.noSwipe) { stateRef.current.active = false; return; }
       el = el.parentElement;
     }
-    startRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
+    const t = e.touches[0];
+    stateRef.current = { x: t.clientX, y: t.clientY, time: Date.now(), lock: null, active: true };
+  };
+
+  const onTouchMove = (e) => {
+    const s = stateRef.current;
+    if (!s.active || e.touches.length !== 1) return;
+    if (s.lock != null) return;
+    const t = e.touches[0];
+    const dx = t.clientX - s.x;
+    const dy = t.clientY - s.y;
+    // Erst nach 12px Bewegung Richtung festlegen — verhindert Mis-Lock auf Vertikal
+    if (Math.abs(dx) > 12 || Math.abs(dy) > 12) {
+      s.lock = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    }
   };
 
   const onTouchEnd = (e) => {
-    const start = startRef.current;
-    startRef.current = null;
-    if (!start) return;
+    const s = stateRef.current;
+    stateRef.current.active = false;
+    if (!s.active || s.lock !== 'x') return;
     const t = e.changedTouches[0];
-    const dx = t.clientX - start.x;
-    const dy = t.clientY - start.y;
-    const dt = Date.now() - start.time;
-    if (Math.abs(dx) < 60 || Math.abs(dy) > 50 || dt > 600) return;
+    const dx = t.clientX - s.x;
+    const dt = Date.now() - s.time;
+    if (Math.abs(dx) < 50 || dt > 700) return;
     const idx = visibleNav.findIndex((n) => n.id === view);
     if (idx === -1) return;
     if (dx < 0 && idx < visibleNav.length - 1) setView(visibleNav[idx + 1].id);
@@ -2594,8 +2691,12 @@ function SwipeableMain({ view, setView, visibleNav, children }) {
   return (
     <main
       className="flex-1 sm:pb-8"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 6.5rem)' }}
+      style={{
+        paddingBottom: 'calc(env(safe-area-inset-bottom) + 6.5rem)',
+        touchAction: 'pan-y'
+      }}
       onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}>
       {children}
     </main>
@@ -2871,41 +2972,11 @@ export default function App() {
         <div className="max-w-5xl mx-auto p-4 sm:p-8">{viewEl}</div>
       </SwipeableMain>
 
-      {/* Mobile Bottom-Nav — iOS 26 Liquid Glass Pill */}
-      <nav
-        className="sm:hidden fixed bottom-0 left-0 right-0 z-30 px-4 select-none"
-        style={{
-          paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
-          WebkitUserSelect: 'none',
-          userSelect: 'none',
-          WebkitTouchCallout: 'none'
-        }}>
-        <div
-          className="rounded-full flex justify-around items-stretch py-2 px-2"
-          style={{
-            background: 'rgba(255, 255, 255, 0.72)',
-            backdropFilter: 'blur(40px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-            border: '0.5px solid rgba(255, 255, 255, 0.5)',
-            boxShadow: '0 10px 40px rgba(0, 0, 0, 0.08), 0 1px 0 rgba(255, 255, 255, 0.6) inset'
-          }}>
-          {nav.filter(n => !n.soon).slice(0, 5).map(n => {
-            const Icon = n.icon;
-            const active = view === n.id;
-            return (
-              <button
-                key={n.id}
-                onClick={() => setView(n.id)}
-                style={{ WebkitTapHighlightColor: 'transparent', WebkitTouchCallout: 'none' }}
-                className={'flex flex-col items-center justify-center gap-1 flex-1 py-1.5 px-1 rounded-full transition-all duration-150 active:scale-[0.92] select-none ' +
-                  (active ? 'text-[#FF9500]' : 'text-[#8E8E93]')}>
-                <Icon size={24} strokeWidth={active ? 2.4 : 1.8} />
-                <span className={'text-[10px] tracking-tight leading-none ' + (active ? 'font-semibold' : 'font-medium')}>{n.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
+      {/* Mobile Bottom-Nav — iOS 26 Liquid Glass Pill mit Finger-Drag */}
+      <BottomNav
+        items={nav.filter(n => !n.soon).slice(0, 5)}
+        view={view}
+        setView={setView} />
     </div>
   );
 }
