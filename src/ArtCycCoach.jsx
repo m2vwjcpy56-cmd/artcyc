@@ -3405,6 +3405,11 @@ function Dashboard({ data, setView }) {
           onTapWettkampf={() => setView('wettkampf')} />
       )}
 
+      {/* Trainings-Heatmap */}
+      {(data.sessions || []).length > 0 && (
+        <TrainingHeatmap sessions={data.sessions || []} />
+      )}
+
       {/* Pro Übung */}
       <section>
         <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
@@ -3524,6 +3529,131 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
             {points.length} Wettkämpfe · Bestleistung {Math.max(...points.map(p => p.final)).toFixed(2)}
           </span>
           <span>{formatDateShort(svgPoints[svgPoints.length - 1].date)}</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// =============================================================
+// Trainings-Heatmap — GitHub-Style Aktivitäts-Kalender
+// =============================================================
+// Zeigt die letzten 26 Wochen (≈6 Monate) als 7×26-Grid.
+// Jede Zelle ein Tag, gefärbt nach Anzahl Sessions/Serien.
+function TrainingHeatmap({ sessions }) {
+  const { weeks, monthLabels, totalDaysActive, totalSeries } = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const numWeeks = 26;
+    // Anker: nächster Sonntag (Wochenende), damit aktuelle Woche rechts steht
+    const dayOfWeek = today.getDay(); // 0=So, 1=Mo, ...
+    const daysFromMonday = (dayOfWeek + 6) % 7; // Mo=0, So=6
+    // Wir benutzen Mo-So-Wochen
+    const startMonday = new Date(today);
+    startMonday.setDate(today.getDate() - daysFromMonday - (numWeeks - 1) * 7);
+
+    // Sessions nach Datum gruppieren
+    const byDate = new Map();
+    let totalSeries = 0;
+    for (const s of sessions || []) {
+      const d = (s.date || '').slice(0, 10);
+      if (!d) continue;
+      const cur = byDate.get(d) || { sessions: 0, entries: 0 };
+      cur.sessions += 1;
+      cur.entries += (s.entries || []).length;
+      totalSeries += (s.entries || []).length;
+      byDate.set(d, cur);
+    }
+
+    const weeks = [];
+    let totalDaysActive = 0;
+    for (let w = 0; w < numWeeks; w++) {
+      const week = [];
+      for (let d = 0; d < 7; d++) {
+        const day = new Date(startMonday);
+        day.setDate(startMonday.getDate() + w * 7 + d);
+        const dayStr = day.toISOString().slice(0, 10);
+        const future = day > today;
+        const data = byDate.get(dayStr) || { sessions: 0, entries: 0 };
+        if (data.sessions > 0) totalDaysActive++;
+        week.push({ date: dayStr, ...data, future });
+      }
+      weeks.push(week);
+    }
+
+    // Monats-Labels: nur am Wochen-Anfang wenn der Monat wechselt
+    const monthLabels = weeks.map((week, i) => {
+      const firstDay = new Date(week[0].date);
+      const isFirstWeekOfMonth = firstDay.getDate() <= 7;
+      if (i === 0 || isFirstWeekOfMonth) {
+        return firstDay.toLocaleDateString('de-DE', { month: 'short' });
+      }
+      return null;
+    });
+
+    return { weeks, monthLabels, totalDaysActive, totalSeries };
+  }, [sessions]);
+
+  // Farbskala: 0 / 1-9 / 10-19 / 20-29 / 30+ Serien
+  const colorFor = (entries) => {
+    if (entries === 0) return '#F2F2F7';
+    if (entries < 10) return '#FED7AA';
+    if (entries < 20) return '#FB923C';
+    if (entries < 30) return '#EA580C';
+    return '#C2410C';
+  };
+
+  const dayLabels = ['Mo', '', 'Mi', '', 'Fr', '', ''];
+  const cellSize = 14;
+  const gap = 3;
+  const labelW = 18;
+  const labelH = 14;
+  const W = labelW + weeks.length * (cellSize + gap) - gap;
+  const H = labelH + 7 * (cellSize + gap) - gap;
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <Calendar size={18} className="text-slate-700" /> Trainings-Aktivität
+        </h2>
+        <span className="text-xs text-slate-500">{totalDaysActive} Tage · {totalSeries} Serien</span>
+      </div>
+      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 overflow-x-auto" data-no-swipe="true">
+        <svg width={W} height={H} style={{ minWidth: W }}>
+          {/* Monats-Labels */}
+          {monthLabels.map((lbl, i) => lbl ? (
+            <text key={i} x={labelW + i * (cellSize + gap)} y={labelH - 4} fontSize="9" fill="#8E8E93">{lbl}</text>
+          ) : null)}
+          {/* Wochentag-Labels */}
+          {dayLabels.map((lbl, i) => lbl ? (
+            <text key={i} x={labelW - 4} y={labelH + i * (cellSize + gap) + cellSize - 3} fontSize="9" fill="#8E8E93" textAnchor="end">{lbl}</text>
+          ) : null)}
+          {/* Heatmap-Zellen */}
+          {weeks.map((week, wIdx) =>
+            week.map((day, dIdx) => (
+              <rect key={day.date}
+                x={labelW + wIdx * (cellSize + gap)}
+                y={labelH + dIdx * (cellSize + gap)}
+                width={cellSize}
+                height={cellSize}
+                rx={3}
+                fill={day.future ? '#FFF' : colorFor(day.entries)}
+                opacity={day.future ? 0.3 : 1}
+                stroke={day.future ? '#E5E5EA' : 'none'}
+                strokeWidth={day.future ? 1 : 0}>
+                <title>{day.date}{day.entries > 0 ? ' — ' + day.sessions + ' Session(s), ' + day.entries + ' Serien' : ''}</title>
+              </rect>
+            ))
+          )}
+        </svg>
+        {/* Legende */}
+        <div className="flex items-center gap-2 mt-3 text-[10px] text-slate-500">
+          <span>weniger</span>
+          {[0, 5, 15, 25, 35].map((n, i) => (
+            <span key={i} style={{ width: 12, height: 12, borderRadius: 3, background: colorFor(n), display: 'inline-block', border: n === 0 ? '1px solid #E5E5EA' : 'none' }} />
+          ))}
+          <span>mehr</span>
         </div>
       </div>
     </section>
