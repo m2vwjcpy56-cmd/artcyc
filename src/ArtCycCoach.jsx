@@ -5973,6 +5973,10 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
   const [showExercises, setShowExercises] = useState(true);
   // Referenz-Werte aus letztem PDF-Import zur Validierung
   const [pdfRef, setPdfRef] = useState(competition && competition.pdf_ref ? competition.pdf_ref : null);
+  // Ziel-Endergebnis für Vorbereitungs-Modus (optional)
+  const [targetScore, setTargetScore] = useState(
+    competition && typeof competition.target_score === 'number' ? String(competition.target_score) : ''
+  );
 
   // PDF-Import State
   const [importStatus, setImportStatus] = useState(null); // null | 'parsing' | 'success' | 'error'
@@ -6323,6 +6327,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
         t1_schwierigkeit: Number(t1S) || 0,
         t2_schwierigkeit: Number(t2S) || 0,
         pdf_ref: pdfRef,
+        target_score: targetScore.trim() === '' ? null : Number(targetScore) || null,
         created: (competition && competition.created) || new Date().toISOString()
       },
       newProgram: pendingNewProgram,
@@ -6488,12 +6493,24 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
               )}
             </div>
           </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 flex items-center gap-1">
+              <Target size={12} /> Ziel-Endergebnis <span className="text-slate-400 font-normal">(optional)</span>
+            </label>
+            <input
+              type="number" step="0.01" inputMode="decimal"
+              value={targetScore}
+              onChange={e => setTargetScore(e.target.value)}
+              placeholder="z.B. 190.00"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+            <p className="text-[11px] text-slate-500 mt-1">Im Live-Ergebnis siehst du dann „+/− zum Ziel" während des Eintragens.</p>
+          </div>
         </div>
       </div>
 
       {/* Live-Ergebnis */}
       {program && (
-        <div className="bg-slate-900 text-white rounded-2xl p-4">
+        <div className="bg-slate-900 text-white rounded-2xl p-4 space-y-3">
           <div className="grid grid-cols-3 gap-3 text-center">
             <div>
               <div className="text-xs text-slate-400">Aufgestellt</div>
@@ -6512,6 +6529,24 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
               <div className="text-2xl font-bold text-amber-400">{finalScore.toFixed(2)}</div>
             </div>
           </div>
+          {/* Ziel-Vergleich (wenn target_score gesetzt) */}
+          {(() => {
+            const target = Number(targetScore);
+            if (!targetScore || !Number.isFinite(target) || target <= 0) return null;
+            const diff = finalScore - target;
+            const diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2);
+            const color = diff >= 0 ? 'text-emerald-400' : 'text-rose-400';
+            return (
+              <div className="border-t border-slate-700 pt-3 flex items-baseline justify-between">
+                <div className="text-xs text-slate-400 flex items-center gap-1.5">
+                  <Target size={14} /> Ziel-Endergebnis: <strong className="text-white">{target.toFixed(2)}</strong>
+                </div>
+                <div className={'text-lg font-bold ' + color}>
+                  {diffStr}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
