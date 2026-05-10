@@ -28,6 +28,12 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallbackDenylist: [/^\/api/],
+        // SW soll sich SOFORT aktivieren wenn neue Version da ist —
+        // ohne dass der User die App schließen + wieder öffnen muss.
+        skipWaiting: true,
+        clientsClaim: true,
+        // Cache-First nur für externe (CDN) Assets, eigene Assets sind
+        // Network-First damit Updates sofort durchschlagen.
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/cdnjs\.cloudflare\.com\/.*/i,
