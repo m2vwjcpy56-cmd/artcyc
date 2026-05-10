@@ -30,14 +30,16 @@ export async function getCurrentProfile() {
 // =============================================================
 
 // Lädt den letzten Snapshot des aktuellen Users.
+// Mit targetUserId: lädt Snapshot eines anderen Users (Coach-Lesezugriff).
 // Gibt zurück: { data, updated_at } oder null wenn nichts vorhanden.
-export async function fetchCloudSnapshot() {
+export async function fetchCloudSnapshot(targetUserId = null) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
+  const uid = targetUserId || user.id;
   const { data, error } = await supabase
     .from('user_data_snapshots')
     .select('data, updated_at')
-    .eq('user_id', user.id)
+    .eq('user_id', uid)
     .maybeSingle();
   if (error) {
     console.warn('Cloud-Snapshot fetch fehlgeschlagen:', error.message);

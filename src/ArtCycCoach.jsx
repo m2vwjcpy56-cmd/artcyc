@@ -2895,7 +2895,7 @@ export default function App() {
   else if (view === 'uebungen') viewEl = <UebungenView data={data} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={data} setData={save} dbAthletes={dbAthletes} />;
   else if (view === 'einstellungen') viewEl = <SettingsView data={data} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} />;
-  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} />;
+  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} ownData={data} />;
   else if (view === 'export') viewEl = <ExportView data={data} />;
   else if (view === 'kuer' || view === 'video') {
     viewEl = <ComingSoon viewId={view} />;
@@ -6864,12 +6864,230 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
 // =============================================================
 // SPORTLER & EINLADUNGEN
 // =============================================================
-function SportlerView({ profile, session, athletes, profiles, refreshAthletes }) {
+// =============================================================
+// AthleteDetailView — Coach-View für Trainings/Wettkämpfe eines Sportlers (read-only)
+// =============================================================
+function AthleteDetailView({ athlete, ownData, onBack }) {
+  const [remoteData, setRemoteData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!athlete) return;
+      // Wenn Athlet einen Account hat → dessen Snapshot laden
+      // Sonst (Trainer-managed ohne Account) → eigene Daten nutzen (Sessions liegen in coach blob)
+      if (athlete.auth_user_id) {
+        setLoading(true); setErr('');
+        try {
+          const snap = await fetchCloudSnapshot(athlete.auth_user_id);
+          if (!cancelled) setRemoteData(snap?.data || null);
+        } catch (e) {
+          if (!cancelled) setErr('Daten konnten nicht geladen werden: ' + (e.message || e));
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      } else {
+        setRemoteData(null); // signal: use ownData
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [athlete?.id, athlete?.auth_user_id]);
+
+  const sourceData = athlete?.auth_user_id ? remoteData : ownData;
+  const sessions = useMemo(() =>
+    ((sourceData?.sessions) || []).filter(s => s.athleteId === athlete?.id || s.athlete_id === athlete?.id)
+  , [sourceData, athlete?.id]);
+  const competitions = useMemo(() =>
+    ((sourceData?.competitions) || []).filter(c => c.athlete_id === athlete?.id || c.athleteId === athlete?.id)
+  , [sourceData, athlete?.id]);
+  const programs = (sourceData?.programs) || [];
+
+  // Top-Übungs-Statistik (Quote pro Übung)
+  const exerciseStats = useMemo(() => {
+    const exMap = new Map();
+    for (const s of sessions) {
+      const exId = s.exerciseId || s.exercise_id;
+      const exName = s.exerciseName || '';
+      if (!exMap.has(exId)) exMap.set(exId, { id: exId, name: exName, total: 0, success: 0, fail: 0, third: 0 });
+      const stats = exMap.get(exId);
+      for (const e of (s.entries || [])) {
+        stats.total++;
+        if (e === 'success') stats.success++;
+        else if (e === 'fail') stats.fail++;
+        else if (e === 'third') stats.third++;
+      }
+    }
+    return Array.from(exMap.values())
+      .map(s => ({ ...s, rate: s.total ? Math.round((s.success / s.total) * 100) : 0 }))
+      .sort((a, b) => b.total - a.total);
+  }, [sessions]);
+
+  // Wettkampf-Liste mit Endergebnissen
+  const compRows = useMemo(() => {
+    const programMap = new Map(programs.map(p => [p.id, p]));
+    return competitions
+      .map(c => {
+        const program = programMap.get(c.program_id);
+        if (!program) return null;
+        const t1 = calcTableResult(program, c.table1, c.t1_schwierigkeit);
+        const t2 = calcTableResult(program, c.table2, c.t2_schwierigkeit);
+        const final = Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100;
+        return { c, final };
+      })
+      .filter(Boolean)
+      .sort((a, b) => (b.c.date || '').localeCompare(a.c.date || ''));
+  }, [competitions, programs]);
+
+  const bestComp = compRows.length > 0 ? compRows.slice().sort((a, b) => b.final - a.final)[0] : null;
+  const lastSessionDate = sessions.length > 0 ? sessions.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0].date : null;
+
+  return (
+    <div className="space-y-5">
+      <header className="flex items-start gap-2 pt-2">
+        <button onClick={onBack} className="p-2 -ml-2 text-amber-500 active:opacity-50 shrink-0 mt-0.5">
+          <ChevronLeft size={28} strokeWidth={2.6} />
+        </button>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-[28px] font-bold tracking-tight leading-tight">{athlete?.name}</h1>
+          <div className="flex items-center gap-2 flex-wrap mt-1.5">
+            <span className="bg-slate-100 text-slate-700 text-xs font-medium px-2 py-0.5 rounded-full">
+              {athlete?.auth_user_id ? 'Sportler-Account' : 'Vom Trainer verwaltet'}
+            </span>
+            <span className="bg-purple-100 text-purple-800 text-xs font-medium px-2 py-0.5 rounded-full">
+              Read-only-Ansicht
+            </span>
+          </div>
+        </div>
+      </header>
+
+      {loading && (
+        <div className="bg-white rounded-2xl border border-slate-200/60 p-8 text-center text-slate-500 text-sm">
+          Lade Daten…
+        </div>
+      )}
+      {err && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-900 text-sm rounded-xl p-3">
+          ✗ {err}
+        </div>
+      )}
+
+      {!loading && !err && (
+        <>
+          {/* Top Stats */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-amber-50 rounded-2xl border border-amber-100 p-4">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Trophy size={14} className="text-amber-700" />
+                <span className="text-xs font-medium text-amber-700">Bestleistung</span>
+              </div>
+              <div className="text-2xl font-bold text-slate-900">{bestComp ? bestComp.final.toFixed(2) : '—'}</div>
+              <div className="text-xs text-slate-500 mt-0.5 truncate">{bestComp ? bestComp.c.name : 'Noch kein Wettkampf'}</div>
+            </div>
+            <div className="bg-emerald-50 rounded-2xl border border-emerald-100 p-4">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Target size={14} className="text-emerald-700" />
+                <span className="text-xs font-medium text-emerald-700">Wettkämpfe</span>
+              </div>
+              <div className="text-2xl font-bold text-slate-900">{compRows.length}</div>
+              <div className="text-xs text-slate-500 mt-0.5">
+                {compRows[0] ? 'zuletzt ' + formatDateShort(compRows[0].c.date) : '—'}
+              </div>
+            </div>
+            <div className="bg-sky-50 rounded-2xl border border-sky-100 p-4">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Dumbbell size={14} className="text-sky-700" />
+                <span className="text-xs font-medium text-sky-700">Sessions</span>
+              </div>
+              <div className="text-2xl font-bold text-slate-900">{sessions.length}</div>
+              <div className="text-xs text-slate-500 mt-0.5">
+                {lastSessionDate ? 'zuletzt ' + formatDateShort(lastSessionDate) : '—'}
+              </div>
+            </div>
+            <div className="bg-violet-50 rounded-2xl border border-violet-100 p-4">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <BarChart3 size={14} className="text-violet-700" />
+                <span className="text-xs font-medium text-violet-700">Übungen aktiv</span>
+              </div>
+              <div className="text-2xl font-bold text-slate-900">{exerciseStats.length}</div>
+              <div className="text-xs text-slate-500 mt-0.5">getrackt</div>
+            </div>
+          </div>
+
+          {/* Übungen */}
+          {exerciseStats.length > 0 && (
+            <section>
+              <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <TrendingUp size={18} className="text-slate-700" /> Übungen
+              </h2>
+              <IOSList>
+                {exerciseStats.slice(0, 12).map(ex => (
+                  <div key={ex.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-[15px] truncate">{ex.name || 'Übung'}</div>
+                      <div className="text-[13px] text-slate-500">
+                        {ex.total} Serien · {ex.success} geklappt
+                      </div>
+                    </div>
+                    <div className={'text-xl font-bold ' + (ex.rate >= 80 ? 'text-emerald-600' : ex.rate >= 60 ? 'text-amber-600' : 'text-rose-600')}>
+                      {ex.rate}%
+                    </div>
+                  </div>
+                ))}
+              </IOSList>
+            </section>
+          )}
+
+          {/* Wettkampf-Verlauf */}
+          {compRows.length > 0 && (
+            <section>
+              <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Trophy size={18} className="text-slate-700" /> Wettkämpfe
+              </h2>
+              <IOSList>
+                {compRows.map(({ c, final }) => (
+                  <div key={c.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-[15px] truncate">{c.name}</div>
+                      <div className="text-[13px] text-slate-500">
+                        {formatDateShort(c.date)}{c.location ? ' · ' + c.location : ''}
+                      </div>
+                    </div>
+                    <div className="text-xl font-bold text-amber-600">
+                      {final.toFixed(2)}
+                    </div>
+                  </div>
+                ))}
+              </IOSList>
+            </section>
+          )}
+
+          {sessions.length === 0 && competitions.length === 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200/60 p-8 text-center">
+              <Sparkles size={32} className="mx-auto text-slate-300 mb-3" />
+              <h3 className="font-semibold mb-1">Noch keine Daten</h3>
+              <p className="text-sm text-slate-500">
+                Dieser Sportler hat bisher weder Trainings noch Wettkämpfe eingetragen.
+              </p>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function SportlerView({ profile, session, athletes, profiles, refreshAthletes, ownData }) {
   const profileById = useMemo(() => {
     const m = new Map();
     (profiles || []).forEach(p => m.set(p.id, p));
     return m;
   }, [profiles]);
+  const [viewingAthlete, setViewingAthlete] = useState(null);
+  if (viewingAthlete) {
+    return <AthleteDetailView athlete={viewingAthlete} ownData={ownData} onBack={() => setViewingAthlete(null)} />;
+  }
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -7018,9 +7236,16 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes })
             </div>
           )}
         </div>
-        {canGenerateCode && (
-          <div className="mt-2 flex gap-2 flex-wrap">
-            {a.claim_code ? (
+        <div className="mt-2 flex gap-2 flex-wrap items-center">
+          {/* "Daten ansehen" für Athleten die ich verwalte (= mir gehört oder ich bin Coach) */}
+          {!isMine && (isManagedByMe || isAdmin) && (
+            <button onClick={() => setViewingAthlete(a)}
+              className="text-[13px] bg-slate-100 text-slate-800 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
+              <BarChart3 size={13} /> Daten ansehen
+            </button>
+          )}
+          {canGenerateCode && (
+            a.claim_code ? (
               <button onClick={() => onClearCode(a.id)} disabled={busy}
                 className="text-[13px] text-[#FF3B30] px-2 py-1 active:opacity-70 font-medium">
                 Code widerrufen
@@ -7030,9 +7255,9 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes })
                 className="text-[13px] bg-amber-100 text-amber-900 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
                 <KeyRound size={13} /> {!linkedToUser ? 'Code für Sportler generieren' : 'Trainer einladen'}
               </button>
-            )}
-          </div>
-        )}
+            )
+          )}
+        </div>
       </div>
     );
   };
