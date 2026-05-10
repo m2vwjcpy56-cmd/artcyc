@@ -148,6 +148,13 @@ export async function clearClaimCodeForAthlete(athleteId) {
   return { data, error };
 }
 
+// Phase 9d-2: migriert Blob-Daten (sessions/competitions/programs/exercises)
+// in die relationalen DB-Tabellen. Idempotent durch Setzen eines Flags.
+export async function migrateBlobToTables() {
+  const { data, error } = await supabase.rpc('migrate_blob_to_tables');
+  return { data, error };
+}
+
 // Bidirektionaler Code-Einlöser (Phase 9b):
 // - Wenn der gefundene Athlet keinen User-Account hat → setzt eigenen User als auth_user_id
 // - Wenn der gefundene Athlet keinen Coach hat → setzt eigenen User als coach (nur für coach/admin)

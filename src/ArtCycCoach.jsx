@@ -7,7 +7,7 @@ import {
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog
 } from 'lucide-react';
-import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode } from './lib/supabase';
+import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables } from './lib/supabase';
 
 // =============================================================
 // UCI 2026 Datenbank: Alle Disziplinen
@@ -3937,6 +3937,23 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
     await refreshAthletes();
     setRevokeBusy(false);
   };
+
+  // Phase 9d-2: Migration Blob → Tabellen
+  const [migrateBusy, setMigrateBusy] = useState(false);
+  const [migrateResult, setMigrateResult] = useState(null);
+  const alreadyMigrated = data && data.migrated_to_tables === true;
+  const onMigrate = async () => {
+    if (!confirm('Daten in Cloud-Tabellen migrieren?\n\nDeine Sessions, Wettkämpfe, Programme und Übungen werden in echte DB-Tabellen verschoben. Vorteil: Trainer können sie dann sehen UND bearbeiten. Der Vorgang ist sicher (Blob bleibt erhalten).')) return;
+    setMigrateBusy(true);
+    setMigrateResult(null);
+    const { data: result, error } = await migrateBlobToTables();
+    if (error) {
+      setMigrateResult({ error: error.message });
+    } else {
+      setMigrateResult(result);
+    }
+    setMigrateBusy(false);
+  };
   return (
     <div className="space-y-5">
       <header className="pt-2">
@@ -4006,6 +4023,53 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
           )}
         </div>
       )}
+
+      {/* Phase 9d — Cloud-Migration */}
+      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
+        <h2 className="font-semibold mb-3 flex items-center gap-2">
+          <Archive size={16} /> Cloud-Migration
+        </h2>
+        {alreadyMigrated ? (
+          <>
+            <p className="text-sm text-emerald-700 mb-2">
+              ✓ Deine Daten sind bereits in den Cloud-Tabellen.
+            </p>
+            <p className="text-xs text-slate-500">
+              Trainer:innen können deine Sessions und Wettkämpfe sehen und bearbeiten
+              (vorausgesetzt sie haben Zugriff). Eine Wiederholung der Migration ist
+              nicht nötig.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-slate-600 mb-3">
+              Aktuell sind deine Trainings/Wettkämpfe nur als JSONB-Snapshot in der
+              Cloud. Damit Trainer:innen sie sehen und mitschreiben können, müssen
+              sie einmalig in relationale Tabellen verschoben werden.
+            </p>
+            <button onClick={onMigrate} disabled={migrateBusy}
+              className="bg-amber-500 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 disabled:opacity-50">
+              <Archive size={14} /> {migrateBusy ? 'Migriere…' : 'In Cloud-Tabellen migrieren'}
+            </button>
+            {migrateResult && !migrateResult.error && (
+              <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-900">
+                <strong>✓ Migration erfolgreich:</strong><br />
+                {migrateResult.exercises} Übungen · {migrateResult.programs} Programme ·{' '}
+                {migrateResult.sessions} Sessions · {migrateResult.competitions} Wettkämpfe
+                <div className="text-xs mt-1 opacity-80">
+                  Die App lädt die Daten weiterhin aus dem alten Speicher.
+                  Im nächsten Update werden sie aus den Tabellen gelesen.
+                </div>
+              </div>
+            )}
+            {migrateResult && migrateResult.error && (
+              <div className="mt-3 bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-900">
+                ✗ Fehler: {migrateResult.error}
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       <ReglementSettings data={data} setData={setData} />
 
