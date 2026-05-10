@@ -4358,14 +4358,21 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                 <div className="text-[10px] uppercase tracking-wide text-slate-500 font-medium mb-2">Letzte Sessions</div>
                 <div className="space-y-1.5">
                   {sessionList.slice(0, 10).map((s, i) => (
-                    <div key={i} className="flex items-center justify-between text-sm py-1">
-                      <div className="text-slate-700">{s.session.date}</div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-slate-500">{s.success}/{s.total}</span>
-                        <span className={'text-sm font-bold w-10 text-right ' + (s.rate >= 80 ? 'text-emerald-600' : s.rate >= 60 ? 'text-amber-600' : 'text-rose-600')}>
-                          {s.rate}%
-                        </span>
+                    <div key={i} className="py-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="text-slate-700">{s.session.date}</div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-slate-500">{s.success}/{s.total}</span>
+                          <span className={'text-sm font-bold w-10 text-right ' + (s.rate >= 80 ? 'text-emerald-600' : s.rate >= 60 ? 'text-amber-600' : 'text-rose-600')}>
+                            {s.rate}%
+                          </span>
+                        </div>
                       </div>
+                      {s.session.notes && (
+                        <div className="text-xs text-slate-500 italic mt-0.5 pl-1 border-l-2 border-amber-200 pl-2">
+                          {s.session.notes}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -4918,8 +4925,9 @@ function Erfassen({ data, setData, onDone }) {
   const [exerciseId, setExerciseId] = useState((activeExercises[0] && activeExercises[0].id) || '');
   const [athleteId, setAthleteId] = useState((athletes[0] && athletes[0].id) || '');
   const [entries, setEntries] = useState([]);
+  const [notes, setNotes] = useState('');
 
-  useEffect(() => { setEntries([]); }, [exerciseId]);
+  useEffect(() => { setEntries([]); setNotes(''); }, [exerciseId]);
 
   const exercise = data.exercises.find(e => e.id === exerciseId);
 
@@ -4959,7 +4967,8 @@ function Erfassen({ data, setData, onDone }) {
         athleteId: athleteId || null,
         exerciseId: exercise.id,
         exerciseName: exercise.name,
-        entries
+        entries,
+        notes: notes.trim() || null
       }]
     });
     onDone();
@@ -5056,6 +5065,18 @@ function Erfassen({ data, setData, onDone }) {
             className="text-sm text-slate-500 disabled:opacity-50 hover:text-slate-900">
             ← Letzte entfernen
           </button>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-2xl p-5">
+          <label className="text-sm font-medium block mb-1.5 flex items-center gap-2">
+            <Edit2 size={14} className="text-slate-500" /> Notiz (optional)
+          </label>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="Was lief gut/schlecht? Korrekturen, Erkenntnisse, Stimmung…"
+            rows={3}
+            className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 text-sm resize-y" />
         </div>
 
         <div className="flex gap-2">
