@@ -7,7 +7,7 @@ import {
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog
 } from 'lucide-react';
-import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables } from './lib/supabase';
+import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise } from './lib/supabase';
 
 // =============================================================
 // UCI 2026 Datenbank: Alle Disziplinen
@@ -2757,13 +2757,41 @@ export default function App() {
   // Athletes aus Supabase laden (Phase 9a — DB-basiert statt JSONB-Blob)
   const [dbAthletes, setDbAthletes] = useState([]);
   const [dbProfiles, setDbProfiles] = useState([]);
+  // Phase 9d-3: alle "großen" Entitäten kommen aus DB-Tabellen
+  const [dbSessions, setDbSessions] = useState([]);
+  const [dbCompetitions, setDbCompetitions] = useState([]);
+  const [dbPrograms, setDbPrograms] = useState([]);
+  const [dbExercises, setDbExercises] = useState([]);
   const refreshAthletes = useCallback(async () => {
     if (!session) { setDbAthletes([]); setDbProfiles([]); return; }
     const [list, profs] = await Promise.all([fetchAthletes(), fetchProfiles()]);
     setDbAthletes(list);
     setDbProfiles(profs);
   }, [session]);
-  useEffect(() => { refreshAthletes(); }, [refreshAthletes]);
+  const refreshSessions = useCallback(async () => {
+    if (!session) { setDbSessions([]); return; }
+    const list = await fetchSessions();
+    setDbSessions(list);
+  }, [session]);
+  const refreshCompetitions = useCallback(async () => {
+    if (!session) { setDbCompetitions([]); return; }
+    setDbCompetitions(await fetchCompetitions());
+  }, [session]);
+  const refreshPrograms = useCallback(async () => {
+    if (!session) { setDbPrograms([]); return; }
+    setDbPrograms(await fetchPrograms());
+  }, [session]);
+  const refreshExercises = useCallback(async () => {
+    if (!session) { setDbExercises([]); return; }
+    setDbExercises(await fetchExercises());
+  }, [session]);
+  useEffect(() => {
+    refreshAthletes();
+    refreshSessions();
+    refreshCompetitions();
+    refreshPrograms();
+    refreshExercises();
+  }, [refreshAthletes, refreshSessions, refreshCompetitions, refreshPrograms, refreshExercises]);
 
   // Lokale Daten erst nach Login laden (DATA_KEY pro User getrennt)
   const userDataKey = session ? DATA_KEY + ':' + session.user.id : null;
@@ -2815,18 +2843,201 @@ export default function App() {
   // Cloud-Push debounced — bei jeder Änderung 2s warten, dann hochladen
   const cloudPushTimer = useMemo(() => ({ id: null, last: null }), []);
 
+  // DB-Shapes ↔ Blob-Shapes Mapping (für rückwärtskompatible UI-Anzeige)
+  const dbSessionToBlob = useCallback((s) => ({
+    id: s.id,
+    date: s.date,
+    athleteId: s.athlete_id,
+    exerciseId: s.exercise_id,
+    entries: s.entries || [],
+    notes: s.notes || '',
+    exerciseName: s.exercise_name || ''
+  }), []);
+  const dbCompetitionToBlob = useCallback((c) => ({
+    id: c.id,
+    athlete_id: c.athlete_id,
+    program_id: c.program_id,
+    name: c.name,
+    date: c.date,
+    location: c.location || '',
+    host: c.host || '',
+    start_nr: c.start_nr || '',
+    table1: c.table1 || [],
+    table2: c.table2 || [],
+    t1_schwierigkeit: Number(c.t1_schwierigkeit || 0),
+    t2_schwierigkeit: Number(c.t2_schwierigkeit || 0),
+    pdf_ref: c.pdf_ref,
+    target_score: c.target_score
+  }), []);
+  const dbProgramToBlob = useCallback((p) => ({
+    id: p.id,
+    name: p.name,
+    discipline: p.discipline,
+    exercises: p.exercises || [],
+    created: p.created_at
+  }), []);
+  const dbExerciseToBlob = useCallback((e) => ({
+    id: e.id,
+    name: e.name,
+    uci_code: e.uci_code,
+    uci_disc: e.uci_disc,
+    points: e.points,
+    active: e.active,
+    category_mode: e.category_mode,
+    third_label: e.third_label,
+    success_label: e.success_label,
+    fail_label: e.fail_label,
+    default_series: e.default_series,
+    target_rate: e.target_rate
+  }), []);
+
+  // Phase 9d-3: Diff-basierter Sync Blob → DB-Tabellen
+  const syncSessionsToDb = useCallback(async (oldSessions, newSessions) => {
+    const oldById = new Map((oldSessions || []).filter(s => s && s.id).map(s => [s.id, s]));
+    const newById = new Map((newSessions || []).filter(s => s && s.id).map(s => [s.id, s]));
+    const toInsert = (newSessions || []).filter(s => !s || !s.id || !oldById.has(s.id));
+    if (toInsert.length > 0) {
+      const payload = toInsert.map(s => ({
+        athlete_id: s.athleteId || s.athlete_id || null,
+        exercise_id: s.exerciseId || s.exercise_id,
+        date: s.date,
+        entries: s.entries || [],
+        notes: s.notes || '',
+        exercise_name: s.exerciseName || s.exercise_name || ''
+      })).filter(p => p.exercise_id);
+      if (payload.length > 0) {
+        const { error } = await bulkInsertSessions(payload);
+        if (error) console.warn('Session bulk insert:', error.message);
+      }
+    }
+    for (const o of (oldSessions || [])) {
+      if (o && o.id && !newById.has(o.id)) {
+        const { error } = await deleteSession(o.id);
+        if (error) console.warn('Session delete:', error.message);
+      }
+    }
+  }, []);
+
+  // Generischer Diff-Sync für upsertable Entitäten (competitions, programs, exercises)
+  const syncListToDb = useCallback(async (oldList, newList, upsertFn, deleteFn, normalizeFn) => {
+    const oldById = new Map((oldList || []).filter(x => x && x.id).map(x => [x.id, x]));
+    const newById = new Map((newList || []).filter(x => x && x.id).map(x => [x.id, x]));
+    // Inserts (kein id) + Updates (id mit anderem Inhalt)
+    for (const item of (newList || [])) {
+      if (!item) continue;
+      const payload = normalizeFn(item);
+      if (!item.id) {
+        // INSERT
+        const { error } = await upsertFn(payload);
+        if (error) console.warn('Upsert (insert):', error.message);
+      } else if (oldById.has(item.id)) {
+        // UPDATE — nur wenn sich Inhalt geändert hat (deep equal vereinfacht)
+        const oldStr = JSON.stringify(normalizeFn(oldById.get(item.id)));
+        const newStr = JSON.stringify(payload);
+        if (oldStr !== newStr) {
+          const { error } = await upsertFn({ ...payload, id: item.id });
+          if (error) console.warn('Upsert (update):', error.message);
+        }
+      } else {
+        // ID gesetzt aber nicht in alt → eingeschmuggelt von außen, INSERT
+        const { error } = await upsertFn({ ...payload, id: item.id });
+        if (error) console.warn('Upsert (new-id):', error.message);
+      }
+    }
+    // DELETES
+    for (const o of (oldList || [])) {
+      if (o && o.id && !newById.has(o.id)) {
+        const { error } = await deleteFn(o.id);
+        if (error) console.warn('Delete:', error.message);
+      }
+    }
+  }, []);
+
+  // Normalizer: Blob-Shape → DB-Shape (für upserts)
+  const normalizeCompetition = useCallback((c) => ({
+    athlete_id: c.athlete_id || c.athleteId || null,
+    program_id: c.program_id || null,
+    name: c.name,
+    date: c.date,
+    location: c.location || '',
+    host: c.host || '',
+    start_nr: c.start_nr || '',
+    table1: c.table1 || [],
+    table2: c.table2 || [],
+    t1_schwierigkeit: Number(c.t1_schwierigkeit || 0),
+    t2_schwierigkeit: Number(c.t2_schwierigkeit || 0),
+    pdf_ref: c.pdf_ref || null,
+    target_score: c.target_score
+  }), []);
+  const normalizeProgram = useCallback((p) => ({
+    name: p.name,
+    discipline: p.discipline,
+    exercises: p.exercises || []
+  }), []);
+  const normalizeExercise = useCallback((e) => ({
+    name: e.name,
+    uci_code: e.uci_code || null,
+    uci_disc: e.uci_disc || null,
+    points: e.points,
+    active: e.active !== false,
+    category_mode: e.category_mode || 2,
+    third_label: e.third_label || null,
+    success_label: e.success_label || null,
+    fail_label: e.fail_label || null,
+    default_series: e.default_series || 10,
+    target_rate: e.target_rate
+  }), []);
+
   const save = useCallback(async (next) => {
     setActiveDb(next.uci_custom);
+    // Phase 9d-3: wenn migriert, Entitäten in DB syncen statt nur in Blob
+    if (data && data.migrated_to_tables) {
+      try {
+        if (next.sessions) {
+          const currentSessions = dbSessions.map(dbSessionToBlob);
+          await syncSessionsToDb(currentSessions, next.sessions);
+          await refreshSessions();
+        }
+        if (next.competitions) {
+          const current = dbCompetitions.map(dbCompetitionToBlob);
+          await syncListToDb(current, next.competitions, upsertCompetition, deleteCompetition, normalizeCompetition);
+          await refreshCompetitions();
+        }
+        if (next.programs) {
+          const current = dbPrograms.map(dbProgramToBlob);
+          await syncListToDb(current, next.programs, upsertProgram, deleteProgram, normalizeProgram);
+          await refreshPrograms();
+        }
+        if (next.exercises) {
+          const current = dbExercises.map(dbExerciseToBlob);
+          await syncListToDb(current, next.exercises, upsertExercise, deleteExercise, normalizeExercise);
+          await refreshExercises();
+        }
+      } catch (e) {
+        console.warn('DB-Sync fehlgeschlagen:', e);
+      }
+    }
+    // Bei migrierten Usern: Source of Truth = DB. Im Blob nur noch Preferences.
+    const blobNext = (data && data.migrated_to_tables)
+      ? { ...next, sessions: [], competitions: [], programs: [], exercises: [] }
+      : next;
     setData(next);
-    if (userDataKey) await storage.set(userDataKey, JSON.stringify(next));
+    if (userDataKey) await storage.set(userDataKey, JSON.stringify(blobNext));
     // Debounced Cloud-Push
     if (cloudPushTimer.id) clearTimeout(cloudPushTimer.id);
     setCloudStatus('syncing');
     cloudPushTimer.id = setTimeout(async () => {
-      const { error } = await pushCloudSnapshot(next);
+      const { error } = await pushCloudSnapshot(blobNext);
       setCloudStatus(error ? 'error' : 'idle');
     }, 2000);
-  }, [userDataKey, cloudPushTimer]);
+  }, [
+    userDataKey, cloudPushTimer, data,
+    dbSessions, dbCompetitions, dbPrograms, dbExercises,
+    dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob,
+    syncSessionsToDb, syncListToDb,
+    refreshSessions, refreshCompetitions, refreshPrograms, refreshExercises,
+    normalizeCompetition, normalizeProgram, normalizeExercise
+  ]);
 
   const resetAll = useCallback(() => {
     if (confirm('Wirklich ALLES lokale Daten zurücksetzen? (Account bleibt bestehen)')) {
@@ -2887,16 +3098,30 @@ export default function App() {
     { id: 'export', label: 'Export', icon: Download }
   ];
 
+  // Phase 9d-3: effektive Daten — bei migrierten Usern werden DB-Tabellen
+  // in die Blob-Form gemerged. Komponenten lesen weiter wie bisher.
+  const effectiveData = useMemo(() => {
+    if (!data) return data;
+    if (!data.migrated_to_tables) return data;
+    return {
+      ...data,
+      sessions: dbSessions.map(dbSessionToBlob),
+      competitions: dbCompetitions.map(dbCompetitionToBlob),
+      programs: dbPrograms.map(dbProgramToBlob),
+      exercises: dbExercises.map(dbExerciseToBlob)
+    };
+  }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob]);
+
   // View dispatcher
   let viewEl;
-  if (view === 'dashboard') viewEl = <Dashboard data={data} setView={setView} />;
-  else if (view === 'training') viewEl = <TrainingView data={data} setData={save} setView={setView} />;
-  else if (view === 'erfassen') viewEl = <Erfassen data={data} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
-  else if (view === 'uebungen') viewEl = <UebungenView data={data} setData={save} onBack={() => setView('dashboard')} />;
-  else if (view === 'wettkampf') viewEl = <WettkampfView data={data} setData={save} dbAthletes={dbAthletes} />;
-  else if (view === 'einstellungen') viewEl = <SettingsView data={data} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} />;
-  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} ownData={data} />;
-  else if (view === 'export') viewEl = <ExportView data={data} />;
+  if (view === 'dashboard') viewEl = <Dashboard data={effectiveData} setView={setView} />;
+  else if (view === 'training') viewEl = <TrainingView data={effectiveData} setData={save} setView={setView} />;
+  else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
+  else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
+  else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} />;
+  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} />;
+  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} ownData={effectiveData} />;
+  else if (view === 'export') viewEl = <ExportView data={effectiveData} />;
   else if (view === 'kuer' || view === 'video') {
     viewEl = <ComingSoon viewId={view} />;
   } else {

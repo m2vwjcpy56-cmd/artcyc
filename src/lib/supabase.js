@@ -148,6 +148,110 @@ export async function clearClaimCodeForAthlete(athleteId) {
   return { data, error };
 }
 
+// =============================================================
+// Sessions / Competitions / Programs / Exercises CRUD (Phase 9d-3)
+// =============================================================
+
+export async function fetchSessions() {
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('id, athlete_id, exercise_id, date, entries, notes, exercise_name, created_at')
+    .order('date', { ascending: false });
+  if (error) { console.warn('Sessions fetch:', error.message); return []; }
+  return data || [];
+}
+
+export async function insertSession({ athlete_id, exercise_id, date, entries, notes = '', exercise_name = '' }) {
+  const { data, error } = await supabase
+    .from('sessions')
+    .insert({ athlete_id, exercise_id, date, entries, notes, exercise_name })
+    .select()
+    .single();
+  return { data, error };
+}
+
+export async function updateSession(id, fields) {
+  const { data, error } = await supabase.from('sessions').update(fields).eq('id', id).select().single();
+  return { data, error };
+}
+
+export async function deleteSession(id) {
+  const { error } = await supabase.from('sessions').delete().eq('id', id);
+  return { error };
+}
+
+export async function bulkInsertSessions(sessions) {
+  if (!sessions || sessions.length === 0) return { data: [], error: null };
+  const { data, error } = await supabase.from('sessions').insert(sessions).select();
+  return { data, error };
+}
+
+export async function deleteSessionsByExercise(exerciseId) {
+  const { error } = await supabase.from('sessions').delete().eq('exercise_id', exerciseId);
+  return { error };
+}
+
+// === Competitions ===
+export async function fetchCompetitions() {
+  const { data, error } = await supabase
+    .from('competitions')
+    .select('id, athlete_id, program_id, name, date, location, host, start_nr, table1, table2, t1_schwierigkeit, t2_schwierigkeit, pdf_ref, target_score, created_at')
+    .order('date', { ascending: false });
+  if (error) { console.warn('Competitions fetch:', error.message); return []; }
+  return data || [];
+}
+export async function upsertCompetition(comp) {
+  const payload = { ...comp };
+  // Falls keine id, lass DB generieren
+  if (!payload.id) delete payload.id;
+  const { data, error } = await supabase.from('competitions').upsert(payload).select().single();
+  return { data, error };
+}
+export async function deleteCompetition(id) {
+  const { error } = await supabase.from('competitions').delete().eq('id', id);
+  return { error };
+}
+
+// === Programs ===
+export async function fetchPrograms() {
+  const { data, error } = await supabase
+    .from('programs')
+    .select('id, owner_id, name, discipline, exercises, created_at')
+    .order('created_at', { ascending: true });
+  if (error) { console.warn('Programs fetch:', error.message); return []; }
+  return data || [];
+}
+export async function upsertProgram(prog) {
+  const payload = { ...prog };
+  if (!payload.id) delete payload.id;
+  const { data, error } = await supabase.from('programs').upsert(payload).select().single();
+  return { data, error };
+}
+export async function deleteProgram(id) {
+  const { error } = await supabase.from('programs').delete().eq('id', id);
+  return { error };
+}
+
+// === Exercises ===
+export async function fetchExercises() {
+  const { data, error } = await supabase
+    .from('exercises')
+    .select('id, owner_id, name, uci_code, uci_disc, points, active, category_mode, third_label, success_label, fail_label, default_series, target_rate, created_at')
+    .order('created_at', { ascending: true });
+  if (error) { console.warn('Exercises fetch:', error.message); return []; }
+  return data || [];
+}
+export async function upsertExercise(ex) {
+  const payload = { ...ex };
+  if (!payload.id) delete payload.id;
+  const { data, error } = await supabase.from('exercises').upsert(payload).select().single();
+  return { data, error };
+}
+export async function deleteExercise(id) {
+  const { error } = await supabase.from('exercises').delete().eq('id', id);
+  return { error };
+}
+
 // Phase 9d-2: migriert Blob-Daten (sessions/competitions/programs/exercises)
 // in die relationalen DB-Tabellen. Idempotent durch Setzen eines Flags.
 export async function migrateBlobToTables() {
