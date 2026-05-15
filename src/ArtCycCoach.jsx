@@ -3052,6 +3052,22 @@ export default function App() {
     setView('dashboard');
   }, []);
 
+  // Phase 9d-3: effektive Daten — bei migrierten Usern werden DB-Tabellen
+  // in die Blob-Form gemerged. Komponenten lesen weiter wie bisher.
+  // WICHTIG: Hook muss VOR allen conditional returns stehen (Rules of Hooks),
+  // sonst Whitescreen-Crash sobald loading von true → false wechselt.
+  const effectiveData = useMemo(() => {
+    if (!data) return data;
+    if (!data.migrated_to_tables) return data;
+    return {
+      ...data,
+      sessions: dbSessions.map(dbSessionToBlob),
+      competitions: dbCompetitions.map(dbCompetitionToBlob),
+      programs: dbPrograms.map(dbProgramToBlob),
+      exercises: dbExercises.map(dbExerciseToBlob)
+    };
+  }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob]);
+
   if (!authChecked || loading) return (
     <div className="min-h-screen flex items-center justify-center bg-[#F2F2F7] text-[#8E8E93]"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif' }}>
@@ -3097,20 +3113,6 @@ export default function App() {
     ...(isCoach ? [{ id: 'sportler', label: 'Sportler', icon: Users }] : []),
     { id: 'export', label: 'Export', icon: Download }
   ];
-
-  // Phase 9d-3: effektive Daten — bei migrierten Usern werden DB-Tabellen
-  // in die Blob-Form gemerged. Komponenten lesen weiter wie bisher.
-  const effectiveData = useMemo(() => {
-    if (!data) return data;
-    if (!data.migrated_to_tables) return data;
-    return {
-      ...data,
-      sessions: dbSessions.map(dbSessionToBlob),
-      competitions: dbCompetitions.map(dbCompetitionToBlob),
-      programs: dbPrograms.map(dbProgramToBlob),
-      exercises: dbExercises.map(dbExerciseToBlob)
-    };
-  }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob]);
 
   // View dispatcher
   let viewEl;
