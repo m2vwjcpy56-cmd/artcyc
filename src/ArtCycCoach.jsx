@@ -2860,6 +2860,147 @@ async function callChatApiStream(messages, appData, userName, callbacks) {
   return { content: finalContent ?? aggregatedText, action: finalAction };
 }
 
+// =============================================================
+// Mini-Markdown-Renderer für Chat-Bubbles
+// =============================================================
+// Behandelt die häufigsten Markdown-Patterns der KI-Antworten:
+//   **bold**        → fett
+//   *italic*        → kursiv (nur wenn nicht Teil von **)
+//   `code`          → mono mit subtilem Hintergrund
+//   - / • Punkte    → Bullet-Liste (mit orangefarbenen Markern)
+//   \n\n            → Absatz-Abstand
+//   12% / 12,5 %    → kleines orangefarbenes Chip
+// Robust gegen Streaming: unvollständige ** lassen wir einfach als Text.
+// =============================================================
+function renderInline(text, isUser) {
+  if (!text) return null;
+  // Tokens sammeln: { type: 'text' | 'strong' | 'em' | 'code' | 'percent', value }
+  const out = [];
+  let i = 0;
+  while (i < text.length) {
+    // **bold** — gierig bis zum nächsten **
+    if (text[i] === '*' && text[i + 1] === '*') {
+      const end = text.indexOf('**', i + 2);
+      if (end > i + 2) {
+        out.push({ type: 'strong', value: text.slice(i + 2, end) });
+        i = end + 2;
+        continue;
+      }
+    }
+    // `code`
+    if (text[i] === '`') {
+      const end = text.indexOf('`', i + 1);
+      if (end > i + 1) {
+        out.push({ type: 'code', value: text.slice(i + 1, end) });
+        i = end + 1;
+        continue;
+      }
+    }
+    // *italic* (single star, nicht Teil von **)
+    if (text[i] === '*' && text[i + 1] !== '*') {
+      const end = text.indexOf('*', i + 1);
+      if (end > i + 1 && text[end + 1] !== '*') {
+        out.push({ type: 'em', value: text.slice(i + 1, end) });
+        i = end + 1;
+        continue;
+      }
+    }
+    // Prozent-Wert (z. B. „63 %" oder „80%") als Chip
+    const m = text.slice(i).match(/^(\d+(?:[,.]\d+)?)\s?%/);
+    if (m) {
+      out.push({ type: 'percent', value: m[0] });
+      i += m[0].length;
+      continue;
+    }
+    // Normaler Text bis zum nächsten Sonderzeichen
+    const next = text.slice(i).search(/(\*\*|`|\*|\d+(?:[,.]\d+)?\s?%)/);
+    const chunk = next === -1 ? text.slice(i) : text.slice(i, i + next);
+    if (chunk) out.push({ type: 'text', value: chunk });
+    i += chunk.length || 1;
+  }
+  return out.map((tok, idx) => {
+    if (tok.type === 'strong')  return <strong key={idx} className="font-semibold">{tok.value}</strong>;
+    if (tok.type === 'em')      return <em key={idx}>{tok.value}</em>;
+    if (tok.type === 'code')    return <code key={idx} className={(isUser ? 'bg-white/15' : 'bg-slate-100') + ' text-[13px] px-1 py-0.5 rounded'}>{tok.value}</code>;
+    if (tok.type === 'percent') return (
+      <span key={idx} className={(isUser
+        ? 'bg-white/20 text-white'
+        : 'bg-[#FF9500]/12 text-[#FF9500]') +
+        ' text-[14px] font-semibold px-1.5 py-0.5 rounded-md mx-0.5 whitespace-nowrap'
+      }>{tok.value}</span>
+    );
+    return <span key={idx}>{tok.value}</span>;
+  });
+}
+
+function ChatMarkdown({ text, isUser }) {
+  if (!text) return null;
+  // Erst pro Zeile mappen: Bullet-Lines erkennen
+  const lines = text.split('\n');
+  const blocks = [];
+  let currentList = null;
+  let currentPara = [];
+  const flushPara = () => {
+    if (currentPara.length === 0) return;
+    blocks.push({ type: 'p', lines: currentPara });
+    currentPara = [];
+  };
+  const flushList = () => {
+    if (!currentList) return;
+    blocks.push({ type: 'ul', items: currentList });
+    currentList = null;
+  };
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (!line) {
+      // Leerzeile → Block-Trenner
+      flushPara();
+      flushList();
+      continue;
+    }
+    const bullet = line.match(/^\s*(?:[-•*])\s+(.+)$/);
+    if (bullet) {
+      flushPara();
+      if (!currentList) currentList = [];
+      currentList.push(bullet[1]);
+    } else {
+      flushList();
+      currentPara.push(line);
+    }
+  }
+  flushPara();
+  flushList();
+  return (
+    <div className="space-y-2">
+      {blocks.map((b, i) => {
+        if (b.type === 'ul') {
+          return (
+            <ul key={i} className="space-y-1 ml-1">
+              {b.items.map((it, j) => (
+                <li key={j} className="flex gap-2">
+                  <span className={isUser ? 'text-white/80 shrink-0' : 'text-[#FF9500] shrink-0 font-semibold'}>•</span>
+                  <span className="flex-1">{renderInline(it, isUser)}</span>
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        // Paragraph: Zeilen mit \n verbinden, whitespace-pre-line damit Umbrüche bleiben
+        return (
+          <p key={i} className="whitespace-pre-line leading-snug">
+            {b.lines.map((ln, j) => (
+              <span key={j}>
+                {renderInline(ln, isUser)}
+                {j < b.lines.length - 1 && '\n'}
+              </span>
+            ))}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 // Tool-Namen → menschenlesbare Aktions-Bezeichnung (statt rohem
 // "propose_update_session" im UI-Confirm-Card).
 function toolLabel(toolName) {
@@ -3112,13 +3253,16 @@ function FloatingChat({ data, setData, profile }) {
                   );
                 }
                 const isUser = m.role === 'user';
+                const content = m.content || (m.action ? 'Vorschlag siehe unten' : '…');
                 return (
                   <div key={i} className={'flex ' + (isUser ? 'justify-end' : 'justify-start')}>
                     <div className={(isUser
                       ? 'bg-[#007AFF] text-white rounded-br-md'
                       : 'bg-white text-slate-900 rounded-bl-md border border-slate-200/60'
-                    ) + ' max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[15px] whitespace-pre-wrap break-words leading-[1.4]'}>
-                      {m.content || (m.action ? 'Vorschlag siehe unten' : '…')}
+                    ) + ' max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[15px] break-words'}>
+                      {isUser
+                        ? <span className="whitespace-pre-wrap leading-snug">{content}</span>
+                        : <ChatMarkdown text={content} isUser={false} />}
                     </div>
                   </div>
                 );
@@ -3126,8 +3270,8 @@ function FloatingChat({ data, setData, profile }) {
               {/* Live-Text während Streaming (vor dem finalen Speichern in messages) */}
               {busy && streamingText && (
                 <div className="flex justify-start">
-                  <div className="bg-white text-slate-900 rounded-2xl rounded-bl-md border border-slate-200/60 max-w-[85%] px-3.5 py-2.5 text-[15px] whitespace-pre-wrap break-words leading-[1.4]">
-                    {streamingText}
+                  <div className="bg-white text-slate-900 rounded-2xl rounded-bl-md border border-slate-200/60 max-w-[85%] px-3.5 py-2.5 text-[15px] break-words">
+                    <ChatMarkdown text={streamingText} isUser={false} />
                     <span className="inline-block w-1.5 h-3.5 bg-[#FF9500] ml-0.5 align-text-bottom animate-pulse" />
                   </div>
                 </div>
