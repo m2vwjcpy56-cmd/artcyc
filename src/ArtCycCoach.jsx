@@ -4117,13 +4117,131 @@ function TrendSparkline({ trend }) {
 // =============================================================
 // TRAINING (eigener Bereich, war vorher Home)
 // =============================================================
+// Gruppiert Sessions in Datums-Buckets relativ zum heutigen Tag.
+function groupSessionsByDate(sessions) {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const yesterdayIso = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const weekAgoIso = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  const groups = { today: [], yesterday: [], week: [], older: [] };
+  for (const s of sessions) {
+    const d = s.date || '';
+    if (d === todayIso) groups.today.push(s);
+    else if (d === yesterdayIso) groups.yesterday.push(s);
+    else if (d > weekAgoIso) groups.week.push(s);
+    else groups.older.push(s);
+  }
+  return groups;
+}
+
 function TrainingView({ data, setData, setView }) {
+  const [query, setQuery] = useState('');
+  const [editing, setEditing] = useState(null); // { session, origIdx }
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [filterExId, setFilterExId] = useState(''); // '' = alle Übungen
+
+  // Sessions mit Original-Index versehen damit Edit/Delete den richtigen
+  // Eintrag findet — auch wenn Session noch keine id hat (alte Blob-Daten).
+  const indexedAll = useMemo(() => (
+    (data.sessions || []).map((s, i) => ({ ...s, _origIdx: i }))
+  ), [data.sessions]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return indexedAll
+      .filter(s => !filterExId || s.exerciseId === filterExId)
+      .filter(s => !q || (s.exerciseName || '').toLowerCase().includes(q) || (s.notes || '').toLowerCase().includes(q))
+      .slice()
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }, [indexedAll, query, filterExId]);
+
+  const groups = useMemo(() => groupSessionsByDate(filtered), [filtered]);
+
+  const saveEdit = (updated) => {
+    const next = (data.sessions || []).slice();
+    next[updated._origIdx] = { ...updated };
+    delete next[updated._origIdx]._origIdx;
+    setData({ ...data, sessions: next });
+    setEditing(null);
+  };
+
+  const doDelete = (origIdx) => {
+    const next = (data.sessions || []).filter((_, i) => i !== origIdx);
+    setData({ ...data, sessions: next });
+    setConfirmDelete(null);
+    setEditing(null);
+  };
+
+  const renderRow = (s) => {
+    const success = (s.entries || []).filter(e => e === 'success').length;
+    const total = (s.entries || []).length;
+    const fail = (s.entries || []).filter(e => e === 'fail').length;
+    const third = (s.entries || []).filter(e => e === 'third').length;
+    const rate = total > 0 ? Math.round((success / total) * 100) : 0;
+    const rateColor = rate >= 80 ? 'text-emerald-600' : rate >= 60 ? 'text-amber-600' : 'text-rose-600';
+    return (
+      <button key={s._origIdx} onClick={() => setEditing(s)}
+        className="w-full text-left px-4 py-3 hover:bg-slate-50 active:bg-slate-100 transition flex items-center gap-3 border-b border-slate-100 last:border-0">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-[15px] truncate">{s.exerciseName || 'Übung'}</span>
+            {s.withRope === true && (
+              <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">Seil</span>
+            )}
+            {s.withRope === false && (
+              <span className="text-[10px] font-medium text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded-full shrink-0">ohne</span>
+            )}
+          </div>
+          <div className="text-xs text-slate-500 mt-0.5">
+            {formatDateShort(s.date)} · {total} Serien
+            {fail > 0 && <span className="text-rose-600 ml-1">· {fail}✗</span>}
+            {third > 0 && <span className="text-amber-600 ml-1">· {third}△</span>}
+          </div>
+          {s.notes && (
+            <div className="text-xs text-slate-500 italic mt-1 line-clamp-1 border-l-2 border-amber-200 pl-2">
+              {s.notes}
+            </div>
+          )}
+        </div>
+        <div className="text-right shrink-0">
+          <div className={'font-semibold text-base ' + rateColor}>{rate}%</div>
+          <div className="text-[10px] text-slate-400">{success}/{total}</div>
+        </div>
+        <ChevronRight size={16} className="text-slate-300 shrink-0" />
+      </button>
+    );
+  };
+
+  const renderGroup = (label, list) => {
+    if (list.length === 0) return null;
+    return (
+      <div key={label}>
+        <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500 px-1 mb-2 mt-3">
+          {label} <span className="text-slate-400 font-normal">· {list.length}</span>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
+          {list.map(renderRow)}
+        </div>
+      </div>
+    );
+  };
+
+  const totalCount = indexedAll.length;
+  const exerciseList = useMemo(() => {
+    const map = new Map();
+    for (const s of indexedAll) {
+      if (s.exerciseId && !map.has(s.exerciseId)) {
+        map.set(s.exerciseId, s.exerciseName || 'Übung');
+      }
+    }
+    return Array.from(map, ([id, name]) => ({ id, name }));
+  }, [indexedAll]);
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <header className="flex items-end justify-between flex-wrap gap-3 pt-2">
         <div>
           <h1 className="text-[34px] font-bold tracking-tight leading-none">Training</h1>
-          <p className="text-slate-500 text-sm mt-1">Serien protokollieren und Sessions verwalten</p>
+          <p className="text-slate-500 text-sm mt-1">{totalCount} Sessions insgesamt</p>
         </div>
         <button onClick={() => setView('erfassen')}
           className="bg-slate-900 text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-sm active:scale-95 transition">
@@ -4131,39 +4249,209 @@ function TrainingView({ data, setData, setView }) {
         </button>
       </header>
 
-      <div className="bg-amber-50/80 backdrop-blur rounded-2xl p-4 text-sm text-amber-900">
-        <div className="flex gap-2 items-start">
-          <Info size={18} className="shrink-0 mt-0.5" />
-          <div>
-            <strong>Tipp:</strong> Übungen wie der <em>Maute-Sprung</em> kannst du im <strong>3-Kategorien-Modus</strong> erfassen — neben „Geklappt" / „Nicht geklappt" gibt's eine dritte Kategorie wie „Gefährlich" für besonders kritische Misserfolge (Sturz, Hilfe nötig). Aktivierbar im Bereich <strong>Übungen</strong>.
+      {/* Suche + Filter */}
+      {totalCount > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3 space-y-2">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input value={query} onChange={e => setQuery(e.target.value)}
+              placeholder="Suchen (Übungsname oder Notiz)"
+              className="w-full pl-9 pr-3 py-2 bg-slate-100 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-amber-500 text-sm" />
+          </div>
+          {exerciseList.length > 1 && (
+            <select value={filterExId} onChange={e => setFilterExId(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-100 rounded-xl outline-none text-sm">
+              <option value="">Alle Übungen ({totalCount})</option>
+              {exerciseList.map(e => (
+                <option key={e.id} value={e.id}>{e.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
+      {totalCount === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-8 text-center">
+          <Dumbbell size={32} className="mx-auto text-slate-300 mb-3" />
+          <h3 className="font-semibold mb-1">Noch keine Sessions</h3>
+          <p className="text-sm text-slate-500 mb-4">Tippe oben auf „Serie protokollieren" um loszulegen.</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200/60 p-6 text-center text-sm text-slate-500">
+          Keine Treffer für deinen Filter.
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {renderGroup('Heute', groups.today)}
+          {renderGroup('Gestern', groups.yesterday)}
+          {renderGroup('Diese Woche', groups.week)}
+          {renderGroup('Älter', groups.older)}
+        </div>
+      )}
+
+      {/* Edit-Modal */}
+      {editing && (
+        <SessionEditModal
+          session={editing}
+          exercises={data.exercises || []}
+          onSave={saveEdit}
+          onDelete={() => setConfirmDelete(editing._origIdx)}
+          onClose={() => setEditing(null)} />
+      )}
+
+      {/* Delete-Confirm */}
+      {confirmDelete !== null && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setConfirmDelete(null)}>
+          <div className="bg-white rounded-3xl sm:rounded-2xl w-full max-w-sm p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center"><Trash2 size={18} className="text-rose-600" /></div>
+              <div>
+                <h3 className="font-semibold">Session löschen?</h3>
+                <p className="text-xs text-slate-500">Kann nicht rückgängig gemacht werden.</p>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 font-medium text-sm">Abbrechen</button>
+              <button onClick={() => doDelete(confirmDelete)} className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white font-medium text-sm">Löschen</button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+    </div>
+  );
+}
 
-      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
-        <h2 className="font-semibold mb-3">Letzte Sessions</h2>
-        {data.sessions.length === 0 ? (
-          <p className="text-slate-500 text-sm text-center py-4">Noch keine Sessions erfasst.</p>
-        ) : (
-          <div className="space-y-2">
-            {[...data.sessions].slice(-15).reverse().map((s, i) => {
-              const success = s.entries.filter(e => e === 'success').length;
-              const total = s.entries.length;
-              const rate = total > 0 ? Math.round((success / total) * 100) : 0;
-              return (
-                <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium text-sm truncate">{s.exerciseName}</div>
-                    <div className="text-xs text-slate-500">{s.date} · {total} Serien</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-semibold text-sm">{rate}%</div>
-                  </div>
-                </div>
-              );
-            })}
+// =============================================================
+// Session-Edit-Modal — Datum, Entries umtoggeln, Notiz, Mit/Ohne Seil
+// =============================================================
+function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
+  const exercise = exercises.find(e => e.id === session.exerciseId);
+  const [date, setDate] = useState(session.date || new Date().toISOString().slice(0, 10));
+  const [entries, setEntries] = useState(session.entries || []);
+  const [notes, setNotes] = useState(session.notes || '');
+  const [withRope, setWithRope] = useState(
+    typeof session.withRope === 'boolean' ? session.withRope : null
+  );
+
+  const use3 = exercise && exercise.category_mode === 3;
+  const success = entries.filter(e => e === 'success').length;
+  const fail = entries.filter(e => e === 'fail').length;
+  const third = entries.filter(e => e === 'third').length;
+
+  const handleSave = () => {
+    onSave({
+      ...session,
+      date,
+      entries,
+      notes: notes.trim() || null,
+      withRope: exercise && exercise.has_rope_variant ? withRope : null
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-lg max-h-[92vh] overflow-y-auto shadow-2xl"
+        onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="sticky top-0 bg-white/90 backdrop-blur-xl border-b border-slate-200/60 px-5 py-3 flex items-center justify-between">
+          <button onClick={onClose} className="text-amber-500 font-medium text-[15px]">Abbrechen</button>
+          <h3 className="font-semibold text-[15px]">Session bearbeiten</h3>
+          <button onClick={handleSave} className="text-amber-500 font-semibold text-[15px]">Fertig</button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Übung (read-only Info) */}
+          <div className="bg-slate-50 rounded-xl p-3">
+            <div className="text-xs text-slate-500">Übung</div>
+            <div className="font-medium">{exercise ? exercise.name : (session.exerciseName || '—')}</div>
           </div>
-        )}
+
+          {/* Datum */}
+          <div>
+            <label className="text-sm font-medium block mb-1.5">Datum</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+          </div>
+
+          {/* Mit/Ohne Seil */}
+          {exercise && exercise.has_rope_variant && (
+            <div>
+              <label className="text-sm font-medium block mb-1.5">Variante</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setWithRope(true)}
+                  className={'py-2.5 rounded-xl text-sm font-medium border transition active:scale-95 ' +
+                    (withRope === true ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-700 border-slate-300')}>
+                  Mit Seil
+                </button>
+                <button type="button" onClick={() => setWithRope(false)}
+                  className={'py-2.5 rounded-xl text-sm font-medium border transition active:scale-95 ' +
+                    (withRope === false ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-700 border-slate-300')}>
+                  Ohne Seil
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Entries */}
+          <div>
+            <label className="text-sm font-medium block mb-2">Serien · {entries.length}</label>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <button onClick={() => setEntries([...entries, 'success'])}
+                className="bg-emerald-600 text-white py-3.5 rounded-2xl font-semibold flex flex-col items-center gap-0.5 active:scale-95 transition-transform">
+                <Check size={20} /><span className="text-sm">{statusLabel(exercise, 'success')}</span>
+                <span className="text-xs opacity-80">{success}</span>
+              </button>
+              <button onClick={() => setEntries([...entries, 'fail'])}
+                className="bg-rose-600 text-white py-3.5 rounded-2xl font-semibold flex flex-col items-center gap-0.5 active:scale-95 transition-transform">
+                <X size={20} /><span className="text-sm">{statusLabel(exercise, 'fail')}</span>
+                <span className="text-xs opacity-80">{fail}</span>
+              </button>
+            </div>
+            {use3 && (
+              <button onClick={() => setEntries([...entries, 'third'])}
+                className="w-full bg-amber-500 text-white py-3 rounded-2xl font-semibold flex items-center justify-center gap-2 mb-2 active:scale-95 transition-transform">
+                <AlertTriangle size={18} /><span className="text-sm">{statusLabel(exercise, 'third')}</span>
+                <span className="text-xs opacity-80">· {third}</span>
+              </button>
+            )}
+
+            {entries.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {entries.map((s, i) => (
+                  <button key={i} onClick={() => {
+                    const order = use3 ? ['success', 'fail', 'third'] : ['success', 'fail'];
+                    const next = [...entries];
+                    next[i] = order[(order.indexOf(s) + 1) % order.length];
+                    setEntries(next);
+                  }}
+                    className={'w-9 h-9 rounded-lg font-bold text-white text-sm flex items-center justify-center ' +
+                      (s === 'success' ? 'bg-emerald-600' : s === 'fail' ? 'bg-rose-600' : 'bg-amber-500')}>
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <button onClick={() => setEntries(entries.slice(0, -1))} disabled={entries.length === 0}
+              className="text-xs text-slate-500 disabled:opacity-50">
+              ← Letzte entfernen
+            </button>
+          </div>
+
+          {/* Notiz */}
+          <div>
+            <label className="text-sm font-medium block mb-1.5">Notiz</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)}
+              rows={2} placeholder="Optional…"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 text-sm resize-y" />
+          </div>
+
+          {/* Löschen */}
+          <button onClick={onDelete}
+            className="w-full py-2.5 rounded-xl text-rose-600 font-medium text-sm border border-rose-200 bg-rose-50 active:bg-rose-100 flex items-center justify-center gap-2">
+            <Trash2 size={14} /> Session löschen
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -5737,6 +6025,7 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
     setData({
       ...data,
       sessions: [...data.sessions, {
+        id: uid(),
         date,
         athleteId: athleteId || null,
         exerciseId: exercise.id,
