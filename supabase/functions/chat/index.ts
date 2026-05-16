@@ -15,12 +15,25 @@
 // @ts-ignore Deno-Runtime
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 // @ts-ignore Deno-Runtime
-const ANTHROPIC_MODEL = Deno.env.get("ANTHROPIC_MODEL") ?? "claude-sonnet-4-5";
+// Default = Haiku 4.5 — deutlich schneller als Sonnet, für Coach-Use-Cases
+// (Daten zusammenfassen, einzelne Sessions vorschlagen) reicht das gut.
+// Per Env-Var ANTHROPIC_MODEL=claude-sonnet-4-5 wieder auf Sonnet schalten.
+const ANTHROPIC_MODEL = Deno.env.get("ANTHROPIC_MODEL") ?? "claude-haiku-4-5";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+// Wichtig: charset=utf-8 explizit setzen, sonst rendern manche
+// Mobile-Browser (iOS Safari) ü/ö/ä etc. als U+FFFD-Replacement-Char.
+const JSON_HEADERS = { ...CORS_HEADERS, "Content-Type": "application/json; charset=utf-8" };
+const SSE_HEADERS  = {
+  ...CORS_HEADERS,
+  "Content-Type": "text/event-stream; charset=utf-8",
+  "Cache-Control": "no-cache, no-transform",
+  "X-Accel-Buffering": "no", // verhindert dass Reverse-Proxies buffern
 };
 
 // Tools: nur Schreib-Vorschläge. Lese-Operationen erlauben wir nicht als
@@ -189,7 +202,7 @@ async function callAnthropic(systemPrompt: string, messages: any[]) {
     },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
-      max_tokens: 2048,
+      max_tokens: 1024,
       system: systemPrompt,
       tools: TOOLS,
       messages,
@@ -200,6 +213,30 @@ async function callAnthropic(systemPrompt: string, messages: any[]) {
     throw new Error(`Anthropic API ${res.status}: ${txt}`);
   }
   return await res.json();
+}
+
+/**
+ * Streaming-Variante: Fordert SSE bei Anthropic an und reicht die Events
+ * 1:1 an den Client durch. Der Client rendert Text inkrementell und
+ * sammelt am Ende den Tool-Use-Block für die Bestätigung.
+ */
+async function callAnthropicStream(systemPrompt: string, messages: any[]) {
+  return await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 1024,
+      stream: true,
+      system: systemPrompt,
+      tools: TOOLS,
+      messages,
+    }),
+  });
 }
 
 // @ts-ignore Deno-Runtime
@@ -213,18 +250,96 @@ Deno.serve(async (req: Request) => {
   if (!ANTHROPIC_API_KEY) {
     return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY nicht konfiguriert" }), {
       status: 500,
-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      headers: JSON_HEADERS,
     });
   }
   try {
+    const url = new URL(req.url);
+    const wantStream = url.searchParams.get("stream") === "1";
     const { messages, app_data, user_name } = await req.json();
     if (!Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: "messages fehlt" }), {
         status: 400,
-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        headers: JSON_HEADERS,
       });
     }
     const systemPrompt = buildSystemPrompt(app_data || {}, user_name);
+
+    // ─── Streaming-Pfad (SSE) — Default-Verhalten für niedrigere
+    // Antwort-Latenz: erste Tokens kommen sofort beim Client an. ───
+    if (wantStream) {
+      const upstream = await callAnthropicStream(systemPrompt, messages);
+      if (!upstream.ok) {
+        const txt = await upstream.text();
+        return new Response(JSON.stringify({ error: `Anthropic API ${upstream.status}: ${txt}` }), {
+          status: 502, headers: JSON_HEADERS,
+        });
+      }
+      // Events durchreichen + zusätzlich ein eigenes 'final'-Event mit
+      // dem gesammelten action-Objekt am Ende emittieren, damit der
+      // Client nicht selbst die tool_use-Blöcke zusammenpuzzlen muss.
+      const reader = upstream.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let textOut = "";
+      const tools: any[] = []; // gesammelte tool_use-Blöcke (Index → { name, json })
+      const stream = new ReadableStream({
+        async pull(controller) {
+          const { value, done } = await reader.read();
+          if (done) {
+            // 'final'-Event: aggregiertes Tool-Use
+            let action: any = null;
+            for (const t of tools) {
+              if (!t || !t.name) continue;
+              let input: any = {};
+              try { input = t.json ? JSON.parse(t.json) : {}; } catch {}
+              action = {
+                tool: t.name,
+                params: input,
+                summary: (input && input.summary) || "",
+              };
+              break; // erstes tool_use reicht
+            }
+            const final = JSON.stringify({ type: "final", content: textOut, action });
+            controller.enqueue(new TextEncoder().encode("event: final\ndata: " + final + "\n\n"));
+            controller.close();
+            return;
+          }
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split("\n\n");
+          buf = parts.pop() ?? "";
+          for (const part of parts) {
+            // Anthropic-SSE schicken wir 1:1 durch
+            controller.enqueue(new TextEncoder().encode(part + "\n\n"));
+            // Parallel mitlesen: Text + Tool-Use sammeln
+            const lines = part.split("\n");
+            let eventName = "";
+            let dataStr = "";
+            for (const ln of lines) {
+              if (ln.startsWith("event:")) eventName = ln.slice(6).trim();
+              else if (ln.startsWith("data:")) dataStr += ln.slice(5).trim();
+            }
+            if (!dataStr) continue;
+            try {
+              const ev = JSON.parse(dataStr);
+              if (eventName === "content_block_start" && ev.content_block?.type === "tool_use") {
+                tools[ev.index] = { name: ev.content_block.name, json: "" };
+              } else if (eventName === "content_block_delta") {
+                if (ev.delta?.type === "text_delta") textOut += ev.delta.text || "";
+                else if (ev.delta?.type === "input_json_delta") {
+                  const idx = ev.index;
+                  if (tools[idx]) tools[idx].json += ev.delta.partial_json || "";
+                }
+              }
+            } catch {}
+          }
+        },
+        cancel() { try { reader.cancel(); } catch {} }
+      });
+      return new Response(stream, { headers: SSE_HEADERS });
+    }
+
+    // ─── Non-Streaming-Pfad (Fallback) ───
     const result = await callAnthropic(systemPrompt, messages);
 
     // Antwort zerlegen: Text + optional ein Tool-Use-Block (Action-Proposal)
@@ -236,7 +351,7 @@ Deno.serve(async (req: Request) => {
         action = {
           tool: block.name,
           params: block.input || {},
-          summary: (block.input && block.input.summary) || "Aktion ausführen",
+          summary: (block.input && block.input.summary) || "",
         };
       }
     }
@@ -248,12 +363,12 @@ Deno.serve(async (req: Request) => {
         stop_reason: result.stop_reason,
         usage: result.usage,
       }),
-      { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+      { headers: JSON_HEADERS }
     );
   } catch (e) {
     return new Response(
       JSON.stringify({ error: (e as Error).message }),
-      { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+      { status: 500, headers: JSON_HEADERS }
     );
   }
 });

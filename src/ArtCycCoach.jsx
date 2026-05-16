@@ -2756,37 +2756,144 @@ async function callChatApi(messages, appData, userName) {
   return await res.json();
 }
 
-// Aktion vom AI auf den App-State anwenden. Gibt eine kurze
-// Bestätigungs-Nachricht zurück.
+/**
+ * Streaming-Variante des Chat-API-Calls.
+ * Liefert Text-Deltas während Anthropic schreibt — der Client kann
+ * sie sofort in der UI rendern statt auf die komplette Antwort zu
+ * warten. Am Ende kommt ein eigenes „final"-Event mit dem
+ * gesammelten action-Objekt (falls die KI ein Tool aufgerufen hat).
+ *
+ * Callbacks:
+ *   onTextDelta(chunk)   für jeden Text-Token-Block
+ *   onPhase(name)        für interne Phasen ('thinking', 'tool')
+ *   onFinal(content,act) am Ende mit komplettem Text + ggf. Action
+ */
+async function callChatApiStream(messages, appData, userName, callbacks) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('Nicht angemeldet');
+  const SUPABASE_URL = 'https://cpxsfctijcsezkspjlxy.supabase.co';
+  const res = await fetch(SUPABASE_URL + '/functions/v1/chat?stream=1', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token,
+    },
+    body: JSON.stringify({
+      messages,
+      app_data: {
+        exercises: appData?.exercises || [],
+        sessions: appData?.sessions || [],
+        competitions: appData?.competitions || [],
+        programs: appData?.programs || [],
+      },
+      user_name: userName || null,
+    }),
+  });
+  if (!res.ok || !res.body) {
+    const txt = await res.text().catch(() => '');
+    let detail = txt;
+    try { const j = JSON.parse(txt); detail = j.error || txt; } catch {}
+    throw new Error('Coach nicht erreichbar (' + res.status + '): ' + detail);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buf = '';
+  let aggregatedText = '';
+  let finalAction = null;
+  let finalContent = null;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split('\n\n');
+    buf = parts.pop() || '';
+    for (const part of parts) {
+      const lines = part.split('\n');
+      let evName = 'message';
+      let dataStr = '';
+      for (const ln of lines) {
+        if (ln.startsWith('event:'))      evName = ln.slice(6).trim();
+        else if (ln.startsWith('data:'))  dataStr += ln.slice(5).trim();
+      }
+      if (!dataStr) continue;
+      let ev;
+      try { ev = JSON.parse(dataStr); } catch { continue; }
+      if (evName === 'final') {
+        finalAction = ev.action || null;
+        finalContent = ev.content || aggregatedText;
+        if (finalAction && callbacks && callbacks.onPhase) callbacks.onPhase('tool');
+      } else if (evName === 'content_block_start') {
+        if (ev.content_block?.type === 'tool_use' && callbacks && callbacks.onPhase) {
+          callbacks.onPhase('tool');
+        }
+      } else if (evName === 'content_block_delta') {
+        if (ev.delta?.type === 'text_delta') {
+          const t = ev.delta.text || '';
+          aggregatedText += t;
+          if (callbacks && callbacks.onTextDelta) callbacks.onTextDelta(t);
+        }
+      }
+    }
+  }
+  if (callbacks && callbacks.onFinal) callbacks.onFinal(finalContent ?? aggregatedText, finalAction);
+  return { content: finalContent ?? aggregatedText, action: finalAction };
+}
+
+// Tool-Namen → menschenlesbare Aktions-Bezeichnung (statt rohem
+// "propose_update_session" im UI-Confirm-Card).
+function toolLabel(toolName) {
+  switch (toolName) {
+    case 'propose_create_session':  return 'Neue Session anlegen';
+    case 'propose_update_session':  return 'Session ändern';
+    case 'propose_delete_session':  return 'Session löschen';
+    case 'propose_create_exercise': return 'Übung anlegen';
+    case 'propose_update_exercise': return 'Übung ändern';
+    default: return 'Aktion ausführen';
+  }
+}
+
+// Aktion vom AI auf den App-State anwenden. Gibt eine
+// informative Bestätigungs-Nachricht zurück (mehr Details als nur „✓").
 function applyChatAction(action, data, setData) {
   if (!action || !action.tool) return 'Keine Aktion.';
   const p = action.params || {};
   if (action.tool === 'propose_create_session') {
     const ex = (data.exercises || []).find(e => e.id === p.exerciseId);
+    const entries = Array.isArray(p.entries) ? p.entries : [];
     const newSession = {
       id: uid(),
       date: p.date || new Date().toISOString().slice(0, 10),
       exerciseId: p.exerciseId,
       exerciseName: ex ? ex.name : '',
-      entries: Array.isArray(p.entries) ? p.entries : [],
+      entries,
       notes: p.notes || null,
       withRope: (ex && ex.has_rope_variant) ? (typeof p.withRope === 'boolean' ? p.withRope : null) : null,
       athleteId: null,
     };
     setData({ ...data, sessions: [...(data.sessions || []), newSession] });
-    return 'Session angelegt ✓';
+    const succ = entries.filter(x => x === 'success').length;
+    const ropeTag = newSession.withRope === true ? ' · mit Seil'
+                  : newSession.withRope === false ? ' · ohne Seil' : '';
+    return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Serien (' + succ + ' geklappt)' + ropeTag;
   }
   if (action.tool === 'propose_update_session') {
-    const next = (data.sessions || []).map(s =>
-      s.id === p.sessionId ? { ...s, ...(p.fields || {}) } : s
-    );
+    let updated = 0;
+    const next = (data.sessions || []).map(s => {
+      if (s.id === p.sessionId) { updated++; return { ...s, ...(p.fields || {}) }; }
+      return s;
+    });
     setData({ ...data, sessions: next });
-    return 'Session aktualisiert ✓';
+    const fieldList = Object.keys(p.fields || {}).join(', ');
+    return updated > 0
+      ? '✓ Session aktualisiert (' + fieldList + ')'
+      : '⚠ Session nicht gefunden';
   }
   if (action.tool === 'propose_delete_session') {
+    const before = (data.sessions || []).length;
     const next = (data.sessions || []).filter(s => s.id !== p.sessionId);
     setData({ ...data, sessions: next });
-    return 'Session gelöscht ✓';
+    return next.length < before ? '✓ Session gelöscht' : '⚠ Session nicht gefunden';
   }
   if (action.tool === 'propose_create_exercise') {
     const newEx = {
@@ -2802,16 +2909,20 @@ function applyChatAction(action, data, setData) {
       has_rope_variant: !!p.has_rope_variant,
     };
     setData({ ...data, exercises: [...(data.exercises || []), newEx] });
-    return 'Übung „' + newEx.name + '" angelegt ✓';
+    return '✓ Übung „' + newEx.name + '" angelegt';
   }
   if (action.tool === 'propose_update_exercise') {
-    const next = (data.exercises || []).map(e =>
-      e.id === p.exerciseId ? { ...e, ...(p.fields || {}) } : e
-    );
+    let updated = 0;
+    const next = (data.exercises || []).map(e => {
+      if (e.id === p.exerciseId) { updated++; return { ...e, ...(p.fields || {}) }; }
+      return e;
+    });
     setData({ ...data, exercises: next });
-    return 'Übung aktualisiert ✓';
+    return updated > 0
+      ? '✓ Übung aktualisiert (' + Object.keys(p.fields || {}).join(', ') + ')'
+      : '⚠ Übung nicht gefunden';
   }
-  return 'Aktion „' + action.tool + '" nicht erkannt.';
+  return '⚠ Aktion „' + action.tool + '" nicht erkannt';
 }
 
 function FloatingChat({ data, setData, profile }) {
@@ -2819,6 +2930,8 @@ function FloatingChat({ data, setData, profile }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState(''); // '' | 'thinking' | 'writing' | 'tool'
+  const [streamingText, setStreamingText] = useState(''); // Live-Text-Aufbau während Streaming
   const [err, setErr] = useState('');
   const [pendingAction, setPendingAction] = useState(null);
   const scrollRef = useRef(null);
@@ -2856,11 +2969,25 @@ function FloatingChat({ data, setData, profile }) {
     setMessages(next);
     setInput('');
     setBusy(true);
+    setPhase('thinking');
+    setStreamingText('');
+    let firstDelta = true;
     try {
-      const result = await callChatApi(next, data, profile?.display_name);
+      let aggregated = '';
+      const result = await callChatApiStream(next, data, profile?.display_name, {
+        onTextDelta: (t) => {
+          if (firstDelta) { setPhase('writing'); firstDelta = false; }
+          aggregated += t;
+          setStreamingText(aggregated);
+        },
+        onPhase: (p) => setPhase(p),
+        onFinal: (content, action) => {
+          // Letztes Update kommt automatisch über streamingText
+        }
+      });
       const assistantMsg = {
         role: 'assistant',
-        content: result.content || '',
+        content: result.content || aggregated || '',
         action: result.action || null,
       };
       setMessages([...next, assistantMsg]);
@@ -2869,6 +2996,8 @@ function FloatingChat({ data, setData, profile }) {
       setErr(e.message || String(e));
     } finally {
       setBusy(false);
+      setPhase('');
+      setStreamingText('');
     }
   };
 
@@ -2948,9 +3077,17 @@ function FloatingChat({ data, setData, profile }) {
               )}
               {messages.map((m, i) => {
                 if (m.role === 'system') {
+                  const isOk = m.content.startsWith('✓');
+                  const isWarn = m.content.startsWith('⚠');
                   return (
-                    <div key={i} className="text-center">
-                      <span className="text-[11px] text-slate-500 bg-slate-200/60 rounded-full px-3 py-1 inline-block">{m.content}</span>
+                    <div key={i} className="flex justify-center">
+                      <div className={'text-[13px] rounded-2xl px-3.5 py-2 max-w-[90%] text-center leading-snug ' + (
+                        isOk   ? 'bg-emerald-50 text-emerald-900 border border-emerald-200/60' :
+                        isWarn ? 'bg-amber-50 text-amber-900 border border-amber-200/60' :
+                                 'bg-slate-100 text-slate-700 border border-slate-200/60'
+                      )}>
+                        {m.content}
+                      </div>
                     </div>
                   );
                 }
@@ -2966,30 +3103,66 @@ function FloatingChat({ data, setData, profile }) {
                   </div>
                 );
               })}
-              {/* Pending Action */}
+              {/* Live-Text während Streaming (vor dem finalen Speichern in messages) */}
+              {busy && streamingText && (
+                <div className="flex justify-start">
+                  <div className="bg-white text-slate-900 rounded-2xl rounded-bl-md border border-slate-200/60 max-w-[85%] px-3.5 py-2.5 text-[15px] whitespace-pre-wrap break-words leading-[1.4]">
+                    {streamingText}
+                    <span className="inline-block w-1.5 h-3.5 bg-[#FF9500] ml-0.5 align-text-bottom animate-pulse" />
+                  </div>
+                </div>
+              )}
+
+              {/* Pending Action — saubere iOS-Karte mit lesbarem Tool-Label */}
               {pendingAction && (
-                <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 space-y-3">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Bestätigung nötig</div>
-                      <div className="text-[14px] text-slate-900 font-medium">{pendingAction.action.summary}</div>
-                      <div className="text-[11px] text-slate-500 mt-1.5 font-mono">{pendingAction.action.tool}</div>
+                <div className="bg-amber-50 border border-amber-300/70 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+                      <AlertTriangle size={16} className="text-amber-700" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[11px] font-semibold text-amber-800 uppercase tracking-wide mb-0.5">Bestätigung nötig</div>
+                      <div className="text-[15px] text-slate-900 font-semibold leading-tight">
+                        {toolLabel(pendingAction.action.tool)}
+                      </div>
+                      {pendingAction.action.summary && (
+                        <div className="text-[13px] text-slate-700 mt-1 leading-snug">
+                          {pendingAction.action.summary}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={denyAction}
-                      className="flex-1 py-2 rounded-xl bg-white border border-slate-300 font-medium text-sm">Abbrechen</button>
+                      className="flex-1 py-2.5 rounded-xl bg-white border border-slate-300 font-medium text-[14px] active:opacity-60">
+                      Abbrechen
+                    </button>
                     <button onClick={approveAction}
-                      className="flex-1 py-2 rounded-xl bg-amber-500 text-white font-semibold text-sm flex items-center justify-center gap-1.5">
-                      <Check size={14} /> Bestätigen
+                      className="flex-1 py-2.5 rounded-xl bg-[#FF9500] text-white font-semibold text-[14px] flex items-center justify-center gap-1.5 active:scale-95 transition shadow-[0_2px_8px_rgba(255,149,0,0.3)]">
+                      <Check size={14} strokeWidth={2.6} /> Bestätigen
                     </button>
                   </div>
                 </div>
               )}
-              {busy && (
-                <div className="flex items-center gap-2 text-slate-500 text-sm">
-                  <Loader2 size={14} className="animate-spin" /> Coach denkt nach…
+
+              {/* Phase-Indikator — zeigt dem User was der Coach gerade tut */}
+              {busy && !streamingText && (
+                <div className="flex items-center gap-2 text-[#8E8E93] text-[14px]">
+                  <span className="inline-flex gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#FF9500] animate-pulse" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#FF9500] animate-pulse" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#FF9500] animate-pulse" style={{ animationDelay: '300ms' }} />
+                  </span>
+                  <span>
+                    {phase === 'tool' ? 'Aktion wird vorbereitet…'
+                      : phase === 'writing' ? 'schreibt…'
+                      : 'denkt nach…'}
+                  </span>
+                </div>
+              )}
+              {busy && streamingText && phase === 'tool' && (
+                <div className="flex items-center gap-2 text-[#8E8E93] text-[13px] pl-1">
+                  <Loader2 size={12} className="animate-spin" /> bereitet Aktion vor…
                 </div>
               )}
               {err && (
