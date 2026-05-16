@@ -8,7 +8,7 @@ import {
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
   Sun, Moon, SunMoon, Globe
 } from 'lucide-react';
-import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise } from './lib/supabase';
+import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud } from './lib/feedback.js';
 import { parseProgramFile } from './lib/programImport.js';
@@ -3024,14 +3024,45 @@ function toolLabel(toolName) {
   }
 }
 
-// Aktion vom AI auf den App-State anwenden. Gibt eine
-// informative Bestätigungs-Nachricht zurück (mehr Details als nur „✓").
-function applyChatAction(action, data, setData) {
+// Blob-Feld-Namen (camelCase) auf DB-Feld-Namen (snake_case) mappen
+// — wichtig wenn migrated_to_tables aktiv ist und wir per Supabase-API
+// schreiben. Reduziert auf die Felder die der KI-Coach setzen kann.
+function blobFieldsToDb(fields) {
+  const out = {};
+  if (fields.withRope !== undefined) out.with_rope = fields.withRope;
+  if (fields.notes    !== undefined) out.notes    = fields.notes;
+  if (fields.date     !== undefined) out.date     = fields.date;
+  if (fields.entries  !== undefined) out.entries  = fields.entries;
+  return out;
+}
+
+// Aktion vom AI auf den App-State anwenden.
+// ASYNC, weil DB-Pfad bei migrated_to_tables aktive Supabase-Aufrufe nötig.
+// onRefresh-Callbacks werden danach gerufen damit die UI frische Daten zieht.
+async function applyChatAction(action, data, setData, refreshers) {
   if (!action || !action.tool) return 'Keine Aktion.';
   const p = action.params || {};
+  const useDb = !!data.migrated_to_tables;
   if (action.tool === 'propose_create_session') {
     const ex = (data.exercises || []).find(e => e.id === p.exerciseId);
     const entries = Array.isArray(p.entries) ? p.entries : [];
+    const withRope = (ex && ex.has_rope_variant) ? (typeof p.withRope === 'boolean' ? p.withRope : null) : null;
+    const succ = entries.filter(x => x === 'success').length;
+    const ropeTag = withRope === true ? ' · mit Seil' : withRope === false ? ' · ohne Seil' : '';
+    if (useDb) {
+      const { error } = await insertSession({
+        athlete_id: null,
+        exercise_id: p.exerciseId,
+        date: p.date || new Date().toISOString().slice(0, 10),
+        entries,
+        notes: p.notes || '',
+        exercise_name: ex ? ex.name : '',
+        with_rope: withRope,
+      });
+      if (error) return '⚠ DB-Fehler: ' + error.message;
+      if (refreshers && refreshers.sessions) await refreshers.sessions();
+      return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Serien (' + succ + ' geklappt)' + ropeTag;
+    }
     const newSession = {
       id: uid(),
       date: p.date || new Date().toISOString().slice(0, 10),
@@ -3039,13 +3070,10 @@ function applyChatAction(action, data, setData) {
       exerciseName: ex ? ex.name : '',
       entries,
       notes: p.notes || null,
-      withRope: (ex && ex.has_rope_variant) ? (typeof p.withRope === 'boolean' ? p.withRope : null) : null,
+      withRope,
       athleteId: null,
     };
     setData({ ...data, sessions: [...(data.sessions || []), newSession] });
-    const succ = entries.filter(x => x === 'success').length;
-    const ropeTag = newSession.withRope === true ? ' · mit Seil'
-                  : newSession.withRope === false ? ' · ohne Seil' : '';
     return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Serien (' + succ + ' geklappt)' + ropeTag;
   }
   if (action.tool === 'propose_update_session') {
@@ -3053,6 +3081,12 @@ function applyChatAction(action, data, setData) {
     const fieldList = Object.keys(fields).filter(k => fields[k] !== undefined).join(', ');
     if (!fieldList) {
       return '⚠ KI-Coach hat keine Feld-Änderungen angegeben — bitte konkreter fragen (z. B. „setze withRope auf true").';
+    }
+    if (useDb) {
+      const { error } = await updateSession(p.sessionId, blobFieldsToDb(fields));
+      if (error) return '⚠ DB-Fehler: ' + error.message;
+      if (refreshers && refreshers.sessions) await refreshers.sessions();
+      return '✓ Session aktualisiert (' + fieldList + ')';
     }
     let updated = 0;
     const next = (data.sessions || []).map(s => {
@@ -3071,6 +3105,17 @@ function applyChatAction(action, data, setData) {
     if (!fieldList) {
       return '⚠ KI-Coach hat keine Feld-Änderungen angegeben.';
     }
+    if (useDb) {
+      const dbFilter = {};
+      if (filter.exerciseId) dbFilter.exercise_id = filter.exerciseId;
+      if (typeof filter.withRopeIs === 'boolean') dbFilter.with_rope_is = filter.withRopeIs;
+      const { error, count } = await bulkUpdateSessions(dbFilter, blobFieldsToDb(fields));
+      if (error) return '⚠ DB-Fehler: ' + error.message;
+      if (refreshers && refreshers.sessions) await refreshers.sessions();
+      return count > 0
+        ? '✓ ' + count + ' Sessions aktualisiert (' + fieldList + ')'
+        : '⚠ Keine passenden Sessions gefunden';
+    }
     let updated = 0;
     const next = (data.sessions || []).map(s => {
       if (filter.exerciseId && s.exerciseId !== filter.exerciseId) return s;
@@ -3084,6 +3129,12 @@ function applyChatAction(action, data, setData) {
       : '⚠ Keine passenden Sessions gefunden';
   }
   if (action.tool === 'propose_delete_session') {
+    if (useDb) {
+      const { error } = await deleteSession(p.sessionId);
+      if (error) return '⚠ DB-Fehler: ' + error.message;
+      if (refreshers && refreshers.sessions) await refreshers.sessions();
+      return '✓ Session gelöscht';
+    }
     const before = (data.sessions || []).length;
     const next = (data.sessions || []).filter(s => s.id !== p.sessionId);
     setData({ ...data, sessions: next });
@@ -3091,7 +3142,6 @@ function applyChatAction(action, data, setData) {
   }
   if (action.tool === 'propose_create_exercise') {
     const newEx = {
-      id: uid(),
       name: p.name,
       uci_code: p.uci_code || null,
       uci_disc: p.uci_disc || null,
@@ -3102,7 +3152,13 @@ function applyChatAction(action, data, setData) {
       target_rate: typeof p.target_rate === 'number' ? p.target_rate : null,
       has_rope_variant: !!p.has_rope_variant,
     };
-    setData({ ...data, exercises: [...(data.exercises || []), newEx] });
+    if (useDb) {
+      const { error } = await upsertExercise(newEx);
+      if (error) return '⚠ DB-Fehler: ' + error.message;
+      if (refreshers && refreshers.exercises) await refreshers.exercises();
+      return '✓ Übung „' + newEx.name + '" angelegt';
+    }
+    setData({ ...data, exercises: [...(data.exercises || []), { ...newEx, id: uid() }] });
     return '✓ Übung „' + newEx.name + '" angelegt';
   }
   if (action.tool === 'propose_update_exercise') {
@@ -3110,6 +3166,15 @@ function applyChatAction(action, data, setData) {
     const fieldList = Object.keys(fields).filter(k => fields[k] !== undefined).join(', ');
     if (!fieldList) {
       return '⚠ KI-Coach hat keine Feld-Änderungen angegeben — bitte konkreter fragen.';
+    }
+    if (useDb) {
+      // Bestehende Übung holen, fields drüber-mergen, upserten
+      const existing = (data.exercises || []).find(e => e.id === p.exerciseId);
+      if (!existing) return '⚠ Übung nicht gefunden (ID: ' + (p.exerciseId || '—') + ')';
+      const { error } = await upsertExercise({ ...existing, ...fields, id: p.exerciseId });
+      if (error) return '⚠ DB-Fehler: ' + error.message;
+      if (refreshers && refreshers.exercises) await refreshers.exercises();
+      return '✓ Übung aktualisiert (' + fieldList + ')';
     }
     let updated = 0;
     const next = (data.exercises || []).map(e => {
@@ -3124,7 +3189,7 @@ function applyChatAction(action, data, setData) {
   return '⚠ Aktion „' + action.tool + '" nicht erkannt';
 }
 
-function FloatingChat({ data, setData, profile }) {
+function FloatingChat({ data, setData, profile, refreshers }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -3224,11 +3289,15 @@ function FloatingChat({ data, setData, profile }) {
     }
   };
 
-  const approveAction = () => {
+  const approveAction = async () => {
     if (!pendingAction) return;
-    const result = applyChatAction(pendingAction.action, data, setData);
-    setMessages([...messages, { role: 'system', content: result }]);
+    // Pending-Action sofort wegnehmen + temporäres Status-Pending zeigen
+    const action = pendingAction.action;
     setPendingAction(null);
+    setMessages(m => [...m, { role: 'system', content: '⏳ Wird ausgeführt…' }]);
+    const result = await applyChatAction(action, data, setData, refreshers);
+    // Letzte Status-Message durch das echte Ergebnis ersetzen
+    setMessages(m => [...m.slice(0, -1), { role: 'system', content: result }]);
   };
 
   const denyAction = () => {
@@ -4100,7 +4169,16 @@ export default function App() {
         setView={setView} />
 
       {/* KI-Coach (Floating-Chat) */}
-      <FloatingChat data={effectiveData} setData={save} profile={profile} />
+      <FloatingChat
+        data={effectiveData}
+        setData={save}
+        profile={profile}
+        refreshers={{
+          sessions:    refreshSessions,
+          exercises:   refreshExercises,
+          competitions: refreshCompetitions,
+          programs:    refreshPrograms,
+        }} />
 
       {/* Globales Feedback-Modal — kann aus Dashboard, Settings o.\xa0a. geöffnet werden */}
       {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}

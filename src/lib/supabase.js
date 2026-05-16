@@ -191,6 +191,19 @@ export async function deleteSessionsByExercise(exerciseId) {
   return { error };
 }
 
+/**
+ * Sessions in einer SQL-Anfrage massenhaft aktualisieren.
+ * filter: { exercise_id?, with_rope_is? } — beides optional, beide AND-kombiniert
+ * fields: { with_rope?, notes?, date?, entries? } — DB-Feldnamen (snake_case)
+ */
+export async function bulkUpdateSessions(filter = {}, fields = {}) {
+  let q = supabase.from('sessions').update(fields);
+  if (filter.exercise_id) q = q.eq('exercise_id', filter.exercise_id);
+  if (typeof filter.with_rope_is === 'boolean') q = q.eq('with_rope', filter.with_rope_is);
+  const { data, error } = await q.select('id');
+  return { data, error, count: data?.length || 0 };
+}
+
 // === Competitions ===
 export async function fetchCompetitions() {
   const { data, error } = await supabase
