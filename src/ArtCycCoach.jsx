@@ -3,7 +3,7 @@ import {
   Trophy, Dumbbell, Plus, ChevronLeft, ChevronRight, Save, Check, X, Edit2, Trash2,
   Search, Info, Archive, AlertTriangle, ListChecks,
   Home, BarChart3, Users, Download, Sparkles, FileText, Lock,
-  Settings as SettingsIcon, Menu, LogOut, Shield, User, RotateCcw,
+  Settings as SettingsIcon, LogOut, Shield, User, RotateCcw,
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
   Sun, Moon, SunMoon
@@ -3068,7 +3068,6 @@ export default function App() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('dashboard');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -3516,13 +3515,15 @@ export default function App() {
         }}>
         <Brand size="sm" />
         <div className="flex items-center gap-1">
+          <button onClick={() => setView('export')}
+            className={'p-2 rounded-full transition active:scale-90 ' + (view === 'export' ? 'text-[#FF9500]' : 'text-[#3C3C43]')}
+            aria-label="Export">
+            <Download size={22} strokeWidth={1.8} />
+          </button>
           <button onClick={() => setView('einstellungen')}
-            className={'p-2 -m-2 rounded-full transition active:scale-90 ' + (view === 'einstellungen' ? 'text-[#FF9500]' : 'text-[#3C3C43]')}
+            className={'p-2 rounded-full transition active:scale-90 ' + (view === 'einstellungen' ? 'text-[#FF9500]' : 'text-[#3C3C43]')}
             aria-label="Einstellungen">
             <SettingsIcon size={22} strokeWidth={1.8} />
-          </button>
-          <button onClick={() => setMobileMenuOpen(true)} className="p-2 -m-2 text-[#3C3C43] active:scale-90 transition" aria-label="Menü">
-            <Menu size={24} strokeWidth={1.8} />
           </button>
         </div>
       </div>
@@ -3550,35 +3551,6 @@ export default function App() {
           );
         })}
       </aside>
-
-      {/* Mobile Drawer (für Items, die nicht in die Bottom-Bar passen) */}
-      {mobileMenuOpen && (
-        <div className="sm:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)}>
-          <div className="absolute right-0 top-0 bottom-0 w-72 bg-white/95 backdrop-blur-xl p-4 flex flex-col gap-1 overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-2">
-              <Brand size="sm" />
-              <button onClick={() => setMobileMenuOpen(false)} className="p-2 -m-2 rounded-full text-slate-500 active:bg-slate-100"><X size={20} /></button>
-            </div>
-            {nav.map(n => {
-              const Icon = n.icon;
-              const active = view === n.id;
-              return (
-                <button key={n.id} onClick={() => { setView(n.id); setMobileMenuOpen(false); }}
-                  className={'flex items-center justify-between px-3 py-3 rounded-2xl text-left transition ' +
-                    (active ? 'bg-slate-900 text-white' : 'text-slate-700 active:bg-slate-100')}>
-                  <span className="flex items-center gap-3"><Icon size={18} /><span className="font-medium">{n.label}</span></span>
-                  {n.soon && <span className="bg-amber-100 text-amber-800 text-[10px] font-semibold px-2 py-0.5 rounded-full">bald</span>}
-                </button>
-              );
-            })}
-            <button onClick={() => { setView('einstellungen'); setMobileMenuOpen(false); }}
-              className={'flex items-center gap-3 px-3 py-3 rounded-2xl text-left mt-2 border-t border-slate-200/60 pt-4 transition ' +
-                (view === 'einstellungen' ? 'bg-slate-900 text-white' : 'text-slate-700 active:bg-slate-100')}>
-              <SettingsIcon size={18} /> <span className="font-medium">Einstellungen</span>
-            </button>
-          </div>
-        </div>
-      )}
 
       <SwipeableMain
         view={view}
@@ -4520,6 +4492,7 @@ function TrainingView({ data, setData, setView }) {
   const [editing, setEditing] = useState(null); // { session, origIdx }
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [filterExId, setFilterExId] = useState(''); // '' = alle Übungen
+  const [filterRange, setFilterRange] = useState('all'); // 'all'|'7d'|'30d'|'90d'|'thisMonth'|'thisYear'
   // Sortier-Modus: nach Datum (default) oder nach Übung
   const [sortMode, setSortMode] = useState(() => {
     try { return localStorage.getItem('artcyc:training-sort') || 'date'; } catch { return 'date'; }
@@ -4539,18 +4512,51 @@ function TrainingView({ data, setData, setView }) {
 
   // Sessions mit Original-Index versehen damit Edit/Delete den richtigen
   // Eintrag findet — auch wenn Session noch keine id hat (alte Blob-Daten).
+  // Außerdem: exerciseName aus data.exercises auflösen (Fallback für Sessions
+  // ohne gespeicherten exerciseName).
+  const exerciseMap = useMemo(() => {
+    const m = new Map();
+    for (const ex of (data.exercises || [])) m.set(ex.id, ex);
+    return m;
+  }, [data.exercises]);
   const indexedAll = useMemo(() => (
-    (data.sessions || []).map((s, i) => ({ ...s, _origIdx: i }))
-  ), [data.sessions]);
+    (data.sessions || []).map((s, i) => {
+      const ex = s.exerciseId ? exerciseMap.get(s.exerciseId) : null;
+      const resolvedName = s.exerciseName || (ex && ex.name) || 'Übung';
+      return { ...s, _origIdx: i, exerciseName: resolvedName };
+    })
+  ), [data.sessions, exerciseMap]);
+
+  // Zeitraum-Filter berechnen
+  const rangeFrom = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const iso = (d) => d.toISOString().slice(0, 10);
+    if (filterRange === '7d')        { const d = new Date(today); d.setDate(d.getDate() - 6);  return iso(d); }
+    if (filterRange === '30d')       { const d = new Date(today); d.setDate(d.getDate() - 29); return iso(d); }
+    if (filterRange === '90d')       { const d = new Date(today); d.setDate(d.getDate() - 89); return iso(d); }
+    if (filterRange === 'thisMonth') { return iso(new Date(today.getFullYear(), today.getMonth(), 1)); }
+    if (filterRange === 'thisYear')  { return iso(new Date(today.getFullYear(), 0, 1)); }
+    return null;
+  }, [filterRange]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    // Search matched gegen: exerciseName, notes, formatiertes Datum (z. B. „15.5.26") und ISO-Datum
     return indexedAll
       .filter(s => !filterExId || s.exerciseId === filterExId)
-      .filter(s => !q || (s.exerciseName || '').toLowerCase().includes(q) || (s.notes || '').toLowerCase().includes(q))
+      .filter(s => !rangeFrom || (s.date || '') >= rangeFrom)
+      .filter(s => {
+        if (!q) return true;
+        const name = (s.exerciseName || '').toLowerCase();
+        const notes = (s.notes || '').toLowerCase();
+        const date = (s.date || '').toLowerCase();
+        const dateShort = s.date ? formatDateShort(s.date).toLowerCase() : '';
+        return name.includes(q) || notes.includes(q) || date.includes(q) || dateShort.includes(q);
+      })
       .slice()
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  }, [indexedAll, query, filterExId]);
+  }, [indexedAll, query, filterExId, rangeFrom]);
 
   const groups = useMemo(() => groupSessionsByDate(filtered), [filtered]);
   const exerciseGroups = useMemo(() => groupSessionsByExercise(filtered), [filtered]);
@@ -4679,25 +4685,54 @@ function TrainingView({ data, setData, setView }) {
         </button>
       </header>
 
-      {/* Suche + Filter */}
+      {/* Suche */}
       {totalCount > 0 && (
-        <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3 space-y-2">
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
-            <input value={query} onChange={e => setQuery(e.target.value)}
-              placeholder="Suchen (Übungsname oder Notiz)"
-              className="w-full pl-9 pr-3 py-2 bg-slate-100 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-amber-500 text-sm" />
-          </div>
-          {exerciseList.length > 1 && (
-            <select value={filterExId} onChange={e => setFilterExId(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-100 rounded-xl outline-none text-sm">
-              <option value="">Alle Übungen ({totalCount})</option>
-              {exerciseList.map(e => (
-                <option key={e.id} value={e.id}>{e.name}</option>
-              ))}
-            </select>
+        <div className="relative">
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
+          {query && (
+            <button onClick={() => setQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#8E8E93]/60 text-white flex items-center justify-center active:opacity-70"
+              aria-label="Suche löschen">
+              <X size={12} strokeWidth={3} />
+            </button>
           )}
+          <input value={query} onChange={e => setQuery(e.target.value)}
+            placeholder="Suchen (Übung, Notiz, Datum z.B. 15.5.26)"
+            className="w-full pl-9 pr-9 py-2.5 bg-slate-100 rounded-xl outline-none text-[15px]" />
         </div>
+      )}
+
+      {/* Zeitraum-Pills */}
+      {totalCount > 0 && (
+        <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1" data-no-swipe="true">
+          {[
+            { id: 'all',       label: 'Alle' },
+            { id: '7d',        label: '7 Tage' },
+            { id: '30d',       label: '30 Tage' },
+            { id: '90d',       label: '90 Tage' },
+            { id: 'thisMonth', label: 'Dieser Monat' },
+            { id: 'thisYear',  label: 'Dieses Jahr' }
+          ].map(r => (
+            <button key={r.id} onClick={() => setFilterRange(r.id)}
+              className={'px-3.5 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition active:scale-95 ' +
+                (filterRange === r.id
+                  ? 'bg-[#FF9500] text-white shadow-[0_1px_3px_rgba(255,149,0,0.35)]'
+                  : 'bg-white text-[#3C3C43] shadow-[0_1px_2px_rgba(0,0,0,0.04)]')}>
+              {r.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Übungs-Filter (Dropdown) */}
+      {totalCount > 0 && exerciseList.length > 1 && (
+        <select value={filterExId} onChange={e => setFilterExId(e.target.value)}
+          className="w-full px-3 py-2.5 bg-white rounded-xl outline-none text-[15px] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          <option value="">Alle Übungen ({totalCount})</option>
+          {exerciseList.map(e => (
+            <option key={e.id} value={e.id}>{e.name}</option>
+          ))}
+        </select>
       )}
 
       {/* Sortier-Modus — Datum / Übung */}
@@ -6522,9 +6557,11 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
   return (
     <div className="min-h-screen bg-[#F2F2F7] p-4 sm:p-8">
       <div className="max-w-2xl mx-auto space-y-5">
-        <header className="flex items-center gap-3">
-          <button onClick={onDone} className="p-2 -m-2 text-slate-500"><ChevronLeft size={22} /></button>
-          <h1 className="text-2xl font-bold">Serie protokollieren</h1>
+        <header className="flex items-center gap-1 -ml-1">
+          <button onClick={onDone} className="text-[17px] text-[#007AFF] flex items-center active:opacity-60">
+            <ChevronLeft size={22} strokeWidth={2.6} className="text-[#FF9500]" /> Zurück
+          </button>
+          <h1 className="text-[28px] font-bold tracking-tight ml-2">Serie protokollieren</h1>
         </header>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
@@ -6644,12 +6681,12 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
 
         <div className="flex gap-2">
           <button onClick={onDone}
-            className="flex-1 bg-white border border-slate-300 px-5 py-3 rounded-xl font-medium">
+            className="flex-1 bg-white border border-slate-200 px-5 py-3 rounded-xl font-medium text-[15px] active:opacity-60">
             Abbrechen
           </button>
           <button onClick={save} disabled={entries.length === 0}
-            className="flex-1 bg-emerald-600 text-white px-5 py-3 rounded-xl font-medium disabled:opacity-50 flex items-center justify-center gap-2">
-            <Save size={16} /> Speichern
+            className="flex-1 bg-[#FF9500] text-white px-5 py-3 rounded-xl font-semibold text-[15px] disabled:opacity-40 flex items-center justify-center gap-2 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
+            <Save size={16} strokeWidth={2.4} /> Speichern
           </button>
         </div>
       </div>
