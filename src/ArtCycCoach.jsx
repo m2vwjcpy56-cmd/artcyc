@@ -2862,8 +2862,9 @@ async function callChatApiStream(messages, appData, userName, callbacks) {
       }
     }
   }
-  // Reader sauber schließen falls noch offen
-  try { await reader.cancel(); } catch {}
+  // Reader fire-and-forget schließen (nicht awaiten — sonst hängt's
+  // falls die TCP-Verbindung kein FIN bekommt)
+  try { reader.cancel(); } catch {}
   if (callbacks && callbacks.onFinal) callbacks.onFinal(finalContent ?? aggregatedText, finalAction);
   return { content: finalContent ?? aggregatedText, action: finalAction };
 }
@@ -3142,6 +3143,15 @@ function FloatingChat({ data, setData, profile }) {
     setStreamingText('');
     let firstDelta = true;
     let partialText = '';
+    // Safety-Timeout — falls Stream wegen TCP-Hänger nie returnt:
+    // nach 60 Sek hart auf nicht-busy zurückfallen damit Input wieder frei
+    // ist. Fängt seltene Edge-Function/iOS-Safari-Race-Conditions ab.
+    const safetyTimer = setTimeout(() => {
+      setBusy(false);
+      setPhase('');
+      setStreamingText('');
+      setErr('Antwort wurde unterbrochen — bitte nochmal probieren.');
+    }, 60000);
     try {
       const result = await callChatApiStream(next, data, profile?.display_name, {
         onTextDelta: (t) => {
@@ -3178,6 +3188,7 @@ function FloatingChat({ data, setData, profile }) {
         setErr(friendly);
       }
     } finally {
+      clearTimeout(safetyTimer);
       setBusy(false);
       setPhase('');
       setStreamingText('');
@@ -3201,6 +3212,11 @@ function FloatingChat({ data, setData, profile }) {
     setMessages([]);
     setPendingAction(null);
     setErr('');
+    // Auch transienten Stream-State zurücksetzen — sonst bleibt der
+    // blinkende Cursor sichtbar wenn der vorherige Stream gehangen hat.
+    setBusy(false);
+    setPhase('');
+    setStreamingText('');
     try { localStorage.removeItem(CHAT_HISTORY_KEY); } catch {}
   };
 
