@@ -94,10 +94,16 @@ export async function pushFeedbackToCloud(supabaseClient, entry) {
     });
     const result = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, error: result.error || ('HTTP ' + res.status) };
-    // Eintrag als synced markieren
-    const list = getFeedback().map(e => e.id === entry.id ? { ...e, synced: true, cloud_id: result.id } : e);
+    // Eintrag als synced markieren + Mail-Status mitschreiben
+    const list = getFeedback().map(e => e.id === entry.id ? {
+      ...e,
+      synced: true,
+      cloud_id: result.id,
+      mail_sent: !!result.mail_sent,
+      mail_error: result.mail_error || null
+    } : e);
     saveFeedback(list);
-    return { ok: true, mail_sent: !!result.mail_sent };
+    return { ok: true, mail_sent: !!result.mail_sent, mail_error: result.mail_error || null };
   } catch (e) {
     return { ok: false, error: e.message || String(e) };
   }

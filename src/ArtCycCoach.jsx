@@ -5729,10 +5729,12 @@ function FeedbackModal({ onClose }) {
     { id: 'other',    label: t('feedback.categoryOther'),    color: 'text-[#8E8E93]' }
   ];
 
+  const [mailWarning, setMailWarning] = useState(null); // null | string (Fehler-Text vom Server)
   const send = async () => {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
     setBusy(true);
+    setMailWarning(null);
     const id = submitFeedback({ text: trimmed, category, source: 'user' });
     setText('');
     setList(getFeedback());
@@ -5741,7 +5743,12 @@ function FeedbackModal({ onClose }) {
     // Fehlschlag schlägt nicht durch: der Eintrag bleibt lokal mit
     // synced=false und kann manuell per Mail-Knopf rausgeschickt werden.
     pushFeedbackToCloud(supabase, getFeedback().find(e => e.id === id))
-      .then(() => setList(getFeedback()))
+      .then(r => {
+        setList(getFeedback());
+        if (r && r.ok && !r.mail_sent) {
+          setMailWarning(r.mail_error || 'Mail wurde nicht verschickt — Resend-API-Key fehlt oder Empfänger ist nicht freigeschaltet (Resend Test-Modus erlaubt nur Senden an die Resend-Account-Mail bis Domain verifiziert ist).');
+        }
+      })
       .catch(() => {});
     setBusy(false);
     setTimeout(() => setJustSent(false), 2200);
@@ -5814,6 +5821,14 @@ function FeedbackModal({ onClose }) {
           {justSent && (
             <div className="bg-emerald-50 text-emerald-900 text-[14px] rounded-xl p-3 text-center">
               ✓ {t('feedback.thanks')}
+            </div>
+          )}
+
+          {mailWarning && (
+            <div className="bg-amber-50 text-amber-900 text-[13px] rounded-xl p-3 leading-snug">
+              <strong>⚠ Mail-Versand fehlgeschlagen:</strong>
+              <div className="mt-1 font-mono text-[12px] break-words">{mailWarning}</div>
+              <div className="mt-2">In der Cloud-DB ist das Feedback gespeichert. Mit „Per Mail senden" unten kannst du es manuell schicken.</div>
             </div>
           )}
 
