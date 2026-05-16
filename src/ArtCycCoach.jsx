@@ -2737,7 +2737,7 @@ async function callChatApi(messages, appData, userName) {
       'Authorization': 'Bearer ' + token,
     },
     body: JSON.stringify({
-      messages,
+      messages: sanitizeMessagesForApi(messages),
       app_data: {
         exercises: appData?.exercises || [],
         sessions: appData?.sessions || [],
@@ -2754,6 +2754,26 @@ async function callChatApi(messages, appData, userName) {
     throw new Error('Coach nicht erreichbar (' + res.status + '): ' + detail);
   }
   return await res.json();
+}
+
+// Anthropic's Messages API erlaubt nur 'user' und 'assistant' als Rolle.
+// Wir nutzen intern 'system' für Audit-Einträge nach ausgeführten Aktionen
+// („✓ Session aktualisiert"). Vor dem Senden mappen wir die auf 'assistant'
+// damit das Modell den Kontext sieht („das ist passiert"), aber die API
+// die Rolle akzeptiert.
+function sanitizeMessagesForApi(msgs) {
+  const out = [];
+  for (const m of (msgs || [])) {
+    if (!m || !m.content) continue;
+    if (m.role === 'user' || m.role === 'assistant') {
+      out.push({ role: m.role, content: m.content });
+    } else if (m.role === 'system') {
+      // Aktions-Audit als Assistant-Note umfassen — die KI versteht
+      // den Kontext („ich habe gerade X gemacht") für Folgefragen.
+      out.push({ role: 'assistant', content: '[Aktion ausgeführt] ' + m.content });
+    }
+  }
+  return out;
 }
 
 /**
@@ -2780,7 +2800,7 @@ async function callChatApiStream(messages, appData, userName, callbacks) {
       'Authorization': 'Bearer ' + token,
     },
     body: JSON.stringify({
-      messages,
+      messages: sanitizeMessagesForApi(messages),
       app_data: {
         exercises: appData?.exercises || [],
         sessions: appData?.sessions || [],
