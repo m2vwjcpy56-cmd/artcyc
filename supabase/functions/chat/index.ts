@@ -1,136 +1,148 @@
 // =============================================================
-// ArtCyc Coach — KI-Chat-Edge-Function (Phase 11)
+// ArtCyc Coach — KI-Chat-Edge-Function (OpenRouter-Variante)
 // =============================================================
-// Empfängt:
-//   POST { messages: [{role, content}, ...], app_data: { exercises, sessions, ... } }
-//   Header: Authorization: Bearer <user-jwt>
 //
-// Antwortet mit:
-//   { content: "Antwort-Text", action?: { type, params, summary } }
+// Wechsel: vorher direkt an Anthropic, jetzt via OpenRouter. Default-
+// Modell ist `google/gemini-2.0-flash` — ~10× günstiger als Claude
+// Haiku 4.5. Modell lässt sich per OPENROUTER_MODEL Env-Var ohne Code-
+// Änderung wechseln (z. B. auf `openai/gpt-4o-mini`,
+// `anthropic/claude-haiku-4.5`, `meta-llama/llama-3.3-70b-instruct`…).
 //
-// Schreiboperationen werden NIE direkt ausgeführt — der Assistent gibt
-// `action`-Vorschläge zurück, die der Client mit Confirm/Deny bestätigt.
+// Hinweis: Der Client erwartet weiterhin das **Anthropic-SSE-Format**
+// (content_block_start/_delta + ein eigenes 'final'-Event). Diese
+// Function ruft OpenRouter im OpenAI-Format auf und übersetzt die
+// Antwort zur Laufzeit zurück — der Client merkt nichts vom Wechsel.
 // =============================================================
 
 // @ts-ignore Deno-Runtime
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY") ?? "";
 // @ts-ignore Deno-Runtime
-// Default = Haiku 4.5 — deutlich schneller als Sonnet, für Coach-Use-Cases
-// (Daten zusammenfassen, einzelne Sessions vorschlagen) reicht das gut.
-// Per Env-Var ANTHROPIC_MODEL=claude-sonnet-4-5 wieder auf Sonnet schalten.
-const ANTHROPIC_MODEL = Deno.env.get("ANTHROPIC_MODEL") ?? "claude-haiku-4-5";
+const OPENROUTER_MODEL   = Deno.env.get("OPENROUTER_MODEL") ?? "google/gemini-2.0-flash";
+// Optional: für OpenRouter-Analytics — zeigt auf welcher Site die Calls landen.
+// Wenn leer, wird der Header ausgelassen.
+// @ts-ignore Deno-Runtime
+const APP_REFERER        = Deno.env.get("APP_REFERER") ?? "https://artcyc.vercel.app";
+// @ts-ignore Deno-Runtime
+const APP_TITLE          = Deno.env.get("APP_TITLE")   ?? "ArtCyc Coach";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-
-// Wichtig: charset=utf-8 explizit setzen, sonst rendern manche
-// Mobile-Browser (iOS Safari) ü/ö/ä etc. als U+FFFD-Replacement-Char.
 const JSON_HEADERS = { ...CORS_HEADERS, "Content-Type": "application/json; charset=utf-8" };
 const SSE_HEADERS  = {
   ...CORS_HEADERS,
   "Content-Type": "text/event-stream; charset=utf-8",
   "Cache-Control": "no-cache, no-transform",
-  "X-Accel-Buffering": "no", // verhindert dass Reverse-Proxies buffern
+  "X-Accel-Buffering": "no",
 };
 
-// Tools: nur Schreib-Vorschläge. Lese-Operationen erlauben wir nicht als
-// Tool-Calls — die App schickt die Daten als Context ohnehin mit.
+// =============================================================
+// Tools (im OpenAI-Format) — gleiche Semantik wie vorher mit Anthropic
+// =============================================================
 const TOOLS = [
   {
-    name: "propose_create_session",
-    description:
-      "Schlägt vor, eine neue Trainings-Session zu protokollieren. Wird zur Bestätigung an den User geschickt — niemals direkt ausgeführt.",
-    input_schema: {
-      type: "object",
-      properties: {
-        exerciseId: { type: "string", description: "ID der Übung aus app_data.exercises" },
-        date: { type: "string", description: "ISO-Datum YYYY-MM-DD" },
-        entries: {
-          type: "array",
-          items: { type: "string", enum: ["success", "fail", "third"] },
-          description: "Array der Serien-Status. 'success'=geklappt, 'fail'=nicht geklappt, 'third'=dritte Kategorie (z.B. gefährlich beim Maute-Sprung)",
+    type: "function",
+    function: {
+      name: "propose_create_session",
+      description: "Schlägt vor, eine neue Trainings-Session zu protokollieren. Wird zur Bestätigung an den User geschickt — niemals direkt ausgeführt.",
+      parameters: {
+        type: "object",
+        properties: {
+          exerciseId: { type: "string", description: "ID der Übung aus app_data.exercises" },
+          date:       { type: "string", description: "ISO-Datum YYYY-MM-DD" },
+          entries: {
+            type: "array",
+            items: { type: "string", enum: ["success", "fail", "third"] },
+            description: "Array der Serien-Status. 'success'=geklappt, 'fail'=nicht geklappt, 'third'=dritte Kategorie (z.B. gefährlich beim Maute-Sprung)",
+          },
+          withRope: { type: ["boolean", "null"], description: "Nur bei Übungen mit Seil-Variante. true=mit Seil, false=ohne Seil, null=nicht relevant" },
+          notes:    { type: "string", description: "Optionale Notiz" },
+          summary:  { type: "string", description: "Kurze deutsche Zusammenfassung für die Bestätigung" },
         },
-        withRope: { type: ["boolean", "null"], description: "Nur bei Übungen mit Seil-Variante. true=mit Seil, false=ohne Seil, null=nicht relevant" },
-        notes: { type: "string", description: "Optionale Notiz" },
-        summary: { type: "string", description: "Kurze deutsche Zusammenfassung für die Bestätigung" },
+        required: ["exerciseId", "date", "entries", "summary"],
       },
-      required: ["exerciseId", "date", "entries", "summary"],
     },
   },
   {
-    name: "propose_update_session",
-    description: "Ändert eine bestehende Session (z.B. Datum, Notiz, Entries, withRope korrigieren).",
-    input_schema: {
-      type: "object",
-      properties: {
-        sessionId: { type: "string", description: "ID der Session" },
-        fields: {
-          type: "object",
-          description: "Änderungs-Objekt mit den zu setzenden Feldern (date, entries, notes, withRope)",
+    type: "function",
+    function: {
+      name: "propose_update_session",
+      description: "Ändert eine bestehende Session (z.B. Datum, Notiz, Entries, withRope korrigieren).",
+      parameters: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string", description: "ID der Session" },
+          fields:    { type: "object", description: "Änderungs-Objekt mit den zu setzenden Feldern (date, entries, notes, withRope)" },
+          summary:   { type: "string" },
         },
-        summary: { type: "string" },
+        required: ["sessionId", "fields", "summary"],
       },
-      required: ["sessionId", "fields", "summary"],
     },
   },
   {
-    name: "propose_delete_session",
-    description: "Löscht eine Session unwiderruflich.",
-    input_schema: {
-      type: "object",
-      properties: {
-        sessionId: { type: "string" },
-        summary: { type: "string" },
+    type: "function",
+    function: {
+      name: "propose_delete_session",
+      description: "Löscht eine Session unwiderruflich.",
+      parameters: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string" },
+          summary:   { type: "string" },
+        },
+        required: ["sessionId", "summary"],
       },
-      required: ["sessionId", "summary"],
     },
   },
   {
-    name: "propose_create_exercise",
-    description: "Legt eine neue Übung an.",
-    input_schema: {
-      type: "object",
-      properties: {
-        name: { type: "string" },
-        uci_code: { type: ["string", "null"] },
-        uci_disc: { type: ["string", "null"] },
-        category_mode: { type: "integer", enum: [2, 3] },
-        third_label: { type: ["string", "null"] },
-        has_rope_variant: { type: "boolean" },
-        default_series: { type: "integer" },
-        target_rate: { type: ["integer", "null"] },
-        summary: { type: "string" },
+    type: "function",
+    function: {
+      name: "propose_create_exercise",
+      description: "Legt eine neue Übung an.",
+      parameters: {
+        type: "object",
+        properties: {
+          name:             { type: "string" },
+          uci_code:         { type: ["string", "null"] },
+          uci_disc:         { type: ["string", "null"] },
+          category_mode:    { type: "integer", enum: [2, 3] },
+          third_label:      { type: ["string", "null"] },
+          has_rope_variant: { type: "boolean" },
+          default_series:   { type: "integer" },
+          target_rate:      { type: ["integer", "null"] },
+          summary:          { type: "string" },
+        },
+        required: ["name", "category_mode", "summary"],
       },
-      required: ["name", "category_mode", "summary"],
     },
   },
   {
-    name: "propose_update_exercise",
-    description: "Ändert eine bestehende Übung.",
-    input_schema: {
-      type: "object",
-      properties: {
-        exerciseId: { type: "string" },
-        fields: { type: "object" },
-        summary: { type: "string" },
+    type: "function",
+    function: {
+      name: "propose_update_exercise",
+      description: "Ändert eine bestehende Übung.",
+      parameters: {
+        type: "object",
+        properties: {
+          exerciseId: { type: "string" },
+          fields:     { type: "object" },
+          summary:    { type: "string" },
+        },
+        required: ["exerciseId", "fields", "summary"],
       },
-      required: ["exerciseId", "fields", "summary"],
     },
   },
 ];
 
 function buildSystemPrompt(appData: any, userName?: string): string {
-  // Stark gekürzte Daten-Repräsentation
   const ex = (appData?.exercises || []).map((e: any) => ({
     id: e.id, name: e.name, uci_code: e.uci_code, uci_disc: e.uci_disc,
     category_mode: e.category_mode, third_label: e.third_label,
     has_rope_variant: !!e.has_rope_variant, active: e.active !== false,
     points: e.points, target_rate: e.target_rate,
   }));
-  // Sessions in kompakter Form — max 200 neueste
   const sessions = (appData?.sessions || [])
     .slice()
     .sort((a: any, b: any) => (b.date || "").localeCompare(a.date || ""))
@@ -200,9 +212,8 @@ Schreibe NIE etwas wie „success = gelandet" oder „die success/fail-Einträge
 # Antwort-Stil
 
 - **Direkte Antwort zuerst**, dann optional 1–2 Sätze Begründung. KEINE „lass mich kurz rechnen…", KEINE Auflistung von Zwischenschritten, KEINE Erklärung deiner Methode.
-- **Bei Analyse-Fragen**: 1 Zahl/Ergebnis + 1 Satz Kontext genügt. NUR wenn der User „zeig die Daten" sagt → detaillierte Listen.
-- **Maximal 6 Sätze gesamt** bei Analyse-Antworten. Maximal 8 Bullet-Punkte bei Listen-Antworten. Mehr ist Spam.
-- **Tipps geben**: Wenn der User um Trainings-Empfehlungen bittet, gib konkrete Vorschläge anhand der Daten.
+- **Bei Analyse-Fragen**: 1 Zahl/Ergebnis + 1 Satz Kontext genügt.
+- **Maximal 6 Sätze gesamt** bei Analyse-Antworten. Maximal 8 Bullet-Punkte bei Listen-Antworten.
 - **Tipps geben**: Wenn der User um Trainings-Empfehlungen bittet, gib konkrete Vorschläge anhand der Daten.
 - **Schreib-Aktionen**: NIEMALS direkt ausführen. Nutze die \`propose_*\`-Tools — der User muss die Aktion danach bestätigen. Erkläre dabei kurz im Antwort-Text warum du das vorschlägst.
 - **Datumsangaben**: "gestern" = ${new Date(Date.now() - 86400000).toISOString().slice(0, 10)}, "heute" = ${today}.
@@ -213,73 +224,71 @@ Schreibe NIE etwas wie „success = gelandet" oder „die success/fail-Einträge
 
 - **Absätze**: 1–3 kurze Absätze. Trenne Absätze mit einer Leerzeile (\\n\\n).
 - **Listen**: Bei mehreren Punkten/Optionen IMMER Bullet-Liste mit "- " am Zeilenanfang, NICHT in Fließtext quetschen.
-- **Bold sparsam**: \`**fett**\` nur für wirklich wichtige Schlüssel-Wörter (z. B. einen Übungsnamen, eine Quote). NIEMALS ganze Sätze fetten.
-- **Zahlen/Quoten**: Einfach im Text als Zahl, NICHT in Bold packen ("Die Quote liegt bei 73 %." statt "Die Quote liegt bei **73 %**."). Prozentwerte werden vom Client farblich hervorgehoben — keine zusätzliche Auszeichnung nötig.
+- **Bold sparsam**: \`**fett**\` nur für wirklich wichtige Schlüssel-Wörter. NIEMALS ganze Sätze fetten.
+- **Zahlen/Quoten**: Einfach im Text als Zahl, NICHT in Bold packen. Prozentwerte werden vom Client farblich hervorgehoben.
 - **Keine Überschriften** (kein #/##/###).
-- **Keine Code-Blöcke** (\`\`\`...\`\`\`). Inline-\`code\` nur wenn es um ein Feld in den Daten geht.
+- **Keine Code-Blöcke** (\`\`\`...\`\`\`).
 - **Keine asterisk-Auflistungen** ("* Punkt 1"). Nutze IMMER Bindestriche ("- Punkt 1").
-
-Beispiel-Antwort (gut):
-"Die schlechteste Quote hat aktuell der Maute-Sprung mit 63 %.
-
-Schwankt zuletzt aber stark — in den letzten 4 Wochen waren es 78 %."
-
-Beispiel-Antwort (schlecht, vermeide das):
-"Die **schlechteste Quote** hat aktuell der **Maute-Sprung** mit **63 %**. Schwankt zuletzt aber stark — in den letzten 4 Wochen waren es **78 %**."
 
 # Wichtig
 
-- Wenn du eine Aktion vorschlägst, formuliere im Antwort-Text natürlich was du tun willst. Das Tool-Call ist die strukturierte Form für die App, dein Text ist für den User.
+- Wenn du eine Aktion vorschlägst, formuliere im Antwort-Text natürlich was du tun willst.
 - Die App-Daten oben sind ein Snapshot — bei Schreib-Aktionen ist die App selbst die Wahrheit, nicht du.
 - Bei mehrdeutigen Aufträgen frag erst nach (im Text), nicht direkt vorschlagen.`;
 }
 
-async function callAnthropic(systemPrompt: string, messages: any[]) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+// =============================================================
+// OpenRouter-Aufruf
+// =============================================================
+
+function openRouterHeaders() {
+  const h: Record<string, string> = {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer " + OPENROUTER_API_KEY,
+  };
+  if (APP_REFERER) h["HTTP-Referer"] = APP_REFERER;
+  if (APP_TITLE)   h["X-Title"]      = APP_TITLE;
+  return h;
+}
+
+async function callOpenRouter(systemPrompt: string, messages: any[]) {
+  // OpenAI-Format: system als erste Message mit role=system
+  const msgs = [{ role: "system", content: systemPrompt }, ...messages];
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
+    headers: openRouterHeaders(),
     body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 1500,
-      system: systemPrompt,
+      model: OPENROUTER_MODEL,
+      messages: msgs,
       tools: TOOLS,
-      messages,
+      max_tokens: 1500,
     }),
   });
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(`Anthropic API ${res.status}: ${txt}`);
+    throw new Error(`OpenRouter ${res.status}: ${txt}`);
   }
   return await res.json();
 }
 
-/**
- * Streaming-Variante: Fordert SSE bei Anthropic an und reicht die Events
- * 1:1 an den Client durch. Der Client rendert Text inkrementell und
- * sammelt am Ende den Tool-Use-Block für die Bestätigung.
- */
-async function callAnthropicStream(systemPrompt: string, messages: any[]) {
-  return await fetch("https://api.anthropic.com/v1/messages", {
+async function callOpenRouterStream(systemPrompt: string, messages: any[]) {
+  const msgs = [{ role: "system", content: systemPrompt }, ...messages];
+  return await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
+    headers: openRouterHeaders(),
     body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
+      model: OPENROUTER_MODEL,
+      messages: msgs,
+      tools: TOOLS,
       max_tokens: 1500,
       stream: true,
-      system: systemPrompt,
-      tools: TOOLS,
-      messages,
     }),
   });
 }
+
+// =============================================================
+// Server
+// =============================================================
 
 // @ts-ignore Deno-Runtime
 Deno.serve(async (req: Request) => {
@@ -289,10 +298,9 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
   }
-  if (!ANTHROPIC_API_KEY) {
-    return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY nicht konfiguriert" }), {
-      status: 500,
-      headers: JSON_HEADERS,
+  if (!OPENROUTER_API_KEY) {
+    return new Response(JSON.stringify({ error: "OPENROUTER_API_KEY nicht konfiguriert" }), {
+      status: 500, headers: JSON_HEADERS,
     });
   }
   try {
@@ -301,109 +309,131 @@ Deno.serve(async (req: Request) => {
     const { messages, app_data, user_name } = await req.json();
     if (!Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: "messages fehlt" }), {
-        status: 400,
-        headers: JSON_HEADERS,
+        status: 400, headers: JSON_HEADERS,
       });
     }
     const systemPrompt = buildSystemPrompt(app_data || {}, user_name);
 
-    // ─── Streaming-Pfad (SSE) — Default-Verhalten für niedrigere
-    // Antwort-Latenz: erste Tokens kommen sofort beim Client an. ───
+    // ─── Streaming-Pfad: OpenRouter-SSE → Anthropic-kompatible SSE ───
     if (wantStream) {
-      const upstream = await callAnthropicStream(systemPrompt, messages);
+      const upstream = await callOpenRouterStream(systemPrompt, messages);
       if (!upstream.ok) {
         const txt = await upstream.text();
-        return new Response(JSON.stringify({ error: `Anthropic API ${upstream.status}: ${txt}` }), {
+        return new Response(JSON.stringify({ error: `OpenRouter ${upstream.status}: ${txt}` }), {
           status: 502, headers: JSON_HEADERS,
         });
       }
-      // Events durchreichen + zusätzlich ein eigenes 'final'-Event mit
-      // dem gesammelten action-Objekt am Ende emittieren, damit der
-      // Client nicht selbst die tool_use-Blöcke zusammenpuzzlen muss.
       const reader = upstream.body!.getReader();
       const decoder = new TextDecoder();
+      const encoder = new TextEncoder();
       let buf = "";
-      let textOut = "";
-      const tools: any[] = []; // gesammelte tool_use-Blöcke (Index → { name, json })
-      const stream = new ReadableStream({
+      let aggregatedText = "";
+      // Tool-Calls aufsammeln: Index → { name, args }
+      const toolBuf: Record<number, { name: string; args: string }> = {};
+
+      const emit = (controller: ReadableStreamDefaultController<Uint8Array>, eventName: string, data: any) => {
+        controller.enqueue(encoder.encode("event: " + eventName + "\ndata: " + JSON.stringify(data) + "\n\n"));
+      };
+
+      const stream = new ReadableStream<Uint8Array>({
         async pull(controller) {
           const { value, done } = await reader.read();
           if (done) {
-            // 'final'-Event: aggregiertes Tool-Use
+            // Final-Event: gesammelten Text + ggf. Tool-Call-Action ausgeben
             let action: any = null;
-            for (const t of tools) {
-              if (!t || !t.name) continue;
+            const idxs = Object.keys(toolBuf).map(Number).sort((a, b) => a - b);
+            if (idxs.length > 0) {
+              const first = toolBuf[idxs[0]];
               let input: any = {};
-              try { input = t.json ? JSON.parse(t.json) : {}; } catch {}
+              try { input = first.args ? JSON.parse(first.args) : {}; } catch {}
               action = {
-                tool: t.name,
+                tool: first.name,
                 params: input,
                 summary: (input && input.summary) || "",
               };
-              break; // erstes tool_use reicht
             }
-            const final = JSON.stringify({ type: "final", content: textOut, action });
-            controller.enqueue(new TextEncoder().encode("event: final\ndata: " + final + "\n\n"));
+            emit(controller, "final", { type: "final", content: aggregatedText, action });
             controller.close();
             return;
           }
           buf += decoder.decode(value, { stream: true });
-          const parts = buf.split("\n\n");
-          buf = parts.pop() ?? "";
-          for (const part of parts) {
-            // Anthropic-SSE schicken wir 1:1 durch
-            controller.enqueue(new TextEncoder().encode(part + "\n\n"));
-            // Parallel mitlesen: Text + Tool-Use sammeln
-            const lines = part.split("\n");
-            let eventName = "";
-            let dataStr = "";
-            for (const ln of lines) {
-              if (ln.startsWith("event:")) eventName = ln.slice(6).trim();
-              else if (ln.startsWith("data:")) dataStr += ln.slice(5).trim();
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+          for (const ln of lines) {
+            const line = ln.trim();
+            if (!line || !line.startsWith("data:")) continue;
+            const payload = line.slice(5).trim();
+            if (payload === "[DONE]") continue;
+            let ev: any;
+            try { ev = JSON.parse(payload); } catch { continue; }
+            const delta = ev?.choices?.[0]?.delta;
+            if (!delta) continue;
+            // Text-Token
+            if (typeof delta.content === "string" && delta.content.length > 0) {
+              aggregatedText += delta.content;
+              // Anthropic-kompatibles content_block_delta-Event emittieren
+              emit(controller, "content_block_delta", {
+                type: "content_block_delta",
+                index: 0,
+                delta: { type: "text_delta", text: delta.content },
+              });
             }
-            if (!dataStr) continue;
-            try {
-              const ev = JSON.parse(dataStr);
-              if (eventName === "content_block_start" && ev.content_block?.type === "tool_use") {
-                tools[ev.index] = { name: ev.content_block.name, json: "" };
-              } else if (eventName === "content_block_delta") {
-                if (ev.delta?.type === "text_delta") textOut += ev.delta.text || "";
-                else if (ev.delta?.type === "input_json_delta") {
-                  const idx = ev.index;
-                  if (tools[idx]) tools[idx].json += ev.delta.partial_json || "";
+            // Tool-Call-Chunks
+            if (Array.isArray(delta.tool_calls)) {
+              for (const tc of delta.tool_calls) {
+                const idx = typeof tc.index === "number" ? tc.index : 0;
+                if (!toolBuf[idx]) toolBuf[idx] = { name: "", args: "" };
+                const fn = tc.function || {};
+                if (fn.name && !toolBuf[idx].name) {
+                  toolBuf[idx].name = fn.name;
+                  // Anthropic-kompatibles content_block_start für tool_use
+                  emit(controller, "content_block_start", {
+                    type: "content_block_start",
+                    index: 1 + idx,
+                    content_block: { type: "tool_use", name: fn.name, id: tc.id || "" },
+                  });
+                }
+                if (typeof fn.arguments === "string" && fn.arguments.length > 0) {
+                  toolBuf[idx].args += fn.arguments;
+                  emit(controller, "content_block_delta", {
+                    type: "content_block_delta",
+                    index: 1 + idx,
+                    delta: { type: "input_json_delta", partial_json: fn.arguments },
+                  });
                 }
               }
-            } catch {}
+            }
           }
         },
-        cancel() { try { reader.cancel(); } catch {} }
+        cancel() { try { reader.cancel(); } catch {} },
       });
       return new Response(stream, { headers: SSE_HEADERS });
     }
 
-    // ─── Non-Streaming-Pfad (Fallback) ───
-    const result = await callAnthropic(systemPrompt, messages);
-
-    // Antwort zerlegen: Text + optional ein Tool-Use-Block (Action-Proposal)
-    let text = "";
+    // ─── Non-Streaming-Pfad: einmal abrufen, in altes Antwort-Format wandeln ───
+    const result = await callOpenRouter(systemPrompt, messages);
+    const choice = result?.choices?.[0];
+    const msg = choice?.message || {};
+    const text = typeof msg.content === "string" ? msg.content : "";
     let action: any = null;
-    for (const block of result.content || []) {
-      if (block.type === "text") text += block.text;
-      else if (block.type === "tool_use") {
-        action = {
-          tool: block.name,
-          params: block.input || {},
-          summary: (block.input && block.input.summary) || "",
-        };
-      }
+    const toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
+    if (toolCalls.length > 0) {
+      const tc = toolCalls[0];
+      const fn = tc.function || {};
+      let input: any = {};
+      try { input = fn.arguments ? JSON.parse(fn.arguments) : {}; } catch {}
+      action = {
+        tool: fn.name,
+        params: input,
+        summary: (input && input.summary) || "",
+      };
     }
-
     return new Response(
       JSON.stringify({
         content: text || (action ? "Ich schlage folgende Aktion vor:" : ""),
         action,
-        stop_reason: result.stop_reason,
-        usage: result.usage,
+        stop_reason: choice?.finish_reason,
+        usage: result?.usage,
       }),
       { headers: JSON_HEADERS }
     );
