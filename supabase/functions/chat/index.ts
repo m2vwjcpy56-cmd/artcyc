@@ -159,7 +159,8 @@ function buildSystemPrompt(appData: any, userName?: string): string {
     has_rope_variant: !!e.has_rope_variant, active: e.active !== false,
     points: e.points, target_rate: e.target_rate,
   }));
-  const sessions = (appData?.sessions || [])
+  const allSessions = (appData?.sessions || []);
+  const sessions = allSessions
     .slice()
     .sort((a: any, b: any) => (b.date || "").localeCompare(a.date || ""))
     .slice(0, 200)
@@ -181,6 +182,37 @@ function buildSystemPrompt(appData: any, userName?: string): string {
     exercise_count: (p.exercises || []).length,
   }));
 
+  // ───── Vorberechnete Statistiken pro Übung ─────
+  // Da kleine Modelle (gpt-4o-mini etc.) beim Zählen aus Listen halluzinieren,
+  // berechnen wir die wichtigsten Aggregate hier zentral und geben sie der KI
+  // als „zähl-fertige" Fakten — die KI muss nur ablesen, nicht rechnen.
+  const exerciseStats = ex.map((e: any) => {
+    const exSessions = allSessions.filter((s: any) => s.exerciseId === e.id);
+    const entries: string[] = exSessions.flatMap((s: any) => s.entries || []);
+    const total = entries.length;
+    const success = entries.filter((x: string) => x === "success").length;
+    const fail    = entries.filter((x: string) => x === "fail").length;
+    const third   = entries.filter((x: string) => x === "third").length;
+    const rate = total > 0 ? Math.round((success / total) * 100) : 0;
+    const withRopeCount    = exSessions.filter((s: any) => s.withRope === true).length;
+    const withoutRopeCount = exSessions.filter((s: any) => s.withRope === false).length;
+    const ropeNull         = exSessions.filter((s: any) => s.withRope == null).length;
+    return {
+      exerciseId: e.id,
+      exerciseName: e.name,
+      sessionCount: exSessions.length,
+      totalAttempts: total,
+      successCount: success,
+      failCount: fail,
+      thirdCount: third,
+      successRatePct: rate,
+      withRopeSessionCount:    e.has_rope_variant ? withRopeCount    : null,
+      withoutRopeSessionCount: e.has_rope_variant ? withoutRopeCount : null,
+      ropeNullSessionCount:    e.has_rope_variant ? ropeNull         : null,
+    };
+  });
+  const totalSessions = allSessions.length;
+
   const today = new Date().toISOString().slice(0, 10);
 
   return `Du bist der KI-Coach in ArtCyc Coach, einer App für Kunstradsport-Tracking. Du sprichst Deutsch und duzt den User.
@@ -195,7 +227,15 @@ ${today}
 ## Übungen
 ${JSON.stringify(ex, null, 2)}
 
-## Sessions (max 200 neueste)
+## ⚡ Vorberechnete Statistiken pro Übung — ZÄHLE NIEMALS SELBST AUS DEN SESSIONS
+
+Diese Zahlen sind serverseitig exakt aus ALLEN Sessions (auch älteren) berechnet, nicht nur aus den 200 unten gezeigten. Wenn der User nach „wie viele Maute-Sprünge habe ich" oder „wie viele mit Seil" fragt, lies die Werte HIER ab — die Sessions-Liste unten ist nur ein Auszug.
+
+${JSON.stringify(exerciseStats, null, 2)}
+
+**Gesamt-Sessions in der DB: ${totalSessions}** (davon sind unten max 200 sichtbar)
+
+## Sessions (max 200 neueste — Auszug, nicht zum Zählen!)
 ${JSON.stringify(sessions, null, 2)}
 
 ## Wettkämpfe
@@ -207,6 +247,7 @@ ${JSON.stringify(programs, null, 2)}
 # Deine Aufgaben
 
 - **Lesen + Analyse**: Du beantwortest Fragen zu den Trainings-/Wettkampfdaten direkt anhand obiger Daten. Quoten, Trends, Schwachpunkte direkt nennen — **NIEMALS** die Rechnung Schritt für Schritt vorzeigen.
+- **ZAHLEN nur aus „Vorberechnete Statistiken"**: Wenn der User nach Anzahlen fragt („wie viele Sessions habe ich für X", „wie viele mit Seil") → IMMER aus dem \`exerciseStats\`-Block oben ablesen. NIEMALS aus der gekürzten Sessions-Liste zählen. NIEMALS Zahlen erfinden oder raten. Wenn der User dir widerspricht („hab mehr") — gib genau die Zahl aus exerciseStats wieder und erkläre dass die Sessions-Liste unten nur ein 200er-Auszug ist.
 
 # Sprache & interne Feld-Namen — STRENG einhalten
 
