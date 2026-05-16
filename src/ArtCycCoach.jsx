@@ -3581,6 +3581,11 @@ export default function App() {
   // Globale Feedback-Bridge für KI-Coach attachen (einmalig)
   useEffect(() => { attachGlobalFeedbackBridge(); }, []);
 
+  // Feedback-Modal-State auf App-Level — kann aus Dashboard, Settings
+  // und ggf. KI-Coach getriggert werden.
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const openFeedback = () => setFeedbackOpen(true);
+
   // Supabase-Session prüfen + Listener
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -3969,12 +3974,12 @@ export default function App() {
 
   // View dispatcher
   let viewEl;
-  if (view === 'dashboard') viewEl = <Dashboard data={effectiveData} setView={setView} />;
+  if (view === 'dashboard') viewEl = <Dashboard data={effectiveData} setView={setView} onOpenFeedback={openFeedback} />;
   else if (view === 'training') viewEl = <TrainingView data={effectiveData} setData={save} setView={setView} />;
   else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} />;
-  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} setView={setView} />;
+  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} setView={setView} onOpenFeedback={openFeedback} />;
   else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} ownData={effectiveData} />;
   else if (view === 'export') viewEl = <ExportView data={effectiveData} setView={setView} />;
   else if (view === 'kuer' || view === 'video') {
@@ -4043,6 +4048,9 @@ export default function App() {
 
       {/* KI-Coach (Floating-Chat) */}
       <FloatingChat data={effectiveData} setData={save} profile={profile} />
+
+      {/* Globales Feedback-Modal — kann aus Dashboard, Settings o.\xa0a. geöffnet werden */}
+      {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
     </div>
   );
 }
@@ -4349,7 +4357,7 @@ function SetupScreen({ onStart }) {
 // =============================================================
 // DASHBOARD
 // =============================================================
-function Dashboard({ data, setView }) {
+function Dashboard({ data, setView, onOpenFeedback }) {
   const { t } = useI18n();
   // Saison-Filter
   const [season, setSeason] = useState('all'); // 'all' | '2026' | '2025' | '90d' | '30d'
@@ -4569,6 +4577,22 @@ function Dashboard({ data, setView }) {
           </div>
         )}
       </section>
+
+      {/* Feedback-Karte — prominenter Eingang ans Ende des Dashboards.
+          Geht in dasselbe Modal wie der Eintrag in den Einstellungen. */}
+      {onOpenFeedback && (
+        <button onClick={onOpenFeedback}
+          className="w-full bg-gradient-to-br from-[#007AFF]/12 to-[#5856D6]/8 rounded-2xl p-4 flex items-center gap-3 active:scale-[0.98] transition text-left">
+          <div className="w-11 h-11 rounded-full bg-[#007AFF]/15 flex items-center justify-center shrink-0">
+            <MessageCircle size={20} className="text-[#007AFF]" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[15px] font-semibold text-[#007AFF]">{t('feedback.title')}</div>
+            <div className="text-[13px] text-[#3C3C43] leading-snug">{t('feedback.subtitle')}</div>
+          </div>
+          <ChevronRight size={18} strokeWidth={2.4} className="text-[#007AFF]/60 shrink-0" />
+        </button>
+      )}
 
       <div className="h-4" />
     </div>
@@ -5454,9 +5478,8 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
 // =============================================================
 // EINSTELLUNGEN (Skeleton — wird in Stufe 8 ausgebaut)
 // =============================================================
-function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, refreshAthletes, theme, setTheme, langPref, setLangPref, setView }) {
+function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, refreshAthletes, theme, setTheme, langPref, setLangPref, setView, onOpenFeedback }) {
   const { t } = useI18n();
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const roleLabel = profile?.role === 'admin' ? t('role.admin') : profile?.role === 'coach' ? t('role.coach') : t('role.athlete');
   const syncLabel = cloudStatus === 'syncing' ? t('settings.cloudSyncing') : cloudStatus === 'error' ? t('settings.cloudSyncError') : t('settings.cloudSynced');
   const syncTagColor = cloudStatus === 'syncing' ? 'orange' : cloudStatus === 'error' ? 'red' : 'green';
@@ -5533,6 +5556,23 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
           </IOSListRow>
         </IOSList>
       )}
+
+      {/* Feedback — prominent direkt unter Account, blau-akzentuiert */}
+      <IOSList header={t('feedback.section')} footer={t('feedback.footer')}>
+        <IOSListRow
+          onClick={onOpenFeedback}
+          trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
+          <span className="flex items-center gap-3">
+            <span className="w-9 h-9 rounded-full bg-[#007AFF]/12 flex items-center justify-center shrink-0">
+              <MessageCircle size={18} className="text-[#007AFF]" />
+            </span>
+            <span className="flex flex-col min-w-0">
+              <span className="text-[15px] font-medium text-[#007AFF]">{t('feedback.title')}</span>
+              <span className="text-[12px] text-[#8E8E93]">{t('feedback.subtitle')}</span>
+            </span>
+          </span>
+        </IOSListRow>
+      </IOSList>
 
       {/* Erscheinungsbild */}
       <IOSList header={t('settings.appearance')} footer={t('settings.appearanceFooter')}>
@@ -5660,22 +5700,6 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
       <ReglementSettings data={data} setData={setData} />
 
       <BackupSettings data={data} setData={setData} />
-
-      {/* Feedback */}
-      <IOSList header={t('feedback.section')} footer={t('feedback.footer')}>
-        <IOSListRow
-          onClick={() => setFeedbackOpen(true)}
-          trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
-          <span className="flex items-center gap-3">
-            <MessageCircle size={18} className="text-[#007AFF]" />
-            <span className="text-[15px] font-medium">{t('feedback.title')}</span>
-          </span>
-        </IOSListRow>
-      </IOSList>
-
-      {feedbackOpen && (
-        <FeedbackModal onClose={() => setFeedbackOpen(false)} />
-      )}
 
       {/* Reset */}
       <IOSList footer={t('settings.resetFooter')}>
