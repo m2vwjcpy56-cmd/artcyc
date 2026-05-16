@@ -2439,10 +2439,14 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
 }
 
 // Training-Statistik pro Übung — Quote aus Sessions
-function calcExerciseTrainingStats(exercise, sessions) {
+// ropeFilter: null = alle Sessions, true = nur mit Seil, false = nur ohne Seil
+function calcExerciseTrainingStats(exercise, sessions, ropeFilter = null) {
   const stats = { total: 0, success: 0, fail: 0, third: 0, rate: 0, sessions: 0 };
   if (!exercise || !sessions) return stats;
-  const exSessions = sessions.filter(s => s.exerciseId === exercise.id);
+  let exSessions = sessions.filter(s => s.exerciseId === exercise.id);
+  if (ropeFilter !== null) {
+    exSessions = exSessions.filter(s => s.withRope === ropeFilter);
+  }
   const allEntries = exSessions.flatMap(s => s.entries || []);
   stats.sessions = exSessions.length;
   stats.total = allEntries.length;
@@ -2547,13 +2551,20 @@ const storage = {
 function migrateExerciseLabels(data) {
   if (!data || !data.exercises) return { data, changed: false };
   let changed = false;
+  // 1. Übungen: Maute-Labels + has_rope_variant einschalten
+  const mauteIds = new Set();
   const exercises = data.exercises.map(ex => {
     const isMaute = (ex.name || '').toLowerCase().includes('maute');
-    if (isMaute && ex.category_mode === 3) {
+    if (isMaute) {
+      mauteIds.add(ex.id);
       const updates = {};
-      if (ex.third_label !== 'Getroffen') updates.third_label = 'Getroffen';
-      if (!ex.fail_label) updates.fail_label = 'Gefährlich';
-      if (!ex.success_label) updates.success_label = 'Geklappt';
+      if (ex.category_mode === 3) {
+        if (ex.third_label !== 'Getroffen') updates.third_label = 'Getroffen';
+        if (!ex.fail_label) updates.fail_label = 'Gefährlich';
+        if (!ex.success_label) updates.success_label = 'Geklappt';
+      }
+      // Phase 10 — Mit-Seil-Variante einmalig aktivieren
+      if (!ex.has_rope_variant) updates.has_rope_variant = true;
       if (Object.keys(updates).length > 0) {
         changed = true;
         return { ...ex, ...updates };
@@ -2561,7 +2572,21 @@ function migrateExerciseLabels(data) {
     }
     return ex;
   });
-  return { data: { ...data, exercises }, changed };
+  // 2. Sessions: bestehende Maute-Sprung-Sessions ohne withRope auf true setzen
+  //    (User-Wunsch — bisher wurde mit Seil trainiert)
+  let sessions = data.sessions || [];
+  if (Array.isArray(sessions) && sessions.length > 0 && mauteIds.size > 0) {
+    let sessionChanged = false;
+    sessions = sessions.map(s => {
+      if (s && mauteIds.has(s.exerciseId) && s.withRope === undefined) {
+        sessionChanged = true;
+        return { ...s, withRope: true };
+      }
+      return s;
+    });
+    if (sessionChanged) { changed = true; }
+  }
+  return { data: { ...data, exercises, sessions }, changed };
 }
 
 // =============================================================
@@ -2851,7 +2876,8 @@ export default function App() {
     exerciseId: s.exercise_id,
     entries: s.entries || [],
     notes: s.notes || '',
-    exerciseName: s.exercise_name || ''
+    exerciseName: s.exercise_name || '',
+    withRope: typeof s.with_rope === 'boolean' ? s.with_rope : null
   }), []);
   const dbCompetitionToBlob = useCallback((c) => ({
     id: c.id,
@@ -2888,7 +2914,8 @@ export default function App() {
     success_label: e.success_label,
     fail_label: e.fail_label,
     default_series: e.default_series,
-    target_rate: e.target_rate
+    target_rate: e.target_rate,
+    has_rope_variant: !!e.has_rope_variant
   }), []);
 
   // Phase 9d-3: Diff-basierter Sync Blob → DB-Tabellen
@@ -2903,7 +2930,10 @@ export default function App() {
         date: s.date,
         entries: s.entries || [],
         notes: s.notes || '',
-        exercise_name: s.exerciseName || s.exercise_name || ''
+        exercise_name: s.exerciseName || s.exercise_name || '',
+        with_rope: typeof s.withRope === 'boolean' ? s.withRope
+                  : typeof s.with_rope === 'boolean' ? s.with_rope
+                  : null
       })).filter(p => p.exercise_id);
       if (payload.length > 0) {
         const { error } = await bulkInsertSessions(payload);
@@ -2985,7 +3015,8 @@ export default function App() {
     success_label: e.success_label || null,
     fail_label: e.fail_label || null,
     default_series: e.default_series || 10,
-    target_rate: e.target_rate
+    target_rate: e.target_rate,
+    has_rope_variant: !!e.has_rope_variant
   }), []);
 
   const save = useCallback(async (next) => {
@@ -3083,7 +3114,7 @@ export default function App() {
       sessions: [],
       exercises: [
         { id: 'ex1', name: 'Lenkerhandstand', uci_code: '1124c', uci_disc: '1er', active: true, category_mode: 2, third_label: null, default_series: 10 },
-        { id: 'ex2', name: 'Maute-Sprung', uci_code: null, uci_disc: null, active: true, category_mode: 3, third_label: 'Getroffen', fail_label: 'Gefährlich', success_label: 'Geklappt', default_series: 10 }
+        { id: 'ex2', name: 'Maute-Sprung', uci_code: null, uci_disc: null, active: true, category_mode: 3, third_label: 'Getroffen', fail_label: 'Gefährlich', success_label: 'Geklappt', default_series: 10, has_rope_variant: true }
       ],
       programs: [
         {
@@ -4906,8 +4937,15 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
   const [importStatus, setImportStatus] = useState(null); // null | 'parsing' | 'preview' | 'error'
   const [importPreview, setImportPreview] = useState(null);
   const [importMsg, setImportMsg] = useState('');
+  // Rope-Filter: null = alle, true = mit Seil, false = ohne Seil
+  const [ropeFilter, setRopeFilter] = useState(null);
 
-  const trainStats = calcExerciseTrainingStats(exercise, data.sessions || []);
+  const trainStats = calcExerciseTrainingStats(exercise, data.sessions || [], ropeFilter);
+  // Übersichts-Stats für die Filter-Tabs (Counts pro Variante)
+  const ropeStats = exercise.has_rope_variant ? {
+    withRope: calcExerciseTrainingStats(exercise, data.sessions || [], true),
+    withoutRope: calcExerciseTrainingStats(exercise, data.sessions || [], false)
+  } : null;
   const compStats = calcExerciseCompetitionStats(exercise, data.programs || [], data.competitions || []);
 
   // Liste aller Wettkämpfe mit dieser Übung
@@ -4939,7 +4977,11 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
 
   // Sessions-Liste mit Datum + Quote
   const sessionList = (() => {
-    const exSessions = (data.sessions || []).filter(s => s.exerciseId === exercise.id).slice();
+    let exSessions = (data.sessions || []).filter(s => s.exerciseId === exercise.id);
+    if (ropeFilter !== null) {
+      exSessions = exSessions.filter(s => s.withRope === ropeFilter);
+    }
+    exSessions = exSessions.slice();
     exSessions.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     return exSessions.map(s => {
       const total = (s.entries || []).length;
@@ -4993,6 +5035,30 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
               <span className="text-xs text-slate-500">{trainStats.sessions} Sess. · {trainStats.total} Serien</span>
             )}
           </div>
+
+          {/* Rope-Filter-Tabs (nur wenn Übung Seil-Variante hat) */}
+          {ropeStats && (
+            <div className="flex gap-1 p-1 bg-slate-100 rounded-full text-xs font-medium">
+              <button onClick={() => setRopeFilter(null)}
+                className={'flex-1 py-1.5 rounded-full transition ' +
+                  (ropeFilter === null ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500')}>
+                Alle
+                <span className="ml-1 opacity-60">{ropeStats.withRope.sessions + ropeStats.withoutRope.sessions}</span>
+              </button>
+              <button onClick={() => setRopeFilter(true)}
+                className={'flex-1 py-1.5 rounded-full transition ' +
+                  (ropeFilter === true ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500')}>
+                Mit Seil
+                <span className="ml-1 opacity-60">{ropeStats.withRope.sessions}</span>
+              </button>
+              <button onClick={() => setRopeFilter(false)}
+                className={'flex-1 py-1.5 rounded-full transition ' +
+                  (ropeFilter === false ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-500')}>
+                Ohne Seil
+                <span className="ml-1 opacity-60">{ropeStats.withoutRope.sessions}</span>
+              </button>
+            </div>
+          )}
           {trainStats.total > 0 ? (
             <>
               <div className="flex items-baseline gap-3">
@@ -5023,7 +5089,15 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                   {sessionList.slice(0, 10).map((s, i) => (
                     <div key={i} className="py-1">
                       <div className="flex items-center justify-between text-sm">
-                        <div className="text-slate-700">{s.session.date}</div>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-slate-700 shrink-0">{s.session.date}</span>
+                          {exercise.has_rope_variant && s.session.withRope === true && (
+                            <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">Seil</span>
+                          )}
+                          {exercise.has_rope_variant && s.session.withRope === false && (
+                            <span className="text-[10px] font-medium text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded-full shrink-0">ohne</span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-3">
                           <span className="text-xs text-slate-500">{s.success}/{s.total}</span>
                           <span className={'text-sm font-bold w-10 text-right ' + (s.rate >= 80 ? 'text-emerald-600' : s.rate >= 60 ? 'text-amber-600' : 'text-rose-600')}>
@@ -5413,6 +5487,9 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
   const [targetRate, setTargetRate] = useState(
     exercise && typeof exercise.target_rate === 'number' ? String(exercise.target_rate) : ''
   );
+  const [hasRopeVariant, setHasRopeVariant] = useState(
+    exercise ? !!exercise.has_rope_variant : false
+  );
 
   const handleUciSelect = (selected) => {
     setUciCode(selected.c);
@@ -5431,7 +5508,8 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
       category_mode: Number(statusMode),
       third_label: Number(statusMode) === 3 ? (thirdLabel.trim() || 'Dritte') : null,
       default_series: Number(series) || 10,
-      target_rate: targetRate.trim() === '' ? null : Math.max(0, Math.min(100, Number(targetRate) || 0))
+      target_rate: targetRate.trim() === '' ? null : Math.max(0, Math.min(100, Number(targetRate) || 0)),
+      has_rope_variant: hasRopeVariant
     });
   };
 
@@ -5519,6 +5597,22 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
               className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
             <p className="text-xs text-slate-500 mt-1">Dashboard markiert die Übung farblich, wenn deine Quote unter dem Ziel liegt — Trainings-Bedarf auf einen Blick.</p>
           </div>
+
+          <div className="pt-2 border-t border-slate-100">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hasRopeVariant}
+                onChange={e => setHasRopeVariant(e.target.checked)}
+                className="mt-0.5 w-5 h-5 rounded accent-amber-500 cursor-pointer" />
+              <div className="flex-1">
+                <div className="text-sm font-medium">Mit-Seil-Variante</div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Beim Protokollieren kannst du dann pro Serie wählen ob mit oder ohne Seil trainiert wurde — z.B. für den Maute-Sprung. Statistiken werden getrennt ausgewertet.
+                </p>
+              </div>
+            </label>
+          </div>
         </div>
 
         <div className="flex gap-2">
@@ -5605,8 +5699,9 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
   const [athleteId, setAthleteId] = useState((athletes[0] && athletes[0].id) || '');
   const [entries, setEntries] = useState([]);
   const [notes, setNotes] = useState('');
+  const [withRope, setWithRope] = useState(true); // default Mit Seil, häufiger Fall
 
-  useEffect(() => { setEntries([]); setNotes(''); }, [exerciseId]);
+  useEffect(() => { setEntries([]); setNotes(''); setWithRope(true); }, [exerciseId]);
 
   const exercise = data.exercises.find(e => e.id === exerciseId);
 
@@ -5647,7 +5742,8 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
         exerciseId: exercise.id,
         exerciseName: exercise.name,
         entries,
-        notes: notes.trim() || null
+        notes: notes.trim() || null,
+        withRope: exercise.has_rope_variant ? withRope : null
       }]
     });
     onDone();
@@ -5692,6 +5788,24 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
               ))}
             </select>
           </div>
+
+          {exercise && exercise.has_rope_variant && (
+            <div>
+              <label className="text-sm font-medium block mb-1.5">Variante</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setWithRope(true)}
+                  className={'py-2.5 rounded-xl text-sm font-medium border transition active:scale-95 ' +
+                    (withRope ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-700 border-slate-300')}>
+                  Mit Seil
+                </button>
+                <button type="button" onClick={() => setWithRope(false)}
+                  className={'py-2.5 rounded-xl text-sm font-medium border transition active:scale-95 ' +
+                    (!withRope ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-700 border-slate-300')}>
+                  Ohne Seil
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5">

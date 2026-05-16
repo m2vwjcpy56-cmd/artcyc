@@ -155,16 +155,16 @@ export async function clearClaimCodeForAthlete(athleteId) {
 export async function fetchSessions() {
   const { data, error } = await supabase
     .from('sessions')
-    .select('id, athlete_id, exercise_id, date, entries, notes, exercise_name, created_at')
+    .select('id, athlete_id, exercise_id, date, entries, notes, exercise_name, with_rope, created_at')
     .order('date', { ascending: false });
   if (error) { console.warn('Sessions fetch:', error.message); return []; }
   return data || [];
 }
 
-export async function insertSession({ athlete_id, exercise_id, date, entries, notes = '', exercise_name = '' }) {
+export async function insertSession({ athlete_id, exercise_id, date, entries, notes = '', exercise_name = '', with_rope = null }) {
   const { data, error } = await supabase
     .from('sessions')
-    .insert({ athlete_id, exercise_id, date, entries, notes, exercise_name })
+    .insert({ athlete_id, exercise_id, date, entries, notes, exercise_name, with_rope })
     .select()
     .single();
   return { data, error };
@@ -236,7 +236,7 @@ export async function deleteProgram(id) {
 export async function fetchExercises() {
   const { data, error } = await supabase
     .from('exercises')
-    .select('id, owner_id, name, uci_code, uci_disc, points, active, category_mode, third_label, success_label, fail_label, default_series, target_rate, created_at')
+    .select('id, owner_id, name, uci_code, uci_disc, points, active, category_mode, third_label, success_label, fail_label, default_series, target_rate, has_rope_variant, created_at')
     .order('created_at', { ascending: true });
   if (error) { console.warn('Exercises fetch:', error.message); return []; }
   return data || [];
