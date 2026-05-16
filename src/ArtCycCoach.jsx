@@ -4463,15 +4463,56 @@ function groupSessionsByDate(sessions) {
   const todayIso = new Date().toISOString().slice(0, 10);
   const yesterdayIso = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
   const weekAgoIso = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-  const groups = { today: [], yesterday: [], week: [], older: [] };
+  const today = [];
+  const yesterday = [];
+  const week = [];
+  // Alles ab >7 Tagen wird nach Monat gebucketed (z. B. „Mai 2026", „April 2026")
+  const monthMap = new Map(); // key: 'YYYY-MM', value: { label, items: [] }
+  const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+                      'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
   for (const s of sessions) {
     const d = s.date || '';
-    if (d === todayIso) groups.today.push(s);
-    else if (d === yesterdayIso) groups.yesterday.push(s);
-    else if (d > weekAgoIso) groups.week.push(s);
-    else groups.older.push(s);
+    if (d === todayIso) today.push(s);
+    else if (d === yesterdayIso) yesterday.push(s);
+    else if (d > weekAgoIso) week.push(s);
+    else if (d) {
+      const ym = d.slice(0, 7); // 'YYYY-MM'
+      if (!monthMap.has(ym)) {
+        const [year, month] = ym.split('-');
+        const monthLabel = monthNames[Number(month) - 1] + ' ' + year;
+        monthMap.set(ym, { key: ym, label: monthLabel, items: [] });
+      }
+      monthMap.get(ym).items.push(s);
+    }
   }
-  return groups;
+  // Monate sortieren: neueste zuerst
+  const months = Array.from(monthMap.values()).sort((a, b) => b.key.localeCompare(a.key));
+  return { today, yesterday, week, months };
+}
+
+// Sessions nach Übung gruppieren — pro Übung: Anzahl Serien, Quote, Trend.
+function groupSessionsByExercise(sessions) {
+  const byEx = new Map();
+  for (const s of sessions) {
+    const key = s.exerciseId || s.exerciseName || '_unknown';
+    if (!byEx.has(key)) {
+      byEx.set(key, {
+        exerciseId: s.exerciseId,
+        exerciseName: s.exerciseName || 'Übung',
+        items: [],
+        totalEntries: 0,
+        totalSuccess: 0,
+        lastDate: ''
+      });
+    }
+    const g = byEx.get(key);
+    g.items.push(s);
+    g.totalEntries += (s.entries || []).length;
+    g.totalSuccess += (s.entries || []).filter(e => e === 'success').length;
+    if ((s.date || '') > g.lastDate) g.lastDate = s.date || '';
+  }
+  // Nach letztem Trainingsdatum sortieren (neueste Übung zuerst)
+  return Array.from(byEx.values()).sort((a, b) => b.lastDate.localeCompare(a.lastDate));
 }
 
 function TrainingView({ data, setData, setView }) {
@@ -4479,6 +4520,22 @@ function TrainingView({ data, setData, setView }) {
   const [editing, setEditing] = useState(null); // { session, origIdx }
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [filterExId, setFilterExId] = useState(''); // '' = alle Übungen
+  // Sortier-Modus: nach Datum (default) oder nach Übung
+  const [sortMode, setSortMode] = useState(() => {
+    try { return localStorage.getItem('artcyc:training-sort') || 'date'; } catch { return 'date'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('artcyc:training-sort', sortMode); } catch {}
+  }, [sortMode]);
+  // Welche Übungs-Gruppen sind ausgeklappt? (Nur im „Nach Übung"-Modus)
+  const [openExercises, setOpenExercises] = useState(new Set());
+  const toggleExercise = (key) => {
+    setOpenExercises(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   // Sessions mit Original-Index versehen damit Edit/Delete den richtigen
   // Eintrag findet — auch wenn Session noch keine id hat (alte Blob-Daten).
@@ -4496,6 +4553,7 @@ function TrainingView({ data, setData, setView }) {
   }, [indexedAll, query, filterExId]);
 
   const groups = useMemo(() => groupSessionsByDate(filtered), [filtered]);
+  const exerciseGroups = useMemo(() => groupSessionsByExercise(filtered), [filtered]);
 
   const saveEdit = (updated) => {
     const next = (data.sessions || []).slice();
@@ -4553,15 +4611,46 @@ function TrainingView({ data, setData, setView }) {
   };
 
   const renderGroup = (label, list) => {
-    if (list.length === 0) return null;
+    if (!list || list.length === 0) return null;
     return (
       <div key={label}>
-        <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500 px-1 mb-2 mt-3">
-          {label} <span className="text-slate-400 font-normal">· {list.length}</span>
+        <div className="text-[12px] uppercase tracking-wide font-medium text-[#8E8E93] px-4 mb-1.5 mt-4">
+          {label} <span className="font-normal opacity-70">· {list.length}</span>
         </div>
-        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
           {list.map(renderRow)}
         </div>
+      </div>
+    );
+  };
+
+  const renderExerciseGroup = (g) => {
+    const rate = g.totalEntries > 0 ? Math.round((g.totalSuccess / g.totalEntries) * 100) : 0;
+    const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 60 ? 'text-[#FF9500]' : 'text-[#FF3B30]';
+    const isOpen = openExercises.has(g.exerciseId || g.exerciseName);
+    const key = g.exerciseId || g.exerciseName;
+    return (
+      <div key={key} className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
+        <button onClick={() => toggleExercise(key)}
+          className="w-full text-left px-4 py-3 flex items-center gap-3 active:bg-[#D1D1D6]/40 transition">
+          <div className="min-w-0 flex-1">
+            <div className="font-medium text-[15px] truncate">{g.exerciseName}</div>
+            <div className="text-[12px] text-[#8E8E93] mt-0.5">
+              {g.items.length} Sessions · {g.totalEntries} Serien · zuletzt {formatDateShort(g.lastDate)}
+            </div>
+          </div>
+          <div className={'font-semibold text-[17px] ' + rateColor}>{rate}%</div>
+          <ChevronRight size={18} strokeWidth={2.4}
+            className={'text-[#C7C7CC] shrink-0 transition-transform ' + (isOpen ? 'rotate-90' : '')} />
+        </button>
+        {isOpen && (
+          <div className="border-t border-[#C6C6C8]/40">
+            {g.items
+              .slice()
+              .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+              .map(renderRow)}
+          </div>
+        )}
       </div>
     );
   };
@@ -4579,22 +4668,22 @@ function TrainingView({ data, setData, setView }) {
 
   return (
     <div className="space-y-4">
-      <header className="flex items-end justify-between flex-wrap gap-3 pt-2">
+      <header className="flex items-end justify-between flex-wrap gap-3 pt-2 px-1">
         <div>
           <h1 className="text-[34px] font-bold tracking-tight leading-none">Training</h1>
-          <p className="text-slate-500 text-sm mt-1">{totalCount} Sessions insgesamt</p>
+          <p className="text-[#8E8E93] text-[15px] mt-1">{totalCount} Sessions insgesamt</p>
         </div>
         <button onClick={() => setView('erfassen')}
-          className="bg-slate-900 text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-sm active:scale-95 transition">
-          <Plus size={16} /> Serie protokollieren
+          className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-[14px] flex items-center gap-1.5 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
+          <Plus size={16} strokeWidth={2.5} /> Serie protokollieren
         </button>
       </header>
 
       {/* Suche + Filter */}
       {totalCount > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3 space-y-2">
+        <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3 space-y-2">
           <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
             <input value={query} onChange={e => setQuery(e.target.value)}
               placeholder="Suchen (Übungsname oder Notiz)"
               className="w-full pl-9 pr-3 py-2 bg-slate-100 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-amber-500 text-sm" />
@@ -4611,6 +4700,22 @@ function TrainingView({ data, setData, setView }) {
         </div>
       )}
 
+      {/* Sortier-Modus — Datum / Übung */}
+      {totalCount > 0 && (
+        <div className="bg-[#E5E5EA]/70 rounded-xl p-0.5 flex">
+          <button onClick={() => setSortMode('date')}
+            className={'flex-1 py-1.5 rounded-[10px] text-[13px] font-medium transition ' +
+              (sortMode === 'date' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
+            Nach Datum
+          </button>
+          <button onClick={() => setSortMode('exercise')}
+            className={'flex-1 py-1.5 rounded-[10px] text-[13px] font-medium transition ' +
+              (sortMode === 'exercise' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
+            Nach Übung
+          </button>
+        </div>
+      )}
+
       {totalCount === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-8 text-center">
           <Dumbbell size={32} className="mx-auto text-slate-300 mb-3" />
@@ -4618,15 +4723,19 @@ function TrainingView({ data, setData, setView }) {
           <p className="text-sm text-slate-500 mb-4">Tippe oben auf „Serie protokollieren" um loszulegen.</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200/60 p-6 text-center text-sm text-slate-500">
+        <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-6 text-center text-[14px] text-[#8E8E93]">
           Keine Treffer für deinen Filter.
+        </div>
+      ) : sortMode === 'exercise' ? (
+        <div className="space-y-2">
+          {exerciseGroups.map(renderExerciseGroup)}
         </div>
       ) : (
         <div className="space-y-1">
           {renderGroup('Heute', groups.today)}
           {renderGroup('Gestern', groups.yesterday)}
           {renderGroup('Diese Woche', groups.week)}
-          {renderGroup('Älter', groups.older)}
+          {groups.months.map(m => renderGroup(m.label, m.items))}
         </div>
       )}
 
@@ -6178,12 +6287,12 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
         <div className="bg-[#E5E5EA]/70 rounded-xl p-0.5 flex">
           <button onClick={() => setMode('uci')}
             className={'flex-1 py-1.5 text-[13px] font-medium rounded-[10px] transition ' +
-              (mode === 'uci' ? 'bg-white text-[#000] shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-[#3C3C43]')}>
+              (mode === 'uci' ? 'ios-seg-active' : 'text-[#3C3C43]')}>
             Aus UCI-Liste
           </button>
           <button onClick={() => { setMode('custom'); setUciCode(''); setUciDisc(null); }}
             className={'flex-1 py-1.5 text-[13px] font-medium rounded-[10px] transition ' +
-              (mode === 'custom' ? 'bg-white text-[#000] shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-[#3C3C43]')}>
+              (mode === 'custom' ? 'ios-seg-active' : 'text-[#3C3C43]')}>
             Eigene Übung
           </button>
         </div>
@@ -6850,12 +6959,12 @@ function WettkampfView({ data, setData, dbAthletes }) {
         <div className="bg-[#E5E5EA] rounded-xl p-1 flex gap-1">
           <button onClick={() => setTab('wettkaempfe')}
             className={'flex-1 py-1.5 rounded-lg text-[14px] font-medium transition ' +
-              (tab === 'wettkaempfe' ? 'bg-white shadow-sm text-[#000]' : 'text-[#3C3C43] active:opacity-70')}>
+              (tab === 'wettkaempfe' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
             Wettkämpfe
           </button>
           <button onClick={() => setTab('programme')}
             className={'flex-1 py-1.5 rounded-lg text-[14px] font-medium transition ' +
-              (tab === 'programme' ? 'bg-white shadow-sm text-[#000]' : 'text-[#3C3C43] active:opacity-70')}>
+              (tab === 'programme' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
             Programme
           </button>
         </div>
@@ -6958,12 +7067,12 @@ function WettkampfView({ data, setData, dbAthletes }) {
       <div className="bg-[#E5E5EA] rounded-xl p-1 flex gap-1">
         <button onClick={() => setTab('wettkaempfe')}
           className={'flex-1 py-1.5 rounded-lg text-[14px] font-medium transition ' +
-            (tab === 'wettkaempfe' ? 'bg-white shadow-sm text-[#000]' : 'text-[#3C3C43] active:opacity-70')}>
+            (tab === 'wettkaempfe' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
           Wettkämpfe
         </button>
         <button onClick={() => setTab('programme')}
           className={'flex-1 py-1.5 rounded-lg text-[14px] font-medium transition ' +
-            (tab === 'programme' ? 'bg-white shadow-sm text-[#000]' : 'text-[#3C3C43] active:opacity-70')}>
+            (tab === 'programme' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
           Programme
         </button>
       </div>

@@ -111,6 +111,18 @@ html[data-theme="dark"] .bg-purple-100                    { background-color: rg
 html[data-theme="dark"] .bg-\[\#E5E5EA\],
 html[data-theme="dark"] .bg-\[\#E5E5EA\]\/70              { background-color: rgba(118,118,128,0.24) !important; }
 
+/* iOS Segmented Control aktive Pille — Light: weiß; Dark: helles Grau (#636366) */
+.ios-seg-active {
+  background: #fff;
+  color: #000;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+html[data-theme="dark"] .ios-seg-active {
+  background: #636366 !important;
+  color: #fff !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+}
+
 /* Akzent-Borders */
 html[data-theme="dark"] .border-amber-100,
 html[data-theme="dark"] .border-amber-200,
