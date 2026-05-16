@@ -1,0 +1,1010 @@
+// =============================================================
+// i18n — Mehrsprachigkeits-Framework für ArtCyc Coach
+// =============================================================
+//
+// Sprachen ausgewählt nach Bedeutung für Kunstrad (UCI Artistic Cycling):
+//   de — Deutschland, Österreich, Schweiz (Dominanz im Sport)
+//   en — International / Lingua franca
+//   fr — Frankreich, Belgien, Suisse Romande
+//   it — Italien, Tessin
+//   cs — Tschechien (sehr stark im Sport)
+//   hu — Ungarn (aktive Nation)
+//   ja — Japan (aktive Nation)
+//
+// Default-Auflösung:
+//   1. localStorage('artcyc:lang') falls gesetzt
+//   2. Browser-Sprache (navigator.language) falls unterstützt
+//   3. Fallback: 'de'
+//
+// Übersetzungen sind absichtlich keine externen Files — alles in einer Datei
+// damit der Build-Footprint klein bleibt und Code-Search funktioniert.
+// =============================================================
+
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+
+export const LANGUAGES = [
+  { code: 'de', label: 'Deutsch',    native: 'Deutsch',    flag: '🇩🇪' },
+  { code: 'en', label: 'Englisch',   native: 'English',    flag: '🇬🇧' },
+  { code: 'fr', label: 'Französisch', native: 'Français',   flag: '🇫🇷' },
+  { code: 'it', label: 'Italienisch', native: 'Italiano',   flag: '🇮🇹' },
+  { code: 'cs', label: 'Tschechisch', native: 'Čeština',    flag: '🇨🇿' },
+  { code: 'hu', label: 'Ungarisch',   native: 'Magyar',     flag: '🇭🇺' },
+  { code: 'ja', label: 'Japanisch',   native: '日本語',      flag: '🇯🇵' }
+];
+
+export const SUPPORTED_LANG_CODES = LANGUAGES.map(l => l.code);
+
+// =============================================================
+// Übersetzungs-Wörterbücher
+// =============================================================
+// Konvention: keys verwenden Dot-Notation, z. B. 'nav.dashboard'.
+// Fehlt ein Key in einer Sprache, fällt t() automatisch auf Deutsch zurück.
+// =============================================================
+
+const dict = {
+  de: {
+    // Navigation
+    'nav.dashboard': 'Dashboard',
+    'nav.training': 'Training',
+    'nav.wettkampf': 'Wettkampf',
+    'nav.uebungen': 'Übungen',
+    'nav.sportler': 'Sportler',
+    'nav.export': 'Export',
+    'nav.einstellungen': 'Einstellungen',
+    'nav.more': 'Mehr',
+
+    // Häufige Buttons / Aktionen
+    'common.save': 'Speichern',
+    'common.cancel': 'Abbrechen',
+    'common.done': 'Fertig',
+    'common.back': 'Zurück',
+    'common.edit': 'Bearbeiten',
+    'common.delete': 'Löschen',
+    'common.new': 'Neu',
+    'common.add': 'Hinzufügen',
+    'common.search': 'Suchen',
+    'common.close': 'Schließen',
+    'common.confirm': 'Bestätigen',
+    'common.yes': 'Ja',
+    'common.no': 'Nein',
+    'common.ok': 'OK',
+    'common.continue': 'Weiter',
+    'common.loading': 'Lädt…',
+
+    // Auth (Login / Signup)
+    'auth.appTagline': 'Trainings- und Wettkampf-Tool für Kunstradsport',
+    'auth.signIn': 'Anmelden',
+    'auth.signUp': 'Registrieren',
+    'auth.email': 'E-Mail',
+    'auth.password': 'Passwort',
+    'auth.displayName': 'Anzeigename',
+    'auth.role': 'Rolle',
+    'auth.roleAthlete': 'Sportler:in',
+    'auth.roleCoach': 'Trainer:in',
+    'auth.forgotPassword': 'Passwort vergessen?',
+    'auth.language': 'Sprache',
+
+    // Rollen-Labels
+    'role.admin': 'Admin',
+    'role.coach': 'Trainer:in',
+    'role.athlete': 'Sportler:in',
+
+    // Dashboard
+    'dashboard.title': 'Dashboard',
+    'dashboard.subtitle': 'Trainings-Statistiken im Überblick',
+    'dashboard.bestScore': 'Bestleistung',
+    'dashboard.competitions': 'Wettkämpfe',
+    'dashboard.trainingDays': 'Trainingstage',
+    'dashboard.sessions': 'Sessions',
+    'dashboard.logSession': 'Serie protokollieren',
+    'dashboard.manageExercises': 'Übungen verwalten',
+    'dashboard.progressByExercise': 'Fortschritt pro Übung',
+    'dashboard.noTrainingData': 'Noch keine Trainings-Daten',
+    'dashboard.noTrainingHint': 'Protokolliere deine erste Serie, um den Fortschritt zu sehen.',
+    'dashboard.competitionHistory': 'Wettkampf-Verlauf',
+    'dashboard.trainingActivity': 'Trainings-Aktivität',
+    'dashboard.viewAll': 'Alle ansehen ›',
+    'dashboard.range.all': 'Alle Zeit',
+    'dashboard.range.90d': '90 Tage',
+    'dashboard.range.30d': '30 Tage',
+    'dashboard.lastTrained': 'zuletzt {date}',
+    'dashboard.uciExercises': '{n} UCI-Übungen verfügbar',
+
+    // Training-View
+    'training.title': 'Training',
+    'training.totalSessions': '{n} Sessions insgesamt',
+    'training.logButton': 'Serie protokollieren',
+    'training.sortByDate': 'Nach Datum',
+    'training.sortByExercise': 'Nach Übung',
+    'training.today': 'Heute',
+    'training.yesterday': 'Gestern',
+    'training.thisWeek': 'Diese Woche',
+    'training.searchPlaceholder': 'Suchen (Übung, Notiz, Datum z.B. 15.5.26)',
+    'training.range.all': 'Alle',
+    'training.range.7d': '7 Tage',
+    'training.range.30d': '30 Tage',
+    'training.range.90d': '90 Tage',
+    'training.range.thisMonth': 'Dieser Monat',
+    'training.range.thisYear': 'Dieses Jahr',
+    'training.allExercises': 'Alle Übungen ({n})',
+    'training.empty': 'Noch keine Sessions',
+    'training.emptyHint': 'Tippe oben auf „Serie protokollieren" um loszulegen.',
+    'training.noMatches': 'Keine Treffer für deinen Filter.',
+
+    // Erfassen / Session anlegen
+    'log.title': 'Serie protokollieren',
+    'log.date': 'Datum',
+    'log.athlete': 'Sportler / Team',
+    'log.athleteNone': '— Kein Sportler —',
+    'log.exercise': 'Übung',
+    'log.exerciseTrained': '◆ Bereits trainiert',
+    'log.exerciseUntrained': '◇ Übrige Übungen',
+    'log.exerciseAll': 'Alle Übungen',
+    'log.variant': 'Variante',
+    'log.withRope': 'Mit Seil',
+    'log.withoutRope': 'Ohne Seil',
+    'log.series': 'Serien',
+    'log.success': 'Geklappt',
+    'log.fail': 'Nicht geklappt',
+    'log.note': 'Notiz (optional)',
+    'log.notePlaceholder': 'Was lief gut/schlecht? Korrekturen, Erkenntnisse, Stimmung…',
+    'log.removeLast': '← Letzte entfernen',
+    'log.noActiveExercises': 'Keine aktiven Übungen',
+    'log.createExerciseFirst': 'Lege zuerst eine Übung an.',
+
+    // Übungen-Liste
+    'exercises.title': 'Übungen',
+    'exercises.new': 'Neue Übung',
+    'exercises.archived': 'archiviert',
+    'exercises.uciCode': 'UCI {code}',
+
+    // Wettkampf
+    'competition.title': 'Wettkampf',
+    'competition.programs': 'Programme',
+    'competition.competitions': 'Wettkämpfe',
+    'competition.newScoresheet': 'Wertungsbogen',
+    'competition.editCompetition': 'Wettkampf',
+    'competition.saveCompetition': 'Wettkampf speichern',
+
+    // Sportler
+    'athletes.title': 'Sportler',
+    'athletes.newAthlete': 'Neu anlegen',
+    'athletes.edit': 'Bearbeiten',
+    'athletes.type': 'Typ',
+    'athletes.typeAthlete': 'Sportler:in',
+    'athletes.typeTeam': 'Team / Mannschaft',
+    'athletes.notes': 'Verein / Notizen',
+    'athletes.notesPlaceholder': 'z. B. RKV Denkendorf',
+
+    // Einstellungen
+    'settings.title': 'Einstellungen',
+    'settings.subtitle': 'Account, Erscheinungsbild, Daten',
+    'settings.account': 'Account',
+    'settings.loggedInAs': 'Angemeldet als',
+    'settings.email': 'E-Mail',
+    'settings.role': 'Rolle',
+    'settings.cloudSync': 'Cloud-Sync',
+    'settings.cloudSyncing': 'wird synchronisiert…',
+    'settings.cloudSynced': 'synchronisiert',
+    'settings.cloudSyncError': 'Sync-Fehler',
+    'settings.signOut': 'Abmelden',
+    'settings.appearance': 'Erscheinungsbild',
+    'settings.appearanceAuto': 'Automatisch (System)',
+    'settings.appearanceLight': 'Hell',
+    'settings.appearanceDark': 'Dunkel',
+    'settings.appearanceFooter': '„Automatisch" folgt der System-Einstellung deines Geräts und wechselt bei Sonnenuntergang automatisch.',
+    'settings.language': 'Sprache',
+    'settings.languageFooter': 'Die App-Sprache. Bei „Automatisch" wird die Sprache deines Geräts verwendet.',
+    'settings.languageAuto': 'Automatisch (Gerät)',
+    'settings.reset': 'Daten zurücksetzen',
+    'settings.resetButton': 'Alle Daten zurücksetzen',
+    'settings.resetFooter': 'Setzt alle Übungen, Sessions, Wettkämpfe, Programme, Sportler und das UCI-Reglement zurück. Kann nicht rückgängig gemacht werden.',
+    'settings.about': 'Über',
+    'settings.aboutApp': 'App',
+    'settings.aboutVersion': 'Version',
+    'settings.aboutUci': 'UCI-Reglement',
+    'settings.trainerAccess': 'Trainer-Zugriff',
+    'settings.noTrainerAccess': 'Niemand hat Zugriff',
+    'settings.cloudData': 'Cloud-Daten',
+    'settings.migrate': 'In Cloud-Tabellen migrieren',
+    'settings.migrated': 'Migration abgeschlossen',
+
+    // Top-Menü
+    'topMenu.settings': 'Einstellungen',
+    'topMenu.export': 'Export'
+  },
+
+  en: {
+    'nav.dashboard': 'Dashboard',
+    'nav.training': 'Training',
+    'nav.wettkampf': 'Competition',
+    'nav.uebungen': 'Exercises',
+    'nav.sportler': 'Athletes',
+    'nav.export': 'Export',
+    'nav.einstellungen': 'Settings',
+    'nav.more': 'More',
+
+    'common.save': 'Save',
+    'common.cancel': 'Cancel',
+    'common.done': 'Done',
+    'common.back': 'Back',
+    'common.edit': 'Edit',
+    'common.delete': 'Delete',
+    'common.new': 'New',
+    'common.add': 'Add',
+    'common.search': 'Search',
+    'common.close': 'Close',
+    'common.confirm': 'Confirm',
+    'common.yes': 'Yes',
+    'common.no': 'No',
+    'common.ok': 'OK',
+    'common.continue': 'Continue',
+    'common.loading': 'Loading…',
+
+    'auth.appTagline': 'Training & competition tool for artistic cycling',
+    'auth.signIn': 'Sign in',
+    'auth.signUp': 'Sign up',
+    'auth.email': 'Email',
+    'auth.password': 'Password',
+    'auth.displayName': 'Display name',
+    'auth.role': 'Role',
+    'auth.roleAthlete': 'Athlete',
+    'auth.roleCoach': 'Coach',
+    'auth.forgotPassword': 'Forgot password?',
+    'auth.language': 'Language',
+
+    'role.admin': 'Admin',
+    'role.coach': 'Coach',
+    'role.athlete': 'Athlete',
+
+    'dashboard.title': 'Dashboard',
+    'dashboard.subtitle': 'Your training stats at a glance',
+    'dashboard.bestScore': 'Best score',
+    'dashboard.competitions': 'Competitions',
+    'dashboard.trainingDays': 'Training days',
+    'dashboard.sessions': 'Sessions',
+    'dashboard.logSession': 'Log series',
+    'dashboard.manageExercises': 'Manage exercises',
+    'dashboard.progressByExercise': 'Progress by exercise',
+    'dashboard.noTrainingData': 'No training data yet',
+    'dashboard.noTrainingHint': 'Log your first series to see progress.',
+    'dashboard.competitionHistory': 'Competition history',
+    'dashboard.trainingActivity': 'Training activity',
+    'dashboard.viewAll': 'View all ›',
+    'dashboard.range.all': 'All time',
+    'dashboard.range.90d': '90 days',
+    'dashboard.range.30d': '30 days',
+    'dashboard.lastTrained': 'last {date}',
+    'dashboard.uciExercises': '{n} UCI exercises available',
+
+    'training.title': 'Training',
+    'training.totalSessions': '{n} sessions total',
+    'training.logButton': 'Log series',
+    'training.sortByDate': 'By date',
+    'training.sortByExercise': 'By exercise',
+    'training.today': 'Today',
+    'training.yesterday': 'Yesterday',
+    'training.thisWeek': 'This week',
+    'training.searchPlaceholder': 'Search (exercise, note, date e.g. 5/15/26)',
+    'training.range.all': 'All',
+    'training.range.7d': '7 days',
+    'training.range.30d': '30 days',
+    'training.range.90d': '90 days',
+    'training.range.thisMonth': 'This month',
+    'training.range.thisYear': 'This year',
+    'training.allExercises': 'All exercises ({n})',
+    'training.empty': 'No sessions yet',
+    'training.emptyHint': 'Tap "Log series" above to get started.',
+    'training.noMatches': 'No results for your filter.',
+
+    'log.title': 'Log series',
+    'log.date': 'Date',
+    'log.athlete': 'Athlete / team',
+    'log.athleteNone': '— No athlete —',
+    'log.exercise': 'Exercise',
+    'log.exerciseTrained': '◆ Already trained',
+    'log.exerciseUntrained': '◇ Other exercises',
+    'log.exerciseAll': 'All exercises',
+    'log.variant': 'Variant',
+    'log.withRope': 'With rope',
+    'log.withoutRope': 'Without rope',
+    'log.series': 'Series',
+    'log.success': 'Made',
+    'log.fail': 'Missed',
+    'log.note': 'Note (optional)',
+    'log.notePlaceholder': 'What went well/badly? Corrections, insights, mood…',
+    'log.removeLast': '← Remove last',
+    'log.noActiveExercises': 'No active exercises',
+    'log.createExerciseFirst': 'Create an exercise first.',
+
+    'exercises.title': 'Exercises',
+    'exercises.new': 'New exercise',
+    'exercises.archived': 'archived',
+    'exercises.uciCode': 'UCI {code}',
+
+    'competition.title': 'Competition',
+    'competition.programs': 'Programs',
+    'competition.competitions': 'Competitions',
+    'competition.newScoresheet': 'Scoresheet',
+    'competition.editCompetition': 'Competition',
+    'competition.saveCompetition': 'Save competition',
+
+    'athletes.title': 'Athletes',
+    'athletes.newAthlete': 'New',
+    'athletes.edit': 'Edit',
+    'athletes.type': 'Type',
+    'athletes.typeAthlete': 'Athlete',
+    'athletes.typeTeam': 'Team',
+    'athletes.notes': 'Club / Notes',
+    'athletes.notesPlaceholder': 'e.g. RKV Denkendorf',
+
+    'settings.title': 'Settings',
+    'settings.subtitle': 'Account, appearance, data',
+    'settings.account': 'Account',
+    'settings.loggedInAs': 'Logged in as',
+    'settings.email': 'Email',
+    'settings.role': 'Role',
+    'settings.cloudSync': 'Cloud sync',
+    'settings.cloudSyncing': 'syncing…',
+    'settings.cloudSynced': 'synced',
+    'settings.cloudSyncError': 'Sync error',
+    'settings.signOut': 'Sign out',
+    'settings.appearance': 'Appearance',
+    'settings.appearanceAuto': 'Automatic (System)',
+    'settings.appearanceLight': 'Light',
+    'settings.appearanceDark': 'Dark',
+    'settings.appearanceFooter': '"Automatic" follows your device setting and switches at sunset automatically.',
+    'settings.language': 'Language',
+    'settings.languageFooter': 'The app language. "Automatic" uses your device language.',
+    'settings.languageAuto': 'Automatic (Device)',
+    'settings.reset': 'Reset data',
+    'settings.resetButton': 'Reset all data',
+    'settings.resetFooter': 'Resets all exercises, sessions, competitions, programs, athletes and the UCI rules. Cannot be undone.',
+    'settings.about': 'About',
+    'settings.aboutApp': 'App',
+    'settings.aboutVersion': 'Version',
+    'settings.aboutUci': 'UCI rules',
+    'settings.trainerAccess': 'Coach access',
+    'settings.noTrainerAccess': 'No one has access',
+    'settings.cloudData': 'Cloud data',
+    'settings.migrate': 'Migrate to cloud tables',
+    'settings.migrated': 'Migration complete',
+
+    'topMenu.settings': 'Settings',
+    'topMenu.export': 'Export'
+  },
+
+  fr: {
+    'nav.dashboard': 'Tableau de bord',
+    'nav.training': 'Entraînement',
+    'nav.wettkampf': 'Compétition',
+    'nav.uebungen': 'Exercices',
+    'nav.sportler': 'Athlètes',
+    'nav.export': 'Exporter',
+    'nav.einstellungen': 'Réglages',
+    'nav.more': 'Plus',
+
+    'common.save': 'Enregistrer',
+    'common.cancel': 'Annuler',
+    'common.done': 'Terminé',
+    'common.back': 'Retour',
+    'common.edit': 'Modifier',
+    'common.delete': 'Supprimer',
+    'common.new': 'Nouveau',
+    'common.add': 'Ajouter',
+    'common.search': 'Rechercher',
+    'common.close': 'Fermer',
+    'common.confirm': 'Confirmer',
+    'common.yes': 'Oui',
+    'common.no': 'Non',
+    'common.ok': 'OK',
+    'common.continue': 'Continuer',
+    'common.loading': 'Chargement…',
+
+    'auth.appTagline': 'Outil d\'entraînement et de compétition pour le cyclisme artistique',
+    'auth.signIn': 'Se connecter',
+    'auth.signUp': 'S\'inscrire',
+    'auth.email': 'E-mail',
+    'auth.password': 'Mot de passe',
+    'auth.displayName': 'Nom affiché',
+    'auth.role': 'Rôle',
+    'auth.roleAthlete': 'Athlète',
+    'auth.roleCoach': 'Entraîneur',
+    'auth.forgotPassword': 'Mot de passe oublié ?',
+    'auth.language': 'Langue',
+
+    'role.admin': 'Admin',
+    'role.coach': 'Entraîneur',
+    'role.athlete': 'Athlète',
+
+    'dashboard.title': 'Tableau de bord',
+    'dashboard.subtitle': 'Aperçu de vos stats d\'entraînement',
+    'dashboard.bestScore': 'Meilleur score',
+    'dashboard.competitions': 'Compétitions',
+    'dashboard.trainingDays': 'Jours d\'entraînement',
+    'dashboard.sessions': 'Sessions',
+    'dashboard.logSession': 'Saisir série',
+    'dashboard.manageExercises': 'Gérer les exercices',
+    'dashboard.progressByExercise': 'Progrès par exercice',
+    'dashboard.noTrainingData': 'Aucune donnée d\'entraînement',
+    'dashboard.noTrainingHint': 'Saisis ta première série pour voir le progrès.',
+    'dashboard.competitionHistory': 'Historique compétitions',
+    'dashboard.trainingActivity': 'Activité d\'entraînement',
+    'dashboard.viewAll': 'Tout voir ›',
+    'dashboard.range.all': 'Toujours',
+    'dashboard.range.90d': '90 jours',
+    'dashboard.range.30d': '30 jours',
+    'dashboard.lastTrained': 'dernier {date}',
+    'dashboard.uciExercises': '{n} exercices UCI disponibles',
+
+    'training.title': 'Entraînement',
+    'training.totalSessions': '{n} sessions au total',
+    'training.logButton': 'Saisir série',
+    'training.sortByDate': 'Par date',
+    'training.sortByExercise': 'Par exercice',
+    'training.today': 'Aujourd\'hui',
+    'training.yesterday': 'Hier',
+    'training.thisWeek': 'Cette semaine',
+    'training.searchPlaceholder': 'Rechercher (exercice, note, date)',
+    'training.range.all': 'Tous',
+    'training.range.7d': '7 jours',
+    'training.range.30d': '30 jours',
+    'training.range.90d': '90 jours',
+    'training.range.thisMonth': 'Ce mois',
+    'training.range.thisYear': 'Cette année',
+    'training.allExercises': 'Tous les exercices ({n})',
+    'training.empty': 'Aucune session',
+    'training.emptyHint': 'Touche « Saisir série » pour commencer.',
+    'training.noMatches': 'Aucun résultat pour ton filtre.',
+
+    'log.title': 'Saisir série',
+    'log.date': 'Date',
+    'log.athlete': 'Athlète / équipe',
+    'log.athleteNone': '— Aucun athlète —',
+    'log.exercise': 'Exercice',
+    'log.exerciseTrained': '◆ Déjà entraîné',
+    'log.exerciseUntrained': '◇ Autres exercices',
+    'log.exerciseAll': 'Tous les exercices',
+    'log.variant': 'Variante',
+    'log.withRope': 'Avec corde',
+    'log.withoutRope': 'Sans corde',
+    'log.series': 'Séries',
+    'log.success': 'Réussi',
+    'log.fail': 'Manqué',
+    'log.note': 'Note (optionnel)',
+    'log.notePlaceholder': 'Qu\'est-ce qui a bien/mal fonctionné ? Corrections, idées, humeur…',
+    'log.removeLast': '← Retirer dernier',
+    'log.noActiveExercises': 'Aucun exercice actif',
+    'log.createExerciseFirst': 'Crée d\'abord un exercice.',
+
+    'exercises.title': 'Exercices',
+    'exercises.new': 'Nouvel exercice',
+    'exercises.archived': 'archivé',
+    'exercises.uciCode': 'UCI {code}',
+
+    'competition.title': 'Compétition',
+    'competition.programs': 'Programmes',
+    'competition.competitions': 'Compétitions',
+    'competition.newScoresheet': 'Feuille de notation',
+    'competition.editCompetition': 'Compétition',
+    'competition.saveCompetition': 'Enregistrer compétition',
+
+    'athletes.title': 'Athlètes',
+    'athletes.newAthlete': 'Nouveau',
+    'athletes.edit': 'Modifier',
+    'athletes.type': 'Type',
+    'athletes.typeAthlete': 'Athlète',
+    'athletes.typeTeam': 'Équipe',
+    'athletes.notes': 'Club / Notes',
+    'athletes.notesPlaceholder': 'p. ex. RKV Denkendorf',
+
+    'settings.title': 'Réglages',
+    'settings.subtitle': 'Compte, apparence, données',
+    'settings.account': 'Compte',
+    'settings.loggedInAs': 'Connecté comme',
+    'settings.email': 'E-mail',
+    'settings.role': 'Rôle',
+    'settings.cloudSync': 'Synchro cloud',
+    'settings.cloudSyncing': 'synchronisation…',
+    'settings.cloudSynced': 'synchronisé',
+    'settings.cloudSyncError': 'Erreur sync',
+    'settings.signOut': 'Se déconnecter',
+    'settings.appearance': 'Apparence',
+    'settings.appearanceAuto': 'Automatique (système)',
+    'settings.appearanceLight': 'Clair',
+    'settings.appearanceDark': 'Sombre',
+    'settings.appearanceFooter': '« Automatique » suit le réglage de ton appareil et passe en sombre au coucher du soleil.',
+    'settings.language': 'Langue',
+    'settings.languageFooter': 'La langue de l\'app. « Automatique » utilise la langue de ton appareil.',
+    'settings.languageAuto': 'Automatique (appareil)',
+    'settings.reset': 'Réinitialiser les données',
+    'settings.resetButton': 'Réinitialiser toutes les données',
+    'settings.resetFooter': 'Réinitialise tous les exercices, sessions, compétitions, programmes, athlètes et règles UCI. Irréversible.',
+    'settings.about': 'À propos',
+    'settings.aboutApp': 'App',
+    'settings.aboutVersion': 'Version',
+    'settings.aboutUci': 'Règles UCI',
+    'settings.trainerAccess': 'Accès entraîneur',
+    'settings.noTrainerAccess': 'Personne n\'a accès',
+    'settings.cloudData': 'Données cloud',
+    'settings.migrate': 'Migrer vers tables cloud',
+    'settings.migrated': 'Migration terminée',
+
+    'topMenu.settings': 'Réglages',
+    'topMenu.export': 'Exporter'
+  },
+
+  it: {
+    'nav.dashboard': 'Dashboard',
+    'nav.training': 'Allenamento',
+    'nav.wettkampf': 'Gara',
+    'nav.uebungen': 'Esercizi',
+    'nav.sportler': 'Atleti',
+    'nav.export': 'Esporta',
+    'nav.einstellungen': 'Impostazioni',
+    'nav.more': 'Altro',
+
+    'common.save': 'Salva',
+    'common.cancel': 'Annulla',
+    'common.done': 'Fatto',
+    'common.back': 'Indietro',
+    'common.edit': 'Modifica',
+    'common.delete': 'Elimina',
+    'common.new': 'Nuovo',
+    'common.add': 'Aggiungi',
+    'common.search': 'Cerca',
+    'common.close': 'Chiudi',
+    'common.confirm': 'Conferma',
+    'common.yes': 'Sì',
+    'common.no': 'No',
+    'common.ok': 'OK',
+    'common.continue': 'Continua',
+    'common.loading': 'Caricamento…',
+
+    'auth.appTagline': 'Strumento di allenamento e gara per ciclismo artistico',
+    'auth.signIn': 'Accedi',
+    'auth.signUp': 'Registrati',
+    'auth.email': 'E-mail',
+    'auth.password': 'Password',
+    'auth.displayName': 'Nome visualizzato',
+    'auth.role': 'Ruolo',
+    'auth.roleAthlete': 'Atleta',
+    'auth.roleCoach': 'Allenatore',
+    'auth.forgotPassword': 'Password dimenticata?',
+    'auth.language': 'Lingua',
+
+    'role.admin': 'Admin',
+    'role.coach': 'Allenatore',
+    'role.athlete': 'Atleta',
+
+    'dashboard.title': 'Dashboard',
+    'dashboard.subtitle': 'Le tue statistiche di allenamento',
+    'dashboard.bestScore': 'Miglior punteggio',
+    'dashboard.competitions': 'Gare',
+    'dashboard.trainingDays': 'Giorni di allenamento',
+    'dashboard.sessions': 'Sessioni',
+    'dashboard.logSession': 'Registra serie',
+    'dashboard.manageExercises': 'Gestisci esercizi',
+    'dashboard.progressByExercise': 'Progresso per esercizio',
+    'dashboard.noTrainingData': 'Nessun dato di allenamento',
+    'dashboard.noTrainingHint': 'Registra la tua prima serie per vedere i progressi.',
+    'dashboard.competitionHistory': 'Storico gare',
+    'dashboard.trainingActivity': 'Attività di allenamento',
+    'dashboard.viewAll': 'Vedi tutto ›',
+    'dashboard.range.all': 'Sempre',
+    'dashboard.range.90d': '90 giorni',
+    'dashboard.range.30d': '30 giorni',
+    'dashboard.lastTrained': 'ultima {date}',
+    'dashboard.uciExercises': '{n} esercizi UCI disponibili',
+
+    'training.title': 'Allenamento',
+    'training.totalSessions': '{n} sessioni totali',
+    'training.logButton': 'Registra serie',
+    'training.sortByDate': 'Per data',
+    'training.sortByExercise': 'Per esercizio',
+    'training.today': 'Oggi',
+    'training.yesterday': 'Ieri',
+    'training.thisWeek': 'Questa settimana',
+    'training.searchPlaceholder': 'Cerca (esercizio, nota, data)',
+    'training.range.all': 'Tutto',
+    'training.range.7d': '7 giorni',
+    'training.range.30d': '30 giorni',
+    'training.range.90d': '90 giorni',
+    'training.range.thisMonth': 'Questo mese',
+    'training.range.thisYear': 'Quest\'anno',
+    'training.allExercises': 'Tutti gli esercizi ({n})',
+    'training.empty': 'Nessuna sessione',
+    'training.emptyHint': 'Tocca « Registra serie » per iniziare.',
+    'training.noMatches': 'Nessun risultato per il tuo filtro.',
+
+    'log.title': 'Registra serie',
+    'log.date': 'Data',
+    'log.athlete': 'Atleta / squadra',
+    'log.athleteNone': '— Nessun atleta —',
+    'log.exercise': 'Esercizio',
+    'log.exerciseTrained': '◆ Già allenato',
+    'log.exerciseUntrained': '◇ Altri esercizi',
+    'log.exerciseAll': 'Tutti gli esercizi',
+    'log.variant': 'Variante',
+    'log.withRope': 'Con corda',
+    'log.withoutRope': 'Senza corda',
+    'log.series': 'Serie',
+    'log.success': 'Riuscito',
+    'log.fail': 'Mancato',
+    'log.note': 'Nota (facoltativa)',
+    'log.notePlaceholder': 'Cosa è andato bene/male? Correzioni, idee, umore…',
+    'log.removeLast': '← Rimuovi ultimo',
+    'log.noActiveExercises': 'Nessun esercizio attivo',
+    'log.createExerciseFirst': 'Crea prima un esercizio.',
+
+    'exercises.title': 'Esercizi',
+    'exercises.new': 'Nuovo esercizio',
+    'exercises.archived': 'archiviato',
+    'exercises.uciCode': 'UCI {code}',
+
+    'competition.title': 'Gara',
+    'competition.programs': 'Programmi',
+    'competition.competitions': 'Gare',
+    'competition.newScoresheet': 'Foglio punteggio',
+    'competition.editCompetition': 'Gara',
+    'competition.saveCompetition': 'Salva gara',
+
+    'athletes.title': 'Atleti',
+    'athletes.newAthlete': 'Nuovo',
+    'athletes.edit': 'Modifica',
+    'athletes.type': 'Tipo',
+    'athletes.typeAthlete': 'Atleta',
+    'athletes.typeTeam': 'Squadra',
+    'athletes.notes': 'Club / Note',
+    'athletes.notesPlaceholder': 'es. RKV Denkendorf',
+
+    'settings.title': 'Impostazioni',
+    'settings.subtitle': 'Account, aspetto, dati',
+    'settings.account': 'Account',
+    'settings.loggedInAs': 'Accesso come',
+    'settings.email': 'E-mail',
+    'settings.role': 'Ruolo',
+    'settings.cloudSync': 'Sincro cloud',
+    'settings.cloudSyncing': 'sincronizzazione…',
+    'settings.cloudSynced': 'sincronizzato',
+    'settings.cloudSyncError': 'Errore sincro',
+    'settings.signOut': 'Esci',
+    'settings.appearance': 'Aspetto',
+    'settings.appearanceAuto': 'Automatico (sistema)',
+    'settings.appearanceLight': 'Chiaro',
+    'settings.appearanceDark': 'Scuro',
+    'settings.appearanceFooter': '"Automatico" segue l\'impostazione del tuo dispositivo e passa al tramonto.',
+    'settings.language': 'Lingua',
+    'settings.languageFooter': 'La lingua dell\'app. "Automatico" usa la lingua del dispositivo.',
+    'settings.languageAuto': 'Automatico (dispositivo)',
+    'settings.reset': 'Reset dati',
+    'settings.resetButton': 'Reset tutti i dati',
+    'settings.resetFooter': 'Reset di tutti gli esercizi, sessioni, gare, programmi, atleti e regole UCI. Irreversibile.',
+    'settings.about': 'Info',
+    'settings.aboutApp': 'App',
+    'settings.aboutVersion': 'Versione',
+    'settings.aboutUci': 'Regole UCI',
+    'settings.trainerAccess': 'Accesso allenatore',
+    'settings.noTrainerAccess': 'Nessuno ha accesso',
+    'settings.cloudData': 'Dati cloud',
+    'settings.migrate': 'Migra a tabelle cloud',
+    'settings.migrated': 'Migrazione completata',
+
+    'topMenu.settings': 'Impostazioni',
+    'topMenu.export': 'Esporta'
+  },
+
+  cs: {
+    'nav.dashboard': 'Přehled',
+    'nav.training': 'Trénink',
+    'nav.wettkampf': 'Závod',
+    'nav.uebungen': 'Cviky',
+    'nav.sportler': 'Sportovci',
+    'nav.export': 'Export',
+    'nav.einstellungen': 'Nastavení',
+    'nav.more': 'Více',
+
+    'common.save': 'Uložit',
+    'common.cancel': 'Zrušit',
+    'common.done': 'Hotovo',
+    'common.back': 'Zpět',
+    'common.edit': 'Upravit',
+    'common.delete': 'Smazat',
+    'common.new': 'Nový',
+    'common.add': 'Přidat',
+    'common.search': 'Hledat',
+    'common.close': 'Zavřít',
+    'common.confirm': 'Potvrdit',
+    'common.yes': 'Ano',
+    'common.no': 'Ne',
+    'common.ok': 'OK',
+    'common.continue': 'Pokračovat',
+    'common.loading': 'Načítání…',
+
+    'auth.appTagline': 'Tréninkový a závodní nástroj pro krasojízdu',
+    'auth.signIn': 'Přihlásit',
+    'auth.signUp': 'Registrovat',
+    'auth.email': 'E-mail',
+    'auth.password': 'Heslo',
+    'auth.displayName': 'Zobrazované jméno',
+    'auth.role': 'Role',
+    'auth.roleAthlete': 'Sportovec',
+    'auth.roleCoach': 'Trenér',
+    'auth.forgotPassword': 'Zapomenuté heslo?',
+    'auth.language': 'Jazyk',
+
+    'role.admin': 'Admin',
+    'role.coach': 'Trenér',
+    'role.athlete': 'Sportovec',
+
+    'dashboard.title': 'Přehled',
+    'dashboard.subtitle': 'Tréninkové statistiky',
+    'dashboard.bestScore': 'Nejlepší výkon',
+    'dashboard.competitions': 'Závody',
+    'dashboard.trainingDays': 'Tréninkové dny',
+    'dashboard.sessions': 'Tréninky',
+    'dashboard.logSession': 'Zaznamenat sérii',
+    'dashboard.manageExercises': 'Spravovat cviky',
+    'dashboard.progressByExercise': 'Pokrok podle cviku',
+    'dashboard.noTrainingData': 'Žádná tréninková data',
+    'dashboard.noTrainingHint': 'Zaznamenej první sérii a uvidíš pokrok.',
+    'dashboard.competitionHistory': 'Historie závodů',
+    'dashboard.trainingActivity': 'Tréninková aktivita',
+    'dashboard.viewAll': 'Zobrazit vše ›',
+    'dashboard.range.all': 'Vše',
+    'dashboard.range.90d': '90 dní',
+    'dashboard.range.30d': '30 dní',
+    'dashboard.lastTrained': 'naposledy {date}',
+    'dashboard.uciExercises': '{n} UCI cviků k dispozici',
+
+    'training.title': 'Trénink',
+    'training.totalSessions': 'Celkem {n} tréninků',
+    'training.logButton': 'Zaznamenat sérii',
+    'training.sortByDate': 'Dle data',
+    'training.sortByExercise': 'Dle cviku',
+    'training.today': 'Dnes',
+    'training.yesterday': 'Včera',
+    'training.thisWeek': 'Tento týden',
+    'training.searchPlaceholder': 'Hledat (cvik, poznámka, datum)',
+    'training.range.all': 'Vše',
+    'training.range.7d': '7 dní',
+    'training.range.30d': '30 dní',
+    'training.range.90d': '90 dní',
+    'training.range.thisMonth': 'Tento měsíc',
+    'training.range.thisYear': 'Tento rok',
+    'training.allExercises': 'Všechny cviky ({n})',
+    'training.empty': 'Žádné tréninky',
+    'training.emptyHint': 'Klepni nahoře na „Zaznamenat sérii" pro start.',
+    'training.noMatches': 'Žádné výsledky pro tvůj filtr.',
+
+    'log.title': 'Zaznamenat sérii',
+    'log.date': 'Datum',
+    'log.athlete': 'Sportovec / tým',
+    'log.athleteNone': '— Žádný sportovec —',
+    'log.exercise': 'Cvik',
+    'log.exerciseTrained': '◆ Již trénované',
+    'log.exerciseUntrained': '◇ Ostatní cviky',
+    'log.exerciseAll': 'Všechny cviky',
+    'log.variant': 'Varianta',
+    'log.withRope': 'Se švihadlem',
+    'log.withoutRope': 'Bez švihadla',
+    'log.series': 'Série',
+    'log.success': 'Povedlo',
+    'log.fail': 'Nepovedlo',
+    'log.note': 'Poznámka (volitelná)',
+    'log.notePlaceholder': 'Co šlo dobře/špatně? Opravy, zjištění, nálada…',
+    'log.removeLast': '← Odebrat poslední',
+    'log.noActiveExercises': 'Žádné aktivní cviky',
+    'log.createExerciseFirst': 'Nejprve vytvoř cvik.',
+
+    'exercises.title': 'Cviky',
+    'exercises.new': 'Nový cvik',
+    'exercises.archived': 'archivováno',
+    'exercises.uciCode': 'UCI {code}',
+
+    'competition.title': 'Závod',
+    'competition.programs': 'Programy',
+    'competition.competitions': 'Závody',
+    'competition.newScoresheet': 'Bodovací list',
+    'competition.editCompetition': 'Závod',
+    'competition.saveCompetition': 'Uložit závod',
+
+    'athletes.title': 'Sportovci',
+    'athletes.newAthlete': 'Nový',
+    'athletes.edit': 'Upravit',
+    'athletes.type': 'Typ',
+    'athletes.typeAthlete': 'Sportovec',
+    'athletes.typeTeam': 'Tým',
+    'athletes.notes': 'Klub / Poznámky',
+    'athletes.notesPlaceholder': 'např. SK Brno',
+
+    'settings.title': 'Nastavení',
+    'settings.subtitle': 'Účet, vzhled, data',
+    'settings.account': 'Účet',
+    'settings.loggedInAs': 'Přihlášen jako',
+    'settings.email': 'E-mail',
+    'settings.role': 'Role',
+    'settings.cloudSync': 'Synchronizace',
+    'settings.cloudSyncing': 'synchronizace…',
+    'settings.cloudSynced': 'synchronizováno',
+    'settings.cloudSyncError': 'Chyba synchronizace',
+    'settings.signOut': 'Odhlásit',
+    'settings.appearance': 'Vzhled',
+    'settings.appearanceAuto': 'Automaticky (systém)',
+    'settings.appearanceLight': 'Světlý',
+    'settings.appearanceDark': 'Tmavý',
+    'settings.appearanceFooter': '„Automaticky" sleduje nastavení zařízení a při západu přepne na tmavý.',
+    'settings.language': 'Jazyk',
+    'settings.languageFooter': 'Jazyk aplikace. „Automaticky" použije jazyk zařízení.',
+    'settings.languageAuto': 'Automaticky (zařízení)',
+    'settings.reset': 'Reset dat',
+    'settings.resetButton': 'Reset všech dat',
+    'settings.resetFooter': 'Resetuje všechny cviky, tréninky, závody, programy, sportovce a UCI pravidla. Nevratné.',
+    'settings.about': 'O aplikaci',
+    'settings.aboutApp': 'App',
+    'settings.aboutVersion': 'Verze',
+    'settings.aboutUci': 'UCI pravidla',
+    'settings.trainerAccess': 'Přístup trenéra',
+    'settings.noTrainerAccess': 'Nikdo nemá přístup',
+    'settings.cloudData': 'Cloud data',
+    'settings.migrate': 'Migrovat do cloud tabulek',
+    'settings.migrated': 'Migrace dokončena',
+
+    'topMenu.settings': 'Nastavení',
+    'topMenu.export': 'Export'
+  },
+
+  hu: {
+    // Ungarisch — Kern-Strings übersetzt, restliche fallen auf DE zurück.
+    'nav.dashboard': 'Áttekintés',
+    'nav.training': 'Edzés',
+    'nav.wettkampf': 'Verseny',
+    'nav.uebungen': 'Gyakorlatok',
+    'nav.sportler': 'Sportolók',
+    'nav.export': 'Exportálás',
+    'nav.einstellungen': 'Beállítások',
+    'nav.more': 'Több',
+    'common.save': 'Mentés',
+    'common.cancel': 'Mégse',
+    'common.done': 'Kész',
+    'common.back': 'Vissza',
+    'common.edit': 'Szerkesztés',
+    'common.delete': 'Törlés',
+    'common.new': 'Új',
+    'common.add': 'Hozzáadás',
+    'common.search': 'Keresés',
+    'common.close': 'Bezárás',
+    'auth.appTagline': 'Edzés- és versenyeszköz műkerékpározáshoz',
+    'auth.signIn': 'Bejelentkezés',
+    'auth.signUp': 'Regisztráció',
+    'auth.email': 'E-mail',
+    'auth.password': 'Jelszó',
+    'auth.language': 'Nyelv',
+    'settings.title': 'Beállítások',
+    'settings.language': 'Nyelv',
+    'settings.appearance': 'Megjelenés',
+    'settings.appearanceAuto': 'Automatikus (rendszer)',
+    'settings.appearanceLight': 'Világos',
+    'settings.appearanceDark': 'Sötét',
+    'topMenu.settings': 'Beállítások',
+    'topMenu.export': 'Exportálás'
+  },
+
+  ja: {
+    // Japanisch — Kern-Strings übersetzt, restliche fallen auf DE zurück.
+    'nav.dashboard': 'ダッシュボード',
+    'nav.training': 'トレーニング',
+    'nav.wettkampf': '大会',
+    'nav.uebungen': '技',
+    'nav.sportler': '選手',
+    'nav.export': 'エクスポート',
+    'nav.einstellungen': '設定',
+    'nav.more': 'その他',
+    'common.save': '保存',
+    'common.cancel': 'キャンセル',
+    'common.done': '完了',
+    'common.back': '戻る',
+    'common.edit': '編集',
+    'common.delete': '削除',
+    'common.new': '新規',
+    'common.add': '追加',
+    'common.search': '検索',
+    'common.close': '閉じる',
+    'auth.appTagline': 'サイクルフィギュア用の練習・大会ツール',
+    'auth.signIn': 'ログイン',
+    'auth.signUp': '登録',
+    'auth.email': 'メール',
+    'auth.password': 'パスワード',
+    'auth.language': '言語',
+    'settings.title': '設定',
+    'settings.language': '言語',
+    'settings.appearance': '外観',
+    'settings.appearanceAuto': '自動（システム）',
+    'settings.appearanceLight': 'ライト',
+    'settings.appearanceDark': 'ダーク',
+    'topMenu.settings': '設定',
+    'topMenu.export': 'エクスポート'
+  }
+};
+
+// =============================================================
+// API
+// =============================================================
+
+export const LANG_KEY = 'artcyc:lang'; // 'auto' | 'de' | 'en' | ...
+
+/** Browser-Sprache → unterstützter Code, oder 'de' als Fallback. */
+export function detectBrowserLang() {
+  if (typeof navigator === 'undefined') return 'de';
+  const langs = navigator.languages && navigator.languages.length
+    ? navigator.languages
+    : [navigator.language || 'de'];
+  for (const l of langs) {
+    const code = (l || '').slice(0, 2).toLowerCase();
+    if (SUPPORTED_LANG_CODES.includes(code)) return code;
+  }
+  return 'de';
+}
+
+/** Übersetzungs-Funktion: key + optional vars für Platzhalter wie {n}, {date}. */
+export function translate(lang, key, vars) {
+  const d = dict[lang] || dict.de;
+  let s = d[key];
+  if (s == null) s = dict.de[key]; // Fallback auf Deutsch
+  if (s == null) s = key;          // Letzte Rettung: key sichtbar machen
+  if (vars && typeof s === 'string') {
+    for (const k of Object.keys(vars)) {
+      s = s.split('{' + k + '}').join(String(vars[k]));
+    }
+  }
+  return s;
+}
+
+// =============================================================
+// React Context + Hook
+// =============================================================
+
+const I18nContext = createContext({
+  lang: 'de',
+  langPref: 'auto',
+  setLangPref: () => {},
+  t: (k) => k
+});
+
+/**
+ * Provider — wickelt die App ein. Verwaltet:
+ *  - langPref: 'auto' oder ein Sprach-Code (was der User in den Einstellungen wählt)
+ *  - lang:     der effektive Code (bei 'auto' = Browser-Sprache)
+ */
+export function I18nProvider({ children }) {
+  const [langPref, setLangPrefState] = useState(() => {
+    try {
+      const v = localStorage.getItem(LANG_KEY);
+      if (v === 'auto' || SUPPORTED_LANG_CODES.includes(v)) return v;
+    } catch {}
+    return 'auto';
+  });
+
+  const lang = langPref === 'auto' ? detectBrowserLang() : langPref;
+
+  useEffect(() => {
+    try { localStorage.setItem(LANG_KEY, langPref); } catch {}
+    // <html lang="..."> aktualisieren für a11y + Browser
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('lang', lang);
+    }
+  }, [langPref, lang]);
+
+  const setLangPref = useCallback((v) => setLangPrefState(v), []);
+  const t = useCallback((key, vars) => translate(lang, key, vars), [lang]);
+
+  return (
+    <I18nContext.Provider value={{ lang, langPref, setLangPref, t }}>
+      {children}
+    </I18nContext.Provider>
+  );
+}
+
+export function useI18n() {
+  return useContext(I18nContext);
+}

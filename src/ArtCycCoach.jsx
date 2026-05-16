@@ -6,9 +6,10 @@ import {
   Settings as SettingsIcon, LogOut, Shield, User, RotateCcw,
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
-  Sun, Moon, SunMoon
+  Sun, Moon, SunMoon, MoreHorizontal, Globe
 } from 'lucide-react';
 import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise } from './lib/supabase';
+import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 
 // =============================================================
 // UCI 2026 Datenbank: Alle Disziplinen
@@ -3065,12 +3066,16 @@ function Brand({ size = 'md' }) {
 const THEME_KEY = 'artcyc:theme'; // 'system' | 'light' | 'dark'
 
 export default function App() {
+  const { t, lang, langPref, setLangPref } = useI18n();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('dashboard');
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [topMenuOpen, setTopMenuOpen] = useState(false);
+  // Top-Menü schließt sich automatisch wenn die View wechselt
+  useEffect(() => { setTopMenuOpen(false); }, [view]);
 
   // Theme: 'system' folgt prefers-color-scheme, 'light'/'dark' überschreiben
   const [theme, setTheme] = useState(() => {
@@ -3477,12 +3482,12 @@ export default function App() {
   // Navigation
   const isCoach = profile?.role === 'coach' || profile?.role === 'admin';
   const nav = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'training', label: 'Training', icon: Dumbbell },
-    { id: 'wettkampf', label: 'Wettkampf', icon: Trophy },
-    { id: 'uebungen', label: 'Übungen', icon: BarChart3 },
-    ...(isCoach ? [{ id: 'sportler', label: 'Sportler', icon: Users }] : []),
-    { id: 'export', label: 'Export', icon: Download }
+    { id: 'dashboard', label: t('nav.dashboard'), icon: Home },
+    { id: 'training', label: t('nav.training'), icon: Dumbbell },
+    { id: 'wettkampf', label: t('nav.wettkampf'), icon: Trophy },
+    { id: 'uebungen', label: t('nav.uebungen'), icon: BarChart3 },
+    ...(isCoach ? [{ id: 'sportler', label: t('nav.sportler'), icon: Users }] : []),
+    { id: 'export', label: t('nav.export'), icon: Download }
   ];
 
   // View dispatcher
@@ -3492,7 +3497,7 @@ export default function App() {
   else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} />;
-  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} />;
+  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} />;
   else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} ownData={effectiveData} />;
   else if (view === 'export') viewEl = <ExportView data={effectiveData} />;
   else if (view === 'kuer' || view === 'video') {
@@ -3514,17 +3519,37 @@ export default function App() {
           WebkitBackdropFilter: 'blur(20px) saturate(180%)'
         }}>
         <Brand size="sm" />
-        <div className="flex items-center gap-1">
-          <button onClick={() => setView('export')}
-            className={'p-2 rounded-full transition active:scale-90 ' + (view === 'export' ? 'text-[#FF9500]' : 'text-[#3C3C43]')}
-            aria-label="Export">
-            <Download size={22} strokeWidth={1.8} />
+        <div className="relative">
+          <button onClick={() => setTopMenuOpen(o => !o)}
+            className={'w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90 ' +
+              (topMenuOpen ? 'bg-[#FF9500]/15 text-[#FF9500]' :
+                (view === 'einstellungen' || view === 'export' ? 'text-[#FF9500]' : 'text-[#3C3C43]'))}
+            aria-label={t('nav.more')}
+            aria-expanded={topMenuOpen}>
+            <MoreHorizontal size={22} strokeWidth={2.2} />
           </button>
-          <button onClick={() => setView('einstellungen')}
-            className={'p-2 rounded-full transition active:scale-90 ' + (view === 'einstellungen' ? 'text-[#FF9500]' : 'text-[#3C3C43]')}
-            aria-label="Einstellungen">
-            <SettingsIcon size={22} strokeWidth={1.8} />
-          </button>
+          {topMenuOpen && (
+            <>
+              {/* Overlay zum Schließen bei Tap außerhalb */}
+              <div className="fixed inset-0 z-30" onClick={() => setTopMenuOpen(false)} />
+              {/* Popover */}
+              <div className="absolute right-0 top-full mt-2 z-40 w-52 bg-white/95 backdrop-blur-xl rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.2)] overflow-hidden">
+                <button onClick={() => setView('einstellungen')}
+                  className={'w-full text-left px-4 py-3 flex items-center gap-3 active:bg-[#D1D1D6]/40 transition ' +
+                    (view === 'einstellungen' ? 'text-[#FF9500]' : '')}>
+                  <SettingsIcon size={18} />
+                  <span className="text-[15px] font-medium">{t('topMenu.settings')}</span>
+                </button>
+                <div className="border-t border-[#C6C6C8]/40" />
+                <button onClick={() => setView('export')}
+                  className={'w-full text-left px-4 py-3 flex items-center gap-3 active:bg-[#D1D1D6]/40 transition ' +
+                    (view === 'export' ? 'text-[#FF9500]' : '')}>
+                  <Download size={18} />
+                  <span className="text-[15px] font-medium">{t('topMenu.export')}</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -3637,6 +3662,7 @@ function IOSTag({ color = 'gray', children }) {
 // AUTH-SCREEN — Login / Signup mit Rollen-Wahl
 // =============================================================
 function AuthScreen() {
+  const { t, langPref, setLangPref } = useI18n();
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -3645,6 +3671,7 @@ function AuthScreen() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [info, setInfo] = useState('');
+  const [langPickerOpen, setLangPickerOpen] = useState(false);
 
   const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
   const validPwd = password.length >= 10;
@@ -3698,29 +3725,63 @@ function AuthScreen() {
     } finally { setBusy(false); }
   };
 
+  const currentLang = LANGUAGES.find(l => l.code === langPref);
+
   return (
     <div className="min-h-screen bg-[#F2F2F7] flex items-center justify-center p-4"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif' }}>
-      <div className="bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] p-8 max-w-md w-full">
+      <div className="bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] p-8 max-w-md w-full relative">
+        {/* Sprach-Picker oben rechts */}
+        <div className="absolute top-4 right-4">
+          <button onClick={() => setLangPickerOpen(o => !o)}
+            className="flex items-center gap-1 text-[#8E8E93] text-[13px] active:opacity-60 px-2 py-1 rounded-full"
+            aria-label={t('auth.language')}>
+            <Globe size={14} />
+            <span>{currentLang ? currentLang.flag + ' ' + currentLang.native : '🌐 Auto'}</span>
+          </button>
+          {langPickerOpen && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setLangPickerOpen(false)} />
+              <div className="absolute right-0 top-full mt-1 z-40 w-52 bg-white/95 backdrop-blur-xl rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.15)] overflow-hidden border border-slate-200/50">
+                <button onClick={() => { setLangPref('auto'); setLangPickerOpen(false); }}
+                  className="w-full text-left px-4 py-2.5 flex items-center gap-2 active:bg-[#D1D1D6]/40 transition text-[14px]">
+                  <Globe size={16} className="text-[#8E8E93]" />
+                  <span>{t('settings.languageAuto')}</span>
+                  {langPref === 'auto' && <Check size={16} className="text-[#FF9500] ml-auto" />}
+                </button>
+                <div className="border-t border-[#C6C6C8]/40" />
+                {LANGUAGES.map(l => (
+                  <button key={l.code} onClick={() => { setLangPref(l.code); setLangPickerOpen(false); }}
+                    className="w-full text-left px-4 py-2.5 flex items-center gap-2 active:bg-[#D1D1D6]/40 transition text-[14px]">
+                    <span>{l.flag}</span>
+                    <span>{l.native}</span>
+                    {langPref === l.code && <Check size={16} className="text-[#FF9500] ml-auto" />}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
         <div className="text-center mb-6">
           <div className="w-14 h-14 bg-gradient-to-br from-slate-900 to-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm">
             <Trophy className="text-amber-400" size={26} />
           </div>
           <h1 className="text-[28px] font-bold tracking-tight">ArtCyc Coach</h1>
-          <p className="text-[#8E8E93] text-[14px]">Trainings- und Wettkampf-Tool für Kunstradsport</p>
+          <p className="text-[#8E8E93] text-[14px]">{t('auth.appTagline')}</p>
         </div>
 
         {/* Mode-Tabs */}
         <div className="bg-[#E5E5EA] rounded-xl p-1 flex gap-1 mb-5">
           <button type="button" onClick={() => { setMode('login'); setErr(''); setInfo(''); }}
             className={'flex-1 py-2 rounded-lg text-[14px] font-medium transition ' +
-              (mode === 'login' ? 'bg-white shadow-sm' : 'text-[#3C3C43] active:opacity-70')}>
-            Anmelden
+              (mode === 'login' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
+            {t('auth.signIn')}
           </button>
           <button type="button" onClick={() => { setMode('signup'); setErr(''); setInfo(''); }}
             className={'flex-1 py-2 rounded-lg text-[14px] font-medium transition ' +
-              (mode === 'signup' ? 'bg-white shadow-sm' : 'text-[#3C3C43] active:opacity-70')}>
-            Registrieren
+              (mode === 'signup' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
+            {t('auth.signUp')}
           </button>
         </div>
 
@@ -3728,37 +3789,32 @@ function AuthScreen() {
           {mode === 'signup' && (
             <>
               <div>
-                <label className="text-xs font-medium text-slate-500 block mb-1">Anzeigename</label>
+                <label className="text-xs font-medium text-slate-500 block mb-1">{t('auth.displayName')}</label>
                 <input value={displayName} onChange={e => setDisplayName(e.target.value)}
                   placeholder="z.B. Ruben"
                   autoComplete="name"
                   className="w-full px-3 py-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-500 block mb-1">Ich bin</label>
+                <label className="text-xs font-medium text-slate-500 block mb-1">{t('auth.role')}</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => setRole('athlete')}
                     className={'py-2.5 px-3 rounded-xl border text-sm font-medium flex items-center justify-center gap-1.5 ' +
                       (role === 'athlete' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300')}>
-                    <Dumbbell size={16} /> Sportler:in
+                    <Dumbbell size={16} /> {t('auth.roleAthlete')}
                   </button>
                   <button type="button" onClick={() => setRole('coach')}
                     className={'py-2.5 px-3 rounded-xl border text-sm font-medium flex items-center justify-center gap-1.5 ' +
                       (role === 'coach' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300')}>
-                    <UserCog size={16} /> Trainer:in
+                    <UserCog size={16} /> {t('auth.roleCoach')}
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  {role === 'athlete'
-                    ? 'Du protokollierst dein eigenes Training.'
-                    : 'Du verwaltest deine Sportler und kannst für sie Trainings/Wettkämpfe eintragen.'}
-                </p>
               </div>
             </>
           )}
 
           <div>
-            <label className="text-xs font-medium text-slate-500 block mb-1">E-Mail</label>
+            <label className="text-xs font-medium text-slate-500 block mb-1">{t('auth.email')}</label>
             <div className="relative">
               <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input type="email" value={email} onChange={e => setEmail(e.target.value)}
@@ -3771,12 +3827,12 @@ function AuthScreen() {
 
           <div>
             <label className="text-xs font-medium text-slate-500 block mb-1">
-              Passwort {mode === 'signup' && <span className="text-slate-400">(min. 10 Zeichen)</span>}
+              {t('auth.password')} {mode === 'signup' && <span className="text-slate-400">(min. 10)</span>}
             </label>
             <div className="relative">
               <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                placeholder={mode === 'signup' ? 'mindestens 10 Zeichen' : 'Passwort'}
+                placeholder={t('auth.password')}
                 autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                 className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
             </div>
@@ -3795,13 +3851,13 @@ function AuthScreen() {
 
           <button type="submit" disabled={!canSubmit || busy}
             className="bg-slate-900 text-white px-5 py-3 rounded-2xl font-semibold w-full active:scale-[0.98] transition shadow-sm disabled:opacity-50">
-            {busy ? '…' : (mode === 'login' ? 'Anmelden' : 'Account erstellen')}
+            {busy ? '…' : (mode === 'login' ? t('auth.signIn') : t('auth.signUp'))}
           </button>
 
           {mode === 'login' && (
             <button type="button" onClick={forgot} disabled={busy}
               className="text-sm text-[#007AFF] block mx-auto mt-2 disabled:opacity-50">
-              Passwort vergessen?
+              {t('auth.forgotPassword')}
             </button>
           )}
         </form>
@@ -3843,6 +3899,7 @@ function SetupScreen({ onStart }) {
 // DASHBOARD
 // =============================================================
 function Dashboard({ data, setView }) {
+  const { t } = useI18n();
   // Saison-Filter
   const [season, setSeason] = useState('all'); // 'all' | '2026' | '2025' | '90d' | '30d'
   const seasonRange = useMemo(() => {
@@ -3952,8 +4009,8 @@ function Dashboard({ data, setView }) {
   return (
     <div className="space-y-6">
       <header className="pt-2 px-1">
-        <h1 className="text-[34px] font-bold tracking-tight leading-none">Dashboard</h1>
-        <p className="text-[#8E8E93] text-[15px] mt-1">Trainings-Statistiken im Überblick</p>
+        <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('dashboard.title')}</h1>
+        <p className="text-[#8E8E93] text-[15px] mt-1">{t('dashboard.subtitle')}</p>
       </header>
 
       {/* Saison-Filter — iOS Pills, scrollable */}
@@ -3980,30 +4037,30 @@ function Dashboard({ data, setView }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
           icon={Trophy}
-          label="Bestleistung"
+          label={t('dashboard.bestScore')}
           value={compStats.best ? compStats.best.final.toFixed(2) : '—'}
-          sub={compStats.best ? compStats.best.competition.name.slice(0, 24) : 'Noch kein Wettkampf'}
+          sub={compStats.best ? compStats.best.competition.name.slice(0, 24) : '—'}
           color="amber"
         />
         <StatCard
           icon={Target}
-          label="Wettkämpfe"
+          label={t('dashboard.competitions')}
           value={compStats.count}
-          sub={compStats.last ? 'zuletzt ' + formatDateShort(compStats.last.competition.date) : (season === 'all' ? '—' : 'in ' + seasonRange.label)}
+          sub={compStats.last ? t('dashboard.lastTrained', { date: formatDateShort(compStats.last.competition.date) }) : (season === 'all' ? '—' : seasonRange.label)}
           color="emerald"
         />
         <StatCard
           icon={Calendar}
-          label="Trainingstage"
+          label={t('dashboard.trainingDays')}
           value={trainStats.distinctDays}
-          sub={season === 'all' ? 'gesamt' : seasonRange.label}
+          sub={season === 'all' ? '' : seasonRange.label}
           color="sky"
         />
         <StatCard
           icon={Dumbbell}
-          label="Sessions"
+          label={t('dashboard.sessions')}
           value={trainStats.totalSessions}
-          sub={trainStats.lastSessionDate ? 'zuletzt ' + formatDateShort(trainStats.lastSessionDate) : '—'}
+          sub={trainStats.lastSessionDate ? t('dashboard.lastTrained', { date: formatDateShort(trainStats.lastSessionDate) }) : '—'}
           color="violet"
         />
       </div>
@@ -4013,16 +4070,15 @@ function Dashboard({ data, setView }) {
         <button onClick={() => setView('erfassen')}
           className="bg-[#FF9500] text-white p-5 rounded-2xl text-left active:scale-[0.98] transition-transform shadow-[0_2px_8px_rgba(255,149,0,0.25)]">
           <div className="flex items-center gap-2 mb-1.5 font-semibold text-[16px]">
-            <Plus size={20} strokeWidth={2.5} /> <span>Serie protokollieren</span>
+            <Plus size={20} strokeWidth={2.5} /> <span>{t('dashboard.logSession')}</span>
           </div>
-          <div className="text-[13px] text-white/85">Neue Trainings-Session erfassen</div>
         </button>
         <button onClick={() => setView('uebungen')}
           className="bg-white p-5 rounded-2xl text-left active:scale-[0.98] transition-transform shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
           <div className="flex items-center gap-2 mb-1.5 font-semibold text-[16px]">
-            <ListChecks size={20} strokeWidth={2.2} className="text-[#FF9500]" /> <span>Übungen verwalten</span>
+            <ListChecks size={20} strokeWidth={2.2} className="text-[#FF9500]" /> <span>{t('dashboard.manageExercises')}</span>
           </div>
-          <div className="text-[13px] text-[#8E8E93]">{getUciDb().length} UCI-Übungen verfügbar</div>
+          <div className="text-[13px] text-[#8E8E93]">{t('dashboard.uciExercises', { n: getUciDb().length })}</div>
         </button>
       </div>
 
@@ -4043,17 +4099,17 @@ function Dashboard({ data, setView }) {
       {/* Pro Übung */}
       <section className="space-y-3">
         <div className="px-4 text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
-          Fortschritt pro Übung
+          {t('dashboard.progressByExercise')}
         </div>
 
         {perExercise.length === 0 ? (
           <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-8 text-center">
             <Sparkles size={32} className="mx-auto text-[#C7C7CC] mb-3" />
-            <h3 className="font-semibold mb-1">Noch keine Trainings-Daten</h3>
-            <p className="text-[14px] text-[#8E8E93] mb-4">Protokolliere deine erste Serie, um den Fortschritt zu sehen.</p>
+            <h3 className="font-semibold mb-1">{t('dashboard.noTrainingData')}</h3>
+            <p className="text-[14px] text-[#8E8E93] mb-4">{t('dashboard.noTrainingHint')}</p>
             <button onClick={() => setView('erfassen')}
               className="bg-[#FF9500] text-white px-5 py-2.5 rounded-full text-[14px] font-medium active:scale-95 transition-transform">
-              Serie protokollieren
+              {t('dashboard.logSession')}
             </button>
           </div>
         ) : (
@@ -4488,6 +4544,7 @@ function groupSessionsByExercise(sessions) {
 }
 
 function TrainingView({ data, setData, setView }) {
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState(null); // { session, origIdx }
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -4676,12 +4733,12 @@ function TrainingView({ data, setData, setView }) {
     <div className="space-y-4">
       <header className="flex items-end justify-between flex-wrap gap-3 pt-2 px-1">
         <div>
-          <h1 className="text-[34px] font-bold tracking-tight leading-none">Training</h1>
-          <p className="text-[#8E8E93] text-[15px] mt-1">{totalCount} Sessions insgesamt</p>
+          <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('training.title')}</h1>
+          <p className="text-[#8E8E93] text-[15px] mt-1">{t('training.totalSessions', { n: totalCount })}</p>
         </div>
         <button onClick={() => setView('erfassen')}
           className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-[14px] flex items-center gap-1.5 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
-          <Plus size={16} strokeWidth={2.5} /> Serie protokollieren
+          <Plus size={16} strokeWidth={2.5} /> {t('training.logButton')}
         </button>
       </header>
 
@@ -4697,7 +4754,7 @@ function TrainingView({ data, setData, setView }) {
             </button>
           )}
           <input value={query} onChange={e => setQuery(e.target.value)}
-            placeholder="Suchen (Übung, Notiz, Datum z.B. 15.5.26)"
+            placeholder={t('training.searchPlaceholder')}
             className="w-full pl-9 pr-9 py-2.5 bg-slate-100 rounded-xl outline-none text-[15px]" />
         </div>
       )}
@@ -4706,12 +4763,12 @@ function TrainingView({ data, setData, setView }) {
       {totalCount > 0 && (
         <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1" data-no-swipe="true">
           {[
-            { id: 'all',       label: 'Alle' },
-            { id: '7d',        label: '7 Tage' },
-            { id: '30d',       label: '30 Tage' },
-            { id: '90d',       label: '90 Tage' },
-            { id: 'thisMonth', label: 'Dieser Monat' },
-            { id: 'thisYear',  label: 'Dieses Jahr' }
+            { id: 'all',       label: t('training.range.all') },
+            { id: '7d',        label: t('training.range.7d') },
+            { id: '30d',       label: t('training.range.30d') },
+            { id: '90d',       label: t('training.range.90d') },
+            { id: 'thisMonth', label: t('training.range.thisMonth') },
+            { id: 'thisYear',  label: t('training.range.thisYear') }
           ].map(r => (
             <button key={r.id} onClick={() => setFilterRange(r.id)}
               className={'px-3.5 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition active:scale-95 ' +
@@ -4728,7 +4785,7 @@ function TrainingView({ data, setData, setView }) {
       {totalCount > 0 && exerciseList.length > 1 && (
         <select value={filterExId} onChange={e => setFilterExId(e.target.value)}
           className="w-full px-3 py-2.5 bg-white rounded-xl outline-none text-[15px] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-          <option value="">Alle Übungen ({totalCount})</option>
+          <option value="">{t('training.allExercises', { n: totalCount })}</option>
           {exerciseList.map(e => (
             <option key={e.id} value={e.id}>{e.name}</option>
           ))}
@@ -4741,12 +4798,12 @@ function TrainingView({ data, setData, setView }) {
           <button onClick={() => setSortMode('date')}
             className={'flex-1 py-1.5 rounded-[10px] text-[13px] font-medium transition ' +
               (sortMode === 'date' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
-            Nach Datum
+            {t('training.sortByDate')}
           </button>
           <button onClick={() => setSortMode('exercise')}
             className={'flex-1 py-1.5 rounded-[10px] text-[13px] font-medium transition ' +
               (sortMode === 'exercise' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
-            Nach Übung
+            {t('training.sortByExercise')}
           </button>
         </div>
       )}
@@ -4754,12 +4811,12 @@ function TrainingView({ data, setData, setView }) {
       {totalCount === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-8 text-center">
           <Dumbbell size={32} className="mx-auto text-slate-300 mb-3" />
-          <h3 className="font-semibold mb-1">Noch keine Sessions</h3>
-          <p className="text-sm text-slate-500 mb-4">Tippe oben auf „Serie protokollieren" um loszulegen.</p>
+          <h3 className="font-semibold mb-1">{t('training.empty')}</h3>
+          <p className="text-sm text-slate-500 mb-4">{t('training.emptyHint')}</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-6 text-center text-[14px] text-[#8E8E93]">
-          Keine Treffer für deinen Filter.
+          {t('training.noMatches')}
         </div>
       ) : sortMode === 'exercise' ? (
         <div className="space-y-2">
@@ -4767,9 +4824,9 @@ function TrainingView({ data, setData, setView }) {
         </div>
       ) : (
         <div className="space-y-1">
-          {renderGroup('Heute', groups.today)}
-          {renderGroup('Gestern', groups.yesterday)}
-          {renderGroup('Diese Woche', groups.week)}
+          {renderGroup(t('training.today'), groups.today)}
+          {renderGroup(t('training.yesterday'), groups.yesterday)}
+          {renderGroup(t('training.thisWeek'), groups.week)}
           {groups.months.map(m => renderGroup(m.label, m.items))}
         </div>
       )}
@@ -4945,9 +5002,10 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
 // =============================================================
 // EINSTELLUNGEN (Skeleton — wird in Stufe 8 ausgebaut)
 // =============================================================
-function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, refreshAthletes, theme, setTheme }) {
-  const roleLabel = profile?.role === 'admin' ? 'Admin' : profile?.role === 'coach' ? 'Trainer:in' : 'Sportler:in';
-  const syncLabel = cloudStatus === 'syncing' ? 'wird synchronisiert…' : cloudStatus === 'error' ? 'Sync-Fehler' : 'synchronisiert';
+function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, refreshAthletes, theme, setTheme, langPref, setLangPref }) {
+  const { t } = useI18n();
+  const roleLabel = profile?.role === 'admin' ? t('role.admin') : profile?.role === 'coach' ? t('role.coach') : t('role.athlete');
+  const syncLabel = cloudStatus === 'syncing' ? t('settings.cloudSyncing') : cloudStatus === 'error' ? t('settings.cloudSyncError') : t('settings.cloudSynced');
   const syncTagColor = cloudStatus === 'syncing' ? 'orange' : cloudStatus === 'error' ? 'red' : 'green';
 
   // Trainer-Verknüpfungen: zeigen wer Zugriff auf MEINE Daten hat
@@ -4986,45 +5044,45 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
     setMigrateBusy(false);
   };
   const themeOptions = [
-    { id: 'system', label: 'Automatisch (System)', Icon: SunMoon },
-    { id: 'light',  label: 'Hell',                 Icon: Sun },
-    { id: 'dark',   label: 'Dunkel',               Icon: Moon },
+    { id: 'system', label: t('settings.appearanceAuto'),  Icon: SunMoon },
+    { id: 'light',  label: t('settings.appearanceLight'), Icon: Sun },
+    { id: 'dark',   label: t('settings.appearanceDark'),  Icon: Moon },
   ];
 
   return (
     <div className="space-y-6">
       <header className="pt-2 px-1">
-        <h1 className="text-[34px] font-bold tracking-tight leading-none">Einstellungen</h1>
-        <p className="text-[#8E8E93] text-[15px] mt-1">Account, Erscheinungsbild, Daten</p>
+        <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('settings.title')}</h1>
+        <p className="text-[#8E8E93] text-[15px] mt-1">{t('settings.subtitle')}</p>
       </header>
 
       {/* Account */}
       {session && (
-        <IOSList header="Account">
+        <IOSList header={t('settings.account')}>
           <div className="px-4 py-3.5 flex items-center justify-between gap-3">
-            <span className="text-[15px] text-[#3C3C43]">Angemeldet als</span>
+            <span className="text-[15px] text-[#3C3C43]">{t('settings.loggedInAs')}</span>
             <span className="text-[15px] font-medium text-right truncate ml-3">{profile?.display_name || session.user.email}</span>
           </div>
           <div className="px-4 py-3.5 flex items-center justify-between gap-3">
-            <span className="text-[15px] text-[#3C3C43]">E-Mail</span>
+            <span className="text-[15px] text-[#3C3C43]">{t('settings.email')}</span>
             <span className="text-[15px] text-[#8E8E93] text-right truncate ml-3">{session.user.email}</span>
           </div>
           <div className="px-4 py-3.5 flex items-center justify-between gap-3">
-            <span className="text-[15px] text-[#3C3C43]">Rolle</span>
+            <span className="text-[15px] text-[#3C3C43]">{t('settings.role')}</span>
             <IOSTag color={profile?.role === 'admin' ? 'orange' : 'gray'}>{roleLabel}</IOSTag>
           </div>
           <div className="px-4 py-3.5 flex items-center justify-between gap-3">
-            <span className="text-[15px] text-[#3C3C43]">Cloud-Sync</span>
+            <span className="text-[15px] text-[#3C3C43]">{t('settings.cloudSync')}</span>
             <IOSTag color={syncTagColor}>{syncLabel}</IOSTag>
           </div>
           <IOSListRow onClick={onLogout} trailing={<LogOut size={18} className="text-[#FF3B30]" />}>
-            <span className="text-[15px] text-[#FF3B30] font-medium">Abmelden</span>
+            <span className="text-[15px] text-[#FF3B30] font-medium">{t('settings.signOut')}</span>
           </IOSListRow>
         </IOSList>
       )}
 
       {/* Erscheinungsbild */}
-      <IOSList header="Erscheinungsbild" footer={'„Automatisch" folgt der System-Einstellung deines Geräts und wechselt bei Sonnenuntergang automatisch.'}>
+      <IOSList header={t('settings.appearance')} footer={t('settings.appearanceFooter')}>
         {themeOptions.map(opt => {
           const selected = theme === opt.id;
           return (
@@ -5039,6 +5097,30 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
             </IOSListRow>
           );
         })}
+      </IOSList>
+
+      {/* Sprache */}
+      <IOSList header={t('settings.language')} footer={t('settings.languageFooter')}>
+        <IOSListRow
+          onClick={() => setLangPref('auto')}
+          trailing={langPref === 'auto' ? <Check size={20} strokeWidth={2.8} className="text-[#FF9500]" /> : <span className="w-5" />}>
+          <span className="flex items-center gap-3">
+            <Globe size={18} className="text-[#8E8E93]" />
+            <span className="text-[15px]">{t('settings.languageAuto')}</span>
+          </span>
+        </IOSListRow>
+        {LANGUAGES.map(l => (
+          <IOSListRow
+            key={l.code}
+            onClick={() => setLangPref(l.code)}
+            trailing={langPref === l.code ? <Check size={20} strokeWidth={2.8} className="text-[#FF9500]" /> : <span className="w-5" />}>
+            <span className="flex items-center gap-3">
+              <span className="text-[18px] leading-none">{l.flag}</span>
+              <span className="text-[15px]">{l.native}</span>
+              {l.native !== l.label && <span className="text-[13px] text-[#8E8E93]">· {l.label}</span>}
+            </span>
+          </IOSListRow>
+        ))}
       </IOSList>
 
       {/* Trainer-Zugriff */}
@@ -5115,30 +5197,30 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
       <BackupSettings data={data} setData={setData} />
 
       {/* Reset */}
-      <IOSList footer="Setzt alle Übungen, Sessions, Wettkämpfe, Programme, Sportler und das UCI-Reglement zurück. Kann nicht rückgängig gemacht werden.">
+      <IOSList footer={t('settings.resetFooter')}>
         <IOSListRow
           onClick={onResetAll}
           trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
           <span className="flex items-center gap-3">
             <RotateCcw size={18} className="text-[#FF3B30]" />
-            <span className="text-[15px] text-[#FF3B30] font-medium">Alle Daten zurücksetzen</span>
+            <span className="text-[15px] text-[#FF3B30] font-medium">{t('settings.resetButton')}</span>
           </span>
         </IOSListRow>
       </IOSList>
 
       {/* Über */}
-      <IOSList header="Über">
+      <IOSList header={t('settings.about')}>
         <div className="px-4 py-3.5 flex items-center justify-between gap-3">
-          <span className="text-[15px] text-[#3C3C43]">App</span>
+          <span className="text-[15px] text-[#3C3C43]">{t('settings.aboutApp')}</span>
           <span className="text-[15px] font-medium">ArtCyc Coach</span>
         </div>
         <div className="px-4 py-3.5 flex items-center justify-between gap-3">
-          <span className="text-[15px] text-[#3C3C43]">Version</span>
+          <span className="text-[15px] text-[#3C3C43]">{t('settings.aboutVersion')}</span>
           <span className="text-[15px] text-[#8E8E93]">Stufe 8 · Test</span>
         </div>
         <div className="px-4 py-3.5 flex items-center justify-between gap-3">
-          <span className="text-[15px] text-[#3C3C43]">UCI-Reglement</span>
-          <span className="text-[15px] text-[#8E8E93]">{data.uci_version || '2026'} · {getUciDb().length} Übungen</span>
+          <span className="text-[15px] text-[#3C3C43]">{t('settings.aboutUci')}</span>
+          <span className="text-[15px] text-[#8E8E93]">{data.uci_version || '2026'} · {getUciDb().length}</span>
         </div>
       </IOSList>
 
@@ -6495,11 +6577,31 @@ function UciPicker({ discipline, onSelect, selectedCode }) {
 // SERIE PROTOKOLLIEREN (Erfassen)
 // =============================================================
 function Erfassen({ data, setData, dbAthletes, onDone }) {
+  const { t } = useI18n();
   const activeExercises = data.exercises.filter(e => e.active);
   // Athletes aus DB (Phase 9a). Fallback auf data.athletes für legacy
   const athletes = (dbAthletes && dbAthletes.length > 0) ? dbAthletes : (data.athletes || []);
+
+  // Übungen nach Trainings-Häufigkeit sortieren: bereits trainierte zuerst,
+  // dann nach Anzahl Sessions absteigend. Übrige danach alphabetisch.
+  const exerciseSort = useMemo(() => {
+    const count = new Map();
+    for (const s of (data.sessions || [])) {
+      if (s.exerciseId) count.set(s.exerciseId, (count.get(s.exerciseId) || 0) + 1);
+    }
+    const trained = activeExercises.filter(e => (count.get(e.id) || 0) > 0)
+      .sort((a, b) => (count.get(b.id) || 0) - (count.get(a.id) || 0));
+    const untrained = activeExercises.filter(e => !count.get(e.id))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+    return { trained, untrained, count };
+  }, [activeExercises, data.sessions]);
+
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [exerciseId, setExerciseId] = useState((activeExercises[0] && activeExercises[0].id) || '');
+  // Default-Übung: die häufigst-trainierte, sonst erste der Liste
+  const [exerciseId, setExerciseId] = useState(
+    (exerciseSort.trained[0] && exerciseSort.trained[0].id) ||
+    (activeExercises[0] && activeExercises[0].id) || ''
+  );
   const [athleteId, setAthleteId] = useState((athletes[0] && athletes[0].id) || '');
   const [entries, setEntries] = useState([]);
   const [notes, setNotes] = useState('');
@@ -6559,9 +6661,9 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
       <div className="max-w-2xl mx-auto space-y-5">
         <header className="flex items-center gap-1 -ml-1">
           <button onClick={onDone} className="text-[17px] text-[#007AFF] flex items-center active:opacity-60">
-            <ChevronLeft size={22} strokeWidth={2.6} className="text-[#FF9500]" /> Zurück
+            <ChevronLeft size={22} strokeWidth={2.6} className="text-[#FF9500]" /> {t('common.back')}
           </button>
-          <h1 className="text-[28px] font-bold tracking-tight ml-2">Serie protokollieren</h1>
+          <h1 className="text-[28px] font-bold tracking-tight ml-2">{t('log.title')}</h1>
         </header>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
@@ -6588,11 +6690,24 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
             <label className="text-sm font-medium block mb-1.5">Übung</label>
             <select value={exerciseId} onChange={e => setExerciseId(e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
-              {activeExercises.map(e => (
-                <option key={e.id} value={e.id}>
-                  {e.name}{e.category_mode === 3 ? ' (+ ' + e.third_label + ')' : ''}
-                </option>
-              ))}
+              {exerciseSort.trained.length > 0 && (
+                <optgroup label={t('log.exerciseTrained')}>
+                  {exerciseSort.trained.map(e => (
+                    <option key={e.id} value={e.id}>
+                      {e.name}{e.category_mode === 3 ? ' (+ ' + e.third_label + ')' : ''} · {exerciseSort.count.get(e.id)}×
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {exerciseSort.untrained.length > 0 && (
+                <optgroup label={exerciseSort.trained.length > 0 ? t('log.exerciseUntrained') : t('log.exerciseAll')}>
+                  {exerciseSort.untrained.map(e => (
+                    <option key={e.id} value={e.id}>
+                      {e.name}{e.category_mode === 3 ? ' (+ ' + e.third_label + ')' : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
 
