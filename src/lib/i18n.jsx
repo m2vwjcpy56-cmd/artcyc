@@ -249,6 +249,17 @@ const dict = {
     'aiInsight.aboveTarget': 'Ziel ({target}%) erreicht — du kannst das Ziel anheben.',
     'aiInsight.fewRecent': 'Wenig Training zuletzt — diese Übung war länger nicht dran.',
 
+    // Programm-Import
+    'programImport.title': 'Programm-Datei importieren',
+    'programImport.subtitle': 'XML / XQZ (Kunstradmeldung, WeBo2008) oder PDF',
+    'programImport.button': 'Datei wählen',
+    'programImport.parsing': 'Datei wird gelesen…',
+    'programImport.success': '✓ {n} Übungen erkannt — {name}',
+    'programImport.error': 'Datei konnte nicht gelesen werden: {msg}',
+    'programImport.unknownFormat': 'Unbekanntes Format. Unterstützt: .xml, .xqz, .pdf',
+    'programImport.noExercises': 'Keine Übungen in der Datei gefunden.',
+    'programImport.replace': 'Bestehende Übungen ersetzen?',
+
     // Mehrzeiliger Tipp ab >= 30 Versuchen
     'aiInsight.volumeShort': '{sessions} Sessions, {total} Versuche — Quote {rate}%.',
     'aiInsight.volumeLong': 'Über {weeks} Wochen hinweg {sessions} Sessions mit {total} Versuchen — aktuelle Quote {rate}%.',
@@ -474,6 +485,17 @@ const dict = {
     'aiInsight.belowTarget': '{gap}% below your target ({target}%) — focus this exercise.',
     'aiInsight.aboveTarget': 'Target ({target}%) reached — you could raise it.',
     'aiInsight.fewRecent': 'Little training recently — this exercise hasn\'t been touched in a while.',
+
+    'programImport.title': 'Import program file',
+    'programImport.subtitle': 'XML / XQZ (Kunstradmeldung, WeBo2008) or PDF',
+    'programImport.button': 'Choose file',
+    'programImport.parsing': 'Reading file…',
+    'programImport.success': '✓ {n} exercises detected — {name}',
+    'programImport.error': 'Could not read file: {msg}',
+    'programImport.unknownFormat': 'Unknown format. Supported: .xml, .xqz, .pdf',
+    'programImport.noExercises': 'No exercises found in file.',
+    'programImport.replace': 'Replace existing exercises?',
+
     'aiInsight.volumeShort': '{sessions} sessions, {total} attempts — rate {rate}%.',
     'aiInsight.volumeLong': 'Over {weeks} weeks: {sessions} sessions with {total} attempts — current rate {rate}%.',
     'aiInsight.volumeMonths': 'Over {months} months: {sessions} sessions, {total} attempts — rate {rate}%.',

@@ -11,6 +11,7 @@ import {
 import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge } from './lib/feedback.js';
+import { parseProgramFile } from './lib/programImport.js';
 
 // =============================================================
 // UCI 2026 Datenbank: Alle Disziplinen
@@ -2045,40 +2046,6 @@ function setActiveDb(db) { activeUciDb = (db && db.length > 0) ? db : UCI_DB_202
 const DATA_KEY = 'artcyc:test:v3';
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
-// Maute-Vorlage 1er Elite (30 Übungen mit UCI-Codes und Punkten)
-const MAUTE_PROGRAM_1ER_ELITE = [
-  { nr: 1, name: 'Sattelstand HR.', code: '1103a', points: 5.7 },
-  { nr: 2, name: 'Seitvorhebehalte Schweizer Sattellenkerhandstand 8', code: '1123l', points: 13.6 },
-  { nr: 3, name: 'Übergang Reitsitzsteiger Steuerrohrsteiger', code: '1284a', points: 5.3 },
-  { nr: 4, name: 'Steuerrohrsteiger rw. frh. HR.', code: '1237a', points: 4.4 },
-  { nr: 5, name: 'Übergang Fronthang Kehrstandsteiger', code: '1282a', points: 7.0 },
-  { nr: 6, name: 'Kehrstandsteiger Dreh.', code: '1248c', points: 6.5 },
-  { nr: 7, name: 'Übergang Fronthang Steuerrohrsteiger', code: '1281a', points: 5.0 },
-  { nr: 8, name: 'Steuerrohrsteiger Dreh. frh.', code: '1236e', points: 5.1 },
-  { nr: 9, name: 'Reitsitzsteiger rw. einb. R.', code: '1202f', points: 6.5 },
-  { nr: 10, name: 'Damensitzsteiger rw. R.', code: '1212b', points: 6.2 },
-  { nr: 11, name: 'Dornstandsteiger rw. R.', code: '1217b', points: 6.0 },
-  { nr: 12, name: 'Seitvorhebehalte rw. HR.', code: '1117c', points: 6.5 },
-  { nr: 13, name: 'Sattellenkerstand rw. HR.', code: '1102a', points: 6.5 },
-  { nr: 14, name: 'Übergang Reitsitzsteiger Kehrstandsteiger', code: '1285a', points: 6.4 },
-  { nr: 15, name: 'Kehrstandsteiger rw. 8', code: '1249d', points: 8.8 },
-  { nr: 16, name: 'Frontlenkerstanddrehung 1½fach aus Reitsitz T', code: '1104o', points: 7.3 },
-  { nr: 17, name: 'Kopfstand HR.', code: '1121a', points: 4.4 },
-  { nr: 18, name: 'Lenkerhandstand S', code: '1124c', points: 8.8 },
-  { nr: 19, name: 'Kehrreitsitzsteiger Dreh. frh.', code: '1203g', points: 5.7 },
-  { nr: 20, name: 'Kehrreitsitzsteiger rw. frh. 8', code: '1204d', points: 7.8 },
-  { nr: 21, name: 'Übergang Kehrreitsitz Kehrlenkersitzsteiger', code: '1290a', points: 5.1 },
-  { nr: 22, name: 'Kehrlenkersitzsteiger rw. frh. 8', code: '1229d', points: 7.4 },
-  { nr: 23, name: 'Kehrlenkersitzsteiger Dreh. frh.', code: '1228e', points: 5.5 },
-  { nr: 24, name: 'Übergang Kehrlenkersitzsteiger Kehrsteuerrohrsteiger', code: '1292b', points: 5.8 },
-  { nr: 25, name: 'Kehrsteuerrohrsteiger Dreh. frh.', code: '1238c', points: 5.5 },
-  { nr: 26, name: 'Übergang Kehrlenkersitzsteiger Standsteiger', code: '1291a', points: 6.8 },
-  { nr: 27, name: 'Standsteiger R.', code: '1246b', points: 4.6 },
-  { nr: 28, name: 'Kehrsteuerrohrsteiger rw. frh. HR.', code: '1239a', points: 4.8 },
-  { nr: 29, name: 'Übergang Kehrhang Standsteiger', code: '1289a', points: 6.1 },
-  { nr: 30, name: 'Standsteiger rw. R.', code: '1247b', points: 5.9 }
-];
-
 // Berechnung der Abzüge pro Übung
 // =============================================================
 // PDF-Loading Helper (klassisches Script-Tag von cdnjs)
@@ -3627,15 +3594,8 @@ export default function App() {
         { id: 'ex1', name: 'Lenkerhandstand', uci_code: '1124c', uci_disc: '1er', active: true, category_mode: 2, third_label: null, default_series: 10 },
         { id: 'ex2', name: 'Maute-Sprung', uci_code: null, uci_disc: null, active: true, category_mode: 3, third_label: 'Getroffen', fail_label: 'Gefährlich', success_label: 'Geklappt', default_series: 10, has_rope_variant: true }
       ],
-      programs: [
-        {
-          id: 'prog_default',
-          name: '1er Kunstrad Elite Männer',
-          discipline: '1er',
-          exercises: MAUTE_PROGRAM_1ER_ELITE.map(e => ({ ...e, id: uid() })),
-          created: new Date().toISOString()
-        }
-      ],
+      // Programme leer — User legt selbst an oder importiert XML/XQZ/PDF.
+      programs: [],
       competitions: [],
       athletes: [],
       uci_version: '2026',
@@ -7264,9 +7224,14 @@ function ProgrammeView({ data, setData }) {
 // PROGRAMM-EDITOR
 // =============================================================
 function ProgrammEditor({ program, onSave, onCancel }) {
+  const { t } = useI18n();
   const [name, setName] = useState((program && program.name) || '');
   const [discipline, setDiscipline] = useState((program && program.discipline) || '1er');
   const [exercises, setExercises] = useState((program && program.exercises) || []);
+  // Programm-Import-Status
+  const [importStatus, setImportStatus] = useState(null); // null | 'parsing' | 'success' | 'error'
+  const [importMsg, setImportMsg] = useState('');
+  const fileInputRef = useRef(null);
 
   const addEmptyRow = () => {
     setExercises([...exercises, { id: uid(), nr: exercises.length + 1, name: '', code: '', points: 0 }]);
@@ -7286,11 +7251,35 @@ function ProgrammEditor({ program, onSave, onCancel }) {
     setExercises(exercises.filter((_, i) => i !== idx).map((e, i) => ({ ...e, nr: i + 1 })));
   };
 
-  const loadMaute = () => {
-    if (exercises.length > 0 && !confirm('Bestehende Übungen ersetzen?')) return;
-    setExercises(MAUTE_PROGRAM_1ER_ELITE.map(e => ({ ...e, id: uid() })));
-    if (!name) setName('1er Kunstrad Elite Männer');
-    setDiscipline('1er');
+  // Programm-Datei importieren (BDR-XML / WeBo-XML / .xqz / PDF).
+  // Erkennt Übungen mit UCI-Nr, Name und Punktwert automatisch.
+  const handleFileImport = async (file) => {
+    if (!file) return;
+    if (exercises.length > 0 && !confirm(t('programImport.replace'))) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    setImportStatus('parsing');
+    setImportMsg(t('programImport.parsing'));
+    const uciLookup = (code) => {
+      const hit = getUciDb().find(e => e.c === code);
+      return hit ? { n: hit.n, p: hit.p } : null;
+    };
+    const result = await parseProgramFile(file, { uciLookup, extractPdfText });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (!result.ok) {
+      setImportStatus('error');
+      const err = result.error === 'unknownFormat' ? t('programImport.unknownFormat')
+        : result.error === 'noExercises'   ? t('programImport.noExercises')
+        : t('programImport.error', { msg: result.error });
+      setImportMsg(err);
+      return;
+    }
+    setExercises(result.exercises.map(e => ({ ...e, id: uid() })));
+    if (!name && result.name) setName(result.name);
+    if (result.discipline) setDiscipline(result.discipline);
+    setImportStatus('success');
+    setImportMsg(t('programImport.success', { n: result.exercises.length, name: result.name }));
   };
 
   const total = exercises.reduce((s, e) => s + Number(e.points || 0), 0);
@@ -7340,11 +7329,36 @@ function ProgrammEditor({ program, onSave, onCancel }) {
             <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
           </div>
           <IOSListRow
-            onClick={loadMaute}
-            trailing={<Sparkles size={18} className="text-[#FF9500]" />}>
-            <span className="text-[15px] text-[#FF9500] font-medium">Maute-Vorlage 1er Elite laden</span>
+            onClick={() => fileInputRef.current && fileInputRef.current.click()}
+            trailing={<FileText size={18} className="text-[#FF9500]" />}>
+            <span className="text-[15px] text-[#FF9500] font-medium">
+              {importStatus === 'parsing' ? importMsg : t('programImport.title')}
+            </span>
           </IOSListRow>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xml,.xqz,.pdf,application/xml,text/xml,application/pdf"
+            onChange={e => handleFileImport(e.target.files && e.target.files[0])}
+            className="hidden" />
         </IOSList>
+
+        {/* Import-Status-Feedback */}
+        {importStatus === 'success' && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-3 text-[13px] text-emerald-900">
+            {importMsg}
+          </div>
+        )}
+        {importStatus === 'error' && (
+          <div className="bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3 text-[13px] text-rose-900">
+            {importMsg}
+          </div>
+        )}
+
+        {/* Hinweis welche Formate erkannt werden */}
+        <p className="text-[12px] text-[#8E8E93] px-4 leading-snug -mt-2">
+          {t('programImport.subtitle')}
+        </p>
 
         {/* Übungen-Liste */}
         <div className="space-y-2">
