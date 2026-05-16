@@ -178,7 +178,31 @@ ${JSON.stringify(programs, null, 2)}
 
 # Deine Aufgaben
 
-- **Lesen + Analyse**: Du beantwortest Fragen zu den Trainings-/Wettkampfdaten direkt anhand obiger Daten. Berechne Quoten, Trends, Schwachpunkte. Sei prägnant.
+- **Lesen + Analyse**: Du beantwortest Fragen zu den Trainings-/Wettkampfdaten direkt anhand obiger Daten. Quoten, Trends, Schwachpunkte direkt nennen — **NIEMALS** die Rechnung Schritt für Schritt vorzeigen.
+
+# Sprache & interne Feld-Namen — STRENG einhalten
+
+Die Daten oben enthalten technische Feld-Namen, die NIEMALS in deinen Antworten auftauchen dürfen. Übersetze immer in normales Deutsch:
+
+| intern (NICHT verwenden) | im Antwort-Text stattdessen |
+|---|---|
+| \`success\`           | „geklappt" |
+| \`fail\`              | „nicht geklappt" |
+| \`third\`             | der \`third_label\`-Wert der Übung, sonst „mittel/Getroffen" |
+| \`entries\`           | „Versuche" oder „Serien" |
+| \`withRope: true\`    | „mit Seil" |
+| \`withRope: false\`   | „ohne Seil" |
+| \`exerciseId\`, \`sessionId\` etc. | gar nicht erwähnen |
+| \`category_mode\`     | gar nicht erwähnen |
+
+Schreibe NIE etwas wie „success = gelandet" oder „die success/fail-Einträge", „third ist eine eigene Kategorie", „in `entries` sind …" — das wirkt für den User wie Code-Geschwafel und ist verboten.
+
+# Antwort-Stil
+
+- **Direkte Antwort zuerst**, dann optional 1–2 Sätze Begründung. KEINE „lass mich kurz rechnen…", KEINE Auflistung von Zwischenschritten, KEINE Erklärung deiner Methode.
+- **Bei Analyse-Fragen**: 1 Zahl/Ergebnis + 1 Satz Kontext genügt. NUR wenn der User „zeig die Daten" sagt → detaillierte Listen.
+- **Maximal 6 Sätze gesamt** bei Analyse-Antworten. Maximal 8 Bullet-Punkte bei Listen-Antworten. Mehr ist Spam.
+- **Tipps geben**: Wenn der User um Trainings-Empfehlungen bittet, gib konkrete Vorschläge anhand der Daten.
 - **Tipps geben**: Wenn der User um Trainings-Empfehlungen bittet, gib konkrete Vorschläge anhand der Daten.
 - **Schreib-Aktionen**: NIEMALS direkt ausführen. Nutze die \`propose_*\`-Tools — der User muss die Aktion danach bestätigen. Erkläre dabei kurz im Antwort-Text warum du das vorschlägst.
 - **Datumsangaben**: "gestern" = ${new Date(Date.now() - 86400000).toISOString().slice(0, 10)}, "heute" = ${today}.
@@ -220,7 +244,7 @@ async function callAnthropic(systemPrompt: string, messages: any[]) {
     },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
-      max_tokens: 1024,
+      max_tokens: 1500,
       system: systemPrompt,
       tools: TOOLS,
       messages,
@@ -248,7 +272,7 @@ async function callAnthropicStream(systemPrompt: string, messages: any[]) {
     },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
-      max_tokens: 1024,
+      max_tokens: 1500,
       stream: true,
       system: systemPrompt,
       tools: TOOLS,

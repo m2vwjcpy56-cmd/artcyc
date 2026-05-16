@@ -3133,13 +3133,13 @@ function FloatingChat({ data, setData, profile }) {
     setPhase('thinking');
     setStreamingText('');
     let firstDelta = true;
+    let partialText = '';
     try {
-      let aggregated = '';
       const result = await callChatApiStream(next, data, profile?.display_name, {
         onTextDelta: (t) => {
           if (firstDelta) { setPhase('writing'); firstDelta = false; }
-          aggregated += t;
-          setStreamingText(aggregated);
+          partialText += t;
+          setStreamingText(partialText);
         },
         onPhase: (p) => setPhase(p),
         onFinal: (content, action) => {
@@ -3148,13 +3148,27 @@ function FloatingChat({ data, setData, profile }) {
       });
       const assistantMsg = {
         role: 'assistant',
-        content: result.content || aggregated || '',
+        content: result.content || partialText || '',
         action: result.action || null,
       };
       setMessages([...next, assistantMsg]);
       if (result.action) setPendingAction({ action: result.action, msgIdx: next.length });
     } catch (e) {
-      setErr(e.message || String(e));
+      // Bei Stream-Abbruch: schon empfangenen Text als Assistant-Message
+      // speichern (mit Hinweis), damit der User die Teil-Antwort behält.
+      if (partialText) {
+        const isLoadFailed = /load failed|networkerror|failed to fetch/i.test(e.message || '');
+        const suffix = isLoadFailed
+          ? '\n\n_(Verbindung wurde abgebrochen — frag noch mal nach falls die Antwort unvollständig wirkt.)_'
+          : '\n\n_(Antwort wurde unterbrochen.)_';
+        setMessages([...next, { role: 'assistant', content: partialText + suffix }]);
+      } else {
+        const msg = e.message || String(e);
+        const friendly = /load failed|networkerror|failed to fetch/i.test(msg)
+          ? 'Verbindung unterbrochen. Bitte nochmal probieren — meist hilft schon Reload.'
+          : msg;
+        setErr(friendly);
+      }
     } finally {
       setBusy(false);
       setPhase('');
