@@ -344,8 +344,32 @@ Deno.serve(async (req: Request) => {
         controller.enqueue(encoder.encode("event: " + eventName + "\ndata: " + JSON.stringify(data) + "\n\n"));
       };
 
+      // Final-Event abschicken + Stream schließen. Wird sowohl bei
+      // reader.done als auch beim [DONE]-Marker aufgerufen.
+      let finished = false;
+      const finish = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+        if (finished) return;
+        finished = true;
+        let action: any = null;
+        const idxs = Object.keys(toolBuf).map(Number).sort((a, b) => a - b);
+        if (idxs.length > 0) {
+          const first = toolBuf[idxs[0]];
+          let input: any = {};
+          try { input = first.args ? JSON.parse(first.args) : {}; } catch {}
+          action = {
+            tool: first.name,
+            params: input,
+            summary: (input && input.summary) || "",
+          };
+        }
+        emit(controller, "final", { type: "final", content: aggregatedText, action });
+        try { controller.close(); } catch {}
+        try { reader.cancel(); } catch {}
+      };
+
       const stream = new ReadableStream<Uint8Array>({
         async pull(controller) {
+          if (finished) return;
           let value: Uint8Array | undefined;
           let done = false;
           try {
@@ -355,27 +379,11 @@ Deno.serve(async (req: Request) => {
           } catch (e) {
             // Upstream-Stream abgebrochen → Final-Event mit Fehler raus
             emit(controller, "final", { type: "final", content: aggregatedText, action: null, error: "Upstream-Stream-Abbruch: " + (e as Error).message });
-            controller.close();
+            finished = true;
+            try { controller.close(); } catch {}
             return;
           }
-          if (done) {
-            // Final-Event: gesammelten Text + ggf. Tool-Call-Action ausgeben
-            let action: any = null;
-            const idxs = Object.keys(toolBuf).map(Number).sort((a, b) => a - b);
-            if (idxs.length > 0) {
-              const first = toolBuf[idxs[0]];
-              let input: any = {};
-              try { input = first.args ? JSON.parse(first.args) : {}; } catch {}
-              action = {
-                tool: first.name,
-                params: input,
-                summary: (input && input.summary) || "",
-              };
-            }
-            emit(controller, "final", { type: "final", content: aggregatedText, action });
-            controller.close();
-            return;
-          }
+          if (done) { finish(controller); return; }
           buf += decoder.decode(value, { stream: true });
           const lines = buf.split("\n");
           buf = lines.pop() ?? "";
@@ -383,7 +391,10 @@ Deno.serve(async (req: Request) => {
             const line = ln.trim();
             if (!line || !line.startsWith("data:")) continue;
             const payload = line.slice(5).trim();
-            if (payload === "[DONE]") continue;
+            // OpenAI/OpenRouter signalisiert das Stream-Ende mit "data: [DONE]".
+            // Manche Provider schließen den TCP-Stream nicht sauber danach —
+            // wir behandeln [DONE] deshalb selbst als Ende.
+            if (payload === "[DONE]") { finish(controller); return; }
             let ev: any;
             try { ev = JSON.parse(payload); } catch { continue; }
             const delta = ev?.choices?.[0]?.delta;
