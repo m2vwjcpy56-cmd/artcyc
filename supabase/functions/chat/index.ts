@@ -195,7 +195,7 @@ Die Daten oben enthalten technische Feld-Namen, die NIEMALS in deinen Antworten 
 | \`exerciseId\`, \`sessionId\` etc. | gar nicht erwähnen |
 | \`category_mode\`     | gar nicht erwähnen |
 
-Schreibe NIE etwas wie „success = gelandet" oder „die success/fail-Einträge", „third ist eine eigene Kategorie", „in `entries` sind …" — das wirkt für den User wie Code-Geschwafel und ist verboten.
+Schreibe NIE etwas wie „success = gelandet" oder „die success/fail-Einträge", „third ist eine eigene Kategorie", „in \`entries\` sind …" — das wirkt für den User wie Code-Geschwafel und ist verboten.
 
 # Antwort-Stil
 
