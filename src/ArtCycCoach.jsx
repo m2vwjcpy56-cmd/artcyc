@@ -2445,7 +2445,10 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
 // ropeFilter: null = alle Sessions, true = nur mit Seil, false = nur ohne Seil
 // =============================================================
 // KI-Insight für eine Übung — regel-basierter „Trainer-Tipp".
-// Liefert 1–2 kurze Hinweise als String. Keine externe AI nötig.
+// Bei wenig Daten: ein kurzer Satz.
+// Bei viel Daten: mehrere Zeilen (Volumen → Trend → Frequenz →
+// Risiko → Empfehlung). Keine externe AI-Anfrage nötig.
+// Rückgabe: { lines: string[], rich: boolean }
 // =============================================================
 function generateExerciseInsight(exercise, sessions, t) {
   if (!exercise || !sessions) return null;
@@ -2453,17 +2456,28 @@ function generateExerciseInsight(exercise, sessions, t) {
   const entries = exSessions.flatMap(s => s.entries || []);
   const total = entries.length;
   const success = entries.filter(e => e === 'success').length;
+  const fail    = entries.filter(e => e === 'fail').length;
+  const third   = entries.filter(e => e === 'third').length;
   const rate = total > 0 ? Math.round((success / total) * 100) : 0;
   const target = typeof exercise.target_rate === 'number' ? exercise.target_rate : null;
 
-  if (total === 0) return t('aiInsight.noData');
-  if (total < 10) return t('aiInsight.veryNew', { n: total });
+  // Edge cases — sehr wenig Daten
+  if (total === 0)   return { lines: [t('aiInsight.noData')],                 rich: false };
+  if (total < 10)    return { lines: [t('aiInsight.veryNew', { n: total })], rich: false };
 
-  // Letzte Trainings-Datum
-  const lastDate = exSessions.reduce((m, s) => (s.date && s.date > m ? s.date : m), '');
-  if (lastDate) {
-    const daysSince = Math.floor((Date.now() - new Date(lastDate).getTime()) / 86400000);
-    if (daysSince > 30) return t('aiInsight.fewRecent');
+  // Stale check (länger als 30 Tage)
+  const sessionDates = exSessions.map(s => s.date).filter(Boolean).sort();
+  const firstDate = sessionDates[0];
+  const lastDate  = sessionDates[sessionDates.length - 1];
+  let daysSinceLast = null;
+  if (lastDate) daysSinceLast = Math.floor((Date.now() - new Date(lastDate).getTime()) / 86400000);
+
+  // Trainings-Spanne in Wochen / Monaten
+  let weeks = null, months = null;
+  if (firstDate && lastDate) {
+    const ms = new Date(lastDate).getTime() - new Date(firstDate).getTime();
+    weeks  = Math.max(1, Math.round(ms / (7 * 86400000)));
+    months = Math.max(1, Math.round(ms / (30 * 86400000)));
   }
 
   // Trend: letzte 4 Wochen vs. vorherige 4 Wochen
@@ -2474,20 +2488,115 @@ function generateExerciseInsight(exercise, sessions, t) {
   const olderEntries  = exSessions.filter(s => (s.date || '') >= olderStart && (s.date || '') < recentStart).flatMap(s => s.entries || []);
   const recentRate = recentEntries.length >= 5 ? Math.round(recentEntries.filter(e => e === 'success').length / recentEntries.length * 100) : null;
   const olderRate  = olderEntries.length  >= 5 ? Math.round(olderEntries.filter(e => e === 'success').length / olderEntries.length * 100)  : null;
+
+  // Frequenz pro Woche (Schnitt über trainierte Spanne)
+  const perWeek = weeks ? (exSessions.length / weeks).toFixed(1) : null;
+
+  // Beste Erfolgs-Serie (Streak) über alle Versuche
+  let bestStreak = 0, curStreak = 0;
+  for (const e of entries) {
+    if (e === 'success') { curStreak++; if (curStreak > bestStreak) bestStreak = curStreak; }
+    else curStreak = 0;
+  }
+
+  // Mit/Ohne Seil getrennt
+  let ropeWithRate = null, ropeWithoutRate = null;
+  if (exercise.has_rope_variant) {
+    const withRopeEntries = exSessions.filter(s => s.withRope === true).flatMap(s => s.entries || []);
+    const withoutRopeEntries = exSessions.filter(s => s.withRope === false).flatMap(s => s.entries || []);
+    if (withRopeEntries.length >= 10) {
+      ropeWithRate = Math.round(withRopeEntries.filter(e => e === 'success').length / withRopeEntries.length * 100);
+    }
+    if (withoutRopeEntries.length >= 10) {
+      ropeWithoutRate = Math.round(withoutRopeEntries.filter(e => e === 'success').length / withoutRopeEntries.length * 100);
+    }
+  }
+
+  // ─── Reicher Multi-Line-Tipp wenn genug Daten (≥ 30 Versuche) ───
+  if (total >= 30) {
+    const lines = [];
+
+    // 1) Volumen-Headline
+    if (months && months >= 3)      lines.push(t('aiInsight.volumeMonths', { months, sessions: exSessions.length, total, rate }));
+    else if (weeks && weeks >= 3)   lines.push(t('aiInsight.volumeLong',   { weeks,  sessions: exSessions.length, total, rate }));
+    else                             lines.push(t('aiInsight.volumeShort',  { sessions: exSessions.length, total, rate }));
+
+    // 2) Quote-Einordnung
+    if      (rate >= 85) lines.push(t('aiInsight.rateExcellent'));
+    else if (rate >= 70) lines.push(t('aiInsight.rateGood'));
+    else if (rate >= 55) lines.push(t('aiInsight.rateMedium'));
+    else                 lines.push(t('aiInsight.rateLow'));
+
+    // 3) Trend (wenn beide Fenster ≥ 5 Versuche)
+    if (recentRate != null && olderRate != null) {
+      const delta = recentRate - olderRate;
+      if      (delta >= 8)  lines.push(t('aiInsight.trendUp',     { recent: recentRate, older: olderRate, delta }));
+      else if (delta <= -8) lines.push(t('aiInsight.trendDown',   { recent: recentRate, older: olderRate, delta: -delta }));
+      else                  lines.push(t('aiInsight.trendStable', { recent: recentRate }));
+    }
+
+    // 4) Frequenz (nur wenn Spanne >= 4 Wochen sinnvoll)
+    if (perWeek && weeks >= 4) {
+      const pw = Number(perWeek);
+      if      (pw >= 2.5) lines.push(t('aiInsight.freqHigh',   { perWeek }));
+      else if (pw >= 1)   lines.push(t('aiInsight.freqMedium', { perWeek }));
+      else                lines.push(t('aiInsight.freqLow',    { perWeek }));
+    }
+
+    // 5) Stale-Check (zuletzt vor X Tagen)
+    if (daysSinceLast != null) {
+      if      (daysSinceLast > 60) lines.push(t('aiInsight.veryStale', { days: daysSinceLast }));
+      else if (daysSinceLast > 14) lines.push(t('aiInsight.staleDays', { days: daysSinceLast }));
+    }
+
+    // 6) Ziel-Quote
+    if (target != null) {
+      if      (rate >= target)          lines.push(t('aiInsight.targetReached', { target }));
+      else if (target - rate <= 5)      lines.push(t('aiInsight.targetClose',   { gap: target - rate, target }));
+      else                              lines.push(t('aiInsight.targetFar',     { gap: target - rate, target }));
+    }
+
+    // 7) Risiko-Profil bei 3-Kategorien-Übungen
+    if (exercise.category_mode === 3 && (fail + third) >= 5) {
+      const riskPct = Math.round(third / (fail + third) * 100);
+      const label = exercise.third_label || 'Gefährlich';
+      if (riskPct >= 30) lines.push(t('aiInsight.riskHigh', { pct: riskPct, label }));
+      else if (riskPct < 15) lines.push(t('aiInsight.riskLow',  { pct: riskPct, label }));
+    }
+
+    // 8) Mit/Ohne Seil-Vergleich
+    if (ropeWithRate != null && ropeWithoutRate != null) {
+      const diff = ropeWithRate - ropeWithoutRate;
+      if      (diff >= 8)  lines.push(t('aiInsight.ropeBetterWith',    { rWith: ropeWithRate, rWithout: ropeWithoutRate }));
+      else if (diff <= -8) lines.push(t('aiInsight.ropeBetterWithout', { rWith: ropeWithRate, rWithout: ropeWithoutRate }));
+      else                 lines.push(t('aiInsight.ropeSplit',         { rWith: ropeWithRate, rWithout: ropeWithoutRate }));
+    }
+
+    // 9) Streak (Erfolge am Stück) — nur erwähnen wenn beeindruckend
+    if (bestStreak >= 10) lines.push(t('aiInsight.bestStreak', { n: bestStreak }));
+
+    // 10) Konkrete Empfehlung am Ende
+    if      (target != null && rate < target - 5)   lines.push(t('aiInsight.recoFocus'));
+    else if (rate >= 85)                             lines.push(rate >= 95 ? t('aiInsight.recoVariety') : t('aiInsight.recoMaintain'));
+    else if (rate < 55)                              lines.push(t('aiInsight.recoTechnique'));
+    else if (recentRate != null && olderRate != null && recentRate - olderRate >= 8) lines.push(t('aiInsight.recoMaintain'));
+    else                                             lines.push(t('aiInsight.recoFocus'));
+
+    return { lines, rich: true };
+  }
+
+  // ─── Mittel-Range (10–29 Versuche) — 1–2 Zeilen ───
+  const lines = [t('aiInsight.volumeShort', { sessions: exSessions.length, total, rate })];
+  if      (rate >= 85) lines.push(t('aiInsight.rateExcellent'));
+  else if (rate >= 70) lines.push(t('aiInsight.rateGood'));
+  else if (rate < 50)  lines.push(t('aiInsight.rateLow'));
   if (recentRate != null && olderRate != null) {
-    if (recentRate - olderRate >= 10) return t('aiInsight.improving');
-    if (olderRate - recentRate >= 10) return t('aiInsight.declining');
+    const delta = recentRate - olderRate;
+    if      (delta >= 10) lines.push(t('aiInsight.trendUp',   { recent: recentRate, older: olderRate, delta }));
+    else if (delta <= -10) lines.push(t('aiInsight.trendDown', { recent: recentRate, older: olderRate, delta: -delta }));
   }
-
-  // Ziel-Quote
-  if (target != null) {
-    if (rate >= target) return t('aiInsight.aboveTarget', { target });
-    if (target - rate >= 5) return t('aiInsight.belowTarget', { gap: target - rate, target });
-  }
-
-  if (rate < 50) return t('aiInsight.lowRate', { rate, total });
-  if (rate >= 85 && exSessions.length >= 10) return t('aiInsight.excellent', { rate, sessions: exSessions.length });
-  return t('aiInsight.solid', { rate, sessions: exSessions.length });
+  if (daysSinceLast != null && daysSinceLast > 30) lines.push(t('aiInsight.staleDays', { days: daysSinceLast }));
+  return { lines, rich: false };
 }
 
 function calcExerciseTrainingStats(exercise, sessions, ropeFilter = null) {
@@ -3483,12 +3592,21 @@ export default function App() {
   const effectiveData = useMemo(() => {
     if (!data) return data;
     if (!data.migrated_to_tables) return data;
+    // Maute-Sprung: has_rope_variant auto-aktivieren falls in DB nicht gesetzt
+    // (Migration läuft sonst nur auf lokalem Blob, nicht auf DB-Exercises)
+    const exercises = dbExercises.map(e => {
+      const blob = dbExerciseToBlob(e);
+      if (!blob.has_rope_variant && (blob.name || '').toLowerCase().includes('maute')) {
+        return { ...blob, has_rope_variant: true };
+      }
+      return blob;
+    });
     return {
       ...data,
       sessions: dbSessions.map(dbSessionToBlob),
       competitions: dbCompetitions.map(dbCompetitionToBlob),
       programs: dbPrograms.map(dbProgramToBlob),
-      exercises: dbExercises.map(dbExerciseToBlob)
+      exercises
     };
   }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob]);
 
@@ -6089,20 +6207,32 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
           </div>
         </header>
 
-        {/* KI-Insight — kurzer regel-basierter Tipp */}
+        {/* KI-Insight — regel-basierter Trainer-Tipp (1 Zeile bei wenig Daten, ausführlich ab ≥ 30 Versuchen) */}
         {(() => {
           const insight = generateExerciseInsight(exercise, data.sessions || [], t);
-          if (!insight) return null;
+          if (!insight || !insight.lines || insight.lines.length === 0) return null;
           return (
             <div className="bg-gradient-to-br from-[#FF9500]/10 to-[#FF6D00]/10 rounded-2xl p-4 flex gap-3 items-start">
               <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#FF9500] to-[#FF6D00] flex items-center justify-center shrink-0">
                 <Sparkles size={18} className="text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[11px] uppercase tracking-wide text-[#FF9500] font-semibold mb-0.5">
+                <div className="text-[11px] uppercase tracking-wide text-[#FF9500] font-semibold mb-1.5">
                   {t('aiInsight.title')}
                 </div>
-                <div className="text-[14px] leading-snug">{insight}</div>
+                {insight.rich ? (
+                  <ul className="text-[14px] leading-snug space-y-1.5 list-disc pl-4 marker:text-[#FF9500]">
+                    {insight.lines.map((line, i) => (
+                      <li key={i}>{line}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-[14px] leading-snug space-y-1">
+                    {insight.lines.map((line, i) => (
+                      <div key={i}>{line}</div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -6881,6 +7011,51 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
         </header>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
+          {/* Übung zuerst — wichtigste Auswahl, beeinflusst alle anderen Felder */}
+          <div>
+            <label className="text-sm font-medium block mb-1.5">{t('log.exercise')}</label>
+            <select value={exerciseId} onChange={e => setExerciseId(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
+              {exerciseSort.trained.length > 0 && (
+                <optgroup label={t('log.exerciseTrained')}>
+                  {exerciseSort.trained.map(e => (
+                    <option key={e.id} value={e.id}>
+                      {e.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {exerciseSort.untrained.length > 0 && (
+                <optgroup label={exerciseSort.trained.length > 0 ? t('log.exerciseUntrained') : t('log.exerciseAll')}>
+                  {exerciseSort.untrained.map(e => (
+                    <option key={e.id} value={e.id}>
+                      {e.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+
+          {/* Mit/Ohne-Seil direkt unter der Übung — Variante gehört zur Übung */}
+          {exercise && exercise.has_rope_variant && (
+            <div>
+              <label className="text-sm font-medium block mb-1.5">{t('log.variant')}</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setWithRope(true)}
+                  className={'py-2.5 rounded-xl text-sm font-medium border transition active:scale-95 ' +
+                    (withRope ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-700 border-slate-300')}>
+                  {t('log.withRope')}
+                </button>
+                <button type="button" onClick={() => setWithRope(false)}
+                  className={'py-2.5 rounded-xl text-sm font-medium border transition active:scale-95 ' +
+                    (!withRope ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-700 border-slate-300')}>
+                  {t('log.withoutRope')}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="text-sm font-medium block mb-1.5">{t('log.date')}</label>
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
@@ -6900,48 +7075,6 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
               </select>
             </div>
           )}
-          <div>
-            <label className="text-sm font-medium block mb-1.5">{t('log.exercise')}</label>
-            <select value={exerciseId} onChange={e => setExerciseId(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
-              {exerciseSort.trained.length > 0 && (
-                <optgroup label={t('log.exerciseTrained')}>
-                  {exerciseSort.trained.map(e => (
-                    <option key={e.id} value={e.id}>
-                      {e.name} · {exerciseSort.count.get(e.id)}×
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {exerciseSort.untrained.length > 0 && (
-                <optgroup label={exerciseSort.trained.length > 0 ? t('log.exerciseUntrained') : t('log.exerciseAll')}>
-                  {exerciseSort.untrained.map(e => (
-                    <option key={e.id} value={e.id}>
-                      {e.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-          </div>
-
-          {exercise && exercise.has_rope_variant && (
-            <div>
-              <label className="text-sm font-medium block mb-1.5">{t('log.variant')}</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setWithRope(true)}
-                  className={'py-2.5 rounded-xl text-sm font-medium border transition active:scale-95 ' +
-                    (withRope ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-700 border-slate-300')}>
-                  {t('log.withRope')}
-                </button>
-                <button type="button" onClick={() => setWithRope(false)}
-                  className={'py-2.5 rounded-xl text-sm font-medium border transition active:scale-95 ' +
-                    (!withRope ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-700 border-slate-300')}>
-                  {t('log.withoutRope')}
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5">
@@ -6952,26 +7085,28 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className={'grid gap-3 mb-3 ' + (use3 ? 'grid-cols-3' : 'grid-cols-2')}>
             <button onClick={() => setEntries([...entries, 'success'])}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center gap-1 active:scale-95 transition-transform">
-              <Check size={28} /><span>{statusLabel(exercise, 'success')}</span>
+              className="bg-emerald-600 hover:bg-emerald-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+              <Check size={26} strokeWidth={2.6} />
+              <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'success')}</span>
               <span className="text-xs opacity-80">{success}</span>
             </button>
             <button onClick={() => setEntries([...entries, 'fail'])}
-              className="bg-rose-600 hover:bg-rose-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center gap-1 active:scale-95 transition-transform">
-              <X size={28} /><span>{statusLabel(exercise, 'fail')}</span>
+              className="bg-rose-600 hover:bg-rose-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+              <X size={26} strokeWidth={2.6} />
+              <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'fail')}</span>
               <span className="text-xs opacity-80">{fail}</span>
             </button>
+            {use3 && (
+              <button onClick={() => setEntries([...entries, 'third'])}
+                className="bg-amber-500 hover:bg-amber-600 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+                <AlertTriangle size={26} strokeWidth={2.4} />
+                <span className="text-[13px] leading-tight text-center px-1">{thirdLabel}</span>
+                <span className="text-xs opacity-80">{third}</span>
+              </button>
+            )}
           </div>
-
-          {use3 && (
-            <button onClick={() => setEntries([...entries, 'third'])}
-              className="w-full bg-amber-500 hover:bg-amber-600 text-white py-4 rounded-2xl font-semibold flex items-center justify-center gap-2 mb-3 active:scale-95 transition-transform">
-              <AlertTriangle size={20} /><span>{thirdLabel}</span>
-              <span className="text-sm opacity-80">· {third}</span>
-            </button>
-          )}
 
           {entries.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-3">
