@@ -64,7 +64,7 @@ const TOOLS = [
             items: { type: "string", enum: ["success", "fail", "third"] },
             description: "Array der Serien-Status. 'success'=geklappt, 'fail'=nicht geklappt, 'third'=dritte Kategorie (z.B. gefährlich beim Maute-Sprung)",
           },
-          withRope: { type: ["boolean", "null"], description: "Nur bei Übungen mit Seil-Variante. true=mit Seil, false=ohne Seil, null=nicht relevant" },
+          withRope: { type: "boolean", description: "Nur bei Übungen mit Seil-Variante. true=mit Seil, false=ohne Seil. Bei Übungen ohne Seil-Variante: Feld weglassen." },
           notes:    { type: "string", description: "Optionale Notiz" },
           summary:  { type: "string", description: "Kurze deutsche Zusammenfassung für die Bestätigung" },
         },
@@ -112,13 +112,13 @@ const TOOLS = [
         type: "object",
         properties: {
           name:             { type: "string" },
-          uci_code:         { type: ["string", "null"] },
-          uci_disc:         { type: ["string", "null"] },
+          uci_code:         { type: "string", description: "UCI-Code z. B. '1124c'. Bei eigenen Übungen Feld weglassen." },
+          uci_disc:         { type: "string", description: "UCI-Disziplin '1er'/'2er'/'4er'/'6er'. Bei eigenen Übungen Feld weglassen." },
           category_mode:    { type: "integer", enum: [2, 3] },
-          third_label:      { type: ["string", "null"] },
+          third_label:      { type: "string", description: "Name der 3. Kategorie. Nur bei category_mode=3." },
           has_rope_variant: { type: "boolean" },
           default_series:   { type: "integer" },
-          target_rate:      { type: ["integer", "null"] },
+          target_rate:      { type: "integer", description: "Ziel-Quote in % (0–100). Optional." },
           summary:          { type: "string" },
         },
         required: ["name", "category_mode", "summary"],
@@ -268,6 +268,7 @@ async function callOpenRouter(systemPrompt: string, messages: any[]) {
       model: OPENROUTER_MODEL,
       messages: msgs,
       tools: TOOLS,
+      tool_choice: "auto",
       max_tokens: 1500,
     }),
   });
@@ -287,6 +288,7 @@ async function callOpenRouterStream(systemPrompt: string, messages: any[]) {
       model: OPENROUTER_MODEL,
       messages: msgs,
       tools: TOOLS,
+      tool_choice: "auto",
       max_tokens: 1500,
       stream: true,
     }),
@@ -344,7 +346,18 @@ Deno.serve(async (req: Request) => {
 
       const stream = new ReadableStream<Uint8Array>({
         async pull(controller) {
-          const { value, done } = await reader.read();
+          let value: Uint8Array | undefined;
+          let done = false;
+          try {
+            const r = await reader.read();
+            value = r.value;
+            done = r.done;
+          } catch (e) {
+            // Upstream-Stream abgebrochen → Final-Event mit Fehler raus
+            emit(controller, "final", { type: "final", content: aggregatedText, action: null, error: "Upstream-Stream-Abbruch: " + (e as Error).message });
+            controller.close();
+            return;
+          }
           if (done) {
             // Final-Event: gesammelten Text + ggf. Tool-Call-Action ausgeben
             let action: any = null;
