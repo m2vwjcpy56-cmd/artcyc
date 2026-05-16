@@ -64,10 +64,10 @@ jobs:
               -d "$PAYLOAD")
             cat /tmp/resp.json; echo
             if [ "$HTTP_CODE" -ge 400 ]; then
-              echo "::error::SQL „$sql" fehlgeschlagen (HTTP $HTTP_CODE)"
+              echo "::error::SQL '$sql' fehlgeschlagen (HTTP $HTTP_CODE)"
               exit 1
             fi
-            echo "::notice::$sql ausgeführt (HTTP $HTTP_CODE)"
+            echo "::notice::$sql ausgefuehrt HTTP $HTTP_CODE"
           done
 
       - name: Push Edge-Function-Secrets aus GitHub-Secrets
