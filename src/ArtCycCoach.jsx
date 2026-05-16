@@ -5806,6 +5806,11 @@ function FeedbackModal({ onClose }) {
             </span>
           </button>
 
+          {/* Klarstellung: Senden = Auto-Mail an Entwickler */}
+          <p className="text-[12px] text-[#8E8E93] text-center px-3 leading-snug -mt-2">
+            Geht direkt an den Entwickler — keine weitere Aktion nötig.
+          </p>
+
           {justSent && (
             <div className="bg-emerald-50 text-emerald-900 text-[14px] rounded-xl p-3 text-center">
               ✓ {t('feedback.thanks')}
@@ -5822,7 +5827,10 @@ function FeedbackModal({ onClose }) {
                     <span className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
                       {t('feedback.category' + (e.category || 'other').charAt(0).toUpperCase() + (e.category || 'other').slice(1))} · {e.source === 'ai' ? t('feedback.sourceAi') : t('feedback.sourceUser')}
                     </span>
-                    <span className="text-[11px] text-[#8E8E93]">
+                    <span className="flex items-center gap-1.5 text-[11px] text-[#8E8E93]">
+                      {e.synced
+                        ? <span className="text-[#34C759]" title="An Entwickler gesendet">✓</span>
+                        : <span className="text-[#FF9500]" title="Noch nicht gesendet">⏳</span>}
                       {new Date(e.created_at).toLocaleDateString()}
                     </span>
                   </div>
@@ -5834,18 +5842,25 @@ function FeedbackModal({ onClose }) {
             <p className="text-[13px] text-[#8E8E93] text-center px-2">{t('feedback.empty')}</p>
           )}
 
-          {/* Mail-Versand + Löschen */}
+          {/* Fallback-Mailversand nur bei nicht-synchronisierten Einträgen
+              (z. B. wenn der Cloud-Push wegen Offline-State fehlgeschlagen ist).
+              Plus Löschen-Button für lokale History. */}
           {list.length > 0 && (
             <IOSList>
-              <IOSListRow
-                onClick={sendByMail}
-                trailing={<Mail size={18} className="text-[#007AFF]" />}>
-                <span className="text-[15px] text-[#007AFF] font-medium">{t('feedback.sendByMail')}</span>
-              </IOSListRow>
+              {list.some(e => !e.synced) && (
+                <IOSListRow
+                  onClick={sendByMail}
+                  trailing={<Mail size={18} className="text-[#007AFF]" />}>
+                  <span className="flex flex-col">
+                    <span className="text-[15px] text-[#007AFF] font-medium">Nicht gesendete als Mail schicken</span>
+                    <span className="text-[12px] text-[#8E8E93]">Fallback falls Online-Versand fehlschlug</span>
+                  </span>
+                </IOSListRow>
+              )}
               <IOSListRow
                 onClick={clearAll}
                 trailing={<Trash2 size={18} className="text-[#FF3B30]" />}>
-                <span className="text-[15px] text-[#FF3B30] font-medium">{t('feedback.clearAll')}</span>
+                <span className="text-[15px] text-[#FF3B30] font-medium">Lokale History löschen</span>
               </IOSListRow>
             </IOSList>
           )}
