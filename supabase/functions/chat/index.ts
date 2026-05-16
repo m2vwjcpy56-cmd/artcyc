@@ -361,27 +361,34 @@ Deno.serve(async (req: Request) => {
       };
 
       // Im Hintergrund den Upstream lesen + Events rausschreiben.
-      // Wenn die Schleife durch ist, schließen wir den Writer (= EOF zum Client).
+      const reqId = crypto.randomUUID().slice(0, 8);
+      console.log("[" + reqId + "] stream start, model=" + OPENROUTER_MODEL);
       (async () => {
         const reader = upstream.body!.getReader();
         let buf = "";
         let aggregatedText = "";
         const toolBuf: Record<number, { name: string; args: string }> = {};
         let stopped = false;
+        let chunkCount = 0;
+        let deltaCount = 0;
 
         const buildAction = () => {
           const idxs = Object.keys(toolBuf).map(Number).sort((a, b) => a - b);
           if (idxs.length === 0) return null;
           const first = toolBuf[idxs[0]];
           let input: any = {};
-          try { input = first.args ? JSON.parse(first.args) : {}; } catch {}
+          try { input = first.args ? JSON.parse(first.args) : {}; } catch (e) {
+            console.log("[" + reqId + "] tool-args parse error: " + (e as Error).message + " — raw: " + (first.args || "").slice(0, 200));
+          }
           return { tool: first.name, params: input, summary: (input && input.summary) || "" };
         };
 
-        const finish = async () => {
+        const finish = async (reason: string) => {
           if (stopped) return;
           stopped = true;
+          console.log("[" + reqId + "] finish(" + reason + ") — chunks=" + chunkCount + " deltas=" + deltaCount + " textLen=" + aggregatedText.length + " toolCalls=" + Object.keys(toolBuf).length);
           await sse("final", { type: "final", content: aggregatedText, action: buildAction() });
+          console.log("[" + reqId + "] final event sent");
           try { reader.cancel(); } catch {}
         };
 
@@ -394,10 +401,13 @@ Deno.serve(async (req: Request) => {
               value = r.value;
               done = r.done;
             } catch (e) {
+              console.log("[" + reqId + "] reader.read error: " + (e as Error).message);
               await sse("final", { type: "final", content: aggregatedText, action: buildAction(), error: (e as Error).message });
+              stopped = true;
               break;
             }
-            if (done) { await finish(); break; }
+            if (done) { await finish("reader done"); break; }
+            chunkCount++;
             buf += decoder.decode(value, { stream: true });
             const lines = buf.split("\n");
             buf = lines.pop() ?? "";
@@ -406,12 +416,12 @@ Deno.serve(async (req: Request) => {
               const line = ln.trim();
               if (!line || !line.startsWith("data:")) continue;
               const payload = line.slice(5).trim();
-              // OpenAI/OpenRouter signalisiert Stream-Ende mit "data: [DONE]"
-              if (payload === "[DONE]") { await finish(); break; }
+              if (payload === "[DONE]") { await finish("DONE marker"); break; }
               let ev: any;
               try { ev = JSON.parse(payload); } catch { continue; }
               const delta = ev?.choices?.[0]?.delta;
               if (!delta) continue;
+              deltaCount++;
               if (typeof delta.content === "string" && delta.content.length > 0) {
                 aggregatedText += delta.content;
                 await sse("content_block_delta", {
@@ -445,12 +455,15 @@ Deno.serve(async (req: Request) => {
               }
             }
           }
-          // Safety: falls die Schleife OHNE finish() endet (z. B. weil
-          // der Upstream das Stream-Ende ohne [DONE] schickt), trotzdem
-          // ein final-Event rausschicken.
-          if (!stopped) await finish();
+          if (!stopped) await finish("loop ended");
+        } catch (e) {
+          console.log("[" + reqId + "] outer loop error: " + (e as Error).message);
         } finally {
-          try { await writer.close(); } catch {}
+          console.log("[" + reqId + "] closing writer");
+          try { await writer.close(); } catch (e) {
+            console.log("[" + reqId + "] writer.close error: " + (e as Error).message);
+          }
+          console.log("[" + reqId + "] stream done");
         }
       })();
 
