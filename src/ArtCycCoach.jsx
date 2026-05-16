@@ -3048,16 +3048,20 @@ function applyChatAction(action, data, setData) {
     return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Serien (' + succ + ' geklappt)' + ropeTag;
   }
   if (action.tool === 'propose_update_session') {
+    const fields = p.fields || {};
+    const fieldList = Object.keys(fields).filter(k => fields[k] !== undefined).join(', ');
+    if (!fieldList) {
+      return '⚠ KI-Coach hat keine Feld-Änderungen angegeben — bitte konkreter fragen (z. B. „setze withRope auf true").';
+    }
     let updated = 0;
     const next = (data.sessions || []).map(s => {
-      if (s.id === p.sessionId) { updated++; return { ...s, ...(p.fields || {}) }; }
+      if (s.id === p.sessionId) { updated++; return { ...s, ...fields }; }
       return s;
     });
     setData({ ...data, sessions: next });
-    const fieldList = Object.keys(p.fields || {}).join(', ');
     return updated > 0
       ? '✓ Session aktualisiert (' + fieldList + ')'
-      : '⚠ Session nicht gefunden';
+      : '⚠ Session nicht gefunden (ID: ' + (p.sessionId || '—') + ')';
   }
   if (action.tool === 'propose_delete_session') {
     const before = (data.sessions || []).length;
@@ -3082,15 +3086,20 @@ function applyChatAction(action, data, setData) {
     return '✓ Übung „' + newEx.name + '" angelegt';
   }
   if (action.tool === 'propose_update_exercise') {
+    const fields = p.fields || {};
+    const fieldList = Object.keys(fields).filter(k => fields[k] !== undefined).join(', ');
+    if (!fieldList) {
+      return '⚠ KI-Coach hat keine Feld-Änderungen angegeben — bitte konkreter fragen.';
+    }
     let updated = 0;
     const next = (data.exercises || []).map(e => {
-      if (e.id === p.exerciseId) { updated++; return { ...e, ...(p.fields || {}) }; }
+      if (e.id === p.exerciseId) { updated++; return { ...e, ...fields }; }
       return e;
     });
     setData({ ...data, exercises: next });
     return updated > 0
-      ? '✓ Übung aktualisiert (' + Object.keys(p.fields || {}).join(', ') + ')'
-      : '⚠ Übung nicht gefunden';
+      ? '✓ Übung aktualisiert (' + fieldList + ')'
+      : '⚠ Übung nicht gefunden (ID: ' + (p.exerciseId || '—') + ')';
   }
   return '⚠ Aktion „' + action.tool + '" nicht erkannt';
 }

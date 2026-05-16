@@ -76,13 +76,22 @@ const TOOLS = [
     type: "function",
     function: {
       name: "propose_update_session",
-      description: "Ändert eine bestehende Session (z.B. Datum, Notiz, Entries, withRope korrigieren).",
+      description: "Ändert EINE einzelne bestehende Session. Pro Aufruf nur eine Session. Bei mehreren Sessions: pro Antwort eine einzelne vorschlagen, der User bestätigt jede separat — oder beim User nachfragen ob das wirklich gewollt ist.",
       parameters: {
         type: "object",
         properties: {
-          sessionId: { type: "string", description: "ID der Session" },
-          fields:    { type: "object", description: "Änderungs-Objekt mit den zu setzenden Feldern (date, entries, notes, withRope)" },
-          summary:   { type: "string" },
+          sessionId: { type: "string", description: "ID der zu ändernden Session aus app_data.sessions" },
+          fields:    {
+            type: "object",
+            description: "PFLICHT: konkrete Feld-Änderungen. Erlaubte Keys: 'date' (string YYYY-MM-DD), 'entries' (Array aus 'success'|'fail'|'third'), 'notes' (string), 'withRope' (boolean). MINDESTENS EIN Feld muss gesetzt sein — niemals {} schicken.",
+            properties: {
+              date:     { type: "string", description: "Neues Datum YYYY-MM-DD" },
+              entries:  { type: "array", items: { type: "string", enum: ["success", "fail", "third"] } },
+              notes:    { type: "string" },
+              withRope: { type: "boolean", description: "true=mit Seil, false=ohne Seil" },
+            },
+          },
+          summary: { type: "string" },
         },
         required: ["sessionId", "fields", "summary"],
       },
@@ -222,7 +231,12 @@ Schreibe NIE etwas wie „success = gelandet" oder „die success/fail-Einträge
 - **Bei Analyse-Fragen**: 1 Zahl/Ergebnis + 1 Satz Kontext genügt.
 - **Maximal 6 Sätze gesamt** bei Analyse-Antworten. Maximal 8 Bullet-Punkte bei Listen-Antworten.
 - **Tipps geben**: Wenn der User um Trainings-Empfehlungen bittet, gib konkrete Vorschläge anhand der Daten.
-- **Schreib-Aktionen**: NIEMALS direkt ausführen. Nutze die \`propose_*\`-Tools — der User muss die Aktion danach bestätigen. Erkläre dabei kurz im Antwort-Text warum du das vorschlägst.
+- **Schreib-Aktionen**: NIEMALS direkt ausführen. Nutze die \`propose_*\`-Tools — der User muss die Aktion danach bestätigen. Erkläre dabei IMMER kurz im Antwort-Text was du tun willst (nicht nur Tool-Call ohne Text).
+- **Mehrere Änderungen / Bulk**: Du kannst pro Antwort nur EINE Aktion vorschlagen. Wenn der User z. B. sagt „alle Maute-Sprünge auf mit Seil setzen":
+  a) FRAG ZUERST: „Du hast N Maute-Sessions — soll ich wirklich alle einzeln auf mit Seil setzen? Jede muss separat bestätigt werden." Nenne die echte Anzahl N aus den Daten.
+  b) Nach Bestätigung: nur die ERSTE Session vorschlagen. Im nächsten Turn die zweite. Usw.
+  c) ALTERNATIV: vorschlagen den Übungs-Default (\`has_rope_variant\` etc.) zu ändern — falls sinnvoll.
+- **NIEMALS leere fields**: \`propose_update_session\`/\`propose_update_exercise\` brauchen IMMER mindestens ein konkretes Feld in \`fields\`. Ein Aufruf mit \`fields: {}\` ist verboten und bricht die App.
 - **Datumsangaben**: "gestern" = ${new Date(Date.now() - 86400000).toISOString().slice(0, 10)}, "heute" = ${today}.
 - **Übungs-IDs**: Wenn du eine Aktion vorschlägst, nutze die echten \`id\`-Werte aus den Daten oben — niemals erfinden.
 - **Stil**: Kurz, freundlich, sportlich. Emojis sparsam (max 1 pro Antwort, nur wenn passend).
