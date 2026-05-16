@@ -2822,7 +2822,8 @@ async function callChatApiStream(messages, appData, userName, callbacks) {
   let aggregatedText = '';
   let finalAction = null;
   let finalContent = null;
-  while (true) {
+  let gotFinal = false;
+  while (!gotFinal) {
     const { value, done } = await reader.read();
     if (done) break;
     buf += decoder.decode(value, { stream: true });
@@ -2843,6 +2844,11 @@ async function callChatApiStream(messages, appData, userName, callbacks) {
         finalAction = ev.action || null;
         finalContent = ev.content || aggregatedText;
         if (finalAction && callbacks && callbacks.onPhase) callbacks.onPhase('tool');
+        // Final-Event empfangen → wir warten NICHT auf den Server-Close
+        // (manche Provider schließen TCP nicht sauber). Stream selbst
+        // canceln, Loop verlassen.
+        gotFinal = true;
+        break;
       } else if (evName === 'content_block_start') {
         if (ev.content_block?.type === 'tool_use' && callbacks && callbacks.onPhase) {
           callbacks.onPhase('tool');
@@ -2856,6 +2862,8 @@ async function callChatApiStream(messages, appData, userName, callbacks) {
       }
     }
   }
+  // Reader sauber schließen falls noch offen
+  try { await reader.cancel(); } catch {}
   if (callbacks && callbacks.onFinal) callbacks.onFinal(finalContent ?? aggregatedText, finalAction);
   return { content: finalContent ?? aggregatedText, action: finalAction };
 }
