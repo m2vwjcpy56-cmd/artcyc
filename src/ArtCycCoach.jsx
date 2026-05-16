@@ -2956,13 +2956,10 @@ function BottomNav({ items, view, setView }) {
       onTouchEnd={onTouchEnd}
       onTouchCancel={onTouchEnd}>
       <div
-        className="rounded-full flex justify-around items-stretch py-2 px-2"
+        className="ios-bottom-pill rounded-full flex justify-around items-stretch py-2 px-2"
         style={{
-          background: 'rgba(255, 255, 255, 0.72)',
           backdropFilter: 'blur(40px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-          border: '0.5px solid rgba(255, 255, 255, 0.5)',
-          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.08), 0 1px 0 rgba(255, 255, 255, 0.6) inset'
+          WebkitBackdropFilter: 'blur(40px) saturate(180%)'
         }}>
         {items.map((n) => {
           const Icon = n.icon;
@@ -3479,10 +3476,9 @@ export default function App() {
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif' }}>
       {/* Mobile Header — iOS Navigation Bar Style */}
       <div
-        className="sm:hidden px-4 pb-3 flex items-center justify-between sticky top-0 z-30 border-b border-slate-200/30"
+        className="ios-header-bg sm:hidden px-4 pb-3 flex items-center justify-between sticky top-0 z-30 border-b border-slate-200/30"
         style={{
           paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)',
-          background: 'rgba(242, 242, 247, 0.78)',
           backdropFilter: 'blur(20px) saturate(180%)',
           WebkitBackdropFilter: 'blur(20px) saturate(180%)'
         }}>

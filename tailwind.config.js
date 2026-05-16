@@ -4,6 +4,10 @@ export default {
     "./index.html",
     "./src/**/*.{js,jsx,ts,tsx}",
   ],
+  // Folgt automatisch der System-Einstellung (prefers-color-scheme).
+  // Dark-Mode-Styling läuft primär über index.css mit
+  // @media (prefers-color-scheme: dark) Overrides der Tailwind-Klassen.
+  darkMode: 'media',
   theme: {
     extend: {
       fontFamily: {
