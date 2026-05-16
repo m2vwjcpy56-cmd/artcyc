@@ -5,7 +5,8 @@ import {
   Home, BarChart3, Users, Download, Sparkles, FileText, Lock,
   Settings as SettingsIcon, Menu, LogOut, Shield, User, RotateCcw,
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
-  Mail, KeyRound, UserCog, MessageCircle, Send, Loader2
+  Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
+  Sun, Moon, SunMoon
 } from 'lucide-react';
 import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise } from './lib/supabase';
 
@@ -2771,8 +2772,8 @@ function FloatingChat({ data, setData, profile }) {
       {/* Floating Button */}
       <button
         onClick={() => setOpen(true)}
-        className="fixed z-30 right-4 bottom-[7.5rem] sm:bottom-6 w-14 h-14 rounded-full bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white shadow-lg shadow-orange-500/30 flex items-center justify-center active:scale-95 transition"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        className="fixed z-30 right-4 w-14 h-14 rounded-full bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white shadow-lg shadow-orange-500/30 flex items-center justify-center active:scale-95 transition sm:bottom-6"
+        style={{ bottom: 'calc(7.5rem + env(safe-area-inset-bottom))' }}
         aria-label="KI-Coach öffnen">
         <Sparkles size={24} strokeWidth={2.2} />
       </button>
@@ -3061,6 +3062,8 @@ function Brand({ size = 'md' }) {
 // =============================================================
 // HAUPT-APP
 // =============================================================
+const THEME_KEY = 'artcyc:theme'; // 'system' | 'light' | 'dark'
+
 export default function App() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -3069,6 +3072,35 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+
+  // Theme: 'system' folgt prefers-color-scheme, 'light'/'dark' überschreiben
+  const [theme, setTheme] = useState(() => {
+    try {
+      const v = localStorage.getItem(THEME_KEY);
+      return v === 'light' || v === 'dark' ? v : 'system';
+    } catch { return 'system'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(THEME_KEY, theme); } catch {}
+    const applyTheme = () => {
+      const effective = theme === 'system'
+        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        : theme;
+      document.documentElement.setAttribute('data-theme', effective);
+    };
+    applyTheme();
+    if (theme === 'system' && window.matchMedia) {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      const handler = () => applyTheme();
+      // Safari: addListener, modern: addEventListener
+      if (mq.addEventListener) mq.addEventListener('change', handler);
+      else if (mq.addListener) mq.addListener(handler);
+      return () => {
+        if (mq.removeEventListener) mq.removeEventListener('change', handler);
+        else if (mq.removeListener) mq.removeListener(handler);
+      };
+    }
+  }, [theme]);
 
   // Supabase-Session prüfen + Listener
   useEffect(() => {
@@ -3461,7 +3493,7 @@ export default function App() {
   else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} />;
-  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} />;
+  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} />;
   else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} ownData={effectiveData} />;
   else if (view === 'export') viewEl = <ExportView data={effectiveData} />;
   else if (view === 'kuer' || view === 'video') {
@@ -3946,14 +3978,14 @@ function Dashboard({ data, setView }) {
   }, [data]);
 
   return (
-    <div className="space-y-5">
-      <header className="pt-2">
+    <div className="space-y-6">
+      <header className="pt-2 px-1">
         <h1 className="text-[34px] font-bold tracking-tight leading-none">Dashboard</h1>
-        <p className="text-slate-500 text-sm mt-1">Deine Trainings-Statistiken im Überblick</p>
+        <p className="text-[#8E8E93] text-[15px] mt-1">Trainings-Statistiken im Überblick</p>
       </header>
 
-      {/* Saison-Filter */}
-      <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1" data-no-swipe="true">
+      {/* Saison-Filter — iOS Pills, scrollable */}
+      <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1" data-no-swipe="true">
         {[
           { id: 'all', label: 'Alle Zeit' },
           ...availableYears.map(y => ({ id: y, label: y })),
@@ -3963,10 +3995,10 @@ function Dashboard({ data, setView }) {
           <button
             key={s.id}
             onClick={() => setSeason(s.id)}
-            className={'px-3 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition ' +
+            className={'px-3.5 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition active:scale-95 ' +
               (season === s.id
-                ? 'bg-slate-900 text-white'
-                : 'bg-white border border-slate-200 text-slate-700')}>
+                ? 'bg-[#FF9500] text-white shadow-[0_1px_3px_rgba(255,149,0,0.35)]'
+                : 'bg-white text-[#3C3C43] shadow-[0_1px_2px_rgba(0,0,0,0.04)]')}>
             {s.label}
           </button>
         ))}
@@ -4004,21 +4036,21 @@ function Dashboard({ data, setView }) {
         />
       </div>
 
-      {/* Schnellzugriff */}
+      {/* Schnellzugriff — iOS Action Tiles */}
       <div className="grid sm:grid-cols-2 gap-3">
         <button onClick={() => setView('erfassen')}
-          className="bg-slate-900 text-white p-5 rounded-2xl text-left hover:bg-slate-800 transition-colors">
-          <div className="flex items-center gap-2 mb-2 font-semibold">
-            <Plus size={20} /> <span>Serie protokollieren</span>
+          className="bg-[#FF9500] text-white p-5 rounded-2xl text-left active:scale-[0.98] transition-transform shadow-[0_2px_8px_rgba(255,149,0,0.25)]">
+          <div className="flex items-center gap-2 mb-1.5 font-semibold text-[16px]">
+            <Plus size={20} strokeWidth={2.5} /> <span>Serie protokollieren</span>
           </div>
-          <div className="text-xs text-slate-300">Neue Trainings-Session erfassen</div>
+          <div className="text-[13px] text-white/85">Neue Trainings-Session erfassen</div>
         </button>
         <button onClick={() => setView('uebungen')}
-          className="bg-white border-2 border-slate-200 p-5 rounded-2xl text-left hover:border-amber-400 transition-colors">
-          <div className="flex items-center gap-2 mb-2 font-semibold">
-            <ListChecks size={20} className="text-amber-500" /> <span>Übungen verwalten</span>
+          className="bg-white p-5 rounded-2xl text-left active:scale-[0.98] transition-transform shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          <div className="flex items-center gap-2 mb-1.5 font-semibold text-[16px]">
+            <ListChecks size={20} strokeWidth={2.2} className="text-[#FF9500]" /> <span>Übungen verwalten</span>
           </div>
-          <div className="text-xs text-slate-500">{getUciDb().length} UCI-Übungen verfügbar</div>
+          <div className="text-[13px] text-[#8E8E93]">{getUciDb().length} UCI-Übungen verfügbar</div>
         </button>
       </div>
 
@@ -4037,18 +4069,18 @@ function Dashboard({ data, setView }) {
       )}
 
       {/* Pro Übung */}
-      <section>
-        <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-          <TrendingUp size={18} className="text-slate-700" /> Fortschritt pro Übung
-        </h2>
+      <section className="space-y-3">
+        <div className="px-4 text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
+          Fortschritt pro Übung
+        </div>
 
         {perExercise.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-8 text-center">
-            <Sparkles size={32} className="mx-auto text-slate-300 mb-3" />
+          <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-8 text-center">
+            <Sparkles size={32} className="mx-auto text-[#C7C7CC] mb-3" />
             <h3 className="font-semibold mb-1">Noch keine Trainings-Daten</h3>
-            <p className="text-sm text-slate-500 mb-4">Protokolliere deine erste Serie, um den Fortschritt zu sehen.</p>
+            <p className="text-[14px] text-[#8E8E93] mb-4">Protokolliere deine erste Serie, um den Fortschritt zu sehen.</p>
             <button onClick={() => setView('erfassen')}
-              className="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-medium">
+              className="bg-[#FF9500] text-white px-5 py-2.5 rounded-full text-[14px] font-medium active:scale-95 transition-transform">
               Serie protokollieren
             </button>
           </div>
@@ -4059,9 +4091,7 @@ function Dashboard({ data, setView }) {
         )}
       </section>
 
-      <div className="text-xs text-slate-400 text-center pt-2">
-        Stufe 4 · Dashboard aktiv
-      </div>
+      <div className="h-4" />
     </div>
   );
 }
@@ -4107,13 +4137,13 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
 
   return (
     <section>
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <TrendingUp size={18} className="text-slate-700" /> Wettkampf-Verlauf
-        </h2>
-        <button onClick={onTapWettkampf} className="text-xs text-[#007AFF] font-medium">Alle ansehen ›</button>
+      <div className="flex items-center justify-between mb-2 px-4">
+        <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
+          Wettkampf-Verlauf
+        </div>
+        <button onClick={onTapWettkampf} className="text-[13px] text-[#007AFF] font-medium active:opacity-60">Alle ansehen ›</button>
       </div>
-      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
+      <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
         <svg viewBox={'0 0 ' + W + ' ' + H} className="w-full" preserveAspectRatio="none" style={{ height: 'auto' }}>
           {/* Y-Gridlines */}
           {[0, 0.25, 0.5, 0.75, 1].map(r => {
@@ -4239,13 +4269,13 @@ function TrainingHeatmap({ sessions }) {
 
   return (
     <section>
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Calendar size={18} className="text-slate-700" /> Trainings-Aktivität
-        </h2>
-        <span className="text-xs text-slate-500">{totalDaysActive} Tage · {totalSeries} Serien</span>
+      <div className="flex items-center justify-between mb-2 px-4">
+        <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
+          Trainings-Aktivität
+        </div>
+        <span className="text-[12px] text-[#8E8E93]">{totalDaysActive} Tage · {totalSeries} Serien</span>
       </div>
-      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 overflow-x-auto" data-no-swipe="true">
+      <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 overflow-x-auto" data-no-swipe="true">
         <svg width={W} height={H} style={{ minWidth: W }}>
           {/* Monats-Labels */}
           {monthLabels.map((lbl, i) => lbl ? (
@@ -4771,10 +4801,10 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
 // =============================================================
 // EINSTELLUNGEN (Skeleton — wird in Stufe 8 ausgebaut)
 // =============================================================
-function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, refreshAthletes }) {
+function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, refreshAthletes, theme, setTheme }) {
   const roleLabel = profile?.role === 'admin' ? 'Admin' : profile?.role === 'coach' ? 'Trainer:in' : 'Sportler:in';
-  const syncLabel = cloudStatus === 'syncing' ? '⏳ wird synchronisiert…' : cloudStatus === 'error' ? '⚠ Sync-Fehler' : '✓ synchronisiert';
-  const syncColor = cloudStatus === 'syncing' ? 'text-amber-600' : cloudStatus === 'error' ? 'text-rose-600' : 'text-emerald-600';
+  const syncLabel = cloudStatus === 'syncing' ? 'wird synchronisiert…' : cloudStatus === 'error' ? 'Sync-Fehler' : 'synchronisiert';
+  const syncTagColor = cloudStatus === 'syncing' ? 'orange' : cloudStatus === 'error' ? 'red' : 'green';
 
   // Trainer-Verknüpfungen: zeigen wer Zugriff auf MEINE Daten hat
   const myUserId = session?.user?.id;
@@ -4811,149 +4841,164 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
     }
     setMigrateBusy(false);
   };
+  const themeOptions = [
+    { id: 'system', label: 'Automatisch (System)', Icon: SunMoon },
+    { id: 'light',  label: 'Hell',                 Icon: Sun },
+    { id: 'dark',   label: 'Dunkel',               Icon: Moon },
+  ];
+
   return (
-    <div className="space-y-5">
-      <header className="pt-2">
+    <div className="space-y-6">
+      <header className="pt-2 px-1">
         <h1 className="text-[34px] font-bold tracking-tight leading-none">Einstellungen</h1>
-        <p className="text-slate-500 text-sm mt-1">Account, Reglement, Datenverwaltung</p>
+        <p className="text-[#8E8E93] text-[15px] mt-1">Account, Erscheinungsbild, Daten</p>
       </header>
 
+      {/* Account */}
       {session && (
-        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
-          <h2 className="font-semibold mb-3 flex items-center gap-2"><User size={16} /> Account</h2>
-          <div className="space-y-1 text-sm">
-            <div className="flex justify-between"><span className="text-slate-500">Angemeldet als</span><strong>{profile?.display_name || session.user.email}</strong></div>
-            <div className="flex justify-between"><span className="text-slate-500">E-Mail</span><span>{session.user.email}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Rolle</span><span className={'font-medium ' + (profile?.role === 'admin' ? 'text-amber-700' : 'text-slate-700')}>{roleLabel}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Cloud-Sync</span><span className={'font-medium ' + syncColor}>{syncLabel}</span></div>
+        <IOSList header="Account">
+          <div className="px-4 py-3.5 flex items-center justify-between gap-3">
+            <span className="text-[15px] text-[#3C3C43]">Angemeldet als</span>
+            <span className="text-[15px] font-medium text-right truncate ml-3">{profile?.display_name || session.user.email}</span>
           </div>
-          <button onClick={onLogout}
-            className="mt-4 bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5">
-            <LogOut size={14} /> Abmelden
-          </button>
-        </div>
+          <div className="px-4 py-3.5 flex items-center justify-between gap-3">
+            <span className="text-[15px] text-[#3C3C43]">E-Mail</span>
+            <span className="text-[15px] text-[#8E8E93] text-right truncate ml-3">{session.user.email}</span>
+          </div>
+          <div className="px-4 py-3.5 flex items-center justify-between gap-3">
+            <span className="text-[15px] text-[#3C3C43]">Rolle</span>
+            <IOSTag color={profile?.role === 'admin' ? 'orange' : 'gray'}>{roleLabel}</IOSTag>
+          </div>
+          <div className="px-4 py-3.5 flex items-center justify-between gap-3">
+            <span className="text-[15px] text-[#3C3C43]">Cloud-Sync</span>
+            <IOSTag color={syncTagColor}>{syncLabel}</IOSTag>
+          </div>
+          <IOSListRow onClick={onLogout} trailing={<LogOut size={18} className="text-[#FF3B30]" />}>
+            <span className="text-[15px] text-[#FF3B30] font-medium">Abmelden</span>
+          </IOSListRow>
+        </IOSList>
       )}
 
-      {/* Trainer-Verknüpfungen — wer hat Zugriff auf meine Daten? */}
+      {/* Erscheinungsbild */}
+      <IOSList header="Erscheinungsbild" footer={'„Automatisch" folgt der System-Einstellung deines Geräts und wechselt bei Sonnenuntergang automatisch.'}>
+        {themeOptions.map(opt => {
+          const selected = theme === opt.id;
+          return (
+            <IOSListRow
+              key={opt.id}
+              onClick={() => setTheme(opt.id)}
+              trailing={selected ? <Check size={20} strokeWidth={2.8} className="text-[#FF9500]" /> : <span className="w-5" />}>
+              <span className="flex items-center gap-3">
+                <opt.Icon size={18} className="text-[#8E8E93]" />
+                <span className="text-[15px]">{opt.label}</span>
+              </span>
+            </IOSListRow>
+          );
+        })}
+      </IOSList>
+
+      {/* Trainer-Zugriff */}
       {session && (
-        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
-          <h2 className="font-semibold mb-3 flex items-center gap-2">
-            <Shield size={16} /> Trainer-Zugriff
-          </h2>
+        <IOSList
+          header="Trainer-Zugriff"
+          footer={trainerLinks.length === 0
+            ? (profile?.role === 'athlete'
+                ? 'Aktuell hat kein Trainer Zugriff auf deine Daten. Um Zugriff zu geben: Sportler-Tab → „Trainer einladen".'
+                : 'Aktuell hat kein Trainer Zugriff auf deine Daten.')
+            : 'Beim Widerrufen verliert die Person sofort den Zugriff. Du kannst sie später erneut einladen.'}>
           {trainerLinks.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              Aktuell hat <strong>kein Trainer</strong> Zugriff auf deine Trainings- und Wettkampfdaten.
-              {profile?.role === 'athlete' && (
-                <span className="block mt-1.5 text-[13px]">
-                  Falls du einem Trainer Zugriff geben möchtest: <strong>Sportler-Tab</strong> →
-                  „Trainer einladen" generiert dir einen Code.
-                </span>
-              )}
-            </p>
+            <div className="px-4 py-3.5 flex items-center gap-3">
+              <Shield size={18} className="text-[#8E8E93]" />
+              <span className="text-[15px] text-[#8E8E93]">Niemand hat Zugriff</span>
+            </div>
           ) : (
-            <>
-              <p className="text-sm text-slate-600 mb-3">
-                Folgende Trainer:innen können deine Trainings/Wettkämpfe sehen und bearbeiten:
-              </p>
-              <div className="space-y-2">
-                {trainerLinks.map(link => (
-                  <div key={link.athleteId} className="flex items-center justify-between gap-3 bg-slate-50 rounded-xl px-3 py-2.5">
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium text-sm truncate">{link.coachName}</div>
-                      <div className="text-xs text-slate-500 truncate">
-                        Zugriff auf Sportler-Eintrag „{link.athleteName}"
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => onRevokeTrainer(link.athleteId, link.coachName)}
-                      disabled={revokeBusy}
-                      className="text-[13px] text-[#FF3B30] px-3 py-1.5 rounded-full font-medium active:opacity-70 disabled:opacity-40 shrink-0">
-                      Widerrufen
-                    </button>
-                  </div>
-                ))}
+            trainerLinks.map(link => (
+              <div key={link.athleteId} className="px-4 py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-[15px] truncate">{link.coachName}</div>
+                  <div className="text-[13px] text-[#8E8E93] truncate">„{link.athleteName}"</div>
+                </div>
+                <button
+                  onClick={() => onRevokeTrainer(link.athleteId, link.coachName)}
+                  disabled={revokeBusy}
+                  className="text-[14px] text-[#FF3B30] px-3 py-1.5 rounded-full font-medium active:opacity-50 disabled:opacity-40 shrink-0">
+                  Widerrufen
+                </button>
               </div>
-              <p className="text-[12px] text-slate-500 mt-3">
-                Beim Widerrufen verliert die Person sofort den Zugriff. Du kannst sie später erneut einladen.
-              </p>
-            </>
+            ))
           )}
-        </div>
+        </IOSList>
       )}
 
-      {/* Phase 9d — Cloud-Migration */}
-      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
-        <h2 className="font-semibold mb-3 flex items-center gap-2">
-          <Archive size={16} /> Cloud-Migration
-        </h2>
+      {/* Cloud-Migration */}
+      <IOSList
+        header="Cloud-Daten"
+        footer={alreadyMigrated
+          ? 'Deine Daten liegen in relationalen Cloud-Tabellen. Trainer:innen mit Zugriff können sie sehen und bearbeiten.'
+          : 'Trainings/Wettkämpfe liegen aktuell nur als Snapshot in der Cloud. Für Trainer-Zusammenarbeit müssen sie einmal in relationale Tabellen verschoben werden.'}>
         {alreadyMigrated ? (
-          <>
-            <p className="text-sm text-emerald-700 mb-2">
-              ✓ Deine Daten sind bereits in den Cloud-Tabellen.
-            </p>
-            <p className="text-xs text-slate-500">
-              Trainer:innen können deine Sessions und Wettkämpfe sehen und bearbeiten
-              (vorausgesetzt sie haben Zugriff). Eine Wiederholung der Migration ist
-              nicht nötig.
-            </p>
-          </>
+          <div className="px-4 py-3.5 flex items-center gap-3">
+            <Archive size={18} className="text-[#34C759]" />
+            <span className="text-[15px] flex-1">Migration abgeschlossen</span>
+            <IOSTag color="green">aktiv</IOSTag>
+          </div>
         ) : (
-          <>
-            <p className="text-sm text-slate-600 mb-3">
-              Aktuell sind deine Trainings/Wettkämpfe nur als JSONB-Snapshot in der
-              Cloud. Damit Trainer:innen sie sehen und mitschreiben können, müssen
-              sie einmalig in relationale Tabellen verschoben werden.
-            </p>
-            <button onClick={onMigrate} disabled={migrateBusy}
-              className="bg-amber-500 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 disabled:opacity-50">
-              <Archive size={14} /> {migrateBusy ? 'Migriere…' : 'In Cloud-Tabellen migrieren'}
-            </button>
-            {migrateResult && !migrateResult.error && (
-              <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-900">
-                <strong>✓ Migration erfolgreich:</strong><br />
-                {migrateResult.exercises} Übungen · {migrateResult.programs} Programme ·{' '}
-                {migrateResult.sessions} Sessions · {migrateResult.competitions} Wettkämpfe
-                <div className="text-xs mt-1 opacity-80">
-                  Die App lädt die Daten weiterhin aus dem alten Speicher.
-                  Im nächsten Update werden sie aus den Tabellen gelesen.
-                </div>
-              </div>
-            )}
-            {migrateResult && migrateResult.error && (
-              <div className="mt-3 bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-900">
-                ✗ Fehler: {migrateResult.error}
-              </div>
-            )}
-          </>
+          <IOSListRow
+            onClick={migrateBusy ? undefined : onMigrate}
+            trailing={migrateBusy ? <Loader2 size={18} className="animate-spin text-[#FF9500]" /> : <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
+            <span className="flex items-center gap-3">
+              <Archive size={18} className="text-[#FF9500]" />
+              <span className="text-[15px] text-[#FF9500] font-medium">
+                {migrateBusy ? 'Migriere…' : 'In Cloud-Tabellen migrieren'}
+              </span>
+            </span>
+          </IOSListRow>
         )}
-      </div>
+        {migrateResult && !migrateResult.error && !alreadyMigrated && (
+          <div className="px-4 py-3 bg-emerald-50 text-[13px] text-emerald-900">
+            <strong>✓ Migration erfolgreich:</strong> {migrateResult.exercises} Übungen · {migrateResult.programs} Programme · {migrateResult.sessions} Sessions · {migrateResult.competitions} Wettkämpfe
+          </div>
+        )}
+        {migrateResult && migrateResult.error && (
+          <div className="px-4 py-3 bg-rose-50 text-[13px] text-rose-900">
+            ✗ Fehler: {migrateResult.error}
+          </div>
+        )}
+      </IOSList>
 
       <ReglementSettings data={data} setData={setData} />
 
       <BackupSettings data={data} setData={setData} />
 
-      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
-        <h2 className="font-semibold mb-3 flex items-center gap-2 text-rose-700">
-          <RotateCcw size={16} /> Daten zurücksetzen
-        </h2>
-        <p className="text-sm text-slate-600 mb-3">
-          Setzt alle Daten zurück: Übungen, Sessions, Wettkämpfe, Programme, Sportler, UCI-Reglement.
-          <strong className="text-rose-600"> Kann nicht rückgängig gemacht werden!</strong>
-        </p>
-        <button onClick={onResetAll}
-          className="bg-rose-600 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5">
-          <RotateCcw size={14} /> Alles zurücksetzen
-        </button>
-      </div>
+      {/* Reset */}
+      <IOSList footer="Setzt alle Übungen, Sessions, Wettkämpfe, Programme, Sportler und das UCI-Reglement zurück. Kann nicht rückgängig gemacht werden.">
+        <IOSListRow
+          onClick={onResetAll}
+          trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
+          <span className="flex items-center gap-3">
+            <RotateCcw size={18} className="text-[#FF3B30]" />
+            <span className="text-[15px] text-[#FF3B30] font-medium">Alle Daten zurücksetzen</span>
+          </span>
+        </IOSListRow>
+      </IOSList>
 
-      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
-        <h2 className="font-semibold mb-2">Über</h2>
-        <div className="text-sm text-slate-600 space-y-1">
-          <div><strong>ArtCyc Coach</strong> — Trainings- und Wettkampf-Tool für Kunstradsport</div>
-          <div className="text-xs text-slate-500">Stufe 8 · Vollständige Test-Version</div>
-          <div className="text-xs text-slate-500 mt-2">UCI-Reglement: {data.uci_version || '2026'} · {getUciDb().length} Übungen aktiv</div>
+      {/* Über */}
+      <IOSList header="Über">
+        <div className="px-4 py-3.5 flex items-center justify-between gap-3">
+          <span className="text-[15px] text-[#3C3C43]">App</span>
+          <span className="text-[15px] font-medium">ArtCyc Coach</span>
         </div>
-      </div>
+        <div className="px-4 py-3.5 flex items-center justify-between gap-3">
+          <span className="text-[15px] text-[#3C3C43]">Version</span>
+          <span className="text-[15px] text-[#8E8E93]">Stufe 8 · Test</span>
+        </div>
+        <div className="px-4 py-3.5 flex items-center justify-between gap-3">
+          <span className="text-[15px] text-[#3C3C43]">UCI-Reglement</span>
+          <span className="text-[15px] text-[#8E8E93]">{data.uci_version || '2026'} · {getUciDb().length} Übungen</span>
+        </div>
+      </IOSList>
+
+      <div className="h-4" />
     </div>
   );
 }
@@ -6112,119 +6157,135 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
     });
   };
 
-  return (
-    <div className="min-h-screen bg-[#F2F2F7] p-4 sm:p-8">
-      <div className="max-w-2xl mx-auto space-y-5">
-        <header className="flex items-center gap-3">
-          <button onClick={onCancel} className="p-2 -m-2 text-slate-500"><ChevronLeft size={22} /></button>
-          <h1 className="text-2xl font-bold">{exercise ? 'Übung bearbeiten' : 'Neue Übung'}</h1>
-        </header>
+  const canSave = name.trim().length > 0;
 
-        {/* Modus-Wahl */}
-        <div className="flex gap-2">
+  return (
+    <div className="min-h-screen bg-[#F2F2F7] pb-12">
+      {/* iOS Large-Title Header mit Action-Bar */}
+      <div className="sticky top-0 z-10 ios-header-bg backdrop-blur-xl px-4 py-3 flex items-center justify-between">
+        <button onClick={onCancel} className="text-[17px] text-[#007AFF] active:opacity-60 px-1">
+          Abbrechen
+        </button>
+        <h1 className="font-semibold text-[17px]">{exercise ? 'Übung bearbeiten' : 'Neue Übung'}</h1>
+        <button onClick={save} disabled={!canSave}
+          className="text-[17px] text-[#FF9500] font-semibold active:opacity-60 disabled:opacity-30 px-1">
+          Fertig
+        </button>
+      </div>
+
+      <div className="max-w-2xl mx-auto px-3 py-4 space-y-5">
+        {/* Modus-Wahl — iOS Segmented Control */}
+        <div className="bg-[#E5E5EA]/70 rounded-xl p-0.5 flex">
           <button onClick={() => setMode('uci')}
-            className={'flex-1 py-3 rounded-xl font-medium ' + (mode === 'uci' ? 'bg-slate-900 text-white' : 'bg-white border border-slate-300')}>
+            className={'flex-1 py-1.5 text-[13px] font-medium rounded-[10px] transition ' +
+              (mode === 'uci' ? 'bg-white text-[#000] shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-[#3C3C43]')}>
             Aus UCI-Liste
           </button>
           <button onClick={() => { setMode('custom'); setUciCode(''); setUciDisc(null); }}
-            className={'flex-1 py-3 rounded-xl font-medium ' + (mode === 'custom' ? 'bg-slate-900 text-white' : 'bg-white border border-slate-300')}>
+            className={'flex-1 py-1.5 text-[13px] font-medium rounded-[10px] transition ' +
+              (mode === 'custom' ? 'bg-white text-[#000] shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-[#3C3C43]')}>
             Eigene Übung
           </button>
         </div>
 
         {/* UCI-Suche */}
         {mode === 'uci' && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
-            <div>
-              <label className="text-sm font-medium block mb-1.5">Disziplin</label>
+          <IOSList header="UCI-Übung">
+            <div className="px-4 py-3 flex items-center gap-3">
+              <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">Disziplin</label>
               <select value={uciDisc} onChange={e => { setUciDisc(e.target.value); setUciCode(''); setName(''); }}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
+                className="flex-1 bg-transparent text-[15px] outline-none appearance-none text-right">
                 {DISCIPLINES.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
               </select>
+              <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
             </div>
-            <UciPicker discipline={uciDisc} onSelect={handleUciSelect} selectedCode={uciCode} />
-          </div>
+            <div className="px-4 py-3">
+              <UciPicker discipline={uciDisc} onSelect={handleUciSelect} selectedCode={uciCode} />
+            </div>
+          </IOSList>
         )}
 
         {/* Name */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
-          <div>
-            <label className="text-sm font-medium block mb-1.5">
-              {mode === 'uci' ? 'Anzeigename (anpassbar)' : 'Name'}
-            </label>
+        <IOSList header={mode === 'uci' ? 'Anzeigename' : 'Name'}>
+          <div className="px-4 py-3">
             <input value={name} onChange={e => setName(e.target.value)}
-              placeholder={mode === 'custom' ? 'z.B. Maute-Sprung' : ''}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+              placeholder={mode === 'custom' ? 'z. B. Maute-Sprung' : 'anpassbar'}
+              className="w-full bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
           </div>
+        </IOSList>
 
-          <div>
-            <label className="text-sm font-medium block mb-1.5">Status-Modus</label>
-            <select value={statusMode} onChange={e => setStatusMode(Number(e.target.value))}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
-              <option value={2}>2 Kategorien (Geklappt / Nicht geklappt)</option>
-              <option value={3}>3 Kategorien (+ z.B. Gefährlich)</option>
-            </select>
-            {Number(statusMode) === 3 && (
-              <p className="text-xs text-slate-500 mt-1.5">
-                💡 Für Risiko-Übungen wie den Maute-Sprung. Die dritte Kategorie ist eine Sonderform von „nicht geklappt" — z.B. wenn die Übung nicht geklappt UND zusätzlich gefährlich war (Sturz). So kannst du diese Versuche getrennt auswerten.
-              </p>
-            )}
-          </div>
-
+        {/* Status-Modus */}
+        <IOSList
+          header="Status-Modus"
+          footer={Number(statusMode) === 3
+            ? 'Für Risiko-Übungen wie den Maute-Sprung. Die dritte Kategorie ist eine Sonderform von „nicht geklappt" — z. B. wenn die Übung nicht geklappt UND zusätzlich gefährlich war (Sturz).'
+            : 'Wähle 3 Kategorien, wenn du z. B. „gefährliche" Versuche getrennt auswerten willst.'}>
+          <IOSListRow
+            onClick={() => setStatusMode(2)}
+            trailing={Number(statusMode) === 2 ? <Check size={20} strokeWidth={2.8} className="text-[#FF9500]" /> : <span className="w-5" />}>
+            <span className="text-[15px]">2 Kategorien <span className="text-[#8E8E93]">(Geklappt / Nicht)</span></span>
+          </IOSListRow>
+          <IOSListRow
+            onClick={() => setStatusMode(3)}
+            trailing={Number(statusMode) === 3 ? <Check size={20} strokeWidth={2.8} className="text-[#FF9500]" /> : <span className="w-5" />}>
+            <span className="text-[15px]">3 Kategorien <span className="text-[#8E8E93]">(+ z. B. Gefährlich)</span></span>
+          </IOSListRow>
           {Number(statusMode) === 3 && (
-            <div>
-              <label className="text-sm font-medium block mb-1.5">Name der dritten Kategorie</label>
+            <div className="px-4 py-3 flex items-center gap-3">
+              <label className="text-[15px] text-[#3C3C43] w-28 shrink-0">Name</label>
               <input value={thirdLabel} onChange={e => setThirdLabel(e.target.value)}
-                placeholder="z.B. Gefährlich, Unsicher, Mit Hilfe"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+                placeholder="Gefährlich, Unsicher, …"
+                className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC] text-right" />
             </div>
           )}
+        </IOSList>
 
-          <div>
-            <label className="text-sm font-medium block mb-1.5">Standard-Serienanzahl</label>
-            <input type="number" value={series} onChange={e => setSeries(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+        {/* Standard-Serienanzahl + Ziel-Quote */}
+        <IOSList
+          header="Training"
+          footer="Dashboard markiert die Übung farblich, wenn deine Quote unter dem Ziel liegt — Trainings-Bedarf auf einen Blick.">
+          <div className="px-4 py-3 flex items-center gap-3">
+            <label className="text-[15px] text-[#3C3C43] flex-1">Serien pro Session</label>
+            <input type="number" inputMode="numeric" value={series} onChange={e => setSeries(e.target.value)}
+              className="w-20 bg-transparent text-[15px] outline-none text-right" />
           </div>
-
-          <div>
-            <label className="text-sm font-medium block mb-1.5 flex items-center gap-1.5">
-              <Target size={14} className="text-slate-500" /> Ziel-Quote <span className="text-xs text-slate-400 font-normal">(optional, in %)</span>
+          <div className="px-4 py-3 flex items-center gap-3">
+            <label className="text-[15px] text-[#3C3C43] flex-1 flex items-center gap-2">
+              <Target size={14} className="text-[#8E8E93]" /> Ziel-Quote <span className="text-[12px] text-[#8E8E93]">(optional)</span>
             </label>
             <input type="number" min="0" max="100" inputMode="numeric"
               value={targetRate} onChange={e => setTargetRate(e.target.value)}
-              placeholder="z.B. 80"
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
-            <p className="text-xs text-slate-500 mt-1">Dashboard markiert die Übung farblich, wenn deine Quote unter dem Ziel liegt — Trainings-Bedarf auf einen Blick.</p>
+              placeholder="z. B. 80"
+              className="w-20 bg-transparent text-[15px] outline-none text-right placeholder:text-[#C7C7CC]" />
+            <span className="text-[15px] text-[#8E8E93]">%</span>
           </div>
+        </IOSList>
 
-          <div className="pt-2 border-t border-slate-100">
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={hasRopeVariant}
-                onChange={e => setHasRopeVariant(e.target.checked)}
-                className="mt-0.5 w-5 h-5 rounded accent-amber-500 cursor-pointer" />
-              <div className="flex-1">
-                <div className="text-sm font-medium">Mit-Seil-Variante</div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Beim Protokollieren kannst du dann pro Serie wählen ob mit oder ohne Seil trainiert wurde — z.B. für den Maute-Sprung. Statistiken werden getrennt ausgewertet.
-                </p>
-              </div>
-            </label>
+        {/* Mit-Seil-Variante — iOS Toggle */}
+        <IOSList footer="Beim Protokollieren kannst du dann pro Serie wählen ob mit oder ohne Seil trainiert wurde — z. B. für den Maute-Sprung. Statistiken werden getrennt ausgewertet.">
+          <div className="px-4 py-3 flex items-center gap-3">
+            <span className="flex-1 text-[15px]">Mit-Seil-Variante</span>
+            <IOSToggle checked={hasRopeVariant} onChange={setHasRopeVariant} />
           </div>
-        </div>
-
-        <div className="flex gap-2">
-          <button onClick={onCancel} className="flex-1 bg-white border border-slate-300 px-5 py-3 rounded-xl font-medium">
-            Abbrechen
-          </button>
-          <button onClick={save} disabled={!name.trim()}
-            className="flex-1 bg-emerald-600 text-white px-5 py-3 rounded-xl font-medium disabled:opacity-50 flex items-center justify-center gap-2">
-            <Save size={16} /> Speichern
-          </button>
-        </div>
+        </IOSList>
       </div>
     </div>
+  );
+}
+
+// iOS-Style Toggle Switch
+function IOSToggle({ checked, onChange }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={'relative w-[51px] h-[31px] rounded-full transition-colors shrink-0 ' +
+        (checked ? 'bg-[#34C759]' : 'bg-[#E5E5EA]')}>
+      <span
+        className={'absolute top-[2px] left-[2px] w-[27px] h-[27px] bg-white rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.2)] transition-transform ' +
+          (checked ? 'translate-x-[20px]' : 'translate-x-0')} />
+    </button>
   );
 }
 
@@ -6635,76 +6696,87 @@ function ProgrammEditor({ program, onSave, onCancel }) {
     });
   };
 
+  const canSave = name.trim().length > 0 && exercises.length > 0;
+
   return (
-    <div className="space-y-5">
-      <header className="flex items-center gap-3">
-        <button onClick={onCancel} className="p-2 -m-2 text-slate-500"><ChevronLeft size={22} /></button>
-        <div>
-          <h1 className="text-2xl font-bold">{program ? 'Programm bearbeiten' : 'Neues Programm'}</h1>
-          <p className="text-slate-500 text-sm">Übungen aus UCI-Liste oder eigene</p>
-        </div>
-      </header>
-
-      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 space-y-3">
-        <div>
-          <label className="text-sm font-medium block mb-1.5">Name</label>
-          <input value={name} onChange={e => setName(e.target.value)}
-            placeholder="z.B. 1er Elite Männer"
-            className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
-        </div>
-        <div>
-          <label className="text-sm font-medium block mb-1.5">Disziplin</label>
-          <select value={discipline} onChange={e => setDiscipline(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
-            {DISCIPLINES.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
-          </select>
-        </div>
-        <button onClick={loadMaute}
-          className="w-full bg-white border border-slate-300 px-4 py-2 rounded-xl font-medium text-sm flex items-center gap-1.5 justify-center">
-          <Sparkles size={14} /> Maute-Vorlage 1er Elite laden
+    <div className="-mx-3 sm:mx-0">
+      {/* iOS Header */}
+      <div className="sticky top-0 z-10 ios-header-bg backdrop-blur-xl px-4 py-3 flex items-center justify-between">
+        <button onClick={onCancel} className="text-[17px] text-[#007AFF] active:opacity-60 flex items-center -ml-1">
+          <ChevronLeft size={22} strokeWidth={2.6} className="text-[#FF9500]" /> Zurück
+        </button>
+        <h1 className="font-semibold text-[17px] truncate px-2">{program ? 'Programm' : 'Neues Programm'}</h1>
+        <button onClick={save} disabled={!canSave}
+          className="text-[17px] text-[#FF9500] font-semibold active:opacity-60 disabled:opacity-30 px-1">
+          Fertig
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold">Übungen ({exercises.length})</h3>
-          <div className="text-sm font-semibold text-slate-700">Σ {total.toFixed(2)} Pkt.</div>
-        </div>
-
-        {exercises.length === 0 ? (
-          <p className="text-sm text-slate-500 text-center py-4">
-            Noch keine Übungen. Lade die Maute-Vorlage oder füge einzelne hinzu.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {exercises.map((e, idx) => (
-              <ProgrammExerciseRow
-                key={e.id}
-                ex={e}
-                discipline={discipline}
-                onUci={(u) => setUci(idx, u)}
-                onUpdate={(k, v) => updateField(idx, k, v)}
-                onRemove={() => removeEx(idx)}
-              />
-            ))}
+      <div className="px-3 py-4 space-y-5">
+        {/* Basis-Infos */}
+        <IOSList header="Programm">
+          <div className="px-4 py-3 flex items-center gap-3">
+            <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">Name</label>
+            <input value={name} onChange={e => setName(e.target.value)}
+              placeholder="z. B. 1er Elite Männer"
+              className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC] text-right" />
           </div>
-        )}
+          <div className="px-4 py-3 flex items-center gap-3">
+            <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">Disziplin</label>
+            <select value={discipline} onChange={e => setDiscipline(e.target.value)}
+              className="flex-1 bg-transparent text-[15px] outline-none appearance-none text-right">
+              {DISCIPLINES.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+            </select>
+            <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
+          </div>
+          <IOSListRow
+            onClick={loadMaute}
+            trailing={<Sparkles size={18} className="text-[#FF9500]" />}>
+            <span className="text-[15px] text-[#FF9500] font-medium">Maute-Vorlage 1er Elite laden</span>
+          </IOSListRow>
+        </IOSList>
 
-        <button onClick={addEmptyRow}
-          className="mt-3 w-full text-sm text-slate-600 hover:bg-slate-50 px-3 py-2 rounded-lg flex items-center gap-1.5 justify-center">
-          <Plus size={14} /> Übung hinzufügen
-        </button>
-      </div>
+        {/* Übungen-Liste */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-4">
+            <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
+              Übungen ({exercises.length})
+            </div>
+            <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
+              Σ {total.toFixed(2)} Pkt.
+            </div>
+          </div>
 
-      <div className="flex gap-2">
-        <button onClick={onCancel}
-          className="flex-1 bg-white border border-slate-300 px-5 py-3 rounded-xl font-medium">
-          Abbrechen
-        </button>
-        <button onClick={save} disabled={!name.trim() || exercises.length === 0}
-          className="flex-1 bg-emerald-600 text-white px-5 py-3 rounded-xl font-medium disabled:opacity-50 flex items-center justify-center gap-2">
-          <Save size={16} /> Speichern
-        </button>
+          {exercises.length === 0 ? (
+            <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-6 text-center">
+              <p className="text-[14px] text-[#8E8E93]">
+                Noch keine Übungen. Lade die Maute-Vorlage oder füge einzelne hinzu.
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
+              {exercises.map((e, idx) => (
+                <div key={e.id} className={idx < exercises.length - 1 ? 'border-b border-[#C6C6C8]/40' : ''}>
+                  <ProgrammExerciseRow
+                    ex={e}
+                    discipline={discipline}
+                    onUci={(u) => setUci(idx, u)}
+                    onUpdate={(k, v) => updateField(idx, k, v)}
+                    onRemove={() => removeEx(idx)}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
+            <IOSListRow
+              onClick={addEmptyRow}
+              trailing={<Plus size={20} strokeWidth={2.4} className="text-[#FF9500]" />}>
+              <span className="text-[15px] text-[#FF9500] font-medium">Übung hinzufügen</span>
+            </IOSListRow>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -6714,43 +6786,46 @@ function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onRemove }) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
-    <div className="bg-slate-50 rounded-xl p-3">
-      <div className="flex items-center gap-2 mb-2">
-        <div className="text-xs text-slate-500 w-7 shrink-0">#{ex.nr}</div>
+    <div>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div className="text-[13px] text-[#8E8E93] w-6 shrink-0 font-medium">{ex.nr}</div>
         <div className="flex-1 min-w-0">
           {ex.name ? (
-            <div>
-              <div className="font-medium text-sm truncate">{ex.name}</div>
-              <div className="text-xs text-slate-500">
+            <>
+              <div className="font-medium text-[15px] truncate">{ex.name}</div>
+              <div className="text-[12px] text-[#8E8E93]">
                 {ex.code ? 'UCI ' + ex.code : 'Eigene'} · {Number(ex.points).toFixed(1)} Pkt.
               </div>
-            </div>
+            </>
           ) : (
-            <div className="text-sm text-slate-400 italic">Noch nicht ausgewählt</div>
+            <div className="text-[15px] text-[#C7C7CC] italic">Noch nicht ausgewählt</div>
           )}
         </div>
         <button onClick={() => setPickerOpen(!pickerOpen)}
-          className="text-xs px-2 py-1 bg-white border border-slate-300 rounded-lg hover:bg-slate-100">
-          {ex.name ? 'Ändern' : 'UCI wählen'}
+          className="text-[13px] text-[#007AFF] font-medium px-2 py-1 active:opacity-60">
+          {ex.name ? 'Ändern' : 'Wählen'}
         </button>
-        <button onClick={onRemove} className="p-1 text-slate-400 hover:text-rose-600">
-          <Trash2 size={14} />
+        <button onClick={onRemove}
+          className="p-1.5 text-[#FF3B30] active:opacity-60">
+          <Trash2 size={16} />
         </button>
       </div>
 
       {pickerOpen && (
-        <div className="mt-2 pt-2 border-t border-slate-200">
+        <div className="px-4 pb-4 pt-1 border-t border-[#C6C6C8]/40 bg-[#F2F2F7]/40">
           <UciPicker discipline={discipline}
             onSelect={(u) => { onUci(u); setPickerOpen(false); }}
             selectedCode={ex.code} />
-          <div className="text-xs text-slate-500 mt-2">
-            Oder Name + Punkte selbst eintippen für eigene Übung:
+          <div className="text-[12px] text-[#8E8E93] mt-3 mb-1.5">
+            Oder Name + Punkte selbst eintippen:
           </div>
-          <div className="grid grid-cols-3 gap-1.5 mt-1.5">
+          <div className="grid grid-cols-3 gap-2">
             <input value={ex.name || ''} onChange={e => onUpdate('name', e.target.value)}
-              placeholder="Name" className="col-span-2 px-2 py-1.5 text-xs border border-slate-300 rounded-lg outline-none" />
+              placeholder="Name"
+              className="col-span-2 px-3 py-2 text-[14px] bg-white rounded-xl outline-none border border-slate-200/60" />
             <input type="number" step="0.1" value={ex.points || 0} onChange={e => onUpdate('points', e.target.value)}
-              placeholder="Pkt." className="px-2 py-1.5 text-xs border border-slate-300 rounded-lg outline-none text-right" />
+              placeholder="Pkt."
+              className="px-3 py-2 text-[14px] bg-white rounded-xl outline-none text-right border border-slate-200/60" />
           </div>
         </div>
       )}
@@ -7417,15 +7492,23 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
     });
   };
 
+  const canSave = name.trim() && program;
+
   return (
-    <div className="space-y-5">
-      <header className="flex items-center gap-3">
-        <button onClick={onCancel} className="p-2 -m-2 text-slate-500"><ChevronLeft size={22} /></button>
-        <div>
-          <h1 className="text-2xl font-bold">{isNew ? 'Wertungsbogen erfassen' : 'Wettkampf bearbeiten'}</h1>
-          <p className="text-slate-500 text-sm">Beide Kampfgerichte + Endergebnis</p>
-        </div>
-      </header>
+    <div className="-mx-3 sm:mx-0">
+      {/* iOS Sticky Top-Bar */}
+      <div className="sticky top-0 z-10 ios-header-bg backdrop-blur-xl px-4 py-3 flex items-center justify-between">
+        <button onClick={onCancel} className="text-[17px] text-[#007AFF] active:opacity-60 flex items-center -ml-1">
+          <ChevronLeft size={22} strokeWidth={2.6} className="text-[#FF9500]" /> Zurück
+        </button>
+        <h1 className="font-semibold text-[17px] truncate px-2">{isNew ? 'Wertungsbogen' : 'Wettkampf'}</h1>
+        <button onClick={save} disabled={!canSave}
+          className="text-[17px] text-[#FF9500] font-semibold active:opacity-60 disabled:opacity-30 px-1">
+          Fertig
+        </button>
+      </div>
+
+      <div className="px-3 py-4 space-y-5">
 
       {/* PDF-Import (Beta) - nur bei neuen Wettkämpfen */}
       {isNew && (
@@ -7680,15 +7763,16 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
         </>
       )}
 
-      <div className="flex gap-2">
-        <button onClick={onCancel}
-          className="flex-1 bg-white border border-slate-300 px-5 py-3 rounded-xl font-medium">
-          Abbrechen
-        </button>
-        <button onClick={save} disabled={!name.trim() || !program}
-          className="flex-1 bg-emerald-600 text-white px-5 py-3 rounded-xl font-medium disabled:opacity-50 flex items-center justify-center gap-2">
-          <Save size={16} /> Speichern
-        </button>
+      <div className="bg-white rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+        <IOSListRow
+          onClick={canSave ? save : undefined}
+          trailing={<Save size={18} className={canSave ? 'text-[#FF9500]' : 'text-[#C7C7CC]'} />}
+          className={canSave ? '' : 'opacity-40'}>
+          <span className={'text-[15px] font-semibold ' + (canSave ? 'text-[#FF9500]' : 'text-[#8E8E93]')}>
+            Wettkampf speichern
+          </span>
+        </IOSListRow>
+      </div>
       </div>
     </div>
   );
@@ -8425,49 +8509,58 @@ function AthleteEditor({ open, athlete, onClose, onSave, busy = false }) {
 
   if (!open) return null;
 
+  const canSave = name.trim().length > 0 && !busy;
+  const doSave = () => canSave && onSave({
+    id: athlete && athlete.id ? athlete.id : null,
+    name: name.trim(),
+    type,
+    notes,
+    email: (athlete && athlete.email) || ''
+  });
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40" onClick={onClose}>
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between rounded-t-3xl sm:rounded-t-2xl z-10">
-          <h3 className="font-semibold text-lg">{athlete ? 'Bearbeiten' : 'Neu anlegen'}</h3>
-          <button onClick={onClose} className="p-2 -m-2 text-slate-500"><X size={20} /></button>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-[#F2F2F7] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        {/* iOS Header: Cancel | Title | Save */}
+        <div className="sticky top-0 bg-[#F2F2F7]/95 backdrop-blur-xl px-4 py-3 flex items-center justify-between z-10">
+          <button onClick={onClose} className="text-[17px] text-[#007AFF] active:opacity-60 px-1">
+            Abbrechen
+          </button>
+          <h3 className="font-semibold text-[17px]">{athlete ? 'Bearbeiten' : 'Neu anlegen'}</h3>
+          <button onClick={doSave} disabled={!canSave}
+            className="text-[17px] text-[#FF9500] font-semibold active:opacity-60 disabled:opacity-30 px-1">
+            {busy ? '…' : 'Fertig'}
+          </button>
         </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="text-sm font-medium block mb-1.5">Name</label>
-            <input value={name} onChange={e => setName(e.target.value)}
-              placeholder="Name oder Teamname" autoFocus
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
-          </div>
-          <div>
-            <label className="text-sm font-medium block mb-1.5">Typ</label>
-            <select value={type} onChange={e => setType(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
-              <option value="athlete">Sportler:in</option>
-              <option value="team">Team / Mannschaft</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-sm font-medium block mb-1.5">Verein / Notizen</label>
-            <input value={notes} onChange={e => setNotes(e.target.value)}
-              placeholder="z.B. RKV Denkendorf"
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button onClick={onClose} className="flex-1 bg-white border border-slate-300 px-5 py-3 rounded-xl font-medium">
-              Abbrechen
-            </button>
-            <button onClick={() => name.trim() && onSave({
-              id: athlete && athlete.id ? athlete.id : null,
-              name: name.trim(),
-              type,
-              notes,
-              email: (athlete && athlete.email) || ''
-            })} disabled={!name.trim() || busy}
-              className="flex-1 bg-emerald-600 text-white px-5 py-3 rounded-xl font-medium disabled:opacity-50">
-              {busy ? '…' : 'Speichern'}
-            </button>
-          </div>
+
+        <div className="px-3 py-4 space-y-5">
+          {/* Name + Typ */}
+          <IOSList header="Sportler:in">
+            <div className="px-4 py-3 flex items-center gap-3">
+              <label className="text-[15px] text-[#3C3C43] w-20 shrink-0">Name</label>
+              <input value={name} onChange={e => setName(e.target.value)}
+                placeholder="Name oder Teamname" autoFocus
+                className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
+            </div>
+            <div className="px-4 py-3 flex items-center gap-3">
+              <label className="text-[15px] text-[#3C3C43] w-20 shrink-0">Typ</label>
+              <select value={type} onChange={e => setType(e.target.value)}
+                className="flex-1 bg-transparent text-[15px] outline-none appearance-none">
+                <option value="athlete">Sportler:in</option>
+                <option value="team">Team / Mannschaft</option>
+              </select>
+              <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
+            </div>
+          </IOSList>
+
+          {/* Verein / Notizen */}
+          <IOSList header="Verein / Notizen">
+            <div className="px-4 py-3">
+              <input value={notes} onChange={e => setNotes(e.target.value)}
+                placeholder="z. B. RKV Denkendorf"
+                className="w-full bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
+            </div>
+          </IOSList>
         </div>
       </div>
     </div>
@@ -9104,26 +9197,29 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
 // LÖSCH-BESTÄTIGUNG (zuverlässiger als window.confirm)
 // =============================================================
 function DeleteConfirmModal({ title, message, onConfirm, onCancel }) {
+  // iOS-Style Action Sheet — Bottom-Sheet auf Mobile, zentriert auf Desktop
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50"
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4 bg-black/40 backdrop-blur-sm"
          onClick={onCancel}>
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 space-y-4"
+      <div className="w-full sm:max-w-sm space-y-2"
            onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-rose-100 rounded-full flex items-center justify-center shrink-0">
-            <AlertTriangle size={20} className="text-rose-600" />
+        {/* Action-Block: Titel/Message + Destruktive Aktion */}
+        <div className="bg-white/95 backdrop-blur-xl rounded-2xl overflow-hidden">
+          <div className="px-6 pt-5 pb-4 text-center">
+            <h3 className="font-semibold text-[17px] mb-1">{title}</h3>
+            <p className="text-[13px] text-[#3C3C43] leading-snug">{message}</p>
           </div>
-          <h3 className="font-semibold text-lg">{title}</h3>
-        </div>
-        <p className="text-sm text-slate-600">{message}</p>
-        <div className="flex gap-2 pt-2">
-          <button onClick={onCancel}
-            className="flex-1 bg-white border border-slate-300 px-5 py-3 rounded-xl font-medium">
-            Abbrechen
-          </button>
+          <div className="border-t border-[#C6C6C8]/40" />
           <button onClick={onConfirm}
-            className="flex-1 bg-rose-600 text-white px-5 py-3 rounded-xl font-medium flex items-center justify-center gap-2">
-            <Trash2 size={16} /> Löschen
+            className="w-full py-3.5 text-[17px] text-[#FF3B30] font-semibold active:bg-[#D1D1D6]/40 transition">
+            Löschen
+          </button>
+        </div>
+        {/* Cancel-Block — separater Card im iOS-Stil */}
+        <div className="bg-white/95 backdrop-blur-xl rounded-2xl overflow-hidden">
+          <button onClick={onCancel}
+            className="w-full py-3.5 text-[17px] text-[#007AFF] font-semibold active:bg-[#D1D1D6]/40 transition">
+            Abbrechen
           </button>
         </div>
       </div>
