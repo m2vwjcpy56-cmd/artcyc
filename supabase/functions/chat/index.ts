@@ -17,11 +17,14 @@
 // @ts-ignore Deno-Runtime
 const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY") ?? "";
 // @ts-ignore Deno-Runtime
-// Default-Modell. Auf https://openrouter.ai/models nach exakter ID
-// suchen falls du wechseln willst — gängige Alternativen:
-//   openai/gpt-4o-mini, openai/gpt-5-mini, anthropic/claude-haiku-4.5,
-//   google/gemini-2.5-pro, meta-llama/llama-3.3-70b-instruct, …
-const OPENROUTER_MODEL   = Deno.env.get("OPENROUTER_MODEL") ?? "google/gemini-2.5-flash";
+// Default-Modell. `openai/gpt-4o-mini` ist auf OpenRouter dauerhaft
+// verfügbar, sehr stabil, ähnlich günstig wie Gemini Flash.
+// Auf https://openrouter.ai/models nach exakter ID suchen falls du
+// wechseln willst — gängige Alternativen:
+//   google/gemini-flash-1.5, google/gemini-2.5-flash,
+//   anthropic/claude-haiku-4.5, meta-llama/llama-3.3-70b-instruct, …
+// Override via Supabase-Secret OPENROUTER_MODEL ohne Code-Deploy.
+const OPENROUTER_MODEL   = Deno.env.get("OPENROUTER_MODEL") ?? "openai/gpt-4o-mini";
 // Optional: für OpenRouter-Analytics — zeigt auf welcher Site die Calls landen.
 // Wenn leer, wird der Header ausgelassen.
 // @ts-ignore Deno-Runtime
