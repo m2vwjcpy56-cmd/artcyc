@@ -324,6 +324,8 @@ Deno.serve(async (req: Request) => {
     const systemPrompt = buildSystemPrompt(app_data || {}, user_name);
 
     // ─── Streaming-Pfad: OpenRouter-SSE → Anthropic-kompatible SSE ───
+    // TransformStream-Pattern statt ReadableStream-pull():
+    // imperativer, kein Close-Race, sauberes finally für Cleanup.
     if (wantStream) {
       const upstream = await callOpenRouterStream(systemPrompt, messages);
       if (!upstream.ok) {
@@ -332,113 +334,113 @@ Deno.serve(async (req: Request) => {
           status: 502, headers: JSON_HEADERS,
         });
       }
-      const reader = upstream.body!.getReader();
-      const decoder = new TextDecoder();
-      const encoder = new TextEncoder();
-      let buf = "";
-      let aggregatedText = "";
-      // Tool-Calls aufsammeln: Index → { name, args }
-      const toolBuf: Record<number, { name: string; args: string }> = {};
 
-      const emit = (controller: ReadableStreamDefaultController<Uint8Array>, eventName: string, data: any) => {
-        controller.enqueue(encoder.encode("event: " + eventName + "\ndata: " + JSON.stringify(data) + "\n\n"));
+      const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+      const writer = writable.getWriter();
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
+
+      const sse = async (eventName: string, data: any) => {
+        try {
+          await writer.write(encoder.encode("event: " + eventName + "\ndata: " + JSON.stringify(data) + "\n\n"));
+        } catch {/* Client hat den Stream abgebrochen */}
       };
 
-      // Final-Event abschicken + Stream schließen. Wird sowohl bei
-      // reader.done als auch beim [DONE]-Marker aufgerufen.
-      let finished = false;
-      const finish = (controller: ReadableStreamDefaultController<Uint8Array>) => {
-        if (finished) return;
-        finished = true;
-        let action: any = null;
-        const idxs = Object.keys(toolBuf).map(Number).sort((a, b) => a - b);
-        if (idxs.length > 0) {
+      // Im Hintergrund den Upstream lesen + Events rausschreiben.
+      // Wenn die Schleife durch ist, schließen wir den Writer (= EOF zum Client).
+      (async () => {
+        const reader = upstream.body!.getReader();
+        let buf = "";
+        let aggregatedText = "";
+        const toolBuf: Record<number, { name: string; args: string }> = {};
+        let stopped = false;
+
+        const buildAction = () => {
+          const idxs = Object.keys(toolBuf).map(Number).sort((a, b) => a - b);
+          if (idxs.length === 0) return null;
           const first = toolBuf[idxs[0]];
           let input: any = {};
           try { input = first.args ? JSON.parse(first.args) : {}; } catch {}
-          action = {
-            tool: first.name,
-            params: input,
-            summary: (input && input.summary) || "",
-          };
-        }
-        emit(controller, "final", { type: "final", content: aggregatedText, action });
-        try { controller.close(); } catch {}
-        try { reader.cancel(); } catch {}
-      };
+          return { tool: first.name, params: input, summary: (input && input.summary) || "" };
+        };
 
-      const stream = new ReadableStream<Uint8Array>({
-        async pull(controller) {
-          if (finished) return;
-          let value: Uint8Array | undefined;
-          let done = false;
-          try {
-            const r = await reader.read();
-            value = r.value;
-            done = r.done;
-          } catch (e) {
-            // Upstream-Stream abgebrochen → Final-Event mit Fehler raus
-            emit(controller, "final", { type: "final", content: aggregatedText, action: null, error: "Upstream-Stream-Abbruch: " + (e as Error).message });
-            finished = true;
-            try { controller.close(); } catch {}
-            return;
-          }
-          if (done) { finish(controller); return; }
-          buf += decoder.decode(value, { stream: true });
-          const lines = buf.split("\n");
-          buf = lines.pop() ?? "";
-          for (const ln of lines) {
-            const line = ln.trim();
-            if (!line || !line.startsWith("data:")) continue;
-            const payload = line.slice(5).trim();
-            // OpenAI/OpenRouter signalisiert das Stream-Ende mit "data: [DONE]".
-            // Manche Provider schließen den TCP-Stream nicht sauber danach —
-            // wir behandeln [DONE] deshalb selbst als Ende.
-            if (payload === "[DONE]") { finish(controller); return; }
-            let ev: any;
-            try { ev = JSON.parse(payload); } catch { continue; }
-            const delta = ev?.choices?.[0]?.delta;
-            if (!delta) continue;
-            // Text-Token
-            if (typeof delta.content === "string" && delta.content.length > 0) {
-              aggregatedText += delta.content;
-              // Anthropic-kompatibles content_block_delta-Event emittieren
-              emit(controller, "content_block_delta", {
-                type: "content_block_delta",
-                index: 0,
-                delta: { type: "text_delta", text: delta.content },
-              });
+        const finish = async () => {
+          if (stopped) return;
+          stopped = true;
+          await sse("final", { type: "final", content: aggregatedText, action: buildAction() });
+          try { reader.cancel(); } catch {}
+        };
+
+        try {
+          while (!stopped) {
+            let value: Uint8Array | undefined;
+            let done = false;
+            try {
+              const r = await reader.read();
+              value = r.value;
+              done = r.done;
+            } catch (e) {
+              await sse("final", { type: "final", content: aggregatedText, action: buildAction(), error: (e as Error).message });
+              break;
             }
-            // Tool-Call-Chunks
-            if (Array.isArray(delta.tool_calls)) {
-              for (const tc of delta.tool_calls) {
-                const idx = typeof tc.index === "number" ? tc.index : 0;
-                if (!toolBuf[idx]) toolBuf[idx] = { name: "", args: "" };
-                const fn = tc.function || {};
-                if (fn.name && !toolBuf[idx].name) {
-                  toolBuf[idx].name = fn.name;
-                  // Anthropic-kompatibles content_block_start für tool_use
-                  emit(controller, "content_block_start", {
-                    type: "content_block_start",
-                    index: 1 + idx,
-                    content_block: { type: "tool_use", name: fn.name, id: tc.id || "" },
-                  });
-                }
-                if (typeof fn.arguments === "string" && fn.arguments.length > 0) {
-                  toolBuf[idx].args += fn.arguments;
-                  emit(controller, "content_block_delta", {
-                    type: "content_block_delta",
-                    index: 1 + idx,
-                    delta: { type: "input_json_delta", partial_json: fn.arguments },
-                  });
+            if (done) { await finish(); break; }
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split("\n");
+            buf = lines.pop() ?? "";
+            for (const ln of lines) {
+              if (stopped) break;
+              const line = ln.trim();
+              if (!line || !line.startsWith("data:")) continue;
+              const payload = line.slice(5).trim();
+              // OpenAI/OpenRouter signalisiert Stream-Ende mit "data: [DONE]"
+              if (payload === "[DONE]") { await finish(); break; }
+              let ev: any;
+              try { ev = JSON.parse(payload); } catch { continue; }
+              const delta = ev?.choices?.[0]?.delta;
+              if (!delta) continue;
+              if (typeof delta.content === "string" && delta.content.length > 0) {
+                aggregatedText += delta.content;
+                await sse("content_block_delta", {
+                  type: "content_block_delta",
+                  index: 0,
+                  delta: { type: "text_delta", text: delta.content },
+                });
+              }
+              if (Array.isArray(delta.tool_calls)) {
+                for (const tc of delta.tool_calls) {
+                  const idx = typeof tc.index === "number" ? tc.index : 0;
+                  if (!toolBuf[idx]) toolBuf[idx] = { name: "", args: "" };
+                  const fn = tc.function || {};
+                  if (fn.name && !toolBuf[idx].name) {
+                    toolBuf[idx].name = fn.name;
+                    await sse("content_block_start", {
+                      type: "content_block_start",
+                      index: 1 + idx,
+                      content_block: { type: "tool_use", name: fn.name, id: tc.id || "" },
+                    });
+                  }
+                  if (typeof fn.arguments === "string" && fn.arguments.length > 0) {
+                    toolBuf[idx].args += fn.arguments;
+                    await sse("content_block_delta", {
+                      type: "content_block_delta",
+                      index: 1 + idx,
+                      delta: { type: "input_json_delta", partial_json: fn.arguments },
+                    });
+                  }
                 }
               }
             }
           }
-        },
-        cancel() { try { reader.cancel(); } catch {} },
-      });
-      return new Response(stream, { headers: SSE_HEADERS });
+          // Safety: falls die Schleife OHNE finish() endet (z. B. weil
+          // der Upstream das Stream-Ende ohne [DONE] schickt), trotzdem
+          // ein final-Event rausschicken.
+          if (!stopped) await finish();
+        } finally {
+          try { await writer.close(); } catch {}
+        }
+      })();
+
+      return new Response(readable, { headers: SSE_HEADERS });
     }
 
     // ─── Non-Streaming-Pfad: einmal abrufen, in altes Antwort-Format wandeln ───
