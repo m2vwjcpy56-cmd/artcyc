@@ -100,6 +100,36 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "propose_bulk_update_sessions",
+      description: "Aktualisiert MEHRERE Sessions auf einmal mit denselben Feld-Werten — EINE Bestätigung deckt alle ab. NUTZE DAS für 'alle X auf Y setzen'-Anfragen statt N einzelne propose_update_session-Calls. Beispiel: User: 'alle meine Maute-Sprünge waren mit Seil, passe das an' → filter: { exerciseId: '<maute-id>' }, fields: { withRope: true }.",
+      parameters: {
+        type: "object",
+        properties: {
+          filter: {
+            type: "object",
+            description: "Welche Sessions sollen geändert werden. Mindestens ein Feld setzen.",
+            properties: {
+              exerciseId: { type: "string", description: "Nur Sessions dieser Übung (id aus app_data.exercises)" },
+              withRopeIs: { type: "boolean", description: "Nur Sessions deren withRope aktuell diesen Wert hat. Weglassen = ignoriert" },
+            },
+          },
+          fields: {
+            type: "object",
+            description: "PFLICHT: konkrete Feld-Änderungen, mind. EIN Feld. Keys: 'withRope' (boolean), 'notes' (string).",
+            properties: {
+              withRope: { type: "boolean", description: "true=mit Seil, false=ohne Seil" },
+              notes:    { type: "string" },
+            },
+          },
+          summary: { type: "string", description: "Kurze deutsche Zusammenfassung, z. B. 'Alle 255 Maute-Sprünge auf mit Seil setzen'" },
+        },
+        required: ["filter", "fields", "summary"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "propose_delete_session",
       description: "Löscht eine Session unwiderruflich.",
       parameters: {
@@ -273,10 +303,11 @@ Schreibe NIE etwas wie „success = gelandet" oder „die success/fail-Einträge
 - **Maximal 6 Sätze gesamt** bei Analyse-Antworten. Maximal 8 Bullet-Punkte bei Listen-Antworten.
 - **Tipps geben**: Wenn der User um Trainings-Empfehlungen bittet, gib konkrete Vorschläge anhand der Daten.
 - **Schreib-Aktionen**: NIEMALS direkt ausführen. Nutze die \`propose_*\`-Tools — der User muss die Aktion danach bestätigen. Erkläre dabei IMMER kurz im Antwort-Text was du tun willst (nicht nur Tool-Call ohne Text).
-- **Mehrere Änderungen / Bulk**: Du kannst pro Antwort nur EINE Aktion vorschlagen. Wenn der User z. B. sagt „alle Maute-Sprünge auf mit Seil setzen":
-  a) FRAG ZUERST: „Du hast N Maute-Sessions — soll ich wirklich alle einzeln auf mit Seil setzen? Jede muss separat bestätigt werden." Nenne die echte Anzahl N aus den Daten.
-  b) Nach Bestätigung: nur die ERSTE Session vorschlagen. Im nächsten Turn die zweite. Usw.
-  c) ALTERNATIV: vorschlagen den Übungs-Default (\`has_rope_variant\` etc.) zu ändern — falls sinnvoll.
+- **Mehrere Änderungen / Bulk**: Für „alle X auf Y setzen" IMMER \`propose_bulk_update_sessions\` nutzen — EINE Bestätigung deckt alle ab. NIEMALS sagen „jede muss einzeln bestätigt werden" — das gibt's nicht mehr.
+  Beispiel: User „alle meine Maute-Sprünge waren mit Seil, passe das an" →
+    Antwort: „Setze alle 255 Maute-Sprung-Sessions auf 'mit Seil'."
+    Tool-Call: propose_bulk_update_sessions mit filter={exerciseId:'ex2'}, fields={withRope:true}, summary='Alle 255 Maute-Sprünge auf mit Seil'
+  Verstehe „waren mit Seil" / „bisher mit Seil" / „immer mit Seil" als withRope=true (nicht false!). „passe an" = auf den genannten Wert setzen, nicht togglen.
 - **NIEMALS leere fields**: \`propose_update_session\`/\`propose_update_exercise\` brauchen IMMER mindestens ein konkretes Feld in \`fields\`. Ein Aufruf mit \`fields: {}\` ist verboten und bricht die App.
 - **Datumsangaben**: "gestern" = ${new Date(Date.now() - 86400000).toISOString().slice(0, 10)}, "heute" = ${today}.
 - **Übungs-IDs**: Wenn du eine Aktion vorschlägst, nutze die echten \`id\`-Werte aus den Daten oben — niemals erfinden.

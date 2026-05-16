@@ -3014,11 +3014,12 @@ function ChatMarkdown({ text, isUser }) {
 // "propose_update_session" im UI-Confirm-Card).
 function toolLabel(toolName) {
   switch (toolName) {
-    case 'propose_create_session':  return 'Neue Session anlegen';
-    case 'propose_update_session':  return 'Session ändern';
-    case 'propose_delete_session':  return 'Session löschen';
-    case 'propose_create_exercise': return 'Übung anlegen';
-    case 'propose_update_exercise': return 'Übung ändern';
+    case 'propose_create_session':       return 'Neue Session anlegen';
+    case 'propose_update_session':       return 'Session ändern';
+    case 'propose_bulk_update_sessions': return 'Mehrere Sessions ändern';
+    case 'propose_delete_session':       return 'Session löschen';
+    case 'propose_create_exercise':      return 'Übung anlegen';
+    case 'propose_update_exercise':      return 'Übung ändern';
     default: return 'Aktion ausführen';
   }
 }
@@ -3062,6 +3063,25 @@ function applyChatAction(action, data, setData) {
     return updated > 0
       ? '✓ Session aktualisiert (' + fieldList + ')'
       : '⚠ Session nicht gefunden (ID: ' + (p.sessionId || '—') + ')';
+  }
+  if (action.tool === 'propose_bulk_update_sessions') {
+    const filter = p.filter || {};
+    const fields = p.fields || {};
+    const fieldList = Object.keys(fields).filter(k => fields[k] !== undefined).join(', ');
+    if (!fieldList) {
+      return '⚠ KI-Coach hat keine Feld-Änderungen angegeben.';
+    }
+    let updated = 0;
+    const next = (data.sessions || []).map(s => {
+      if (filter.exerciseId && s.exerciseId !== filter.exerciseId) return s;
+      if (typeof filter.withRopeIs === 'boolean' && s.withRope !== filter.withRopeIs) return s;
+      updated++;
+      return { ...s, ...fields };
+    });
+    setData({ ...data, sessions: next });
+    return updated > 0
+      ? '✓ ' + updated + ' Sessions aktualisiert (' + fieldList + ')'
+      : '⚠ Keine passenden Sessions gefunden';
   }
   if (action.tool === 'propose_delete_session') {
     const before = (data.sessions || []).length;
