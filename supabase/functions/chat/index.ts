@@ -13,10 +13,9 @@
 // =============================================================
 
 // @ts-ignore Deno-Runtime
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
-const ANTHROPIC_MODEL = Deno.env.get("ANTHROPIC_MODEL") ?? "claude-sonnet-4-5-20250929";
+// @ts-ignore Deno-Runtime
+const ANTHROPIC_MODEL = Deno.env.get("ANTHROPIC_MODEL") ?? "claude-sonnet-4-5";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -203,8 +202,8 @@ async function callAnthropic(systemPrompt: string, messages: any[]) {
   return await res.json();
 }
 
-// @ts-ignore Deno
-Deno.serve(async (req) => {
+// @ts-ignore Deno-Runtime
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
   }
