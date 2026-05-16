@@ -12,3 +12,4 @@ dev-dist
 public/test-*.pdf
 uploads/
 .claude/
+supabase/.temp/
