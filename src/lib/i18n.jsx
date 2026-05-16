@@ -211,7 +211,43 @@ const dict = {
 
     // Top-Menü
     'topMenu.settings': 'Einstellungen',
-    'topMenu.export': 'Export'
+    'topMenu.export': 'Export',
+
+    'export.title': 'Daten exportieren',
+    'export.subtitle': 'CSV-Export deiner Trainings & Wettkämpfe',
+    'export.openButton': 'Export öffnen',
+    'export.footer': 'CSV im Maute-Format. Lässt sich in Numbers, Excel und Google Sheets öffnen.',
+
+    'feedback.section': 'Feedback',
+    'feedback.title': 'Feedback senden',
+    'feedback.subtitle': 'Idee, Bug oder Wunsch?',
+    'feedback.placeholder': 'Was läuft gut? Was nervt? Was wünschst du dir?',
+    'feedback.category': 'Kategorie',
+    'feedback.categoryBug': 'Bug',
+    'feedback.categoryIdea': 'Idee',
+    'feedback.categoryQuestion': 'Frage',
+    'feedback.categoryOther': 'Sonstiges',
+    'feedback.send': 'Senden',
+    'feedback.sendByMail': 'Per Mail an Entwickler senden',
+    'feedback.thanks': 'Danke! Dein Feedback ist gespeichert.',
+    'feedback.history': 'Bisheriges Feedback',
+    'feedback.clearAll': 'Alle löschen',
+    'feedback.footer': 'Feedback wird lokal gespeichert. Über „Per Mail senden" kannst du es an den Entwickler schicken.',
+    'feedback.empty': 'Noch kein Feedback abgeschickt.',
+    'feedback.sourceUser': 'Du',
+    'feedback.sourceAi': 'KI-Coach',
+
+    'aiInsight.title': 'Trainer-Tipp',
+    'aiInsight.noData': 'Noch keine Trainingsdaten — beim nächsten Logbuch-Eintrag erscheint hier eine Einschätzung.',
+    'aiInsight.veryNew': 'Erst {n} Versuche — sammle ein paar Sessions mehr für eine belastbare Aussage.',
+    'aiInsight.solid': 'Solide Quote ({rate}%) über {sessions} Sessions — bleib dran, das sitzt.',
+    'aiInsight.excellent': 'Top-Quote von {rate}% über {sessions} Sessions — wettkampfreif.',
+    'aiInsight.improving': 'Klare Steigerung in den letzten Wochen — gut gemacht.',
+    'aiInsight.declining': 'Quote ist zuletzt gefallen — Zeit für gezieltes Üben.',
+    'aiInsight.lowRate': 'Aktuell {rate}% bei {total} Versuchen — vielleicht Technik analysieren.',
+    'aiInsight.belowTarget': '{gap}% unter deinem Ziel ({target}%) — fokussiere diese Übung.',
+    'aiInsight.aboveTarget': 'Ziel ({target}%) erreicht — du kannst das Ziel anheben.',
+    'aiInsight.fewRecent': 'Wenig Training zuletzt — diese Übung war länger nicht dran.'
   },
 
   en: {
@@ -371,7 +407,43 @@ const dict = {
     'settings.migrated': 'Migration complete',
 
     'topMenu.settings': 'Settings',
-    'topMenu.export': 'Export'
+    'topMenu.export': 'Export',
+
+    'export.title': 'Export data',
+    'export.subtitle': 'CSV export of trainings & competitions',
+    'export.openButton': 'Open export',
+    'export.footer': 'CSV in Maute format. Works with Numbers, Excel and Google Sheets.',
+
+    'feedback.section': 'Feedback',
+    'feedback.title': 'Send feedback',
+    'feedback.subtitle': 'Idea, bug or wish?',
+    'feedback.placeholder': 'What works well? What\'s annoying? What do you want?',
+    'feedback.category': 'Category',
+    'feedback.categoryBug': 'Bug',
+    'feedback.categoryIdea': 'Idea',
+    'feedback.categoryQuestion': 'Question',
+    'feedback.categoryOther': 'Other',
+    'feedback.send': 'Send',
+    'feedback.sendByMail': 'Send by mail to developer',
+    'feedback.thanks': 'Thanks! Your feedback is saved.',
+    'feedback.history': 'Previous feedback',
+    'feedback.clearAll': 'Clear all',
+    'feedback.footer': 'Feedback is saved locally. Use "Send by mail" to forward it to the developer.',
+    'feedback.empty': 'No feedback yet.',
+    'feedback.sourceUser': 'You',
+    'feedback.sourceAi': 'AI coach',
+
+    'aiInsight.title': 'Coach tip',
+    'aiInsight.noData': 'No training data yet — log a session and an insight will appear here.',
+    'aiInsight.veryNew': 'Only {n} attempts — collect a few more sessions for a reliable read.',
+    'aiInsight.solid': 'Solid {rate}% rate over {sessions} sessions — keep it up.',
+    'aiInsight.excellent': 'Excellent {rate}% rate over {sessions} sessions — competition-ready.',
+    'aiInsight.improving': 'Clear improvement in recent weeks — well done.',
+    'aiInsight.declining': 'Rate dropped recently — time for focused practice.',
+    'aiInsight.lowRate': 'Currently {rate}% over {total} attempts — consider technique review.',
+    'aiInsight.belowTarget': '{gap}% below your target ({target}%) — focus this exercise.',
+    'aiInsight.aboveTarget': 'Target ({target}%) reached — you could raise it.',
+    'aiInsight.fewRecent': 'Little training recently — this exercise hasn\'t been touched in a while.'
   },
 
   fr: {
@@ -531,7 +603,43 @@ const dict = {
     'settings.migrated': 'Migration terminée',
 
     'topMenu.settings': 'Réglages',
-    'topMenu.export': 'Exporter'
+    'topMenu.export': 'Exporter',
+
+    'export.title': 'Exporter les données',
+    'export.subtitle': 'Export CSV de tes entraînements & compétitions',
+    'export.openButton': 'Ouvrir l\'export',
+    'export.footer': 'CSV au format Maute. Compatible Numbers, Excel et Google Sheets.',
+
+    'feedback.section': 'Feedback',
+    'feedback.title': 'Envoyer un feedback',
+    'feedback.subtitle': 'Idée, bug ou souhait ?',
+    'feedback.placeholder': 'Qu\'est-ce qui marche bien ? Qu\'est-ce qui dérange ? Que souhaites-tu ?',
+    'feedback.category': 'Catégorie',
+    'feedback.categoryBug': 'Bug',
+    'feedback.categoryIdea': 'Idée',
+    'feedback.categoryQuestion': 'Question',
+    'feedback.categoryOther': 'Autre',
+    'feedback.send': 'Envoyer',
+    'feedback.sendByMail': 'Envoyer par mail au développeur',
+    'feedback.thanks': 'Merci ! Ton feedback est enregistré.',
+    'feedback.history': 'Feedback précédent',
+    'feedback.clearAll': 'Tout effacer',
+    'feedback.footer': 'Le feedback est enregistré localement. Utilise « Envoyer par mail » pour l\'envoyer au développeur.',
+    'feedback.empty': 'Aucun feedback pour l\'instant.',
+    'feedback.sourceUser': 'Toi',
+    'feedback.sourceAi': 'Coach IA',
+
+    'aiInsight.title': 'Astuce coach',
+    'aiInsight.noData': 'Pas encore de données — enregistre une session et un conseil apparaîtra ici.',
+    'aiInsight.veryNew': 'Seulement {n} essais — collecte quelques sessions de plus pour une analyse fiable.',
+    'aiInsight.solid': 'Taux solide de {rate}% sur {sessions} sessions — continue.',
+    'aiInsight.excellent': 'Excellent taux de {rate}% sur {sessions} sessions — prêt pour la compétition.',
+    'aiInsight.improving': 'Nette progression ces dernières semaines — bien joué.',
+    'aiInsight.declining': 'Le taux a baissé récemment — il est temps de s\'entraîner.',
+    'aiInsight.lowRate': 'Actuellement {rate}% sur {total} essais — analyse la technique.',
+    'aiInsight.belowTarget': '{gap}% en dessous de ton objectif ({target}%) — concentre-toi sur cet exercice.',
+    'aiInsight.aboveTarget': 'Objectif ({target}%) atteint — tu peux l\'augmenter.',
+    'aiInsight.fewRecent': 'Peu d\'entraînement récent — cet exercice n\'a pas été pratiqué depuis longtemps.'
   },
 
   it: {
@@ -691,7 +799,43 @@ const dict = {
     'settings.migrated': 'Migrazione completata',
 
     'topMenu.settings': 'Impostazioni',
-    'topMenu.export': 'Esporta'
+    'topMenu.export': 'Esporta',
+
+    'export.title': 'Esporta dati',
+    'export.subtitle': 'Export CSV di allenamenti e gare',
+    'export.openButton': 'Apri export',
+    'export.footer': 'CSV in formato Maute. Funziona con Numbers, Excel e Google Sheets.',
+
+    'feedback.section': 'Feedback',
+    'feedback.title': 'Invia feedback',
+    'feedback.subtitle': 'Idea, bug o desiderio?',
+    'feedback.placeholder': 'Cosa funziona bene? Cosa è fastidioso? Cosa desideri?',
+    'feedback.category': 'Categoria',
+    'feedback.categoryBug': 'Bug',
+    'feedback.categoryIdea': 'Idea',
+    'feedback.categoryQuestion': 'Domanda',
+    'feedback.categoryOther': 'Altro',
+    'feedback.send': 'Invia',
+    'feedback.sendByMail': 'Invia per email allo sviluppatore',
+    'feedback.thanks': 'Grazie! Il tuo feedback è salvato.',
+    'feedback.history': 'Feedback precedenti',
+    'feedback.clearAll': 'Cancella tutto',
+    'feedback.footer': 'Il feedback è salvato localmente. Usa "Invia per email" per inoltrarlo allo sviluppatore.',
+    'feedback.empty': 'Nessun feedback ancora.',
+    'feedback.sourceUser': 'Tu',
+    'feedback.sourceAi': 'Coach IA',
+
+    'aiInsight.title': 'Consiglio coach',
+    'aiInsight.noData': 'Nessun dato di allenamento ancora — registra una sessione e qui apparirà un consiglio.',
+    'aiInsight.veryNew': 'Solo {n} tentativi — raccogli qualche sessione in più per un\'analisi affidabile.',
+    'aiInsight.solid': 'Solido {rate}% su {sessions} sessioni — continua così.',
+    'aiInsight.excellent': 'Eccellente {rate}% su {sessions} sessioni — pronto per la gara.',
+    'aiInsight.improving': 'Chiara progressione nelle ultime settimane — ben fatto.',
+    'aiInsight.declining': 'Il tasso è calato di recente — tempo di allenamento mirato.',
+    'aiInsight.lowRate': 'Attualmente {rate}% su {total} tentativi — analizza la tecnica.',
+    'aiInsight.belowTarget': '{gap}% sotto il tuo obiettivo ({target}%) — concentrati su questo esercizio.',
+    'aiInsight.aboveTarget': 'Obiettivo ({target}%) raggiunto — puoi alzarlo.',
+    'aiInsight.fewRecent': 'Poco allenamento recente — questo esercizio non è stato fatto da tempo.'
   },
 
   cs: {
@@ -851,7 +995,43 @@ const dict = {
     'settings.migrated': 'Migrace dokončena',
 
     'topMenu.settings': 'Nastavení',
-    'topMenu.export': 'Export'
+    'topMenu.export': 'Export',
+
+    'export.title': 'Exportovat data',
+    'export.subtitle': 'CSV export tréninků a závodů',
+    'export.openButton': 'Otevřít export',
+    'export.footer': 'CSV ve formátu Maute. Funguje v Numbers, Excelu a Google Sheets.',
+
+    'feedback.section': 'Zpětná vazba',
+    'feedback.title': 'Odeslat zpětnou vazbu',
+    'feedback.subtitle': 'Nápad, chyba nebo přání?',
+    'feedback.placeholder': 'Co funguje dobře? Co vadí? Co si přeješ?',
+    'feedback.category': 'Kategorie',
+    'feedback.categoryBug': 'Chyba',
+    'feedback.categoryIdea': 'Nápad',
+    'feedback.categoryQuestion': 'Otázka',
+    'feedback.categoryOther': 'Jiné',
+    'feedback.send': 'Odeslat',
+    'feedback.sendByMail': 'Odeslat e-mailem vývojáři',
+    'feedback.thanks': 'Díky! Tvoje zpětná vazba je uložena.',
+    'feedback.history': 'Předchozí zpětná vazba',
+    'feedback.clearAll': 'Smazat vše',
+    'feedback.footer': 'Zpětná vazba se ukládá lokálně. „Odeslat e-mailem" ji pošle vývojáři.',
+    'feedback.empty': 'Zatím žádná zpětná vazba.',
+    'feedback.sourceUser': 'Ty',
+    'feedback.sourceAi': 'AI trenér',
+
+    'aiInsight.title': 'Tip trenéra',
+    'aiInsight.noData': 'Zatím žádná data — po prvním tréninku se zde objeví doporučení.',
+    'aiInsight.veryNew': 'Zatím jen {n} pokusů — natrénuj víc sezení pro spolehlivou analýzu.',
+    'aiInsight.solid': 'Solidní {rate}% za {sessions} tréninků — vydrž.',
+    'aiInsight.excellent': 'Výborná úspěšnost {rate}% za {sessions} tréninků — připraveno na závod.',
+    'aiInsight.improving': 'Jasné zlepšení v posledních týdnech — výborně.',
+    'aiInsight.declining': 'Úspěšnost nedávno klesla — čas se zaměřit.',
+    'aiInsight.lowRate': 'Aktuálně {rate}% z {total} pokusů — analyzuj techniku.',
+    'aiInsight.belowTarget': '{gap}% pod tvým cílem ({target}%) — zaměř se na tento cvik.',
+    'aiInsight.aboveTarget': 'Cíl ({target}%) splněn — můžeš ho zvýšit.',
+    'aiInsight.fewRecent': 'Málo tréninku v poslední době — tento cvik byl dlouho stranou.'
   },
 
   hu: {

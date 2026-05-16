@@ -6,10 +6,11 @@ import {
   Settings as SettingsIcon, LogOut, Shield, User, RotateCcw,
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
-  Sun, Moon, SunMoon, MoreHorizontal, Globe
+  Sun, Moon, SunMoon, Globe
 } from 'lucide-react';
 import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
+import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge } from './lib/feedback.js';
 
 // =============================================================
 // UCI 2026 Datenbank: Alle Disziplinen
@@ -2442,6 +2443,53 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
 
 // Training-Statistik pro Übung — Quote aus Sessions
 // ropeFilter: null = alle Sessions, true = nur mit Seil, false = nur ohne Seil
+// =============================================================
+// KI-Insight für eine Übung — regel-basierter „Trainer-Tipp".
+// Liefert 1–2 kurze Hinweise als String. Keine externe AI nötig.
+// =============================================================
+function generateExerciseInsight(exercise, sessions, t) {
+  if (!exercise || !sessions) return null;
+  const exSessions = sessions.filter(s => s.exerciseId === exercise.id);
+  const entries = exSessions.flatMap(s => s.entries || []);
+  const total = entries.length;
+  const success = entries.filter(e => e === 'success').length;
+  const rate = total > 0 ? Math.round((success / total) * 100) : 0;
+  const target = typeof exercise.target_rate === 'number' ? exercise.target_rate : null;
+
+  if (total === 0) return t('aiInsight.noData');
+  if (total < 10) return t('aiInsight.veryNew', { n: total });
+
+  // Letzte Trainings-Datum
+  const lastDate = exSessions.reduce((m, s) => (s.date && s.date > m ? s.date : m), '');
+  if (lastDate) {
+    const daysSince = Math.floor((Date.now() - new Date(lastDate).getTime()) / 86400000);
+    if (daysSince > 30) return t('aiInsight.fewRecent');
+  }
+
+  // Trend: letzte 4 Wochen vs. vorherige 4 Wochen
+  const now = Date.now();
+  const recentStart = new Date(now - 28 * 86400000).toISOString().slice(0, 10);
+  const olderStart  = new Date(now - 56 * 86400000).toISOString().slice(0, 10);
+  const recentEntries = exSessions.filter(s => (s.date || '') >= recentStart).flatMap(s => s.entries || []);
+  const olderEntries  = exSessions.filter(s => (s.date || '') >= olderStart && (s.date || '') < recentStart).flatMap(s => s.entries || []);
+  const recentRate = recentEntries.length >= 5 ? Math.round(recentEntries.filter(e => e === 'success').length / recentEntries.length * 100) : null;
+  const olderRate  = olderEntries.length  >= 5 ? Math.round(olderEntries.filter(e => e === 'success').length / olderEntries.length * 100)  : null;
+  if (recentRate != null && olderRate != null) {
+    if (recentRate - olderRate >= 10) return t('aiInsight.improving');
+    if (olderRate - recentRate >= 10) return t('aiInsight.declining');
+  }
+
+  // Ziel-Quote
+  if (target != null) {
+    if (rate >= target) return t('aiInsight.aboveTarget', { target });
+    if (target - rate >= 5) return t('aiInsight.belowTarget', { gap: target - rate, target });
+  }
+
+  if (rate < 50) return t('aiInsight.lowRate', { rate, total });
+  if (rate >= 85 && exSessions.length >= 10) return t('aiInsight.excellent', { rate, sessions: exSessions.length });
+  return t('aiInsight.solid', { rate, sessions: exSessions.length });
+}
+
 function calcExerciseTrainingStats(exercise, sessions, ropeFilter = null) {
   const stats = { total: 0, success: 0, fail: 0, third: 0, rate: 0, sessions: 0 };
   if (!exercise || !sessions) return stats;
@@ -3073,9 +3121,6 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [topMenuOpen, setTopMenuOpen] = useState(false);
-  // Top-Menü schließt sich automatisch wenn die View wechselt
-  useEffect(() => { setTopMenuOpen(false); }, [view]);
 
   // Theme: 'system' folgt prefers-color-scheme, 'light'/'dark' überschreiben
   const [theme, setTheme] = useState(() => {
@@ -3105,6 +3150,9 @@ export default function App() {
       };
     }
   }, [theme]);
+
+  // Globale Feedback-Bridge für KI-Coach attachen (einmalig)
+  useEffect(() => { attachGlobalFeedbackBridge(); }, []);
 
   // Supabase-Session prüfen + Listener
   useEffect(() => {
@@ -3481,13 +3529,13 @@ export default function App() {
 
   // Navigation
   const isCoach = profile?.role === 'coach' || profile?.role === 'admin';
+  // Export ist jetzt eine Sektion innerhalb der Einstellungen, nicht mehr im Nav.
   const nav = [
     { id: 'dashboard', label: t('nav.dashboard'), icon: Home },
     { id: 'training', label: t('nav.training'), icon: Dumbbell },
     { id: 'wettkampf', label: t('nav.wettkampf'), icon: Trophy },
     { id: 'uebungen', label: t('nav.uebungen'), icon: BarChart3 },
-    ...(isCoach ? [{ id: 'sportler', label: t('nav.sportler'), icon: Users }] : []),
-    { id: 'export', label: t('nav.export'), icon: Download }
+    ...(isCoach ? [{ id: 'sportler', label: t('nav.sportler'), icon: Users }] : [])
   ];
 
   // View dispatcher
@@ -3497,9 +3545,9 @@ export default function App() {
   else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} />;
-  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} />;
+  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} setView={setView} />;
   else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} ownData={effectiveData} />;
-  else if (view === 'export') viewEl = <ExportView data={effectiveData} />;
+  else if (view === 'export') viewEl = <ExportView data={effectiveData} setView={setView} />;
   else if (view === 'kuer' || view === 'video') {
     viewEl = <ComingSoon viewId={view} />;
   } else {
@@ -3519,38 +3567,12 @@ export default function App() {
           WebkitBackdropFilter: 'blur(20px) saturate(180%)'
         }}>
         <Brand size="sm" />
-        <div className="relative">
-          <button onClick={() => setTopMenuOpen(o => !o)}
-            className={'w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90 ' +
-              (topMenuOpen ? 'bg-[#FF9500]/15 text-[#FF9500]' :
-                (view === 'einstellungen' || view === 'export' ? 'text-[#FF9500]' : 'text-[#3C3C43]'))}
-            aria-label={t('nav.more')}
-            aria-expanded={topMenuOpen}>
-            <MoreHorizontal size={22} strokeWidth={2.2} />
-          </button>
-          {topMenuOpen && (
-            <>
-              {/* Overlay zum Schließen bei Tap außerhalb */}
-              <div className="fixed inset-0 z-30" onClick={() => setTopMenuOpen(false)} />
-              {/* Popover */}
-              <div className="absolute right-0 top-full mt-2 z-40 w-52 bg-white/95 backdrop-blur-xl rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.2)] overflow-hidden">
-                <button onClick={() => setView('einstellungen')}
-                  className={'w-full text-left px-4 py-3 flex items-center gap-3 active:bg-[#D1D1D6]/40 transition ' +
-                    (view === 'einstellungen' ? 'text-[#FF9500]' : '')}>
-                  <SettingsIcon size={18} />
-                  <span className="text-[15px] font-medium">{t('topMenu.settings')}</span>
-                </button>
-                <div className="border-t border-[#C6C6C8]/40" />
-                <button onClick={() => setView('export')}
-                  className={'w-full text-left px-4 py-3 flex items-center gap-3 active:bg-[#D1D1D6]/40 transition ' +
-                    (view === 'export' ? 'text-[#FF9500]' : '')}>
-                  <Download size={18} />
-                  <span className="text-[15px] font-medium">{t('topMenu.export')}</span>
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+        <button onClick={() => setView('einstellungen')}
+          className={'w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90 ' +
+            (view === 'einstellungen' ? 'text-[#FF9500]' : 'text-[#3C3C43]')}
+          aria-label={t('nav.einstellungen')}>
+          <SettingsIcon size={22} strokeWidth={1.8} />
+        </button>
       </div>
 
       {/* Desktop Sidebar */}
@@ -4867,6 +4889,7 @@ function TrainingView({ data, setData, setView }) {
 // Session-Edit-Modal — Datum, Entries umtoggeln, Notiz, Mit/Ohne Seil
 // =============================================================
 function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
+  const { t } = useI18n();
   const exercise = exercises.find(e => e.id === session.exerciseId);
   const [date, setDate] = useState(session.date || new Date().toISOString().slice(0, 10));
   const [entries, setEntries] = useState(session.entries || []);
@@ -4918,17 +4941,17 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
           {/* Mit/Ohne Seil */}
           {exercise && exercise.has_rope_variant && (
             <div>
-              <label className="text-sm font-medium block mb-1.5">Variante</label>
+              <label className="text-sm font-medium block mb-1.5">{t('log.variant')}</label>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setWithRope(true)}
                   className={'py-2.5 rounded-xl text-sm font-medium border transition active:scale-95 ' +
                     (withRope === true ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-700 border-slate-300')}>
-                  Mit Seil
+                  {t('log.withRope')}
                 </button>
                 <button type="button" onClick={() => setWithRope(false)}
                   className={'py-2.5 rounded-xl text-sm font-medium border transition active:scale-95 ' +
                     (withRope === false ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-700 border-slate-300')}>
-                  Ohne Seil
+                  {t('log.withoutRope')}
                 </button>
               </div>
             </div>
@@ -5002,8 +5025,9 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
 // =============================================================
 // EINSTELLUNGEN (Skeleton — wird in Stufe 8 ausgebaut)
 // =============================================================
-function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, refreshAthletes, theme, setTheme, langPref, setLangPref }) {
+function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, refreshAthletes, theme, setTheme, langPref, setLangPref, setView }) {
   const { t } = useI18n();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const roleLabel = profile?.role === 'admin' ? t('role.admin') : profile?.role === 'coach' ? t('role.coach') : t('role.athlete');
   const syncLabel = cloudStatus === 'syncing' ? t('settings.cloudSyncing') : cloudStatus === 'error' ? t('settings.cloudSyncError') : t('settings.cloudSynced');
   const syncTagColor = cloudStatus === 'syncing' ? 'orange' : cloudStatus === 'error' ? 'red' : 'green';
@@ -5192,9 +5216,37 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
         )}
       </IOSList>
 
+      {/* Export */}
+      <IOSList header={t('export.title')} footer={t('export.footer')}>
+        <IOSListRow
+          onClick={() => setView && setView('export')}
+          trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
+          <span className="flex items-center gap-3">
+            <Download size={18} className="text-[#FF9500]" />
+            <span className="text-[15px] font-medium">{t('export.openButton')}</span>
+          </span>
+        </IOSListRow>
+      </IOSList>
+
       <ReglementSettings data={data} setData={setData} />
 
       <BackupSettings data={data} setData={setData} />
+
+      {/* Feedback */}
+      <IOSList header={t('feedback.section')} footer={t('feedback.footer')}>
+        <IOSListRow
+          onClick={() => setFeedbackOpen(true)}
+          trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
+          <span className="flex items-center gap-3">
+            <MessageCircle size={18} className="text-[#007AFF]" />
+            <span className="text-[15px] font-medium">{t('feedback.title')}</span>
+          </span>
+        </IOSListRow>
+      </IOSList>
+
+      {feedbackOpen && (
+        <FeedbackModal onClose={() => setFeedbackOpen(false)} />
+      )}
 
       {/* Reset */}
       <IOSList footer={t('settings.resetFooter')}>
@@ -5225,6 +5277,147 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
       </IOSList>
 
       <div className="h-4" />
+    </div>
+  );
+}
+
+// =============================================================
+// FEEDBACK-MODAL — User schickt Feedback, wird lokal gespeichert,
+// optional per Mail an Entwickler weitergeleitet.
+// =============================================================
+function FeedbackModal({ onClose }) {
+  const { t } = useI18n();
+  const [text, setText] = useState('');
+  const [category, setCategory] = useState('idea');
+  const [busy, setBusy] = useState(false);
+  const [list, setList] = useState(() => getFeedback());
+  const [justSent, setJustSent] = useState(false);
+
+  const categories = [
+    { id: 'bug',      label: t('feedback.categoryBug'),      color: 'text-[#FF3B30]' },
+    { id: 'idea',     label: t('feedback.categoryIdea'),     color: 'text-[#FF9500]' },
+    { id: 'question', label: t('feedback.categoryQuestion'), color: 'text-[#007AFF]' },
+    { id: 'other',    label: t('feedback.categoryOther'),    color: 'text-[#8E8E93]' }
+  ];
+
+  const send = () => {
+    const trimmed = text.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    submitFeedback({ text: trimmed, category, source: 'user' });
+    setText('');
+    setList(getFeedback());
+    setJustSent(true);
+    setBusy(false);
+    setTimeout(() => setJustSent(false), 2000);
+  };
+
+  const sendByMail = () => {
+    if (list.length === 0) return;
+    window.location.href = buildFeedbackMailto(list);
+  };
+
+  const clearAll = () => {
+    if (!confirm(t('feedback.clearAll') + '?')) return;
+    clearFeedback();
+    setList([]);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-[#F2F2F7] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        {/* iOS Header */}
+        <div className="sticky top-0 bg-[#F2F2F7]/95 backdrop-blur-xl px-4 py-3 flex items-center justify-between z-10">
+          <button onClick={onClose} className="text-[17px] text-[#007AFF] active:opacity-60 px-1">
+            {t('common.cancel')}
+          </button>
+          <h3 className="font-semibold text-[17px]">{t('feedback.title')}</h3>
+          <span className="w-12" />
+        </div>
+
+        <div className="px-3 py-4 space-y-5">
+          {/* Hinweis-Text */}
+          <p className="text-[14px] text-[#8E8E93] px-2">{t('feedback.subtitle')}</p>
+
+          {/* Kategorie */}
+          <IOSList header={t('feedback.category')}>
+            {categories.map(c => (
+              <IOSListRow
+                key={c.id}
+                onClick={() => setCategory(c.id)}
+                trailing={category === c.id ? <Check size={20} strokeWidth={2.8} className="text-[#FF9500]" /> : <span className="w-5" />}>
+                <span className={'text-[15px] font-medium ' + c.color}>{c.label}</span>
+              </IOSListRow>
+            ))}
+          </IOSList>
+
+          {/* Text-Eingabe */}
+          <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3">
+            <textarea
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder={t('feedback.placeholder')}
+              rows={5}
+              className="w-full bg-transparent text-[15px] outline-none resize-y placeholder:text-[#C7C7CC]" />
+          </div>
+
+          {/* Send-Button */}
+          <button
+            onClick={send}
+            disabled={!text.trim() || busy}
+            className="w-full bg-[#FF9500] text-white py-3 rounded-2xl font-semibold text-[15px] shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition disabled:opacity-40">
+            <span className="inline-flex items-center gap-2">
+              <Send size={16} strokeWidth={2.4} /> {t('feedback.send')}
+            </span>
+          </button>
+
+          {justSent && (
+            <div className="bg-emerald-50 text-emerald-900 text-[14px] rounded-xl p-3 text-center">
+              ✓ {t('feedback.thanks')}
+            </div>
+          )}
+
+          {/* Bisheriges Feedback */}
+          {list.length > 0 ? (
+            <IOSList
+              header={t('feedback.history') + ' · ' + list.length}>
+              {list.slice(0, 30).map(e => (
+                <div key={e.id} className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
+                      {t('feedback.category' + (e.category || 'other').charAt(0).toUpperCase() + (e.category || 'other').slice(1))} · {e.source === 'ai' ? t('feedback.sourceAi') : t('feedback.sourceUser')}
+                    </span>
+                    <span className="text-[11px] text-[#8E8E93]">
+                      {new Date(e.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="text-[14px] whitespace-pre-wrap">{e.text}</div>
+                </div>
+              ))}
+            </IOSList>
+          ) : (
+            <p className="text-[13px] text-[#8E8E93] text-center px-2">{t('feedback.empty')}</p>
+          )}
+
+          {/* Mail-Versand + Löschen */}
+          {list.length > 0 && (
+            <IOSList>
+              <IOSListRow
+                onClick={sendByMail}
+                trailing={<Mail size={18} className="text-[#007AFF]" />}>
+                <span className="text-[15px] text-[#007AFF] font-medium">{t('feedback.sendByMail')}</span>
+              </IOSListRow>
+              <IOSListRow
+                onClick={clearAll}
+                trailing={<Trash2 size={18} className="text-[#FF3B30]" />}>
+                <span className="text-[15px] text-[#FF3B30] font-medium">{t('feedback.clearAll')}</span>
+              </IOSListRow>
+            </IOSList>
+          )}
+
+          <div className="h-4" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -5804,6 +5997,7 @@ function MauteStatsPanel({ exercise, sessions }) {
 }
 
 function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, onDelete }) {
+  const { t } = useI18n();
   const [importStatus, setImportStatus] = useState(null); // null | 'parsing' | 'preview' | 'error'
   const [importPreview, setImportPreview] = useState(null);
   const [importMsg, setImportMsg] = useState('');
@@ -5895,11 +6089,30 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
           </div>
         </header>
 
+        {/* KI-Insight — kurzer regel-basierter Tipp */}
+        {(() => {
+          const insight = generateExerciseInsight(exercise, data.sessions || [], t);
+          if (!insight) return null;
+          return (
+            <div className="bg-gradient-to-br from-[#FF9500]/10 to-[#FF6D00]/10 rounded-2xl p-4 flex gap-3 items-start">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#FF9500] to-[#FF6D00] flex items-center justify-center shrink-0">
+                <Sparkles size={18} className="text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] uppercase tracking-wide text-[#FF9500] font-semibold mb-0.5">
+                  {t('aiInsight.title')}
+                </div>
+                <div className="text-[14px] leading-snug">{insight}</div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Training-Statistik */}
         <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold flex items-center gap-2">
-              <Dumbbell size={18} className="text-amber-500" /> Training
+              <Dumbbell size={18} className="text-amber-500" /> {t('nav.training')}
             </h2>
             {trainStats.total > 0 && (
               <span className="text-xs text-slate-500">{trainStats.sessions} Sess. · {trainStats.total} Serien</span>
@@ -5912,13 +6125,13 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
               <button onClick={() => setRopeFilter(null)}
                 className={'flex-1 py-1.5 rounded-full transition ' +
                   (ropeFilter === null ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500')}>
-                Alle
+                {t('training.range.all')}
                 <span className="ml-1 opacity-60">{ropeStats.withRope.sessions + ropeStats.withoutRope.sessions}</span>
               </button>
               <button onClick={() => setRopeFilter(true)}
                 className={'flex-1 py-1.5 rounded-full transition ' +
                   (ropeFilter === true ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500')}>
-                Mit Seil
+                {t('log.withRope')}
                 <span className="ml-1 opacity-60">{ropeStats.withRope.sessions}</span>
               </button>
               <button onClick={() => setRopeFilter(false)}
@@ -6211,6 +6424,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
 // ÜBUNGEN VERWALTEN
 // =============================================================
 function UebungenView({ data, setData, onBack }) {
+  const { t } = useI18n();
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [selected, setSelected] = useState(null); // Übung in Detail-Ansicht
@@ -6290,13 +6504,13 @@ function UebungenView({ data, setData, onBack }) {
               <ChevronLeft size={28} strokeWidth={2.6} />
             </button>
             <div className="min-w-0">
-              <h1 className="text-[34px] font-bold tracking-tight leading-none">Übungen</h1>
-              <p className="text-[13px] text-[#8E8E93] mt-1">{data.exercises.filter(e => e.active).length} aktiv · {data.exercises.filter(e => !e.active).length} archiviert</p>
+              <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('exercises.title')}</h1>
+              <p className="text-[13px] text-[#8E8E93] mt-1">{data.exercises.filter(e => e.active).length} aktiv · {data.exercises.filter(e => !e.active).length} {t('exercises.archived')}</p>
             </div>
           </div>
           <button onClick={() => setShowNew(true)}
-            className="bg-slate-900 text-white px-4 py-2 rounded-full font-semibold text-[14px] flex items-center gap-1.5 shadow-sm active:scale-95 transition">
-            <Plus size={16} /> Neu
+            className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-[14px] flex items-center gap-1.5 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
+            <Plus size={16} strokeWidth={2.5} /> {t('common.new')}
           </button>
         </header>
 
@@ -6668,16 +6882,16 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
           <div>
-            <label className="text-sm font-medium block mb-1.5">Datum</label>
+            <label className="text-sm font-medium block mb-1.5">{t('log.date')}</label>
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
           </div>
           {athletes.length > 0 && (
             <div>
-              <label className="text-sm font-medium block mb-1.5">Sportler / Team</label>
+              <label className="text-sm font-medium block mb-1.5">{t('log.athlete')}</label>
               <select value={athleteId} onChange={e => setAthleteId(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
-                <option value="">— Kein Sportler —</option>
+                <option value="">{t('log.athleteNone')}</option>
                 {athletes.map(a => (
                   <option key={a.id} value={a.id}>
                     {a.name}{a.type === 'team' ? ' (Team)' : ''}
@@ -6687,14 +6901,14 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
             </div>
           )}
           <div>
-            <label className="text-sm font-medium block mb-1.5">Übung</label>
+            <label className="text-sm font-medium block mb-1.5">{t('log.exercise')}</label>
             <select value={exerciseId} onChange={e => setExerciseId(e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
               {exerciseSort.trained.length > 0 && (
                 <optgroup label={t('log.exerciseTrained')}>
                   {exerciseSort.trained.map(e => (
                     <option key={e.id} value={e.id}>
-                      {e.name}{e.category_mode === 3 ? ' (+ ' + e.third_label + ')' : ''} · {exerciseSort.count.get(e.id)}×
+                      {e.name} · {exerciseSort.count.get(e.id)}×
                     </option>
                   ))}
                 </optgroup>
@@ -6703,7 +6917,7 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
                 <optgroup label={exerciseSort.trained.length > 0 ? t('log.exerciseUntrained') : t('log.exerciseAll')}>
                   {exerciseSort.untrained.map(e => (
                     <option key={e.id} value={e.id}>
-                      {e.name}{e.category_mode === 3 ? ' (+ ' + e.third_label + ')' : ''}
+                      {e.name}
                     </option>
                   ))}
                 </optgroup>
@@ -6713,17 +6927,17 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
 
           {exercise && exercise.has_rope_variant && (
             <div>
-              <label className="text-sm font-medium block mb-1.5">Variante</label>
+              <label className="text-sm font-medium block mb-1.5">{t('log.variant')}</label>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setWithRope(true)}
                   className={'py-2.5 rounded-xl text-sm font-medium border transition active:scale-95 ' +
                     (withRope ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-700 border-slate-300')}>
-                  Mit Seil
+                  {t('log.withRope')}
                 </button>
                 <button type="button" onClick={() => setWithRope(false)}
                   className={'py-2.5 rounded-xl text-sm font-medium border transition active:scale-95 ' +
                     (!withRope ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-700 border-slate-300')}>
-                  Ohne Seil
+                  {t('log.withoutRope')}
                 </button>
               </div>
             </div>
@@ -6732,7 +6946,7 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Serien</h2>
+            <h2 className="font-semibold">{t('log.series')}</h2>
             <span className="bg-sky-100 text-sky-700 text-xs font-medium px-2 py-0.5 rounded-full">
               {entries.length} / {(exercise && exercise.default_series) || '∞'}
             </span>
@@ -6778,18 +6992,18 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
 
           <button onClick={() => setEntries(entries.slice(0, -1))} disabled={entries.length === 0}
             className="text-sm text-slate-500 disabled:opacity-50 hover:text-slate-900">
-            ← Letzte entfernen
+            {t('log.removeLast')}
           </button>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5">
           <label className="text-sm font-medium block mb-1.5 flex items-center gap-2">
-            <Edit2 size={14} className="text-slate-500" /> Notiz (optional)
+            <Edit2 size={14} className="text-slate-500" /> {t('log.note')}
           </label>
           <textarea
             value={notes}
             onChange={e => setNotes(e.target.value)}
-            placeholder="Was lief gut/schlecht? Korrekturen, Erkenntnisse, Stimmung…"
+            placeholder={t('log.notePlaceholder')}
             rows={3}
             className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 text-sm resize-y" />
         </div>
@@ -6797,11 +7011,11 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
         <div className="flex gap-2">
           <button onClick={onDone}
             className="flex-1 bg-white border border-slate-200 px-5 py-3 rounded-xl font-medium text-[15px] active:opacity-60">
-            Abbrechen
+            {t('common.cancel')}
           </button>
           <button onClick={save} disabled={entries.length === 0}
             className="flex-1 bg-[#FF9500] text-white px-5 py-3 rounded-xl font-semibold text-[15px] disabled:opacity-40 flex items-center justify-center gap-2 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
-            <Save size={16} strokeWidth={2.4} /> Speichern
+            <Save size={16} strokeWidth={2.4} /> {t('common.save')}
           </button>
         </div>
       </div>
@@ -6813,6 +7027,7 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
 // PROGRAMME
 // =============================================================
 function ProgrammeView({ data, setData }) {
+  const { t } = useI18n();
   const [editId, setEditId] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -6843,14 +7058,13 @@ function ProgrammeView({ data, setData }) {
 
   return (
     <div className="space-y-5">
-      <header className="flex items-end justify-between flex-wrap gap-3 pt-2">
+      <header className="flex items-end justify-between flex-wrap gap-3 pt-2 px-1">
         <div>
-          <h1 className="text-[34px] font-bold tracking-tight leading-none">Programme</h1>
-          <p className="text-slate-500 text-sm mt-1">Übungsfolgen für Wettkämpfe</p>
+          <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('competition.programs')}</h1>
         </div>
         <button onClick={() => setShowNew(true)}
-          className="bg-slate-900 text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-sm active:scale-95 transition">
-          <Plus size={16} /> Neues Programm
+          className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
+          <Plus size={16} strokeWidth={2.5} /> {t('common.new')}
         </button>
       </header>
 
@@ -7098,6 +7312,7 @@ function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onRemove }) {
 // WETTKAMPF
 // =============================================================
 function WettkampfView({ data, setData, dbAthletes }) {
+  const { t } = useI18n();
   const [tab, setTab] = useState('wettkaempfe'); // 'wettkaempfe' | 'programme'
   const [editId, setEditId] = useState(null);
   const [viewId, setViewId] = useState(null);
@@ -7112,12 +7327,12 @@ function WettkampfView({ data, setData, dbAthletes }) {
           <button onClick={() => setTab('wettkaempfe')}
             className={'flex-1 py-1.5 rounded-lg text-[14px] font-medium transition ' +
               (tab === 'wettkaempfe' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
-            Wettkämpfe
+            {t('competition.competitions')}
           </button>
           <button onClick={() => setTab('programme')}
             className={'flex-1 py-1.5 rounded-lg text-[14px] font-medium transition ' +
               (tab === 'programme' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
-            Programme
+            {t('competition.programs')}
           </button>
         </div>
         <ProgrammeView data={data} setData={setData} />
@@ -7220,22 +7435,21 @@ function WettkampfView({ data, setData, dbAthletes }) {
         <button onClick={() => setTab('wettkaempfe')}
           className={'flex-1 py-1.5 rounded-lg text-[14px] font-medium transition ' +
             (tab === 'wettkaempfe' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
-          Wettkämpfe
+          {t('competition.competitions')}
         </button>
         <button onClick={() => setTab('programme')}
           className={'flex-1 py-1.5 rounded-lg text-[14px] font-medium transition ' +
             (tab === 'programme' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
-          Programme
+          {t('competition.programs')}
         </button>
       </div>
-      <header className="flex items-end justify-between flex-wrap gap-3 pt-2">
+      <header className="flex items-end justify-between flex-wrap gap-3 pt-2 px-1">
         <div>
-          <h1 className="text-[34px] font-bold tracking-tight leading-none">Wettkampf</h1>
-          <p className="text-slate-500 text-sm mt-1">Wertungsbögen — beide Kampfgerichte + Endergebnis</p>
+          <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('competition.title')}</h1>
         </div>
         <button onClick={() => setShowNew(true)}
-          className="bg-slate-900 text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-sm active:scale-95 transition">
-          <Plus size={16} /> Wertungsbogen erfassen
+          className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
+          <Plus size={16} strokeWidth={2.5} /> {t('common.new')}
         </button>
       </header>
 
@@ -8429,6 +8643,7 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
 }
 
 function SportlerView({ profile, session, athletes, profiles, refreshAthletes, ownData }) {
+  const { t } = useI18n();
   // ALLE Hooks MÜSSEN vor dem ersten conditional return aufgerufen werden
   // (Rules-of-Hooks). Nach dem viewingAthlete-Early-Return waren ehemals
   // weitere useState-Calls — das hat den weißen-Bildschirm-Crash erzeugt.
@@ -8618,12 +8833,9 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
 
   return (
     <div className="space-y-5">
-      <header className="flex items-end justify-between flex-wrap gap-3 pt-2">
+      <header className="flex items-end justify-between flex-wrap gap-3 pt-2 px-1">
         <div>
-          <h1 className="text-[34px] font-bold tracking-tight leading-none">Sportler</h1>
-          <p className="text-slate-500 text-sm mt-1">
-            {managedAthletes.length} verwaltet{isAdmin && otherAthletesAdminView.length > 0 ? ` · ${otherAthletesAdminView.length} weitere` : ''}
-          </p>
+          <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('athletes.title')}</h1>
         </div>
         <div className="flex gap-2">
           <button onClick={() => { setShowRedeemModal(true); setRedeemCode(''); }}
@@ -8932,29 +9144,36 @@ function InviteModal({ open, athlete, onClose, onInvite }) {
 // =============================================================
 // EXPORT
 // =============================================================
-function ExportView({ data }) {
+function ExportView({ data, setView }) {
+  const { t } = useI18n();
   const [tab, setTab] = useState('wettkampf');
   return (
     <div className="space-y-5">
-      <header className="pt-2">
-        <h1 className="text-[34px] font-bold tracking-tight leading-none">Export</h1>
-        <p className="text-slate-500 text-sm mt-1">Daten als CSV herunterladen (Excel/Numbers-kompatibel)</p>
+      <header className="pt-2 px-1">
+        {setView && (
+          <button onClick={() => setView('einstellungen')}
+            className="text-[15px] text-[#007AFF] flex items-center -ml-1 active:opacity-60 mb-1">
+            <ChevronLeft size={20} strokeWidth={2.6} className="text-[#FF9500]" /> {t('common.back')}
+          </button>
+        )}
+        <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('nav.export')}</h1>
+        <p className="text-[#8E8E93] text-[15px] mt-1">{t('export.subtitle')}</p>
       </header>
 
       {/* iOS-style Segmented Control */}
-      <div className="bg-slate-200/60 rounded-xl p-1 flex gap-1">
+      <div className="bg-[#E5E5EA] rounded-xl p-1 flex gap-1">
         <button onClick={() => setTab('wettkampf')}
           className={'flex-1 py-1.5 rounded-lg font-medium text-sm transition ' +
-            (tab === 'wettkampf' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600 active:bg-slate-300/40')}>
+            (tab === 'wettkampf' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
           <span className="inline-flex items-center gap-1.5 justify-center">
-            <Trophy size={14} /> Wettkampf
+            <Trophy size={14} /> {t('nav.wettkampf')}
           </span>
         </button>
         <button onClick={() => setTab('training')}
           className={'flex-1 py-1.5 rounded-lg font-medium text-sm transition ' +
-            (tab === 'training' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600 active:bg-slate-300/40')}>
+            (tab === 'training' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
           <span className="inline-flex items-center gap-1.5 justify-center">
-            <Dumbbell size={14} /> Training
+            <Dumbbell size={14} /> {t('nav.training')}
           </span>
         </button>
       </div>
