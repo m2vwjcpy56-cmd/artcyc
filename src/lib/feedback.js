@@ -21,7 +21,10 @@
 // =============================================================
 
 export const FEEDBACK_KEY = 'artcyc:feedback';
-export const FEEDBACK_EMAIL = 'info@neue-weberei.de';
+// Ziel-Adresse für Mail-Fallback (mailto:-Link, falls die Edge Function
+// noch nicht eingerichtet ist). Wird auch im Auto-Mail-Versand der
+// Edge Function verwendet — dort aber via Env-Var FEEDBACK_EMAIL.
+export const FEEDBACK_EMAIL = 'attika-schubladen-0v@icloud.com';
 
 export function getFeedback() {
   try {
@@ -48,12 +51,56 @@ export function submitFeedback({ text, category = 'other', source = 'user' }) {
     created_at: new Date().toISOString(),
     app_version: 'stufe8',
     user_agent: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 200) : '',
-    url: typeof location !== 'undefined' ? location.href : ''
+    url: typeof location !== 'undefined' ? location.href : '',
+    synced: false // wird auf true gesetzt sobald Cloud-Upload geklappt hat
   };
   const list = getFeedback();
   list.unshift(entry); // neueste oben
   saveFeedback(list);
   return id;
+}
+
+/**
+ * Schickt einen Eintrag an die submit-feedback-Edge-Function (DB +
+ * Auto-Mail an FEEDBACK_EMAIL). Markiert den localStorage-Eintrag als
+ * synced=true bei Erfolg. Schlägt der Upload fehl, bleibt synced=false —
+ * dann kann der User immer noch den Mail-Knopf nutzen.
+ *
+ * @param supabaseClient — der getCurrentSession-Provider (gibt JWT raus)
+ * @param entry          — der localStorage-Eintrag aus submitFeedback()
+ * @returns {ok, mail_sent, error?}
+ */
+export async function pushFeedbackToCloud(supabaseClient, entry) {
+  if (!supabaseClient || !entry) return { ok: false, error: 'invalid input' };
+  try {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return { ok: false, error: 'not authenticated' };
+    const SUPABASE_URL = 'https://cpxsfctijcsezkspjlxy.supabase.co';
+    const res = await fetch(SUPABASE_URL + '/functions/v1/submit-feedback', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token,
+      },
+      body: JSON.stringify({
+        text: entry.text,
+        category: entry.category,
+        source: entry.source,
+        app_version: entry.app_version,
+        user_agent: entry.user_agent,
+        url: entry.url,
+      }),
+    });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: result.error || ('HTTP ' + res.status) };
+    // Eintrag als synced markieren
+    const list = getFeedback().map(e => e.id === entry.id ? { ...e, synced: true, cloud_id: result.id } : e);
+    saveFeedback(list);
+    return { ok: true, mail_sent: !!result.mail_sent };
+  } catch (e) {
+    return { ok: false, error: e.message || String(e) };
+  }
 }
 
 export function clearFeedback() {

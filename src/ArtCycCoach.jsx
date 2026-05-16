@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
-import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge } from './lib/feedback.js';
+import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud } from './lib/feedback.js';
 import { parseProgramFile } from './lib/programImport.js';
 
 // =============================================================
@@ -5715,16 +5715,22 @@ function FeedbackModal({ onClose }) {
     { id: 'other',    label: t('feedback.categoryOther'),    color: 'text-[#8E8E93]' }
   ];
 
-  const send = () => {
+  const send = async () => {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
     setBusy(true);
-    submitFeedback({ text: trimmed, category, source: 'user' });
+    const id = submitFeedback({ text: trimmed, category, source: 'user' });
     setText('');
     setList(getFeedback());
     setJustSent(true);
+    // Im Hintergrund in die Cloud pushen — DB-Insert + Auto-Mail.
+    // Fehlschlag schlägt nicht durch: der Eintrag bleibt lokal mit
+    // synced=false und kann manuell per Mail-Knopf rausgeschickt werden.
+    pushFeedbackToCloud(supabase, getFeedback().find(e => e.id === id))
+      .then(() => setList(getFeedback()))
+      .catch(() => {});
     setBusy(false);
-    setTimeout(() => setJustSent(false), 2000);
+    setTimeout(() => setJustSent(false), 2200);
   };
 
   const sendByMail = () => {

@@ -39,7 +39,7 @@ jobs:
           echo "Function file:"
           ls -la supabase/functions/chat/
 
-      - name: Deploy chat function
+      - name: Deploy all functions
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
@@ -50,6 +50,11 @@ jobs:
             echo "::error::   https://github.com/${{ github.repository }}/settings/secrets/actions/new"
             exit 1
           fi
-          # chat-Function braucht JWT-Verification (User-Token wird im
-          # Function-Code geprüft) — KEIN --no-verify-jwt.
-          supabase functions deploy chat --project-ref "$SUPABASE_PROJECT_REF"
+          # Alle Functions im supabase/functions-Ordner deployen.
+          # JWT-Verification bleibt aktiv (Default) — sowohl chat als
+          # auch submit-feedback prüfen den User-Token selbst.
+          for fn in supabase/functions/*/; do
+            name=$(basename "$fn")
+            echo "Deploying function: $name"
+            supabase functions deploy "$name" --project-ref "$SUPABASE_PROJECT_REF"
+          done
