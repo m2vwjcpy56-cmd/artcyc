@@ -5,7 +5,7 @@ import {
   Home, BarChart3, Users, Download, Sparkles, FileText, Lock,
   Settings as SettingsIcon, Menu, LogOut, Shield, User, RotateCcw,
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
-  Mail, KeyRound, UserCog
+  Mail, KeyRound, UserCog, MessageCircle, Send, Loader2
 } from 'lucide-react';
 import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise } from './lib/supabase';
 
@@ -2590,6 +2590,318 @@ function migrateExerciseLabels(data) {
 }
 
 // =============================================================
+// KI-COACH — Floating-Chat (Phase 11)
+// =============================================================
+// FloatingChat-Button rechts unten + Slide-up-Sheet mit Chat.
+// Schreiboperationen werden als Action-Proposal angezeigt und
+// erfordern explizite User-Bestätigung.
+// =============================================================
+
+const CHAT_HISTORY_KEY = 'artcyc:chat:v1';
+
+async function callChatApi(messages, appData, userName) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('Nicht angemeldet');
+  const SUPABASE_URL = 'https://cpxsfctijcsezkspjlxy.supabase.co';
+  const res = await fetch(SUPABASE_URL + '/functions/v1/chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token,
+    },
+    body: JSON.stringify({
+      messages,
+      app_data: {
+        exercises: appData?.exercises || [],
+        sessions: appData?.sessions || [],
+        competitions: appData?.competitions || [],
+        programs: appData?.programs || [],
+      },
+      user_name: userName || null,
+    }),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    let detail = txt;
+    try { const j = JSON.parse(txt); detail = j.error || txt; } catch {}
+    throw new Error('Coach nicht erreichbar (' + res.status + '): ' + detail);
+  }
+  return await res.json();
+}
+
+// Aktion vom AI auf den App-State anwenden. Gibt eine kurze
+// Bestätigungs-Nachricht zurück.
+function applyChatAction(action, data, setData) {
+  if (!action || !action.tool) return 'Keine Aktion.';
+  const p = action.params || {};
+  if (action.tool === 'propose_create_session') {
+    const ex = (data.exercises || []).find(e => e.id === p.exerciseId);
+    const newSession = {
+      id: uid(),
+      date: p.date || new Date().toISOString().slice(0, 10),
+      exerciseId: p.exerciseId,
+      exerciseName: ex ? ex.name : '',
+      entries: Array.isArray(p.entries) ? p.entries : [],
+      notes: p.notes || null,
+      withRope: (ex && ex.has_rope_variant) ? (typeof p.withRope === 'boolean' ? p.withRope : null) : null,
+      athleteId: null,
+    };
+    setData({ ...data, sessions: [...(data.sessions || []), newSession] });
+    return 'Session angelegt ✓';
+  }
+  if (action.tool === 'propose_update_session') {
+    const next = (data.sessions || []).map(s =>
+      s.id === p.sessionId ? { ...s, ...(p.fields || {}) } : s
+    );
+    setData({ ...data, sessions: next });
+    return 'Session aktualisiert ✓';
+  }
+  if (action.tool === 'propose_delete_session') {
+    const next = (data.sessions || []).filter(s => s.id !== p.sessionId);
+    setData({ ...data, sessions: next });
+    return 'Session gelöscht ✓';
+  }
+  if (action.tool === 'propose_create_exercise') {
+    const newEx = {
+      id: uid(),
+      name: p.name,
+      uci_code: p.uci_code || null,
+      uci_disc: p.uci_disc || null,
+      active: true,
+      category_mode: p.category_mode || 2,
+      third_label: p.category_mode === 3 ? (p.third_label || 'Dritte') : null,
+      default_series: p.default_series || 10,
+      target_rate: typeof p.target_rate === 'number' ? p.target_rate : null,
+      has_rope_variant: !!p.has_rope_variant,
+    };
+    setData({ ...data, exercises: [...(data.exercises || []), newEx] });
+    return 'Übung „' + newEx.name + '" angelegt ✓';
+  }
+  if (action.tool === 'propose_update_exercise') {
+    const next = (data.exercises || []).map(e =>
+      e.id === p.exerciseId ? { ...e, ...(p.fields || {}) } : e
+    );
+    setData({ ...data, exercises: next });
+    return 'Übung aktualisiert ✓';
+  }
+  return 'Aktion „' + action.tool + '" nicht erkannt.';
+}
+
+function FloatingChat({ data, setData, profile }) {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [pendingAction, setPendingAction] = useState(null);
+  const scrollRef = useRef(null);
+
+  // History laden
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CHAT_HISTORY_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setMessages(parsed);
+      }
+    } catch {}
+  }, []);
+
+  // History speichern
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(messages));
+    } catch {}
+  }, [messages]);
+
+  // Auto-Scroll bei neuer Nachricht
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages, busy, pendingAction]);
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text || busy) return;
+    setErr('');
+    setPendingAction(null);
+    const userMsg = { role: 'user', content: text };
+    const next = [...messages, userMsg];
+    setMessages(next);
+    setInput('');
+    setBusy(true);
+    try {
+      const result = await callChatApi(next, data, profile?.display_name);
+      const assistantMsg = {
+        role: 'assistant',
+        content: result.content || '',
+        action: result.action || null,
+      };
+      setMessages([...next, assistantMsg]);
+      if (result.action) setPendingAction({ action: result.action, msgIdx: next.length });
+    } catch (e) {
+      setErr(e.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const approveAction = () => {
+    if (!pendingAction) return;
+    const result = applyChatAction(pendingAction.action, data, setData);
+    setMessages([...messages, { role: 'system', content: result }]);
+    setPendingAction(null);
+  };
+
+  const denyAction = () => {
+    setMessages([...messages, { role: 'system', content: 'Aktion abgebrochen.' }]);
+    setPendingAction(null);
+  };
+
+  const clearChat = () => {
+    if (!confirm('Chatverlauf löschen?')) return;
+    setMessages([]);
+    setPendingAction(null);
+    setErr('');
+    try { localStorage.removeItem(CHAT_HISTORY_KEY); } catch {}
+  };
+
+  return (
+    <>
+      {/* Floating Button */}
+      <button
+        onClick={() => setOpen(true)}
+        className="fixed z-30 right-4 bottom-[7.5rem] sm:bottom-6 w-14 h-14 rounded-full bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white shadow-lg shadow-orange-500/30 flex items-center justify-center active:scale-95 transition"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        aria-label="KI-Coach öffnen">
+        <Sparkles size={24} strokeWidth={2.2} />
+      </button>
+
+      {/* Chat-Sheet */}
+      {open && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setOpen(false)}>
+          <div
+            className="bg-[#F2F2F7] rounded-t-3xl sm:rounded-3xl w-full max-w-2xl h-[85vh] sm:h-[80vh] shadow-2xl flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="bg-white/90 backdrop-blur-xl border-b border-slate-200/60 px-4 py-3 flex items-center justify-between">
+              <button onClick={() => setOpen(false)} className="text-amber-500 font-medium text-[15px]">Fertig</button>
+              <div className="flex items-center gap-2">
+                <Sparkles size={16} className="text-amber-500" />
+                <span className="font-semibold text-[15px]">KI-Coach</span>
+              </div>
+              <button onClick={clearChat} disabled={messages.length === 0}
+                className="text-slate-500 text-[13px] disabled:opacity-30">Neu</button>
+            </div>
+
+            {/* Messages */}
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+              {messages.length === 0 && !busy && (
+                <div className="text-center py-12 px-4">
+                  <div className="inline-block w-14 h-14 rounded-full bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center mb-3">
+                    <Sparkles size={26} className="text-amber-600" />
+                  </div>
+                  <h3 className="font-semibold text-slate-900 mb-2">Frag deinen Coach</h3>
+                  <p className="text-sm text-slate-500 mb-4">
+                    Ich kenne deine Trainings + Wettkämpfe. Frag mich Sachen wie:
+                  </p>
+                  <div className="space-y-2 text-left">
+                    {[
+                      'Welche Übung hat aktuell die schlechteste Quote?',
+                      'Trag 8 geklappte und 2 nicht geklappte Maute-Sprünge mit Seil von heute ein',
+                      'Wie viele Trainings hatte ich letzte Woche?',
+                      'Worauf sollte ich diese Woche schwerpunktmäßig trainieren?'
+                    ].map(s => (
+                      <button key={s} onClick={() => setInput(s)}
+                        className="block w-full text-left text-[13px] bg-white border border-slate-200 rounded-xl px-3 py-2.5 active:bg-slate-50">
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {messages.map((m, i) => {
+                if (m.role === 'system') {
+                  return (
+                    <div key={i} className="text-center">
+                      <span className="text-[11px] text-slate-500 bg-slate-200/60 rounded-full px-3 py-1 inline-block">{m.content}</span>
+                    </div>
+                  );
+                }
+                const isUser = m.role === 'user';
+                return (
+                  <div key={i} className={'flex ' + (isUser ? 'justify-end' : 'justify-start')}>
+                    <div className={(isUser
+                      ? 'bg-[#007AFF] text-white rounded-br-md'
+                      : 'bg-white text-slate-900 rounded-bl-md border border-slate-200/60'
+                    ) + ' max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[15px] whitespace-pre-wrap break-words leading-[1.4]'}>
+                      {m.content || (m.action ? 'Vorschlag siehe unten' : '…')}
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Pending Action */}
+              {pendingAction && (
+                <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Bestätigung nötig</div>
+                      <div className="text-[14px] text-slate-900 font-medium">{pendingAction.action.summary}</div>
+                      <div className="text-[11px] text-slate-500 mt-1.5 font-mono">{pendingAction.action.tool}</div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={denyAction}
+                      className="flex-1 py-2 rounded-xl bg-white border border-slate-300 font-medium text-sm">Abbrechen</button>
+                    <button onClick={approveAction}
+                      className="flex-1 py-2 rounded-xl bg-amber-500 text-white font-semibold text-sm flex items-center justify-center gap-1.5">
+                      <Check size={14} /> Bestätigen
+                    </button>
+                  </div>
+                </div>
+              )}
+              {busy && (
+                <div className="flex items-center gap-2 text-slate-500 text-sm">
+                  <Loader2 size={14} className="animate-spin" /> Coach denkt nach…
+                </div>
+              )}
+              {err && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-900 text-sm rounded-xl p-3">
+                  ✗ {err}
+                </div>
+              )}
+            </div>
+
+            {/* Input */}
+            <div className="bg-white/90 backdrop-blur-xl border-t border-slate-200/60 p-3 flex items-end gap-2"
+              style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+              <textarea
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                placeholder="Frage stellen oder Auftrag geben…"
+                rows={1}
+                disabled={busy}
+                className="flex-1 px-3 py-2.5 bg-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-2 focus:ring-amber-500 text-[15px] resize-none max-h-32" />
+              <button onClick={send} disabled={!input.trim() || busy}
+                className="w-10 h-10 rounded-full bg-[#FF9500] text-white flex items-center justify-center disabled:opacity-30 active:scale-95 transition shrink-0">
+                <Send size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// =============================================================
 // BottomNav — Liquid-Glass-Pille mit Finger-Drag-Tab-Wechsel
 // =============================================================
 // Finger irgendwo auf der Bar runterdrücken und über die Symbole ziehen —
@@ -3252,6 +3564,9 @@ export default function App() {
         items={nav.filter(n => !n.soon).slice(0, 5)}
         view={view}
         setView={setView} />
+
+      {/* KI-Coach (Floating-Chat) */}
+      <FloatingChat data={effectiveData} setData={save} profile={profile} />
     </div>
   );
 }
