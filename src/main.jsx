@@ -2,8 +2,15 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './ArtCycCoach.jsx';
 import { I18nProvider } from './lib/i18n.jsx';
+import { initErrorReporter } from './lib/errorReporter.js';
+import { ErrorBoundary } from './lib/ErrorBoundary.jsx';
 import './index.css';
 import { registerSW } from 'virtual:pwa-register';
+
+// Frontend-Fehler im Hintergrund an den Entwickler mailen.
+// Muss vor dem Render passieren, damit window.onerror/unhandledrejection
+// auch frühe Crashes (z. B. beim Bootstrap) einfangen.
+initErrorReporter();
 
 // PWA-Update: zeigt einen Reload-Banner wenn neue Version verfügbar.
 // skipWaiting+clientsClaim in vite.config.js sorgt dafür, dass die neue
@@ -32,8 +39,10 @@ registerSW({
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <I18nProvider>
-      <App />
-    </I18nProvider>
+    <ErrorBoundary>
+      <I18nProvider>
+        <App />
+      </I18nProvider>
+    </ErrorBoundary>
   </React.StrictMode>,
 );
