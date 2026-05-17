@@ -8378,12 +8378,23 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
   // Wertungsbericht aus PDF-Text parsen
   const parseWertungsbericht = (text) => {
     const result = { errors: [] };
-    // Bekannte Feld-Labels — Pattern stoppt am nächsten Label (Browser liefert oft alles in einer Zeile)
-    // WICHTIG: STOP erfordert nach dem Label einen `:` — sonst würde z.B. "Ort: Karlsruhe-Datum…"
-    // fälschlich am "Datum" stoppen. Außerdem (.*?) statt (.+?), damit ein leeres Feld
-    // (z.B. PDF mit "Ort:" direkt gefolgt von "Datum:") sauber als null erkannt wird,
-    // statt den Inhalt des nächsten Labels einzusaugen.
-    const STOP = '(?=\\s*(?:Wettbewerb|Ort|Datum|Ausrichter|Startnummer|Starter|Verein|Disziplin|Üb-Nr|Übungstext|Ansager|Schreiber|Chief|Abzug|Gesamtabzug|Aufgestellte|Endergebnis|Ausgefahrene)\\s*:|\\n|\\r|$)';
+    // STOP-Lookahead: Pattern muss zwei Sorten Begrenzer akzeptieren, weil das PDF
+    // alles in eine Zeile streamt:
+    //   1. Echte Labels mit Doppelpunkt — z.B. "Datum:", "Startnummer:" — sicher
+    //      identifizierbar. (Schlichtes \b reichte hier nicht: ein Ortsname wie
+    //      "Karlsruhe-Datum-Land" hätte fälschlich an "Datum" gestoppt.)
+    //   2. Tabellen-Header ohne Doppelpunkt — "Üb-Nr", "Übungstext", "Pkte" — die
+    //      direkt nach den Stammdaten als Spalten-Überschriften auftauchen. Diese
+    //      brauchen \b, weil kein : folgt. Erste Kategorie scheitert daran, dass
+    //      sonst der Ausrichter-Wert in den Tabellen-Header reinläuft.
+    // (.*?) statt (.+?), damit ein leeres Feld (PDF mit "Ort:" direkt gefolgt
+    // von "Datum:") sauber als null erkannt wird statt den Folge-Wert einzusaugen.
+    const LABELS_WITH_COLON = '(?:Wettbewerb|Ort|Datum|Ausrichter|Startnummer|Starter|Verein|Disziplin|Ansager|Schreiber|Chief|Abzug|Gesamtabzug|Aufgestellte|Endergebnis|Ausgefahrene)';
+    // \b funktioniert in JS-Regex nur mit ASCII — `Üb-Nr` startet mit Ü und hätte
+    // keine Wortgrenze davor. Daher fordern wir explizit \s+ (mindestens 1 Whitespace)
+    // vor dem Tabellen-Marker.
+    const TABLE_MARKERS = '(?:Üb-Nr|Übungstext|Pkte)';
+    const STOP = '(?=\\s*' + LABELS_WITH_COLON + '\\s*:|\\s+' + TABLE_MARKERS + '|\\n|\\r|$)';
     const field = (label) => {
       const m = text.match(new RegExp(label + ':\\s*(.*?)' + STOP));
       if (!m) return null;
