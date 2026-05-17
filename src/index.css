@@ -176,3 +176,41 @@ html[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator,
 html[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator {
   filter: invert(0.9);
 }
+
+/* =============================================================
+   iOS-Style Form-Inputs
+   =============================================================
+   Globale Override für alle Form-Inputs, die noch das alte
+   slate-300-Border-Pattern verwenden (Editoren). Statt jeden der
+   ~40 Inputs einzeln im JSX umzustellen, mappen wir das Pattern
+   hier zentral auf den iOS-Look (kein Border, dezent grauer
+   Hintergrund, Brand-Orange Focus-Ring).
+   ============================================================= */
+input.border-slate-300,
+textarea.border-slate-300,
+select.border-slate-300 {
+  border-color: transparent !important;
+  background-color: #F2F2F7 !important;
+  border-radius: 14px !important;
+  padding-top: 0.7rem !important;
+  padding-bottom: 0.7rem !important;
+  transition: box-shadow 0.15s ease;
+}
+input.border-slate-300:focus,
+textarea.border-slate-300:focus,
+select.border-slate-300:focus {
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(255, 149, 0, 0.4) !important;
+}
+html[data-theme="dark"] input.border-slate-300,
+html[data-theme="dark"] textarea.border-slate-300,
+html[data-theme="dark"] select.border-slate-300 {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  border-color: transparent !important;
+  color: #fff;
+}
+
+/* Focus-Ring im alten amber → ans Brand-Orange anpassen */
+.focus\:ring-amber-500:focus {
+  --tw-ring-color: rgba(255, 149, 0, 0.45) !important;
+}
