@@ -1,0 +1,46 @@
+name: UCI-Reglement wöchentlich prüfen
+
+# Läuft jeden Montag um 03:00 UTC (= 04:00 MEZ / 05:00 MESZ) und kann
+# zusätzlich manuell vom „Run workflow"-Knopf gestartet werden.
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+env:
+  SUPABASE_PROJECT_REF: cpxsfctijcsezkspjlxy
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Edge Function uci-rules-check triggern
+        env:
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          CRON_SECRET:       ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET-Secret fehlt — bitte in den Repo-Secrets setzen."
+            exit 1
+          fi
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::SUPABASE_ANON_KEY-Secret fehlt."
+            exit 1
+          fi
+          URL="https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/uci-rules-check"
+          HTTP_CODE=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+            -X POST "$URL" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "x-cron-secret: $CRON_SECRET")
+          echo "HTTP $HTTP_CODE"
+          cat /tmp/resp.json
+          echo
+          if [ "$HTTP_CODE" -ge 400 ]; then
+            echo "::error::uci-rules-check failed (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+          # Zusammenfassung im Action-Log
+          CHANGED=$(jq -r '.changed // 0' /tmp/resp.json)
+          CHECKED=$(jq -r '.checked // 0' /tmp/resp.json)
+          echo "::notice::UCI-Check fertig: $CHECKED Quellen geprüft, $CHANGED geändert."
