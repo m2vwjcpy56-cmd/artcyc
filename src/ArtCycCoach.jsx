@@ -2041,8 +2041,29 @@ const DISCIPLINES = [
 
 // Globale Referenz auf aktive Datenbank — wird von App via setActiveDb() umgeschaltet
 let activeUciDb = UCI_DB_2026;
+let activeUciByCode = new Map(UCI_DB_2026.map(e => [e.c, e]));
 function getUciDb() { return activeUciDb; }
-function setActiveDb(db) { activeUciDb = (db && db.length > 0) ? db : UCI_DB_2026; }
+function setActiveDb(db) {
+  activeUciDb = (db && db.length > 0) ? db : UCI_DB_2026;
+  activeUciByCode = new Map(activeUciDb.map(e => [e.c, e]));
+}
+
+// Lokalisierter Übungs-Name: wenn die Übung einen UCI-Code hat, ziehen wir
+// den Namen aus der aktiven UCI-DB (die schon in der gewählten Reglement-
+// Sprache geladen ist). Sonst Fallback auf den vom User gespeicherten
+// Namen. Damit folgt auch eine schon angelegte User-Übung der Sprach-
+// Einstellung, ohne dass der User sie umbenennen muss.
+function localizedExerciseName(ex) {
+  if (!ex) return '';
+  // Akzeptiert sowohl `uci_code` (User-Übungen) als auch `code` (Programm-
+  // Übungs-Einträge) — beide Schemata kommen im Code vor.
+  const code = ex.uci_code || ex.code;
+  if (code) {
+    const hit = activeUciByCode.get(code);
+    if (hit && hit.n) return hit.n;
+  }
+  return ex.name || '';
+}
 
 const DATA_KEY = 'artcyc:test:v3';
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -5095,7 +5116,7 @@ function ExerciseStatsCard({ ex, total, success, fail, third, rate, riskRate, se
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-lg">{ex.name}</h3>
+            <h3 className="font-semibold text-lg">{localizedExerciseName(ex)}</h3>
             {ex.uci_code && (
               <span className="bg-sky-100 text-sky-700 text-xs font-medium px-2 py-0.5 rounded-full">
                 UCI {ex.uci_code}
@@ -5508,7 +5529,7 @@ function TrainingView({ data, setData, setView }) {
           className="w-full px-3 py-2.5 bg-white rounded-xl outline-none text-[15px] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
           <option value="">{t('training.allExercises', { n: totalCount })}</option>
           {exerciseList.map(e => (
-            <option key={e.id} value={e.id}>{e.name}</option>
+            <option key={e.id} value={e.id}>{localizedExerciseName(e)}</option>
           ))}
         </select>
       )}
@@ -6681,7 +6702,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
             <ChevronLeft size={28} strokeWidth={2.6} />
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-[28px] font-bold tracking-tight leading-tight">{exercise.name}</h1>
+            <h1 className="text-[28px] font-bold tracking-tight leading-tight">{localizedExerciseName(exercise)}</h1>
             <div className="flex items-center gap-2 flex-wrap mt-1.5">
               {exercise.uci_code && (
                 <span className="bg-sky-100 text-sky-700 text-xs font-medium px-2 py-0.5 rounded-full">
@@ -7190,7 +7211,7 @@ function UebungenView({ data, setData, onBack }) {
                 onClick={() => setSelected(ex)}
                 className={!ex.active ? 'opacity-60' : ''}>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-medium text-[15px] text-[#000]">{ex.name}</h3>
+                  <h3 className="font-medium text-[15px] text-[#000]">{localizedExerciseName(ex)}</h3>
                   {ex.uci_code && <IOSTag color="blue">UCI {ex.uci_code}</IOSTag>}
                   {ex.category_mode === 3 && <IOSTag color="orange">3-Status</IOSTag>}
                   {!ex.active && <IOSTag color="gray">archiviert</IOSTag>}
@@ -7554,7 +7575,7 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
                 <optgroup label={t('log.exerciseTrained')}>
                   {exerciseSort.trained.map(e => (
                     <option key={e.id} value={e.id}>
-                      {e.name}
+                      {localizedExerciseName(e)}
                     </option>
                   ))}
                 </optgroup>
@@ -7563,7 +7584,7 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
                 <optgroup label={exerciseSort.trained.length > 0 ? t('log.exerciseUntrained') : t('log.exerciseAll')}>
                   {exerciseSort.untrained.map(e => (
                     <option key={e.id} value={e.id}>
-                      {e.name}
+                      {localizedExerciseName(e)}
                     </option>
                   ))}
                 </optgroup>
@@ -7990,7 +8011,7 @@ function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onRemove }) {
         <div className="flex-1 min-w-0">
           {ex.name ? (
             <>
-              <div className="font-medium text-[15px] truncate">{ex.name}</div>
+              <div className="font-medium text-[15px] truncate">{localizedExerciseName(ex)}</div>
               <div className="text-[12px] text-[#8E8E93]">
                 {ex.code ? 'UCI ' + ex.code : 'Eigene'} · {Number(ex.points).toFixed(1)} Pkt.
               </div>
@@ -9006,7 +9027,7 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                       <span className="text-slate-700 font-medium">{Number(ex.points).toFixed(1)} Pkt</span>
                     )}
                   </div>
-                  <div className="font-medium text-sm leading-tight mt-0.5">{ex.name}</div>
+                  <div className="font-medium text-sm leading-tight mt-0.5">{localizedExerciseName(ex)}</div>
                 </div>
                 <div className={'text-sm font-bold shrink-0 ' + (total > 0 ? 'text-rose-600' : 'text-slate-400')}>
                   {total > 0 ? '-' + total.toFixed(2) : '0'}
@@ -9080,7 +9101,7 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                 <tr key={ex.id} className="border-b border-slate-100">
                   <td className="py-1.5 px-1 text-slate-500">{ex.nr}</td>
                   <td className="py-1.5 px-1">
-                    <div className="font-medium leading-tight line-clamp-2">{ex.name}</div>
+                    <div className="font-medium leading-tight line-clamp-2">{localizedExerciseName(ex)}</div>
                     {ex.code && <div className="text-[10px] text-slate-400">{ex.code}</div>}
                   </td>
                   <td className="py-1.5 px-1 text-center text-slate-600">
@@ -9305,7 +9326,7 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
                 {exerciseStats.slice(0, 12).map(ex => (
                   <div key={ex.id} className="px-4 py-3 flex items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-[15px] truncate">{ex.name || 'Übung'}</div>
+                      <div className="font-medium text-[15px] truncate">{localizedExerciseName(ex) || t('nav.uebungen')}</div>
                       <div className="text-[13px] text-slate-500">
                         {ex.total} Serien · {ex.success} geklappt
                       </div>
@@ -10334,7 +10355,7 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
                             <span className="text-slate-700 font-medium">{Number(ex.points).toFixed(1)} Pkt</span>
                           )}
                         </div>
-                        <div className="text-sm font-medium leading-tight mt-0.5">{ex.name}</div>
+                        <div className="text-sm font-medium leading-tight mt-0.5">{localizedExerciseName(ex)}</div>
                         {hasAnyValue && (
                           <div className="flex flex-wrap gap-2 mt-1.5 text-xs">
                             {e.cross > 0 && <span className="text-slate-700"><strong>x</strong>×{e.cross}</span>}
