@@ -8714,19 +8714,66 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
 
   const canSave = name.trim() && program;
 
+  // Abbrechen mit Confirm, damit der User nicht versehentlich Daten verliert.
+  // (User-Feedback: hat versehentlich „Fertig" gedrückt und alles war weg.)
+  const handleCancel = () => {
+    const confirmMsg = t('competition.discardChanges');
+    if (window.confirm(confirmMsg)) onCancel();
+  };
+
   return (
     <div className="-mx-3 sm:mx-0">
       {/* iOS Sticky Top-Bar */}
-      <div className="sticky top-0 z-10 ios-header-bg backdrop-blur-xl px-4 py-3 flex items-center justify-between">
-        <button onClick={onCancel} className="text-[17px] text-[#007AFF] active:opacity-60 flex items-center -ml-1">
-          <ChevronLeft size={22} strokeWidth={2.6} className="text-[#FF9500]" /> Zurück
+      <div className="sticky top-0 z-20 ios-header-bg backdrop-blur-xl px-4 py-3 flex items-center justify-between border-b border-black/5 dark:border-white/5">
+        <button onClick={handleCancel} className="text-[17px] text-[#007AFF] active:opacity-60 px-1">
+          {t('common.cancel')}
         </button>
-        <h1 className="font-semibold text-[17px] truncate px-2">{isNew ? 'Wertungsbogen' : 'Wettkampf'}</h1>
+        <h1 className="font-semibold text-[17px] truncate px-2">{isNew ? t('competition.scoreSheet') : t('competition.editTitle')}</h1>
         <button onClick={save} disabled={!canSave}
           className="text-[17px] text-[#FF9500] font-semibold active:opacity-60 disabled:opacity-30 px-1">
-          Fertig
+          {t('common.save')}
         </button>
       </div>
+
+      {/* Sticky Score-Card direkt unter dem Header — beim Scrollen immer sichtbar */}
+      {program && (
+        <div className="sticky top-[52px] z-10 px-3 pt-2 pb-2 ios-header-bg backdrop-blur-xl">
+          <div className="bg-slate-900 text-white rounded-2xl px-3 py-2 grid grid-cols-3 items-center gap-2 shadow-[0_4px_12px_rgba(0,0,0,0.15)]">
+            <div className="text-center">
+              <div className="text-[10px] text-slate-400 uppercase tracking-wide leading-tight">{t('competition.tabled')}</div>
+              <div className="text-[17px] font-bold leading-tight tabular-nums">{(t1 && t1.aufgestellt || 0).toFixed(2)}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-[10px] text-slate-400 uppercase tracking-wide leading-tight">KG 1 · 2</div>
+              <div className="text-[13px] font-bold leading-tight tabular-nums">
+                {t1 && t1.ergebnis.toFixed(2)}<span className="text-slate-500 mx-1">·</span>{t2 && t2.ergebnis.toFixed(2)}
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-[10px] text-amber-300 uppercase tracking-wide leading-tight">{t('competition.finalScore')}</div>
+              <div className="text-[22px] font-bold text-amber-400 leading-tight tabular-nums">{finalScore.toFixed(2)}</div>
+            </div>
+          </div>
+          {/* Ziel-Vergleich (wenn target_score gesetzt) */}
+          {(() => {
+            const target = Number(targetScore);
+            if (!targetScore || !Number.isFinite(target) || target <= 0) return null;
+            const diff = finalScore - target;
+            const diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2);
+            const color = diff >= 0 ? 'text-emerald-400' : 'text-rose-400';
+            return (
+              <div className="mt-1.5 bg-slate-900 text-white rounded-xl px-3 py-1.5 flex items-baseline justify-between shadow-[0_4px_12px_rgba(0,0,0,0.15)]">
+                <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                  <Target size={12} /> {t('competition.targetScore')}: <strong className="text-white tabular-nums">{target.toFixed(2)}</strong>
+                </div>
+                <div className={'text-[15px] font-bold tabular-nums ' + color}>
+                  {diffStr}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       <div className="px-3 py-4 space-y-5">
 
@@ -8893,47 +8940,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
         </div>
       </div>
 
-      {/* Live-Ergebnis */}
-      {program && (
-        <div className="bg-slate-900 text-white rounded-2xl p-4 space-y-3">
-          <div className="grid grid-cols-3 gap-3 text-center">
-            <div>
-              <div className="text-xs text-slate-400">Aufgestellt</div>
-              <div className="text-xl font-bold">{(t1 && t1.aufgestellt || 0).toFixed(2)}</div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-400">KG 1 / KG 2</div>
-              <div className="text-base font-bold">
-                {t1 && t1.ergebnis.toFixed(2)}
-                <span className="text-slate-500 mx-1">·</span>
-                {t2 && t2.ergebnis.toFixed(2)}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-amber-300">Endergebnis</div>
-              <div className="text-2xl font-bold text-amber-400">{finalScore.toFixed(2)}</div>
-            </div>
-          </div>
-          {/* Ziel-Vergleich (wenn target_score gesetzt) */}
-          {(() => {
-            const target = Number(targetScore);
-            if (!targetScore || !Number.isFinite(target) || target <= 0) return null;
-            const diff = finalScore - target;
-            const diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2);
-            const color = diff >= 0 ? 'text-emerald-400' : 'text-rose-400';
-            return (
-              <div className="border-t border-slate-700 pt-3 flex items-baseline justify-between">
-                <div className="text-xs text-slate-400 flex items-center gap-1.5">
-                  <Target size={14} /> Ziel-Endergebnis: <strong className="text-white">{target.toFixed(2)}</strong>
-                </div>
-                <div className={'text-lg font-bold ' + color}>
-                  {diffStr}
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      )}
+      {/* (Live-Ergebnis-Card wurde nach oben verschoben — direkt unter Header sticky) */}
 
       {/* Tisch-Tabs */}
       {program && (
@@ -8983,16 +8990,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
         </>
       )}
 
-      <div className="bg-white rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-        <IOSListRow
-          onClick={canSave ? save : undefined}
-          trailing={<Save size={18} className={canSave ? 'text-[#FF9500]' : 'text-[#C7C7CC]'} />}
-          className={canSave ? '' : 'opacity-40'}>
-          <span className={'text-[15px] font-semibold ' + (canSave ? 'text-[#FF9500]' : 'text-[#8E8E93]')}>
-            Wettkampf speichern
-          </span>
-        </IOSListRow>
-      </div>
+      {/* Speichern erfolgt über den „Speichern"-Button oben rechts im Header. */}
       </div>
     </div>
   );

@@ -167,6 +167,12 @@ const dict = {
     'competition.newScoresheet': 'Wertungsbogen',
     'competition.editCompetition': 'Wettkampf',
     'competition.saveCompetition': 'Wettkampf speichern',
+    'competition.scoreSheet': 'Wertungsbogen',
+    'competition.editTitle': 'Wettkampf',
+    'competition.tabled': 'Aufgestellt',
+    'competition.finalScore': 'Endergebnis',
+    'competition.targetScore': 'Ziel-Endergebnis',
+    'competition.discardChanges': 'Änderungen verwerfen? Alle nicht gespeicherten Eingaben gehen verloren.',
 
     // Sportler
     'athletes.title': 'Sportler',
@@ -537,6 +543,12 @@ const dict = {
     'competition.newScoresheet': 'Scoresheet',
     'competition.editCompetition': 'Competition',
     'competition.saveCompetition': 'Save competition',
+    'competition.scoreSheet': 'Scoresheet',
+    'competition.editTitle': 'Competition',
+    'competition.tabled': 'Tabled',
+    'competition.finalScore': 'Final score',
+    'competition.targetScore': 'Target score',
+    'competition.discardChanges': 'Discard changes? All unsaved entries will be lost.',
 
     'athletes.title': 'Athletes',
     'athletes.newAthlete': 'New',
