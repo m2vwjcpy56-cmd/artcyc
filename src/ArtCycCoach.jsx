@@ -4951,21 +4951,35 @@ function TrainingHeatmap({ sessions }) {
   );
 }
 
-function StatCard({ icon: Icon, label, value, sub, color }) {
+function StatCard({ icon: Icon, label, value, sub, color = 'sky', size = 'normal' }) {
+  // Farb-Map: jede Farbe deckt Hintergrund, Akzent (Icon + Label) und Border ab.
+  // Bei dunklen Modi greift dark:* damit die Cards auf dem dunklen Dashboard
+  // gut wirken (siehe Screenshot des Users).
   const colors = {
-    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    sky: 'bg-sky-50 text-sky-700 border-sky-100',
-    violet: 'bg-violet-50 text-violet-700 border-violet-100',
-    amber: 'bg-amber-50 text-amber-700 border-amber-100'
+    amber:   'bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/40',
+    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/40',
+    sky:     'bg-sky-50 text-sky-700 border-sky-100 dark:bg-sky-950/30 dark:text-sky-300 dark:border-sky-900/40',
+    violet:  'bg-violet-50 text-violet-700 border-violet-100 dark:bg-violet-950/30 dark:text-violet-300 dark:border-violet-900/40',
+    orange:  'bg-orange-50 text-orange-700 border-orange-100 dark:bg-orange-950/30 dark:text-orange-300 dark:border-orange-900/40',
+    rose:    'bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-900/40',
+    blue:    'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-900/40',
+    slate:   'bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900/40 dark:text-slate-300 dark:border-slate-800',
   };
+  const sizes = {
+    normal: { wrap: 'p-4', icon: 14, label: 'text-xs', value: 'text-2xl', sub: 'text-xs' },
+    large:  { wrap: 'p-5', icon: 16, label: 'text-[13px]', value: 'text-[32px] leading-tight', sub: 'text-[13px]' },
+  };
+  const s = sizes[size] || sizes.normal;
   return (
-    <div className={'rounded-2xl border p-4 ' + colors[color]}>
+    <div className={'rounded-2xl border ' + s.wrap + ' ' + (colors[color] || colors.sky)}>
       <div className="flex items-center gap-1.5 mb-1.5">
-        <Icon size={14} />
-        <span className="text-xs font-medium">{label}</span>
+        <Icon size={s.icon} />
+        <span className={s.label + ' font-medium'}>{label}</span>
       </div>
-      <div className="text-2xl font-bold text-slate-900">{value}</div>
-      <div className="text-xs text-slate-500 mt-0.5">{sub}</div>
+      <div className={s.value + ' font-bold text-slate-900 dark:text-white'}>{value}</div>
+      {sub !== undefined && sub !== '' && (
+        <div className={s.sub + ' text-slate-500 dark:text-slate-400 mt-0.5'}>{sub}</div>
+      )}
     </div>
   );
 }
@@ -6823,6 +6837,44 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
             </div>
           </div>
         </header>
+
+        {/* Top-Stats: 2x2 farbige StatCards für Erfolgsquote, Sessions, Versuche, Wettkämpfe */}
+        {trainStats.total > 0 && (
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard
+              icon={Target}
+              label={t('detail.successRate')}
+              value={trainStats.rate + '%'}
+              sub={trainStats.success + ' / ' + trainStats.total}
+              color={trainStats.rate >= 80 ? 'emerald' : trainStats.rate >= 60 ? 'amber' : 'rose'}
+            />
+            <StatCard
+              icon={Dumbbell}
+              label={t('detail.sessions')}
+              value={trainStats.sessions}
+              sub={t('detail.attempts') + ': ' + trainStats.total}
+              color="violet"
+            />
+            {compList.length > 0 && (
+              <StatCard
+                icon={Trophy}
+                label={t('detail.competitions')}
+                value={compList.length}
+                sub={compList[0]?.competition?.date ? formatDateShort(compList[0].competition.date) : t('detail.noData')}
+                color="orange"
+              />
+            )}
+            {sessionList.length > 0 && (
+              <StatCard
+                icon={Calendar}
+                label={t('detail.lastTrained')}
+                value={formatDateShort(sessionList[0].session.date)}
+                sub={sessionList[0].rate + '% · ' + sessionList[0].success + '/' + sessionList[0].total}
+                color="sky"
+              />
+            )}
+          </div>
+        )}
 
         {/* KI-Insight — regel-basierter Trainer-Tipp (1 Zeile bei wenig Daten, ausführlich ab ≥ 30 Versuchen) */}
         {(() => {
@@ -10274,6 +10326,7 @@ function ExportTraining({ data }) {
 // WETTKAMPF-DETAIL (read-only)
 // =============================================================
 function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDelete }) {
+  const { t } = useI18n();
   const [activeTable, setActiveTable] = useState(1);
 
   if (!competition) return null;
@@ -10335,35 +10388,39 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
         </div>
       </div>
 
-      {/* Ergebnis-Übersicht */}
+      {/* Ergebnis-Übersicht — farbige StatCards im Dashboard-Stil */}
       {t1 && t2 && (
-        <div className="bg-slate-900 text-white rounded-2xl p-4">
-          <div className="grid grid-cols-2 gap-3 text-center mb-3">
-            <div className="bg-slate-800 rounded-xl p-3">
-              <div className="text-xs text-slate-400 uppercase tracking-wide">Aufgestellt</div>
-              <div className="text-2xl font-bold mt-1">{t1.aufgestellt.toFixed(2)}</div>
-            </div>
-            <div className="bg-amber-500 text-slate-900 rounded-xl p-3">
-              <div className="text-xs uppercase tracking-wide font-semibold">Endergebnis</div>
-              <div className="text-2xl font-bold mt-1">{finalScore !== null ? finalScore.toFixed(2) : '—'}</div>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="bg-slate-800 rounded-xl p-3">
-              <div className="text-xs text-slate-400">Kampfgericht 1</div>
-              <div className="font-bold text-lg">{t1.ergebnis.toFixed(2)}</div>
-              <div className="text-xs text-slate-400 mt-1">
-                Ausf -{t1.abzugAusfuehrung.toFixed(2)} · Schw -{t1.abzugSchwierigkeit.toFixed(2)}
-              </div>
-            </div>
-            <div className="bg-slate-800 rounded-xl p-3">
-              <div className="text-xs text-slate-400">Kampfgericht 2</div>
-              <div className="font-bold text-lg">{t2.ergebnis.toFixed(2)}</div>
-              <div className="text-xs text-slate-400 mt-1">
-                Ausf -{t2.abzugAusfuehrung.toFixed(2)} · Schw -{t2.abzugSchwierigkeit.toFixed(2)}
-              </div>
-            </div>
-          </div>
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard
+            icon={Trophy}
+            label={t('detail.finalScore')}
+            value={finalScore !== null ? finalScore.toFixed(2) : t('detail.noData')}
+            sub={t('detail.difficulty') + ': ' + t1.aufgestellt.toFixed(2)}
+            color="orange"
+            size="large"
+          />
+          <StatCard
+            icon={Sparkles}
+            label={t('detail.difficulty')}
+            value={t1.aufgestellt.toFixed(2)}
+            sub=""
+            color="violet"
+            size="large"
+          />
+          <StatCard
+            icon={BarChart3}
+            label={t('detail.kg1Score')}
+            value={t1.ergebnis.toFixed(2)}
+            sub={'-' + t1.abzugAusfuehrung.toFixed(2) + ' · -' + t1.abzugSchwierigkeit.toFixed(2)}
+            color="sky"
+          />
+          <StatCard
+            icon={BarChart3}
+            label={t('detail.kg2Score')}
+            value={t2.ergebnis.toFixed(2)}
+            sub={'-' + t2.abzugAusfuehrung.toFixed(2) + ' · -' + t2.abzugSchwierigkeit.toFixed(2)}
+            color="emerald"
+          />
         </div>
       )}
 

@@ -226,6 +226,18 @@ const dict = {
 
     'dashboard.activityFooter': '{n} Tage · {series} Serien',
 
+    'detail.successRate': 'Erfolgsquote',
+    'detail.attempts': 'Versuche',
+    'detail.sessions': 'Sessions',
+    'detail.competitions': 'Wettkämpfe',
+    'detail.bestStreak': 'Beste Serie',
+    'detail.lastTrained': 'Zuletzt trainiert',
+    'detail.kg1Score': 'KG1',
+    'detail.kg2Score': 'KG2',
+    'detail.difficulty': 'Schwierigkeit',
+    'detail.finalScore': 'Endergebnis',
+    'detail.noData': '—',
+
     // Einstellungen
     'settings.title': 'Einstellungen',
     'settings.subtitle': 'Account, Erscheinungsbild, Daten',
@@ -522,6 +534,18 @@ const dict = {
 
     'dashboard.activityFooter': '{n} days · {series} series',
 
+    'detail.successRate': 'Success rate',
+    'detail.attempts': 'Attempts',
+    'detail.sessions': 'Sessions',
+    'detail.competitions': 'Competitions',
+    'detail.bestStreak': 'Best streak',
+    'detail.lastTrained': 'Last trained',
+    'detail.kg1Score': 'KG1',
+    'detail.kg2Score': 'KG2',
+    'detail.difficulty': 'Difficulty',
+    'detail.finalScore': 'Final score',
+    'detail.noData': '—',
+
     'settings.title': 'Settings',
     'settings.subtitle': 'Account, appearance, data',
     'settings.account': 'Account',
@@ -814,6 +838,18 @@ const dict = {
 
     'dashboard.activityFooter': '{n} jours · {series} séries',
 
+    'detail.successRate': 'Taux de réussite',
+    'detail.attempts': 'Essais',
+    'detail.sessions': 'Sessions',
+    'detail.competitions': 'Compétitions',
+    'detail.bestStreak': 'Meilleure série',
+    'detail.lastTrained': 'Dernier entraînement',
+    'detail.kg1Score': 'KG1',
+    'detail.kg2Score': 'KG2',
+    'detail.difficulty': 'Difficulté',
+    'detail.finalScore': 'Résultat final',
+    'detail.noData': '—',
+
     'settings.title': 'Réglages',
     'settings.subtitle': 'Compte, apparence, données',
     'settings.account': 'Compte',
@@ -1067,6 +1103,18 @@ const dict = {
 
     'dashboard.activityFooter': '{n} giorni · {series} serie',
 
+    'detail.successRate': 'Tasso di successo',
+    'detail.attempts': 'Tentativi',
+    'detail.sessions': 'Sessioni',
+    'detail.competitions': 'Gare',
+    'detail.bestStreak': 'Miglior serie',
+    'detail.lastTrained': 'Ultimo allenamento',
+    'detail.kg1Score': 'KG1',
+    'detail.kg2Score': 'KG2',
+    'detail.difficulty': 'Difficoltà',
+    'detail.finalScore': 'Risultato finale',
+    'detail.noData': '—',
+
     'settings.title': 'Impostazioni',
     'settings.subtitle': 'Account, aspetto, dati',
     'settings.account': 'Account',
@@ -1319,6 +1367,18 @@ const dict = {
     'uci.activeDb': 'Base de datos activa:',
 
     'dashboard.activityFooter': '{n} días · {series} series',
+
+    'detail.successRate': 'Tasa de éxito',
+    'detail.attempts': 'Intentos',
+    'detail.sessions': 'Sesiones',
+    'detail.competitions': 'Competiciones',
+    'detail.bestStreak': 'Mejor racha',
+    'detail.lastTrained': 'Último entreno',
+    'detail.kg1Score': 'KG1',
+    'detail.kg2Score': 'KG2',
+    'detail.difficulty': 'Dificultad',
+    'detail.finalScore': 'Resultado final',
+    'detail.noData': '—',
 
     'settings.title': 'Ajustes',
     'settings.subtitle': 'Cuenta, apariencia, datos',
