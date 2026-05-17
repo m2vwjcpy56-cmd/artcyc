@@ -1,0 +1,62 @@
+name: UCI-PDFs neu parsen (manuell)
+
+# Manuell anzustoßen, wenn die wöchentliche Check-Action (uci-rules-cron)
+# eine Hash-Änderung gemeldet hat. Lädt die PDFs runter, parst sie und
+# committet die aktualisierten docs/uci-exercises-<lang>-seed.sql-Files.
+# Der nächste Push auf main triggert dann den DB-Sync via dem
+# bestehenden deploy-edge-functions-Workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch für den Commit (default: aktueller Branch)'
+        required: false
+        default: ''
+
+jobs:
+  reparse:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Parse alle aktiven PDF-Quellen
+        run: |
+          # Quellen-URLs sind in der DB, aber für die GH-Action duplizieren
+          # wir sie hier — Quelle der Wahrheit bleibt docs/uci-rules-setup.sql.
+          node scripts/parse-uci-pdf.mjs \
+            "https://kunstradreglement.com/images/PDF/datenfiles_kufa/2026/UCI-Reglement%20Kunstrad%202026%20deutsch.pdf" \
+            de
+          node scripts/parse-uci-pdf.mjs \
+            "https://kunstradreglement.com/images/PDF/datenfiles_kufa/2026/PART_8_E_-_As_of_01.02.2026.pdf" \
+            en
+          echo "── Geänderte Files:"
+          git status --short docs/
+
+      - name: Commit & push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/uci-exercises-*-seed.sql
+          if git diff --cached --quiet; then
+            echo "::notice::Keine Änderungen in den Seed-Files — nichts zu committen."
+            exit 0
+          fi
+          git commit -m "$(cat <<'EOF'
+          UCI-Reglement: PDF-Parse neu durchgelaufen
+
+          Auto-generiert vom uci-pdfs-reparse-Workflow nach Hash-Änderung.
+          EOF
+          )"
+          git push

@@ -64,13 +64,22 @@ create policy "uci_rules_versions_select_authenticated"
   to authenticated
   using (true);
 
--- Initialer Seed der drei zu überwachenden Quellen
+-- Initialer Seed der zu überwachenden Quellen — UPDATE statt DO NOTHING,
+-- damit bei einer URL-Änderung (z. B. neue Reglement-Jahresversion) das
+-- nächste Deploy die Quelle automatisch übernimmt.
+--
+-- Stand 2026: Französisch ist NICHT direkt verfügbar — User mit FR-
+-- Sprache sehen über die Fallback-Kaskade die englische Variante.
+-- Sobald eine FR-Quelle existiert, hier einfach ergänzen.
 insert into public.uci_rules_versions (lang, pdf_url)
 values
-  ('en', 'https://archive.uci.org/docs/default-source/rules-and-regulations/part-viii--indoor-cycling---artistic-cycling.pdf'),
-  ('de', 'https://kunstradreglement.com/images/PDF/datenfiles_kufa/2026/UCI-Reglement%20Kunstrad%202026%20deutsch.pdf'),
-  ('fr', 'https://kunstradreglement.com/images/PDF/datenfiles_kufa/2026/UCI-Reglement%20Kunstrad%202026%20francais.pdf')
-on conflict (lang) do nothing;
+  ('en', 'https://kunstradreglement.com/images/PDF/datenfiles_kufa/2026/PART_8_E_-_As_of_01.02.2026.pdf'),
+  ('de', 'https://kunstradreglement.com/images/PDF/datenfiles_kufa/2026/UCI-Reglement%20Kunstrad%202026%20deutsch.pdf')
+on conflict (lang) do update set pdf_url = excluded.pdf_url;
+
+-- Falls aus früherem Setup eine FR-Row existiert, wegräumen (sonst gibt's
+-- jeden Montag einen 404-Alert).
+delete from public.uci_rules_versions where lang = 'fr';
 
 -- =============================================================
 -- 3. App-Notices (In-App-Banner für Reglement-Updates etc.)

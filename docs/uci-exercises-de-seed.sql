@@ -1,10 +1,12 @@
 -- =============================================================
--- UCI-Übungen 2026 — Seed der name_de-Spalte
+-- UCI-Übungen: name_de-Updates aus PDF
 -- =============================================================
--- Auto-generiert von scripts/seed-uci-db.mjs aus UCI_DB_2026
--- in src/ArtCycCoach.jsx. NICHT manuell editieren — bei Code-
--- Änderungen Script neu laufen lassen:
---   node scripts/seed-uci-db.mjs > docs/uci-exercises-seed.sql
+-- Quelle: https://kunstradreglement.com/images/PDF/datenfiles_kufa/2026/UCI-Reglement%20Kunstrad%202026%20deutsch.pdf
+-- Geparst: 2026-05-17T09:49:28.330Z
+-- Treffer: 2034 Codes
+--
+-- Auto-generiert von scripts/parse-uci-pdf.mjs — NICHT manuell editieren.
+-- Idempotent (ON CONFLICT DO UPDATE).
 -- =============================================================
 
 insert into public.uci_exercises (code, discipline, points, name_de, version)
@@ -1541,6 +1543,70 @@ insert into public.uci_exercises (code, discipline, points, name_de, version)
     discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
 insert into public.uci_exercises (code, discipline, points, name_de, version)
   values ('1293b', '1er', 3.6, 'Übergang Kehrsteuerrohrsteiger Standsteiger', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301a', '1er', 1.4, 'Reitsitz Lenkerhocke', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301b', '1er', 1.9, 'Seitpedalstand Hocke über das Rad', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301c', '1er', 3.5, 'Reitsitz Lenkergrätsche', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301d', '1er', 2.5, 'Reitsitz Lenkerhocke mit ½ Schraube', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301e', '1er', 1.6, 'Kehrlenkersitz Lenkerhocke', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301f', '1er', 3.7, 'Kehrlenkersitz Lenkergrätsche', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301g', '1er', 9.1, 'Sattelbeugestand Handstandüberschlag', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301h', '1er', 10.2, 'Reitsitz Handstandüberschlag', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301i', '1er', 4.3, 'Frontlenkerstand Strecksprung hinter das Rad', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301j', '1er', 5.1, 'Frontlenkerstand Strecksprung ½ Schraube vor das Rad', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301k', '1er', 4.7, 'Frontlenkerstand Grätschsprung hinter das Rad', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301l', '1er', 4.6, 'Kehrlenkerstand Strecksprung vor das Rad', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301m', '1er', 6.2, 'Kehrlenkerstand Strecksprung 1 Schraube vor das Rad', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301n', '1er', 11.1, 'Kehrlenkerstand Salto rw. gehockt', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301o', '1er', 4.1, 'Handstand umgelegtes Rad', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301q', '1er', 8.3, '§ 2 2er Kunstradsport', '2026')
   on conflict (code, version) do update set
     discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
 insert into public.uci_exercises (code, discipline, points, name_de, version)
@@ -3636,6 +3702,18 @@ insert into public.uci_exercises (code, discipline, points, name_de, version)
   on conflict (code, version) do update set
     discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
 insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('2472b', '2er', 9.7, 'Übergang Reitsitzsteiger Steuerrohrsteiger / Schulterstand', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('2473a', '2er', 5.9, 'Übergang Lenkersitzsteiger Steuerrohrsteiger / Schultersitz', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('2473b', '2er', 8.2, 'Übergang Lenkersitzsteiger Steuerrohrsteiger / Schulterstand', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
   values ('4001a', '4er', 0.8, '4 hinter. HR.', '2026')
   on conflict (code, version) do update set
     discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
@@ -5616,6 +5694,22 @@ insert into public.uci_exercises (code, discipline, points, name_de, version)
   on conflict (code, version) do update set
     discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
 insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('4342a', '4er', 7.1, '4er Stg. ½ Standdrehung', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('4342b', '4er', 8.1, '4er Stg. 1 Standdrehung', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('4342c', '4er', 9.1, '4er Stg. 1½ Standdrehungen', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('4342d', '4er', 10.1, '4er Stg. 2 Standdrehungen', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
   values ('6001a', '6er', 0.8, '6 hinter. HR.', '2026')
   on conflict (code, version) do update set
     discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
@@ -6800,7 +6894,7 @@ insert into public.uci_exercises (code, discipline, points, name_de, version)
   on conflict (code, version) do update set
     discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
 insert into public.uci_exercises (code, discipline, points, name_de, version)
-  values ('6236e', '6er', 4.8, 'Zwei Außenringe Stg. an­ u. abgef. frh.', '2026')
+  values ('6236e', '6er', 4.8, 'Zwei Außenringe Stg. an- u. abgef. frh.', '2026')
   on conflict (code, version) do update set
     discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
 insert into public.uci_exercises (code, discipline, points, name_de, version)
@@ -7312,7 +7406,7 @@ insert into public.uci_exercises (code, discipline, points, name_de, version)
   on conflict (code, version) do update set
     discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
 insert into public.uci_exercises (code, discipline, points, name_de, version)
-  values ('6354c', '6er', 6, '2er Flügelmühle Stg. rw. an­ u. abgef. frh.', '2026')
+  values ('6354c', '6er', 6, '2er Flügelmühle Stg. rw. an- u. abgef. frh.', '2026')
   on conflict (code, version) do update set
     discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
 insert into public.uci_exercises (code, discipline, points, name_de, version)
@@ -8052,6 +8146,7 @@ insert into public.uci_exercises (code, discipline, points, name_de, version)
   on conflict (code, version) do update set
     discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
 
--- Seed-Verifizierung:
---   select count(*) from public.uci_exercises where version = '2026';
---   -- erwartet: 2011
+-- Verifizieren:
+--   select code, name_de, name_de from public.uci_exercises where version = '2026' and name_de is not null limit 10;
+--   select count(*) from public.uci_exercises where version = '2026' and name_de is not null;
+--   -- erwartet: ~2034
