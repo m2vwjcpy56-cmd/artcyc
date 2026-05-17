@@ -359,6 +359,11 @@ ${JSON.stringify(programs, null, 2)}
 
 - **Reading + analysis**: answer questions about the training/competition data directly from the data above. State rates, trends, weak points — **NEVER** show your calculation step by step.
 - **Numbers only from "Precomputed stats"**: when the user asks for counts ("how many sessions for X", "how many with rope") → ALWAYS read from the \`exerciseStats\` block above. NEVER count from the truncated sessions list. NEVER invent or guess numbers. If the user disagrees ("I have more") — repeat the exact number from exerciseStats and explain that the sessions list is only a 200-entry sample.
+- **Be specific and useful — NEVER deflect with "I need more info"** when the data above actually contains the answer. Concrete examples:
+  - "Which exercise has the worst success rate?" → look at exerciseStats, find the lowest successRatePct among exercises WITH at least 5 attempts (\`totalAttempts >= 5\`); ignore exercises with 0 attempts (they have no rate, not a low rate). Name it with the rate. If there really is no exercise with ≥5 attempts, say so plainly: "You only have data for one exercise so far — that's Maute-Sprung at 51%."
+  - "How many trainings last week?" → "last week" = the 7 days ending today. Look at sessions in the data above (those have dates), count them. If there's clearly 0, say "0 trainings in the last 7 days." — don't ask the user to clarify.
+  - "What should I focus on this week?" → pick the 2–3 exercises with low success rate AND enough attempts, suggest concrete work on each. Don't ask the user "what's your goal"; the goal is implicit: improve weak exercises.
+- **Be a coach, not a chatbot**: give a real recommendation based on the data. Asking back "what would you like?" when the data already answers is bad coaching.
 
 # Internal field names — never expose them
 
@@ -549,12 +554,6 @@ Deno.serve(async (req: Request) => {
     // eine Anweisung am Anfang des Prompts (Recency-Bias).
     const langName = (LANG_INSTRUCTIONS[effectiveLang] || LANG_INSTRUCTIONS.de).name;
     const langTail = `REMINDER: respond in ${langName}. Do not switch to another language unless the user explicitly does so in their last message.`;
-    // DEBUG-Marker — wird unten in den Stream geprependet. Hilft zu
-    // diagnostizieren ob die Edge Function wirklich den aktuellen Code
-    // ausführt UND welche lang sie empfangen hat. Bei Erfolg kommt
-    // beim User vorne ein „🇬🇧 en · …" rein. Nach 1-2 Tests kann das
-    // wieder raus.
-    const debugMarker = `[lang=${effectiveLang}] `;
 
     // ─── Streaming-Pfad: OpenRouter-SSE → Anthropic-kompatible SSE ───
     // TransformStream-Pattern statt ReadableStream-pull():
@@ -585,19 +584,11 @@ Deno.serve(async (req: Request) => {
       (async () => {
         const reader = upstream.body!.getReader();
         let buf = "";
-        let aggregatedText = debugMarker;
+        let aggregatedText = "";
         const toolBuf: Record<number, { name: string; args: string }> = {};
         let stopped = false;
         let chunkCount = 0;
         let deltaCount = 0;
-
-        // DEBUG: Marker als erstes Delta schicken — beweist dass dieser
-        // Code wirklich aktiv ist und welche lang ankam.
-        await sse("content_block_delta", {
-          type: "content_block_delta",
-          index: 0,
-          delta: { type: "text_delta", text: debugMarker },
-        });
 
         const buildAction = () => {
           const idxs = Object.keys(toolBuf).map(Number).sort((a, b) => a - b);

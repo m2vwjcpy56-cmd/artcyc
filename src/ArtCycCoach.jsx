@@ -3345,9 +3345,6 @@ function FloatingChat({ data, setData, profile, refreshers }) {
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-amber-500" />
                 <span className="font-semibold text-[15px]">KI-Coach</span>
-                <span className="text-[10px] uppercase tracking-wider text-[#8E8E93] bg-slate-100 px-1.5 py-0.5 rounded font-mono" title={'lang sent to backend: ' + lang}>
-                  {lang}
-                </span>
               </div>
               <button onClick={clearChat} disabled={messages.length === 0}
                 className="text-slate-500 text-[13px] disabled:opacity-30">{t('chat.titleNew')}</button>
@@ -4100,9 +4097,19 @@ export default function App() {
   }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob]);
 
   if (!authChecked || loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F2F2F7] text-[#8E8E93]"
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#F2F2F7] gap-5"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif' }}>
-      Lade ArtCyc Coach…
+      <div className="w-20 h-20 bg-gradient-to-br from-slate-900 to-slate-700 rounded-[24px] flex items-center justify-center shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
+        <Trophy className="text-amber-400" size={38} />
+      </div>
+      <div className="flex flex-col items-center gap-3">
+        <span className="text-[22px] font-bold tracking-tight text-[#0f172a] dark:text-white">ArtCyc Coach</span>
+        <div className="flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#FF9500] animate-pulse" />
+          <span className="w-1.5 h-1.5 rounded-full bg-[#FF9500] animate-pulse" style={{ animationDelay: '150ms' }} />
+          <span className="w-1.5 h-1.5 rounded-full bg-[#FF9500] animate-pulse" style={{ animationDelay: '300ms' }} />
+        </div>
+      </div>
     </div>
   );
 
