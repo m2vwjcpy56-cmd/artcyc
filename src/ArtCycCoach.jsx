@@ -3345,6 +3345,9 @@ function FloatingChat({ data, setData, profile, refreshers }) {
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-amber-500" />
                 <span className="font-semibold text-[15px]">KI-Coach</span>
+                <span className="text-[10px] uppercase tracking-wider text-[#8E8E93] bg-slate-100 px-1.5 py-0.5 rounded font-mono" title={'lang sent to backend: ' + lang}>
+                  {lang}
+                </span>
               </div>
               <button onClick={clearChat} disabled={messages.length === 0}
                 className="text-slate-500 text-[13px] disabled:opacity-30">{t('chat.titleNew')}</button>
