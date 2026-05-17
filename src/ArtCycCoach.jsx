@@ -8317,6 +8317,7 @@ function ValidationCheck({ pdfRef, t1, t2 }) {
 }
 
 function WettkampfEditor({ competition, programs, athletes, existingExercises, onSave, onCancel }) {
+  const { t } = useI18n();
   const isNew = !competition;
   const [name, setName] = useState((competition && competition.name) || '');
   const [date, setDate] = useState((competition && competition.date) || new Date().toISOString().slice(0, 10));
@@ -8731,28 +8732,28 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
 
       {/* PDF-Import (Beta) - nur bei neuen Wettkämpfen */}
       {isNew && (
-        <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4 space-y-3">
+        <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-900/40 rounded-2xl p-4 space-y-3">
           <div className="flex items-start gap-2">
-            <FileText size={18} className="text-violet-700 shrink-0 mt-0.5" />
-            <div className="text-sm text-violet-900">
-              <strong>Wertungsbericht importieren (Beta)</strong>
+            <FileText size={18} className="text-violet-700 dark:text-violet-300 shrink-0 mt-0.5" />
+            <div className="text-sm text-violet-900 dark:text-violet-200">
+              <strong>{t('pdfImport.bannerTitle')}</strong>
               <p className="text-xs mt-0.5 opacity-90">
-                PDF auswählen → Stammdaten und alle Abzüge pro Übung werden automatisch gesetzt.
+                {t('pdfImport.bannerHint')}
               </p>
             </div>
           </div>
 
           {!importPreview && (
             <div className="grid grid-cols-2 gap-2">
-              <label className="bg-white border border-violet-300 hover:bg-violet-50 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
-                <FileText size={14} /> PDF auswählen
+              <label className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
+                <FileText size={14} /> {t('pdfImport.choosePdf')}
                 <input type="file" accept="application/pdf"
                   onChange={e => handlePdfImport(e.target.files && e.target.files[0])}
                   className="hidden" />
               </label>
               <button onClick={() => setShowPasteArea(!showPasteArea)}
-                className="bg-white border border-violet-300 hover:bg-violet-50 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center">
-                <Edit2 size={14} /> {showPasteArea ? 'Text-Eingabe schließen' : 'Text einfügen'}
+                className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center">
+                <Edit2 size={14} /> {showPasteArea ? t('pdfImport.closePaste') : t('pdfImport.pasteText')}
               </button>
             </div>
           )}
@@ -8760,62 +8761,62 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
           {showPasteArea && !importPreview && (
             <div className="space-y-2">
               <textarea value={pasteText} onChange={e => setPasteText(e.target.value)}
-                placeholder="Falls PDF-Upload nicht klappt: PDF in einem Viewer öffnen, gesamten Text markieren (Strg+A), kopieren (Strg+C) und hier einfügen."
+                placeholder={t('pdfImport.pastePlaceholder')}
                 rows={4}
-                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 font-mono" />
+                className="w-full text-xs px-3 py-2 bg-white dark:bg-white/10 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 font-mono" />
               <button onClick={handlePasteImport} disabled={!pasteText.trim()}
-                className="bg-violet-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50">
-                Text auswerten
+                className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50">
+                {t('pdfImport.evaluateText')}
               </button>
             </div>
           )}
 
           {importStatus === 'parsing' && (
-            <div className="bg-white rounded-xl p-3 text-sm text-violet-900">⏳ {importMsg}</div>
+            <div className="bg-white dark:bg-white/10 rounded-xl p-3 text-sm text-violet-900 dark:text-violet-100">⏳ {importMsg}</div>
           )}
           {importStatus === 'error' && (
-            <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-900">
+            <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 rounded-xl p-3 text-sm text-rose-900 dark:text-rose-200">
               ✗ {importMsg}
               <div className="text-xs mt-1 opacity-80">
-                Tipp: Versuche „Text einfügen" als Alternative.
+                {t('pdfImport.errorTip')}
               </div>
             </div>
           )}
           {importStatus === 'success' && importPreview && (
-            <div className="bg-white rounded-xl p-3 space-y-2">
-              <div className="text-sm font-medium text-emerald-900">✓ Erkannt:</div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                {importPreview.wettbewerb && <div><span className="text-slate-500">Wettbewerb:</span> <strong>{importPreview.wettbewerb}</strong></div>}
-                {importPreview.datum && <div><span className="text-slate-500">Datum:</span> <strong>{importPreview.datum}</strong></div>}
-                {importPreview.ort && <div><span className="text-slate-500">Ort:</span> <strong>{importPreview.ort}</strong></div>}
-                {importPreview.ausrichter && <div><span className="text-slate-500">Ausrichter:</span> <strong>{importPreview.ausrichter}</strong></div>}
-                {importPreview.startnr && <div><span className="text-slate-500">Startnr:</span> <strong>{importPreview.startnr}</strong></div>}
-                {importPreview.starter && <div><span className="text-slate-500">Starter:</span> <strong>{importPreview.starter}</strong></div>}
-                {importPreview.disziplin && <div className="col-span-2"><span className="text-slate-500">Disziplin:</span> <strong>{importPreview.disziplin}</strong></div>}
-                {typeof importPreview.aufgestellt === 'number' && <div><span className="text-slate-500">Aufgestellt:</span> <strong>{importPreview.aufgestellt.toFixed(2)}</strong></div>}
-                {typeof importPreview.endergebnis === 'number' && <div className="col-span-2 text-amber-700"><span className="text-slate-500">Endergebnis (laut PDF):</span> <strong>{importPreview.endergebnis.toFixed(2)}</strong></div>}
+            <div className="bg-white dark:bg-white/10 rounded-xl p-3 space-y-2">
+              <div className="text-sm font-medium text-emerald-900 dark:text-emerald-300">✓ {t('pdfImport.recognized')}</div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-900 dark:text-slate-100">
+                {importPreview.wettbewerb && <div><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.competition')}:</span> <strong>{importPreview.wettbewerb}</strong></div>}
+                {importPreview.datum && <div><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.date')}:</span> <strong>{importPreview.datum}</strong></div>}
+                {importPreview.ort && <div><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.location')}:</span> <strong>{importPreview.ort}</strong></div>}
+                {importPreview.ausrichter && <div><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.host')}:</span> <strong>{importPreview.ausrichter}</strong></div>}
+                {importPreview.startnr && <div><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.startNr')}:</span> <strong>{importPreview.startnr}</strong></div>}
+                {importPreview.starter && <div><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.starter')}:</span> <strong>{importPreview.starter}</strong></div>}
+                {importPreview.disziplin && <div className="col-span-2"><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.discipline')}:</span> <strong>{importPreview.disziplin}</strong></div>}
+                {typeof importPreview.aufgestellt === 'number' && <div><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.tabled')}:</span> <strong>{importPreview.aufgestellt.toFixed(2)}</strong></div>}
+                {typeof importPreview.endergebnis === 'number' && <div className="col-span-2 text-amber-700 dark:text-amber-300"><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.finalScorePdf')}:</span> <strong>{importPreview.endergebnis.toFixed(2)}</strong></div>}
               </div>
               {importPreview.exerciseRows && importPreview.exerciseRows.length > 0 ? (
-                <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2">
-                  ✓ <strong>{importPreview.exerciseRows.length} Übungen</strong> automatisch erkannt
+                <p className="text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 rounded-lg p-2">
+                  ✓ <strong>{t('pdfImport.exercisesRecognized', { n: importPreview.exerciseRows.length })}</strong>
                 </p>
               ) : (
-                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                  ⚠️ Pro-Übung-Werte konnten nicht erkannt werden — nur Stammdaten und Schwierigkeit werden gesetzt. Abzüge bitte manuell pro Übung eintragen.
+                <p className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-lg p-2">
+                  {t('pdfImport.noExerciseRows')}
                 </p>
               )}
               {importPreview.warnings && importPreview.warnings.length > 0 && (
-                <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-lg p-2">
                   ⚠️ {importPreview.warnings.join(' · ')}
                 </div>
               )}
               <div className="flex gap-2 pt-1">
                 <button onClick={() => applyImport(importPreview)}
-                  className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1">
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1">
                   <Check size={14} /> {t('pdfImport.apply')}
                 </button>
                 <button onClick={() => { setImportPreview(null); setImportStatus(null); setImportMsg(''); }}
-                  className="bg-white border border-slate-300 px-3 py-1.5 rounded-lg text-sm font-medium">
+                  className="bg-white dark:bg-white/10 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 px-3 py-1.5 rounded-lg text-sm font-medium">
                   {t('pdfImport.discard')}
                 </button>
               </div>
