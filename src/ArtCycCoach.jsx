@@ -8379,9 +8379,13 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
   const parseWertungsbericht = (text) => {
     const result = { errors: [] };
     // Bekannte Feld-Labels — Pattern stoppt am nächsten Label (Browser liefert oft alles in einer Zeile)
-    const STOP = '(?=\\s*(?:Wettbewerb|Ort|Datum|Ausrichter|Startnummer|Starter|Verein|Disziplin|Üb-Nr|Übungstext|Ansager|Schreiber|Chief|Abzug|Gesamtabzug|Aufgestellte|Endergebnis|Ausgefahrene)\\b|\\n|\\r|$)';
+    // WICHTIG: STOP erfordert nach dem Label einen `:` — sonst würde z.B. "Ort: Karlsruhe-Datum…"
+    // fälschlich am "Datum" stoppen. Außerdem (.*?) statt (.+?), damit ein leeres Feld
+    // (z.B. PDF mit "Ort:" direkt gefolgt von "Datum:") sauber als null erkannt wird,
+    // statt den Inhalt des nächsten Labels einzusaugen.
+    const STOP = '(?=\\s*(?:Wettbewerb|Ort|Datum|Ausrichter|Startnummer|Starter|Verein|Disziplin|Üb-Nr|Übungstext|Ansager|Schreiber|Chief|Abzug|Gesamtabzug|Aufgestellte|Endergebnis|Ausgefahrene)\\s*:|\\n|\\r|$)';
     const field = (label) => {
-      const m = text.match(new RegExp(label + ':\\s*(.+?)' + STOP));
+      const m = text.match(new RegExp(label + ':\\s*(.*?)' + STOP));
       if (!m) return null;
       // Aufräumen: zu langes? abschneiden
       let v = m[1].trim();
