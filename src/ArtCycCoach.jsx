@@ -4437,23 +4437,23 @@ function AuthScreen() {
         </div>
 
         <div className="text-center mb-6">
-          <div className="w-14 h-14 bg-gradient-to-br from-slate-900 to-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm">
-            <Trophy className="text-amber-400" size={26} />
+          <div className="w-16 h-16 bg-gradient-to-br from-[#FF9500] to-[#FF6D00] rounded-[20px] flex items-center justify-center mx-auto mb-3 shadow-[0_4px_14px_rgba(255,149,0,0.35)]">
+            <Trophy className="text-white" size={30} strokeWidth={2.2} />
           </div>
           <h1 className="text-[28px] font-bold tracking-tight">ArtCyc Coach</h1>
           <p className="text-[#8E8E93] text-[14px]">{t('auth.appTagline')}</p>
         </div>
 
-        {/* Mode-Tabs */}
-        <div className="bg-[#E5E5EA] rounded-xl p-1 flex gap-1 mb-5">
+        {/* Mode-Tabs — iOS Segmented Control */}
+        <div className="bg-[#E5E5EA] dark:bg-white/10 rounded-2xl p-1 flex gap-1 mb-6">
           <button type="button" onClick={() => { setMode('login'); setErr(''); setInfo(''); }}
-            className={'flex-1 py-2 rounded-lg text-[14px] font-medium transition ' +
-              (mode === 'login' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
+            className={'flex-1 py-2 rounded-xl text-[14px] font-semibold transition ' +
+              (mode === 'login' ? 'ios-seg-active' : 'text-[#3C3C43] dark:text-slate-300 active:opacity-70')}>
             {t('auth.signIn')}
           </button>
           <button type="button" onClick={() => { setMode('signup'); setErr(''); setInfo(''); }}
-            className={'flex-1 py-2 rounded-lg text-[14px] font-medium transition ' +
-              (mode === 'signup' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
+            className={'flex-1 py-2 rounded-xl text-[14px] font-semibold transition ' +
+              (mode === 'signup' ? 'ios-seg-active' : 'text-[#3C3C43] dark:text-slate-300 active:opacity-70')}>
             {t('auth.signUp')}
           </button>
         </div>
@@ -4462,23 +4462,27 @@ function AuthScreen() {
           {mode === 'signup' && (
             <>
               <div>
-                <label className="text-xs font-medium text-slate-500 block mb-1">{t('auth.displayName')}</label>
+                <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">{t('auth.displayName')}</label>
                 <input value={displayName} onChange={e => setDisplayName(e.target.value)}
                   placeholder="z.B. Ruben"
                   autoComplete="name"
-                  className="w-full px-3 py-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+                  className="w-full px-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-500 block mb-1">{t('auth.role')}</label>
+                <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">{t('auth.role')}</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => setRole('athlete')}
-                    className={'py-2.5 px-3 rounded-xl border text-sm font-medium flex items-center justify-center gap-1.5 ' +
-                      (role === 'athlete' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300')}>
+                    className={'py-3 px-3 rounded-2xl text-[14px] font-medium flex items-center justify-center gap-1.5 transition ' +
+                      (role === 'athlete'
+                        ? 'bg-[#FF9500] text-white shadow-[0_2px_8px_rgba(255,149,0,0.3)]'
+                        : 'bg-[#F2F2F7] dark:bg-white/5 text-[#3C3C43] active:opacity-70')}>
                     <Dumbbell size={16} /> {t('auth.roleAthlete')}
                   </button>
                   <button type="button" onClick={() => setRole('coach')}
-                    className={'py-2.5 px-3 rounded-xl border text-sm font-medium flex items-center justify-center gap-1.5 ' +
-                      (role === 'coach' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300')}>
+                    className={'py-3 px-3 rounded-2xl text-[14px] font-medium flex items-center justify-center gap-1.5 transition ' +
+                      (role === 'coach'
+                        ? 'bg-[#FF9500] text-white shadow-[0_2px_8px_rgba(255,149,0,0.3)]'
+                        : 'bg-[#F2F2F7] dark:bg-white/5 text-[#3C3C43] active:opacity-70')}>
                     <UserCog size={16} /> {t('auth.roleCoach')}
                   </button>
                 </div>
@@ -4487,49 +4491,49 @@ function AuthScreen() {
           )}
 
           <div>
-            <label className="text-xs font-medium text-slate-500 block mb-1">{t('auth.email')}</label>
+            <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">{t('auth.email')}</label>
             <div className="relative">
-              <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
               <input type="email" value={email} onChange={e => setEmail(e.target.value)}
                 placeholder="name@beispiel.de"
                 autoComplete="email"
                 inputMode="email"
-                className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+                className="w-full pl-11 pr-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-medium text-slate-500 block mb-1">
-              {t('auth.password')} {mode === 'signup' && <span className="text-slate-400">(min. 10)</span>}
+            <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">
+              {t('auth.password')} {mode === 'signup' && <span className="text-[#C7C7CC]">(min. 10)</span>}
             </label>
             <div className="relative">
-              <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <KeyRound size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
               <input type="password" value={password} onChange={e => setPassword(e.target.value)}
                 placeholder={t('auth.password')}
                 autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+                className="w-full pl-11 pr-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
             </div>
           </div>
 
           {err && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-900 text-sm rounded-xl p-3">
+            <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-rose-900 dark:text-rose-300 text-[14px] rounded-2xl p-3">
               ✗ {err}
             </div>
           )}
           {info && (
-            <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 text-sm rounded-xl p-3">
+            <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/40 text-emerald-900 dark:text-emerald-300 text-[14px] rounded-2xl p-3">
               ✓ {info}
             </div>
           )}
 
           <button type="submit" disabled={!canSubmit || busy}
-            className="bg-slate-900 text-white px-5 py-3 rounded-2xl font-semibold w-full active:scale-[0.98] transition shadow-sm disabled:opacity-50">
+            className="bg-[#FF9500] text-white px-5 py-3.5 rounded-full font-semibold w-full text-[15px] active:scale-[0.98] transition shadow-[0_4px_14px_rgba(255,149,0,0.35)] disabled:opacity-40 disabled:shadow-none">
             {busy ? '…' : (mode === 'login' ? t('auth.signIn') : t('auth.signUp'))}
           </button>
 
           {mode === 'login' && (
             <button type="button" onClick={forgot} disabled={busy}
-              className="text-sm text-[#007AFF] block mx-auto mt-2 disabled:opacity-50">
+              className="text-[14px] text-[#007AFF] block mx-auto mt-2 active:opacity-60 disabled:opacity-50 font-medium">
               {t('auth.forgotPassword')}
             </button>
           )}
