@@ -3649,9 +3649,9 @@ function Brand({ size = 'md' }) {
   const iconSize = size === 'sm' ? 18 : 22;
   const titleClass = size === 'sm' ? 'text-[15px] font-semibold tracking-tight' : 'text-[17px] font-bold tracking-tight';
   return (
-    <div className="flex items-center gap-2.5 select-none">
-      <div className="w-8 h-8 bg-gradient-to-br from-[#FF9500] to-[#FF6D00] rounded-xl flex items-center justify-center shadow-[0_2px_6px_rgba(255,149,0,0.35)]">
-        <Trophy className="text-white" size={iconSize - 4} strokeWidth={2.2} />
+    <div className="flex items-center gap-2 select-none">
+      <div className="w-8 h-8 bg-gradient-to-br from-slate-900 to-slate-700 rounded-xl flex items-center justify-center shadow-sm">
+        <Trophy className="text-amber-400" size={iconSize - 4} />
       </div>
       <span className={titleClass}>ArtCyc Coach</span>
     </div>
@@ -4437,8 +4437,8 @@ function AuthScreen() {
         </div>
 
         <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-gradient-to-br from-[#FF9500] to-[#FF6D00] rounded-[20px] flex items-center justify-center mx-auto mb-3 shadow-[0_4px_14px_rgba(255,149,0,0.35)]">
-            <Trophy className="text-white" size={30} strokeWidth={2.2} />
+          <div className="w-14 h-14 bg-gradient-to-br from-slate-900 to-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm">
+            <Trophy className="text-amber-400" size={26} />
           </div>
           <h1 className="text-[28px] font-bold tracking-tight">ArtCyc Coach</h1>
           <p className="text-[#8E8E93] text-[14px]">{t('auth.appTagline')}</p>
