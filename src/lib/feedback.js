@@ -21,10 +21,12 @@
 // =============================================================
 
 export const FEEDBACK_KEY = 'artcyc:feedback';
-// Ziel-Adresse für Mail-Fallback (mailto:-Link, falls die Edge Function
-// noch nicht eingerichtet ist). Wird auch im Auto-Mail-Versand der
-// Edge Function verwendet — dort aber via Env-Var FEEDBACK_EMAIL.
-export const FEEDBACK_EMAIL = 'attika-schubladen-0v@icloud.com';
+// Ziel-Adresse für den mailto:-Fallback (öffnet das System-Mail-Programm
+// falls der Cloud-Upload fehlschlägt). Kann via Vite-Env-Var
+// VITE_FEEDBACK_EMAIL überschrieben werden. Bewusst leer als Default,
+// damit keine Privat-Mail im Repo steht — der Cloud-Upload (Edge
+// Function) ist der primäre Pfad, der mailto-Fallback nur Notlösung.
+export const FEEDBACK_EMAIL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FEEDBACK_EMAIL) || '';
 
 export function getFeedback() {
   try {

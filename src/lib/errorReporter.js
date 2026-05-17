@@ -52,6 +52,40 @@ function fingerprintOf(message, stack) {
   return djb2((message || '') + '|' + stackHead);
 }
 
+// Strippt sensible Tokens (OAuth-Magic-Link, PKCE-Code, JWTs) aus einer
+// URL bevor sie in die Crash-Mail/DB wandert. Nimmt sowohl Query
+// (?access_token=...) als auch Hash (#access_token=...) — Supabase
+// schreibt nach dem Magic-Link kurzzeitig in den Hash.
+const SECRET_KEYS = new Set([
+  'access_token', 'refresh_token', 'token', 'code',
+  'id_token', 'session', 'apikey', 'api_key', 'password'
+]);
+function sanitizeUrl(rawUrl) {
+  if (!rawUrl) return '';
+  try {
+    const u = new URL(rawUrl);
+    for (const k of [...u.searchParams.keys()]) {
+      if (SECRET_KEYS.has(k.toLowerCase())) u.searchParams.set(k, '[redacted]');
+    }
+    // Hash kann selbst eine Query-String-Struktur haben
+    if (u.hash && u.hash.length > 1) {
+      const hashParams = new URLSearchParams(u.hash.slice(1));
+      let changed = false;
+      for (const k of [...hashParams.keys()]) {
+        if (SECRET_KEYS.has(k.toLowerCase())) {
+          hashParams.set(k, '[redacted]');
+          changed = true;
+        }
+      }
+      if (changed) u.hash = hashParams.toString();
+    }
+    return u.toString();
+  } catch {
+    // URL nicht parsebar — Plain-Text-Strip
+    return String(rawUrl).replace(/(access_token|refresh_token|token|code|id_token|apikey|api_key|password)=[^&#\s]+/gi, '$1=[redacted]');
+  }
+}
+
 function notify(detail) {
   try {
     window.dispatchEvent(new CustomEvent('artcyc:error-reported', { detail }));
@@ -97,7 +131,7 @@ export async function reportError(err, context = '', extra = null) {
     const payload = {
       message,
       stack,
-      url: typeof location !== 'undefined' ? location.href : '',
+      url: typeof location !== 'undefined' ? sanitizeUrl(location.href) : '',
       user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
       app_version: 'stufe8',
       context: ctxParts.filter(Boolean).join(' · ').slice(0, 1000),

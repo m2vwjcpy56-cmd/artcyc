@@ -32,7 +32,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "
 // @ts-ignore Deno-Runtime
 const RESEND_API_KEY            = Deno.env.get("RESEND_API_KEY") ?? "";
 // @ts-ignore Deno-Runtime
-const FEEDBACK_EMAIL            = Deno.env.get("FEEDBACK_EMAIL") ?? "attika-schubladen-0v@icloud.com";
+const FEEDBACK_EMAIL            = Deno.env.get("FEEDBACK_EMAIL") ?? "";
 // Resend liefert Mails unter dem onboarding@resend.dev-Sender ohne
 // Domain-Verification — perfekt für den schnellen Start.
 // @ts-ignore Deno-Runtime
@@ -79,27 +79,66 @@ async function sendMail({ from, to, subject, html, text, attachments }: {
 // ist (Resend-Limit liegt bei ~40 MB inkl. HTML — wir gehen auf 25 MB
 // summe und 10 MB pro File, damit der Insert nicht failt). Akzeptiert
 // pro Eintrag { name, type, content_base64 }.
+//
+// Hardening:
+//   • Extension-Whitelist (kein .exe, .html, .js, .svg, ...)
+//   • Filename auf [A-Za-z0-9._-] reduziert (verhindert Pfad-Traversal
+//     und exotische Unicode-Tricks in Mail-Clients)
+//   • content_type wird aus fester Map basierend auf Extension gesetzt —
+//     User-eingegebener MIME-Type wird verworfen (verhindert dass
+//     `image.png` als text/html geliefert wird)
 const MAX_PER_FILE_MB  = 10;
 const MAX_TOTAL_MB     = 25;
+const EXT_MIME: Record<string, string> = {
+  png:  "image/png",
+  jpg:  "image/jpeg",
+  jpeg: "image/jpeg",
+  gif:  "image/gif",
+  webp: "image/webp",
+  heic: "image/heic",
+  heif: "image/heif",
+  pdf:  "application/pdf",
+  txt:  "text/plain",
+  log:  "text/plain",
+  csv:  "text/csv",
+  json: "application/json",
+};
+function sanitizeFilename(raw: string): { name: string; ext: string } {
+  const base = raw.replace(/^.*[\\\/]/, "").slice(0, 200); // letztes Segment
+  // Nur ASCII-Whitelist erlauben; alles andere zu '_'
+  const cleaned = base.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^\.+/, "_") || "attachment";
+  const m = cleaned.match(/\.([A-Za-z0-9]+)$/);
+  const ext = m ? m[1].toLowerCase() : "";
+  return { name: cleaned, ext };
+}
 function normalizeAttachments(raw: unknown): { atts: ResendAttachment[]; warning: string | null } {
   if (!Array.isArray(raw) || raw.length === 0) return { atts: [], warning: null };
   const out: ResendAttachment[] = [];
   let totalBytes = 0;
   let skipped = 0;
+  const reasons: string[] = [];
   for (const a of raw) {
     if (!a || typeof a !== "object") { skipped++; continue; }
-    const filename = String((a as any).name || "attachment").slice(0, 200);
-    const type     = String((a as any).type || "application/octet-stream");
-    const content  = String((a as any).content_base64 || "");
-    if (!content) { skipped++; continue; }
-    // Base64 → ungefähre Byte-Größe = len * 0.75
-    const approxBytes = Math.floor(content.length * 0.75);
-    if (approxBytes > MAX_PER_FILE_MB * 1024 * 1024) { skipped++; continue; }
-    if (totalBytes + approxBytes > MAX_TOTAL_MB * 1024 * 1024) { skipped++; continue; }
+    const rawName = String((a as any).name || "attachment");
+    const content = String((a as any).content_base64 || "");
+    if (!content) { skipped++; reasons.push("empty"); continue; }
+
+    const { name: filename, ext } = sanitizeFilename(rawName);
+    const mime = EXT_MIME[ext];
+    if (!mime) { skipped++; reasons.push(`disallowed type: .${ext || "(none)"}`); continue; }
+
+    // Base64-Plausibilität: nur A-Z, a-z, 0-9, +, /, = erlaubt
+    if (!/^[A-Za-z0-9+/=\r\n]+$/.test(content)) { skipped++; reasons.push("invalid base64"); continue; }
+    const approxBytes = Math.floor(content.replace(/[\r\n=]/g, "").length * 0.75);
+    if (approxBytes > MAX_PER_FILE_MB * 1024 * 1024) { skipped++; reasons.push("file too large"); continue; }
+    if (totalBytes + approxBytes > MAX_TOTAL_MB * 1024 * 1024) { skipped++; reasons.push("total size exceeded"); continue; }
+
     totalBytes += approxBytes;
-    out.push({ filename, content, content_type: type });
+    out.push({ filename, content, content_type: mime });
   }
-  const warning = skipped > 0 ? `${skipped} Anhang/Anhänge übersprungen (Größenlimit)` : null;
+  const warning = skipped > 0
+    ? `${skipped} Anhang/Anhänge übersprungen (${[...new Set(reasons)].join(", ")})`
+    : null;
   return { atts: out, warning };
 }
 
@@ -192,10 +231,12 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // Mail verschicken (nur wenn Resend-Key da ist)
+  // Mail verschicken (nur wenn Resend-Key + Empfänger gesetzt sind)
   let mailSent = false;
   let mailError: string | null = null;
-  if (RESEND_API_KEY) {
+  if (!FEEDBACK_EMAIL) {
+    mailError = "FEEDBACK_EMAIL env-var not set";
+  } else if (RESEND_API_KEY) {
     const subject = `ArtCyc Coach Feedback — ${CATEGORY_LABELS[category] || category}`;
     const safeText = escapeHtml(text);
     const attachList = attachments.length

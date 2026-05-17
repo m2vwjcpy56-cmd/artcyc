@@ -38,7 +38,7 @@ const SUPABASE_ANON_KEY         = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 // @ts-ignore Deno-Runtime
 const RESEND_API_KEY            = Deno.env.get("RESEND_API_KEY") ?? "";
 // @ts-ignore Deno-Runtime
-const FEEDBACK_EMAIL            = Deno.env.get("FEEDBACK_EMAIL") ?? "attika-schubladen-0v@icloud.com";
+const FEEDBACK_EMAIL            = Deno.env.get("FEEDBACK_EMAIL") ?? "";
 // @ts-ignore Deno-Runtime
 const RESEND_FROM               = Deno.env.get("RESEND_FROM") ?? "ArtCyc Coach <onboarding@resend.dev>";
 
@@ -48,6 +48,59 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const JSON_HEADERS = { ...CORS_HEADERS, "Content-Type": "application/json; charset=utf-8" };
+
+// =============================================================
+// Rate-Limit (In-Memory). Funktion-Instanzen leben pro Deploy-Region
+// einige Minuten — d. h. ein Bucket pro Region. Reicht als Abwehr
+// gegen einen einzelnen Bot der den anon-Endpoint flutet.
+// =============================================================
+//   • pro IP: max 30 Reports / 60 s
+//   • pro Fingerprint: nur 1 DB-Insert / 5 min
+//   • pro Fingerprint: nur 1 Mail / 5 min (vermeidet Resend-Quota-Burn)
+const ipBuckets = new Map<string, number[]>();
+const fingerprintCooldown = new Map<string, number>();
+const IP_WINDOW_MS         = 60_000;
+const IP_MAX_PER_WINDOW    = 30;
+const FP_COOLDOWN_MS       = 5 * 60_000;
+
+function ipAllowed(ip: string): boolean {
+  const now = Date.now();
+  const arr = (ipBuckets.get(ip) ?? []).filter(ts => now - ts < IP_WINDOW_MS);
+  if (arr.length >= IP_MAX_PER_WINDOW) {
+    ipBuckets.set(ip, arr);
+    return false;
+  }
+  arr.push(now);
+  ipBuckets.set(ip, arr);
+  // Periodisches Aufräumen damit die Map nicht wächst
+  if (ipBuckets.size > 5000) {
+    for (const [k, v] of ipBuckets) {
+      if (!v.some(ts => now - ts < IP_WINDOW_MS)) ipBuckets.delete(k);
+    }
+  }
+  return true;
+}
+
+function fingerprintRecentlySeen(fp: string): boolean {
+  if (!fp) return false;
+  const now = Date.now();
+  const last = fingerprintCooldown.get(fp);
+  if (last && now - last < FP_COOLDOWN_MS) return true;
+  fingerprintCooldown.set(fp, now);
+  if (fingerprintCooldown.size > 5000) {
+    for (const [k, ts] of fingerprintCooldown) {
+      if (now - ts > FP_COOLDOWN_MS) fingerprintCooldown.delete(k);
+    }
+  }
+  return false;
+}
+
+function clientIp(req: Request): string {
+  // Supabase setzt x-forwarded-for; fallback: connection remote
+  const xff = req.headers.get("x-forwarded-for") || "";
+  const first = xff.split(",")[0]?.trim();
+  return first || req.headers.get("x-real-ip") || "unknown";
+}
 
 function escapeHtml(s: string): string {
   return s
@@ -59,6 +112,7 @@ function escapeHtml(s: string): string {
 
 async function sendMail({ subject, html, text }: { subject: string; html: string; text: string }) {
   if (!RESEND_API_KEY) return { ok: false, error: "no api key" };
+  if (!FEEDBACK_EMAIL) return { ok: false, error: "FEEDBACK_EMAIL env-var not set" };
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -78,6 +132,22 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
+  }
+
+  // IP-Rate-Limit zuerst — schützt vor Flood-Bots die nur den anon-Key haben.
+  const ip = clientIp(req);
+  if (!ipAllowed(ip)) {
+    return new Response(JSON.stringify({ error: "rate limited" }), {
+      status: 429, headers: JSON_HEADERS,
+    });
+  }
+
+  // Body-Größe begrenzen — der Request-Body kann sonst 1 MB Müll sein.
+  const lenHeader = parseInt(req.headers.get("content-length") || "0", 10);
+  if (lenHeader > 64 * 1024) {
+    return new Response(JSON.stringify({ error: "body too large" }), {
+      status: 413, headers: JSON_HEADERS,
+    });
   }
 
   let body: any = {};
@@ -121,10 +191,15 @@ Deno.serve(async (req: Request) => {
     } catch { /* schweigend ignorieren */ }
   }
 
-  // DB-Insert (best effort) via Service-Role, damit auch anonyme User-Crashes
-  // landen können. RLS bleibt aktiv für SELECT.
+  // Fingerprint-Cooldown: wenn derselbe Crash in den letzten 5 min schon
+  // gesehen wurde, schalten wir DB-Insert + Mail aus (Response trotzdem ok,
+  // damit der Client nicht retried).
+  const dedupSkip = fingerprintRecentlySeen(fingerprint);
+
+  // DB-Insert nur für eingeloggte User. Anonyme Crashes gehen nur per Mail —
+  // damit anonymer Spam keine Tabellen-Inserts auslösen kann.
   let rowId: string | null = null;
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+  if (!dedupSkip && userId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
     try {
       const supaService = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
       const { data: row } = await supaService
@@ -149,10 +224,10 @@ Deno.serve(async (req: Request) => {
     } catch { /* Tabelle fehlt evtl. — Mail trotzdem schicken */ }
   }
 
-  // Mail
+  // Mail — übersprungen wenn Fingerprint im Cooldown (siehe oben).
   let mailSent = false;
   let mailError: string | null = null;
-  if (RESEND_API_KEY) {
+  if (!dedupSkip && RESEND_API_KEY) {
     const userPart = userEmail
       ? `${escapeHtml(userDisplayName || "")} &lt;${escapeHtml(userEmail)}&gt;`
       : "anonym";
@@ -194,12 +269,14 @@ ${escapeHtml(message)}${stack ? "\n\n" + escapeHtml(stack) : ""}
     ].filter(Boolean).join("\n");
     const r = await sendMail({ subject, html, text: plain });
     if (r.ok) mailSent = true; else mailError = r.error || "unknown";
+  } else if (dedupSkip) {
+    mailError = "deduped (same fingerprint in cooldown)";
   } else {
     mailError = "RESEND_API_KEY fehlt";
   }
 
   return new Response(
-    JSON.stringify({ ok: true, id: rowId, mail_sent: mailSent, mail_error: mailError }),
+    JSON.stringify({ ok: true, id: rowId, mail_sent: mailSent, mail_error: mailError, deduped: dedupSkip }),
     { headers: JSON_HEADERS }
   );
 });
