@@ -549,6 +549,12 @@ Deno.serve(async (req: Request) => {
     // eine Anweisung am Anfang des Prompts (Recency-Bias).
     const langName = (LANG_INSTRUCTIONS[effectiveLang] || LANG_INSTRUCTIONS.de).name;
     const langTail = `REMINDER: respond in ${langName}. Do not switch to another language unless the user explicitly does so in their last message.`;
+    // DEBUG-Marker — wird unten in den Stream geprependet. Hilft zu
+    // diagnostizieren ob die Edge Function wirklich den aktuellen Code
+    // ausführt UND welche lang sie empfangen hat. Bei Erfolg kommt
+    // beim User vorne ein „🇬🇧 en · …" rein. Nach 1-2 Tests kann das
+    // wieder raus.
+    const debugMarker = `[lang=${effectiveLang}] `;
 
     // ─── Streaming-Pfad: OpenRouter-SSE → Anthropic-kompatible SSE ───
     // TransformStream-Pattern statt ReadableStream-pull():
@@ -575,15 +581,23 @@ Deno.serve(async (req: Request) => {
 
       // Im Hintergrund den Upstream lesen + Events rausschreiben.
       const reqId = crypto.randomUUID().slice(0, 8);
-      console.log("[" + reqId + "] stream start, model=" + OPENROUTER_MODEL);
+      console.log("[" + reqId + "] stream start, model=" + OPENROUTER_MODEL + " lang=" + effectiveLang);
       (async () => {
         const reader = upstream.body!.getReader();
         let buf = "";
-        let aggregatedText = "";
+        let aggregatedText = debugMarker;
         const toolBuf: Record<number, { name: string; args: string }> = {};
         let stopped = false;
         let chunkCount = 0;
         let deltaCount = 0;
+
+        // DEBUG: Marker als erstes Delta schicken — beweist dass dieser
+        // Code wirklich aktiv ist und welche lang ankam.
+        await sse("content_block_delta", {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: debugMarker },
+        });
 
         const buildAction = () => {
           const idxs = Object.keys(toolBuf).map(Number).sort((a, b) => a - b);
