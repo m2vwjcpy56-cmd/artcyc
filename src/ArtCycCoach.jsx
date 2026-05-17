@@ -3458,9 +3458,9 @@ function FloatingChat({ data, setData, profile, refreshers }) {
                     <span className="w-1.5 h-1.5 rounded-full bg-[#FF9500] animate-pulse" style={{ animationDelay: '300ms' }} />
                   </span>
                   <span>
-                    {phase === 'tool' ? 'Aktion wird vorbereitet…'
-                      : phase === 'writing' ? 'schreibt…'
-                      : 'denkt nach…'}
+                    {phase === 'tool' ? t('chat.phase.tool')
+                      : phase === 'writing' ? t('chat.phase.writing')
+                      : t('chat.phase.thinking')}
                   </span>
                 </div>
               )}

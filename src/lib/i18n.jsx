@@ -346,6 +346,9 @@ const dict = {
     'chat.placeholder': 'Frage stellen oder Auftrag geben…',
     'chat.titleNew': 'Neu',
     'chat.done': 'Fertig',
+    'chat.phase.thinking': 'denkt nach…',
+    'chat.phase.writing': 'schreibt…',
+    'chat.phase.tool': 'Aktion wird vorbereitet…',
 
     'aiInsight.title': 'Trainer-Tipp',
     'aiInsight.noData': 'Noch keine Trainingsdaten — beim nächsten Logbuch-Eintrag erscheint hier eine Einschätzung.',
@@ -691,6 +694,9 @@ const dict = {
     'chat.placeholder': 'Ask a question or give a task…',
     'chat.titleNew': 'New',
     'chat.done': 'Done',
+    'chat.phase.thinking': 'thinking…',
+    'chat.phase.writing': 'writing…',
+    'chat.phase.tool': 'preparing action…',
 
     'aiInsight.title': 'Coach tip',
     'aiInsight.noData': 'No training data yet — log a session and an insight will appear here.',
@@ -1034,6 +1040,9 @@ const dict = {
     'chat.placeholder': 'Pose une question ou donne une tâche…',
     'chat.titleNew': 'Nouveau',
     'chat.done': 'Terminé',
+    'chat.phase.thinking': 'réfléchit…',
+    'chat.phase.writing': 'écrit…',
+    'chat.phase.tool': 'prépare l\'action…',
 
     'aiInsight.title': 'Astuce coach',
     'aiInsight.noData': 'Pas encore de données — enregistre une session et un conseil apparaîtra ici.',
@@ -1338,6 +1347,9 @@ const dict = {
     'chat.placeholder': 'Fai una domanda o dai un incarico…',
     'chat.titleNew': 'Nuovo',
     'chat.done': 'Fatto',
+    'chat.phase.thinking': 'sta pensando…',
+    'chat.phase.writing': 'sta scrivendo…',
+    'chat.phase.tool': 'preparando azione…',
 
     'aiInsight.title': 'Consiglio coach',
     'aiInsight.noData': 'Nessun dato di allenamento ancora — registra una sessione e qui apparirà un consiglio.',
@@ -1642,6 +1654,9 @@ const dict = {
     'chat.placeholder': 'Haz una pregunta o un encargo…',
     'chat.titleNew': 'Nuevo',
     'chat.done': 'Listo',
+    'chat.phase.thinking': 'pensando…',
+    'chat.phase.writing': 'escribiendo…',
+    'chat.phase.tool': 'preparando acción…',
 
     'aiInsight.title': 'Consejo del coach',
     'aiInsight.noData': 'Aún sin datos de entrenamiento — registra una sesión y aquí aparecerá un consejo.',
