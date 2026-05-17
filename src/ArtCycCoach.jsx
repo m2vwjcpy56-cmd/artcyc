@@ -4042,28 +4042,39 @@ export default function App() {
 
   const save = useCallback(async (next) => {
     setActiveDb(next.uci_custom);
-    // Phase 9d-3: wenn migriert, Entitäten in DB syncen statt nur in Blob
+    // Phase 9d-3: wenn migriert, Entitäten in DB syncen statt nur in Blob.
+    // WICHTIG: Reihenfolge folgt Foreign-Key-Dependencies — Referenz-Tabellen
+    // VOR Tabellen, die sie referenzieren. Sonst kassiert Postgres FK-Violations
+    // (Supabase loggt nur in console.warn, deshalb sah's so aus als würde es
+    // 'einfach nicht speichern'). Konkrete Fälle:
+    //   competitions.program_id → programs.id  (Wettkampf nach Programm)
+    //   competitions.athlete_id → athletes.id  (Athleten gibt's bereits)
+    //   sessions.exercise_id    → exercises.id (Session nach Übung)
     if (data && data.migrated_to_tables) {
       try {
-        if (next.sessions) {
-          const currentSessions = dbSessions.map(dbSessionToBlob);
-          await syncSessionsToDb(currentSessions, next.sessions);
-          await refreshSessions();
+        // 1. Exercises (keine FKs)
+        if (next.exercises) {
+          const current = dbExercises.map(dbExerciseToBlob);
+          await syncListToDb(current, next.exercises, upsertExercise, deleteExercise, normalizeExercise);
+          await refreshExercises();
         }
-        if (next.competitions) {
-          const current = dbCompetitions.map(dbCompetitionToBlob);
-          await syncListToDb(current, next.competitions, upsertCompetition, deleteCompetition, normalizeCompetition);
-          await refreshCompetitions();
-        }
+        // 2. Programs (programs.exercises ist JSONB, keine echte FK)
         if (next.programs) {
           const current = dbPrograms.map(dbProgramToBlob);
           await syncListToDb(current, next.programs, upsertProgram, deleteProgram, normalizeProgram);
           await refreshPrograms();
         }
-        if (next.exercises) {
-          const current = dbExercises.map(dbExerciseToBlob);
-          await syncListToDb(current, next.exercises, upsertExercise, deleteExercise, normalizeExercise);
-          await refreshExercises();
+        // 3. Sessions (verweist auf exercises + athletes)
+        if (next.sessions) {
+          const currentSessions = dbSessions.map(dbSessionToBlob);
+          await syncSessionsToDb(currentSessions, next.sessions);
+          await refreshSessions();
+        }
+        // 4. Competitions zuletzt (verweist auf programs + athletes)
+        if (next.competitions) {
+          const current = dbCompetitions.map(dbCompetitionToBlob);
+          await syncListToDb(current, next.competitions, upsertCompetition, deleteCompetition, normalizeCompetition);
+          await refreshCompetitions();
         }
       } catch (e) {
         console.warn('DB-Sync fehlgeschlagen:', e);
