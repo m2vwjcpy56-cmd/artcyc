@@ -4251,13 +4251,13 @@ export default function App() {
         }}>
         <Brand size="sm" />
         <div className="flex items-center gap-2">
-          {/* KI-Coach — kompakte eckige Pille mit Sparkles + Mini-'KI'-Label
-              (voller Name 'ArtCyc Coach' erscheint erst im geöffneten Sheet) */}
+          {/* KI-Coach — eckige Pille mit Sparkles + voller 'KI-Coach'-Label
+              (im geöffneten Sheet erscheint dann der volle Name 'ArtCyc Coach') */}
           <button onClick={() => setChatOpen(true)}
-            className="bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white rounded-xl px-2 py-1.5 text-[11px] font-semibold flex items-center gap-1 shadow-[0_2px_6px_rgba(255,149,0,0.25)] active:scale-95 transition"
+            className="bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white rounded-xl px-2.5 py-1.5 text-[12px] font-semibold flex items-center gap-1 shadow-[0_2px_6px_rgba(255,149,0,0.25)] active:scale-95 transition"
             aria-label="ArtCyc Coach öffnen">
             <Sparkles size={14} strokeWidth={2.4} />
-            <span>KI</span>
+            <span>KI-Coach</span>
           </button>
           <button onClick={() => setView('einstellungen')}
             className={'w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90 ' +
@@ -7281,7 +7281,11 @@ function UebungenView({ data, setData, onBack }) {
         <IOSList footer="Tippe auf eine Übung um Statistik (Training + Wettkampf) zu sehen.">
           {data.exercises.map(ex => {
             const compStats = calcExerciseCompetitionStats(ex, data.programs || [], data.competitions || []);
-            const totalErrors = compStats.cross + compStats.wave + compStats.bar + compStats.circle;
+            // Punkt-Abzug-Logik (UCI 8.4.027): x=0.2, ~=0.5, |=1.0, ○=2.0.
+            // 'Ø Abzug pro Wettkampf' = Summe / Anzahl KG-Stellungen (count = 2×wettkaempfe)
+            // = Mittel über KGs, was direkt dem Beitrag zum Endergebnis entspricht.
+            const totalDeduction = compStats.cross * 0.2 + compStats.wave * 0.5 + compStats.bar * 1.0 + compStats.circle * 2.0;
+            const avgDeduction = compStats.count > 0 ? totalDeduction / compStats.count : 0;
             const trainStats = calcExerciseTrainingStats(ex, data.sessions || []);
             const rateColor = trainStats.rate >= 80 ? 'text-[#34C759]'
               : trainStats.rate >= 60 ? 'text-[#FF9500]'
@@ -7299,28 +7303,22 @@ function UebungenView({ data, setData, onBack }) {
                     <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
                   </div>
                 }>
-                <div className="flex items-baseline gap-1.5 min-w-0">
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
                   <h3 className="font-medium text-[15px] text-[#000] truncate">{localizedExerciseName(ex)}</h3>
-                  {ex.uci_code && <span className="text-[11px] text-[#8E8E93] font-mono tabular-nums shrink-0">{ex.uci_code}</span>}
+                  {ex.uci_code && <IOSTag color="blue">{ex.uci_code}</IOSTag>}
+                  {ex.category_mode === 3 && <IOSTag color="orange">3-Status</IOSTag>}
+                  {!ex.active && <IOSTag color="gray">archiviert</IOSTag>}
                 </div>
                 <div className="text-[13px] text-[#8E8E93] mt-0.5 flex items-center gap-1.5 flex-wrap">
                   {Number(ex.points) > 0 && <span className="font-medium">{Number(ex.points).toFixed(1)} Pkt</span>}
                   {compStats.wettkaempfe > 0 && (
                     <>
                       {Number(ex.points) > 0 && <span>·</span>}
-                      <span>{compStats.wettkaempfe}× Wettkampf{totalErrors === 0 ? ' ✓' : ' (' + totalErrors + ' ' + (totalErrors === 1 ? 'Fehler' : 'Fehler') + ')'}</span>
-                    </>
-                  )}
-                  {ex.category_mode === 3 && (
-                    <>
+                      <span>{compStats.wettkaempfe}× Wettkampf</span>
                       <span>·</span>
-                      <span className="text-[#FF9500]">3-Status</span>
-                    </>
-                  )}
-                  {!ex.active && (
-                    <>
-                      <span>·</span>
-                      <span>archiviert</span>
+                      {totalDeduction === 0
+                        ? <span className="text-[#34C759]">Ø sauber ✓</span>
+                        : <span>Ø −{avgDeduction.toFixed(2).replace('.', ',')} Pkt</span>}
                     </>
                   )}
                 </div>
