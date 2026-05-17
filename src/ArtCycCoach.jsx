@@ -3649,9 +3649,9 @@ function Brand({ size = 'md' }) {
   const iconSize = size === 'sm' ? 18 : 22;
   const titleClass = size === 'sm' ? 'text-[15px] font-semibold tracking-tight' : 'text-[17px] font-bold tracking-tight';
   return (
-    <div className="flex items-center gap-2 select-none">
-      <div className="w-8 h-8 bg-gradient-to-br from-slate-900 to-slate-700 rounded-xl flex items-center justify-center shadow-sm">
-        <Trophy className="text-amber-400" size={iconSize - 4} />
+    <div className="flex items-center gap-2.5 select-none">
+      <div className="w-8 h-8 bg-gradient-to-br from-[#FF9500] to-[#FF6D00] rounded-xl flex items-center justify-center shadow-[0_2px_6px_rgba(255,149,0,0.35)]">
+        <Trophy className="text-white" size={iconSize - 4} strokeWidth={2.2} />
       </div>
       <span className={titleClass}>ArtCyc Coach</span>
     </div>
@@ -4154,7 +4154,7 @@ export default function App() {
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif' }}>
       {/* Mobile Header — iOS Navigation Bar Style */}
       <div
-        className="ios-header-bg sm:hidden px-4 pb-3 flex items-center justify-between sticky top-0 z-30 border-b border-slate-200/30"
+        className="ios-header-bg sm:hidden px-4 pb-3 flex items-center justify-between sticky top-0 z-30"
         style={{
           paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)',
           backdropFilter: 'blur(20px) saturate(180%)',
@@ -5976,8 +5976,12 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
           <span className="text-[15px] text-[#8E8E93]">Stufe 8 · Test</span>
         </div>
         <div className="px-4 py-3.5 flex items-center justify-between gap-3">
-          <span className="text-[15px] text-[#3C3C43]">{t('settings.aboutUci')}</span>
-          <span className="text-[15px] text-[#8E8E93]">{data.uci_version || '2026'} · {getUciDb().length}</span>
+          <span className="text-[15px] text-[#3C3C43]">{t('settings.aboutRulesVersion')}</span>
+          <span className="text-[15px] text-[#8E8E93]">UCI {data.uci_version || '2026'}</span>
+        </div>
+        <div className="px-4 py-3.5 flex items-center justify-between gap-3">
+          <span className="text-[15px] text-[#3C3C43]">{t('settings.aboutUciCount')}</span>
+          <span className="text-[15px] text-[#8E8E93]">{t('settings.aboutUciCountValue', { n: getUciDb().length })}</span>
         </div>
       </IOSList>
 
