@@ -240,15 +240,15 @@ const TOOLS = [
 // Sprach-Anweisung am Anfang des System-Prompts. Englische Schlüssel-
 // Vokabeln (success/fail/withRope) bleiben gleich — die Übersetzungs-
 // tabelle unten passt sich je Sprache an.
-const LANG_INSTRUCTIONS: Record<string, { intro: string; vocab: { success: string; fail: string; third: string; entries: string; withRopeT: string; withRopeF: string } }> = {
-  de: { intro: "Du sprichst Deutsch und duzt den User.",                       vocab: { success: "geklappt",  fail: "nicht geklappt", third: "der `third_label`-Wert der Übung, sonst „mittel/Getroffen"", entries: "Versuche oder Serien",     withRopeT: "mit Seil",     withRopeF: "ohne Seil" } },
-  en: { intro: "You speak English. Use first-person 'you' (informal).",        vocab: { success: "made",      fail: "missed",         third: "the exercise's `third_label` value, fallback 'middle/hit'",         entries: "attempts or series",     withRopeT: "with rope",    withRopeF: "without rope" } },
-  es: { intro: "Hablas español. Usa el tuteo informal.",                       vocab: { success: "logrado",   fail: "fallado",        third: "el valor `third_label` del ejercicio, si no \"medio/acertado\"",          entries: "intentos o series",      withRopeT: "con cuerda",   withRopeF: "sin cuerda" } },
-  fr: { intro: "Tu parles français et tutoies l'utilisateur.",                 vocab: { success: "réussi",    fail: "manqué",         third: "la valeur `third_label` de l'exercice, sinon « moyen/touché »",          entries: "essais ou séries",       withRopeT: "avec corde",   withRopeF: "sans corde" } },
-  it: { intro: "Parli italiano e dai del tu all'utente.",                      vocab: { success: "riuscito",  fail: "mancato",        third: "il valore `third_label` dell'esercizio, altrimenti \"medio/colpito\"",   entries: "tentativi o serie",      withRopeT: "con corda",    withRopeF: "senza corda" } },
-  cs: { intro: "Mluvíš česky a tykáš uživateli.",                              vocab: { success: "povedlo",   fail: "nepovedlo",      third: "hodnota `third_label` cviku, jinak \"střední/zasaženo\"",                entries: "pokusy nebo série",      withRopeT: "se švihadlem", withRopeF: "bez švihadla" } },
-  hu: { intro: "Magyarul beszélsz és tegezed a felhasználót.",                 vocab: { success: "sikerült",  fail: "nem sikerült",   third: "a gyakorlat `third_label` értéke, egyébként „közepes/talált"",          entries: "próbálkozás vagy sorozat", withRopeT: "kötéllel",   withRopeF: "kötél nélkül" } },
-  ja: { intro: "あなたは日本語で話します。ユーザーに対してフレンドリーに接します。", vocab: { success: "成功",      fail: "失敗",            third: "技の `third_label` の値、なければ「中／当たり」",                              entries: "試行またはシリーズ",        withRopeT: "縄あり",     withRopeF: "縄なし" } },
+const LANG_INSTRUCTIONS: Record<string, { name: string; tone: string; vocab: { success: string; fail: string; third: string; entries: string; withRopeT: string; withRopeF: string } }> = {
+  de: { name: "German (Deutsch)",        tone: "Duze den User.",                                vocab: { success: "geklappt",  fail: "nicht geklappt", third: "der `third_label`-Wert der Übung, sonst „mittel/Getroffen"", entries: "Versuche oder Serien",     withRopeT: "mit Seil",     withRopeF: "ohne Seil" } },
+  en: { name: "English",                 tone: "Address the user with informal 'you'.",          vocab: { success: "made",      fail: "missed",         third: "the exercise's `third_label` value, fallback 'middle/hit'",         entries: "attempts or series",     withRopeT: "with rope",    withRopeF: "without rope" } },
+  es: { name: "Spanish (español)",       tone: "Usa el tuteo informal.",                         vocab: { success: "logrado",   fail: "fallado",        third: "el valor `third_label` del ejercicio, si no \"medio/acertado\"",          entries: "intentos o series",      withRopeT: "con cuerda",   withRopeF: "sin cuerda" } },
+  fr: { name: "French (français)",       tone: "Tutoie l'utilisateur.",                          vocab: { success: "réussi",    fail: "manqué",         third: "la valeur `third_label` de l'exercice, sinon « moyen/touché »",          entries: "essais ou séries",       withRopeT: "avec corde",   withRopeF: "sans corde" } },
+  it: { name: "Italian (italiano)",      tone: "Dai del tu all'utente.",                         vocab: { success: "riuscito",  fail: "mancato",        third: "il valore `third_label` dell'esercizio, altrimenti \"medio/colpito\"",   entries: "tentativi o serie",      withRopeT: "con corda",    withRopeF: "senza corda" } },
+  cs: { name: "Czech (čeština)",         tone: "Tykáš uživateli.",                               vocab: { success: "povedlo",   fail: "nepovedlo",      third: "hodnota `third_label` cviku, jinak \"střední/zasaženo\"",                entries: "pokusy nebo série",      withRopeT: "se švihadlem", withRopeF: "bez švihadla" } },
+  hu: { name: "Hungarian (magyar)",      tone: "Tegezed a felhasználót.",                        vocab: { success: "sikerült",  fail: "nem sikerült",   third: "a gyakorlat `third_label` értéke, egyébként „közepes/talált"",          entries: "próbálkozás vagy sorozat", withRopeT: "kötéllel",   withRopeF: "kötél nélkül" } },
+  ja: { name: "Japanese (日本語)",        tone: "ユーザーに対してフレンドリーに接します。",          vocab: { success: "成功",      fail: "失敗",            third: "技の `third_label` の値、なければ「中／当たり」",                              entries: "試行またはシリーズ",        withRopeT: "縄あり",     withRopeF: "縄なし" } },
 };
 
 function buildSystemPrompt(appData: any, userName?: string, lang: string = "de"): string {
@@ -315,7 +315,14 @@ function buildSystemPrompt(appData: any, userName?: string, lang: string = "de")
 
   const today = new Date().toISOString().slice(0, 10);
 
-  return `You are the AI coach in ArtCyc Coach, an app for tracking artistic cycling. ${li.intro} (Important: write all your user-facing replies in this language — never default to German if a different language is set.)
+  return `You are the AI coach in ArtCyc Coach, an app for tracking artistic cycling.
+
+# LANGUAGE — CRITICAL, READ FIRST
+The user's app is set to **${li.name}**. You MUST respond in **${li.name}** for every single reply, including the first one. ${li.tone}
+
+Exception: if the user explicitly switches to another language in their message (e.g. writes their question in French while the app is German), reply in that language for that turn.
+
+NEVER default to German because this prompt was written in English/German. The language above is the only thing that matters.
 
 # Heutiges Datum
 ${today}

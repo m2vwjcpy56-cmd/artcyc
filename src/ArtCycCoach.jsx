@@ -3193,7 +3193,7 @@ async function applyChatAction(action, data, setData, refreshers) {
 }
 
 function FloatingChat({ data, setData, profile, refreshers }) {
-  const { lang } = useI18n();
+  const { t, lang } = useI18n();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -3341,13 +3341,13 @@ function FloatingChat({ data, setData, profile, refreshers }) {
             onClick={e => e.stopPropagation()}>
             {/* Header */}
             <div className="bg-white/90 backdrop-blur-xl border-b border-slate-200/60 px-4 py-3 flex items-center justify-between">
-              <button onClick={() => setOpen(false)} className="text-amber-500 font-medium text-[15px]">Fertig</button>
+              <button onClick={() => setOpen(false)} className="text-amber-500 font-medium text-[15px]">{t('chat.done')}</button>
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-amber-500" />
                 <span className="font-semibold text-[15px]">KI-Coach</span>
               </div>
               <button onClick={clearChat} disabled={messages.length === 0}
-                className="text-slate-500 text-[13px] disabled:opacity-30">Neu</button>
+                className="text-slate-500 text-[13px] disabled:opacity-30">{t('chat.titleNew')}</button>
             </div>
 
             {/* Messages */}
@@ -3357,16 +3357,16 @@ function FloatingChat({ data, setData, profile, refreshers }) {
                   <div className="inline-block w-14 h-14 rounded-full bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center mb-3">
                     <Sparkles size={26} className="text-amber-600" />
                   </div>
-                  <h3 className="font-semibold text-slate-900 mb-2">Frag deinen Coach</h3>
+                  <h3 className="font-semibold text-slate-900 mb-2">{t('chat.askYourCoach')}</h3>
                   <p className="text-sm text-slate-500 mb-4">
-                    Ich kenne deine Trainings + Wettkämpfe. Frag mich Sachen wie:
+                    {t('chat.intro')}
                   </p>
                   <div className="space-y-2 text-left">
                     {[
-                      'Welche Übung hat aktuell die schlechteste Quote?',
-                      'Trag 8 geklappte und 2 nicht geklappte Maute-Sprünge mit Seil von heute ein',
-                      'Wie viele Trainings hatte ich letzte Woche?',
-                      'Worauf sollte ich diese Woche schwerpunktmäßig trainieren?'
+                      t('chat.suggest1'),
+                      t('chat.suggest2'),
+                      t('chat.suggest3'),
+                      t('chat.suggest4')
                     ].map(s => (
                       <button key={s} onClick={() => setInput(s)}
                         className="block w-full text-left text-[13px] bg-white border border-slate-200 rounded-xl px-3 py-2.5 active:bg-slate-50">
@@ -3488,7 +3488,7 @@ function FloatingChat({ data, setData, profile, refreshers }) {
                     send();
                   }
                 }}
-                placeholder="Frage stellen oder Auftrag geben…"
+                placeholder={t('chat.placeholder')}
                 rows={1}
                 disabled={busy}
                 className="flex-1 px-3 py-2.5 bg-slate-100 rounded-2xl outline-none focus:bg-white focus:ring-2 focus:ring-amber-500 text-[15px] resize-none max-h-32" />
