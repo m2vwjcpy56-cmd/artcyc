@@ -38,12 +38,8 @@ const FEEDBACK_EMAIL            = Deno.env.get("FEEDBACK_EMAIL") ?? "";
 // @ts-ignore Deno-Runtime
 const RESEND_FROM               = Deno.env.get("RESEND_FROM") ?? "ArtCyc Coach <onboarding@resend.dev>";
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-const JSON_HEADERS = { ...CORS_HEADERS, "Content-Type": "application/json; charset=utf-8" };
+// @ts-ignore Deno-Runtime resolution
+import { corsHeaders, jsonHeaders } from "../_shared/cors.ts";
 
 const CATEGORY_LABELS: Record<string, string> = {
   bug: "🐛 Bug",
@@ -153,14 +149,14 @@ function escapeHtml(s: string): string {
 // @ts-ignore Deno-Runtime
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: CORS_HEADERS });
+    return new Response("ok", { headers: corsHeaders(req) });
   }
   if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
+    return new Response("Method not allowed", { status: 405, headers: corsHeaders(req) });
   }
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
     return new Response(JSON.stringify({ error: "Supabase-Env-Vars fehlen" }), {
-      status: 500, headers: JSON_HEADERS,
+      status: 500, headers: jsonHeaders(req),
     });
   }
 
@@ -169,7 +165,7 @@ Deno.serve(async (req: Request) => {
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
   if (!token) {
     return new Response(JSON.stringify({ error: "Nicht angemeldet" }), {
-      status: 401, headers: JSON_HEADERS,
+      status: 401, headers: jsonHeaders(req),
     });
   }
 
@@ -180,7 +176,7 @@ Deno.serve(async (req: Request) => {
   const { data: userData, error: userErr } = await supaUser.auth.getUser();
   if (userErr || !userData?.user) {
     return new Response(JSON.stringify({ error: "User nicht erkannt" }), {
-      status: 401, headers: JSON_HEADERS,
+      status: 401, headers: jsonHeaders(req),
     });
   }
   const user = userData.user;
@@ -197,7 +193,7 @@ Deno.serve(async (req: Request) => {
   const text = String(body?.text || "").trim();
   if (!text) {
     return new Response(JSON.stringify({ error: "Text fehlt" }), {
-      status: 400, headers: JSON_HEADERS,
+      status: 400, headers: jsonHeaders(req),
     });
   }
   const category = ["bug", "idea", "question", "other"].includes(body?.category)
@@ -227,7 +223,7 @@ Deno.serve(async (req: Request) => {
     .single();
   if (insertErr) {
     return new Response(JSON.stringify({ error: "DB-Insert fehlgeschlagen: " + insertErr.message }), {
-      status: 500, headers: JSON_HEADERS,
+      status: 500, headers: jsonHeaders(req),
     });
   }
 
@@ -295,6 +291,6 @@ Deno.serve(async (req: Request) => {
       attachment_warning: attWarning,
       attachment_count: attachments.length,
     }),
-    { headers: JSON_HEADERS }
+    { headers: jsonHeaders(req) }
   );
 });

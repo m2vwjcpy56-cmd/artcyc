@@ -32,12 +32,8 @@ const APP_REFERER        = Deno.env.get("APP_REFERER") ?? "https://artcyc.vercel
 // @ts-ignore Deno-Runtime
 const APP_TITLE          = Deno.env.get("APP_TITLE")   ?? "ArtCyc Coach";
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-const JSON_HEADERS = { ...CORS_HEADERS, "Content-Type": "application/json; charset=utf-8" };
+// @ts-ignore Deno-Runtime resolution
+import { corsHeaders, jsonHeaders } from "../_shared/cors.ts";
 
 // =============================================================
 // Rate-Limit + Body-Größen-Schutz
@@ -95,12 +91,14 @@ function tokenSubject(req: Request): string {
     return "anon";
   }
 }
-const SSE_HEADERS  = {
-  ...CORS_HEADERS,
-  "Content-Type": "text/event-stream; charset=utf-8",
-  "Cache-Control": "no-cache, no-transform",
-  "X-Accel-Buffering": "no",
-};
+function sseHeaders(req: Request): Record<string, string> {
+  return {
+    ...corsHeaders(req),
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+  };
+}
 
 // =============================================================
 // Tools (im OpenAI-Format) — gleiche Semantik wie vorher mit Anthropic
@@ -239,7 +237,22 @@ const TOOLS = [
   },
 ];
 
-function buildSystemPrompt(appData: any, userName?: string): string {
+// Sprach-Anweisung am Anfang des System-Prompts. Englische Schlüssel-
+// Vokabeln (success/fail/withRope) bleiben gleich — die Übersetzungs-
+// tabelle unten passt sich je Sprache an.
+const LANG_INSTRUCTIONS: Record<string, { intro: string; vocab: { success: string; fail: string; third: string; entries: string; withRopeT: string; withRopeF: string } }> = {
+  de: { intro: "Du sprichst Deutsch und duzt den User.",                       vocab: { success: "geklappt",  fail: "nicht geklappt", third: "der `third_label`-Wert der Übung, sonst „mittel/Getroffen"", entries: "Versuche oder Serien",     withRopeT: "mit Seil",     withRopeF: "ohne Seil" } },
+  en: { intro: "You speak English. Use first-person 'you' (informal).",        vocab: { success: "made",      fail: "missed",         third: "the exercise's `third_label` value, fallback 'middle/hit'",         entries: "attempts or series",     withRopeT: "with rope",    withRopeF: "without rope" } },
+  es: { intro: "Hablas español. Usa el tuteo informal.",                       vocab: { success: "logrado",   fail: "fallado",        third: "el valor `third_label` del ejercicio, si no \"medio/acertado\"",          entries: "intentos o series",      withRopeT: "con cuerda",   withRopeF: "sin cuerda" } },
+  fr: { intro: "Tu parles français et tutoies l'utilisateur.",                 vocab: { success: "réussi",    fail: "manqué",         third: "la valeur `third_label` de l'exercice, sinon « moyen/touché »",          entries: "essais ou séries",       withRopeT: "avec corde",   withRopeF: "sans corde" } },
+  it: { intro: "Parli italiano e dai del tu all'utente.",                      vocab: { success: "riuscito",  fail: "mancato",        third: "il valore `third_label` dell'esercizio, altrimenti \"medio/colpito\"",   entries: "tentativi o serie",      withRopeT: "con corda",    withRopeF: "senza corda" } },
+  cs: { intro: "Mluvíš česky a tykáš uživateli.",                              vocab: { success: "povedlo",   fail: "nepovedlo",      third: "hodnota `third_label` cviku, jinak \"střední/zasaženo\"",                entries: "pokusy nebo série",      withRopeT: "se švihadlem", withRopeF: "bez švihadla" } },
+  hu: { intro: "Magyarul beszélsz és tegezed a felhasználót.",                 vocab: { success: "sikerült",  fail: "nem sikerült",   third: "a gyakorlat `third_label` értéke, egyébként „közepes/talált"",          entries: "próbálkozás vagy sorozat", withRopeT: "kötéllel",   withRopeF: "kötél nélkül" } },
+  ja: { intro: "あなたは日本語で話します。ユーザーに対してフレンドリーに接します。", vocab: { success: "成功",      fail: "失敗",            third: "技の `third_label` の値、なければ「中／当たり」",                              entries: "試行またはシリーズ",        withRopeT: "縄あり",     withRopeF: "縄なし" } },
+};
+
+function buildSystemPrompt(appData: any, userName?: string, lang: string = "de"): string {
+  const li = LANG_INSTRUCTIONS[lang] || LANG_INSTRUCTIONS.de;
   const ex = (appData?.exercises || []).map((e: any) => ({
     id: e.id, name: e.name, uci_code: e.uci_code, uci_disc: e.uci_disc,
     category_mode: e.category_mode, third_label: e.third_label,
@@ -302,7 +315,7 @@ function buildSystemPrompt(appData: any, userName?: string): string {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  return `Du bist der KI-Coach in ArtCyc Coach, einer App für Kunstradsport-Tracking. Du sprichst Deutsch und duzt den User.
+  return `You are the AI coach in ArtCyc Coach, an app for tracking artistic cycling. ${li.intro} (Important: write all your user-facing replies in this language — never default to German if a different language is set.)
 
 # Heutiges Datum
 ${today}
@@ -342,14 +355,14 @@ Die Daten oben enthalten technische Feld-Namen, die NIEMALS in deinen Antworten 
 
 | intern (NICHT verwenden) | im Antwort-Text stattdessen |
 |---|---|
-| \`success\`           | „geklappt" |
-| \`fail\`              | „nicht geklappt" |
-| \`third\`             | der \`third_label\`-Wert der Übung, sonst „mittel/Getroffen" |
-| \`entries\`           | „Versuche" oder „Serien" |
-| \`withRope: true\`    | „mit Seil" |
-| \`withRope: false\`   | „ohne Seil" |
-| \`exerciseId\`, \`sessionId\` etc. | gar nicht erwähnen |
-| \`category_mode\`     | gar nicht erwähnen |
+| \`success\`           | "${li.vocab.success}" |
+| \`fail\`              | "${li.vocab.fail}" |
+| \`third\`             | ${li.vocab.third} |
+| \`entries\`           | "${li.vocab.entries}" |
+| \`withRope: true\`    | "${li.vocab.withRopeT}" |
+| \`withRope: false\`   | "${li.vocab.withRopeF}" |
+| \`exerciseId\`, \`sessionId\` etc. | do not mention |
+| \`category_mode\`     | do not mention |
 
 Schreibe NIE etwas wie „success = gelandet" oder „die success/fail-Einträge", „third ist eine eigene Kategorie", „in \`entries\` sind …" — das wirkt für den User wie Code-Geschwafel und ist verboten.
 
@@ -448,21 +461,21 @@ async function callOpenRouterStream(systemPrompt: string, messages: any[]) {
 // @ts-ignore Deno-Runtime
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: CORS_HEADERS });
+    return new Response("ok", { headers: corsHeaders(req) });
   }
   if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
+    return new Response("Method not allowed", { status: 405, headers: corsHeaders(req) });
   }
   if (!OPENROUTER_API_KEY) {
     return new Response(JSON.stringify({ error: "OPENROUTER_API_KEY nicht konfiguriert" }), {
-      status: 500, headers: JSON_HEADERS,
+      status: 500, headers: jsonHeaders(req),
     });
   }
   // Body-Größe checken bevor wir das JSON parsen
   const contentLength = parseInt(req.headers.get("content-length") || "0", 10);
   if (contentLength > MAX_BODY_BYTES) {
     return new Response(JSON.stringify({ error: "Body zu groß — max " + (MAX_BODY_BYTES / 1024) + " kB" }), {
-      status: 413, headers: JSON_HEADERS,
+      status: 413, headers: jsonHeaders(req),
     });
   }
 
@@ -470,17 +483,17 @@ Deno.serve(async (req: Request) => {
   const subject = tokenSubject(req);
   if (!userBucketCheck(subject)) {
     return new Response(JSON.stringify({ error: "rate limited — bitte später nochmal" }), {
-      status: 429, headers: JSON_HEADERS,
+      status: 429, headers: jsonHeaders(req),
     });
   }
 
   try {
     const url = new URL(req.url);
     const wantStream = url.searchParams.get("stream") === "1";
-    const { messages, app_data, user_name } = await req.json();
+    const { messages, app_data, user_name, lang } = await req.json();
     if (!Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: "messages fehlt" }), {
-        status: 400, headers: JSON_HEADERS,
+        status: 400, headers: jsonHeaders(req),
       });
     }
 
@@ -493,7 +506,7 @@ Deno.serve(async (req: Request) => {
         .sort((a: any, b: any) => String(b?.date || "").localeCompare(String(a?.date || "")))
         .slice(0, MAX_SESSIONS_IN_PROMPT);
     }
-    const systemPrompt = buildSystemPrompt(capped_app_data, user_name);
+    const systemPrompt = buildSystemPrompt(capped_app_data, user_name, typeof lang === "string" ? lang : "de");
 
     // ─── Streaming-Pfad: OpenRouter-SSE → Anthropic-kompatible SSE ───
     // TransformStream-Pattern statt ReadableStream-pull():
@@ -503,7 +516,7 @@ Deno.serve(async (req: Request) => {
       if (!upstream.ok) {
         const txt = await upstream.text();
         return new Response(JSON.stringify({ error: `OpenRouter ${upstream.status}: ${txt}` }), {
-          status: 502, headers: JSON_HEADERS,
+          status: 502, headers: jsonHeaders(req),
         });
       }
 
@@ -625,7 +638,7 @@ Deno.serve(async (req: Request) => {
         }
       })();
 
-      return new Response(readable, { headers: SSE_HEADERS });
+      return new Response(readable, { headers: sseHeaders(req) });
     }
 
     // ─── Non-Streaming-Pfad: einmal abrufen, in altes Antwort-Format wandeln ───
@@ -653,12 +666,12 @@ Deno.serve(async (req: Request) => {
         stop_reason: choice?.finish_reason,
         usage: result?.usage,
       }),
-      { headers: JSON_HEADERS }
+      { headers: jsonHeaders(req) }
     );
   } catch (e) {
     return new Response(
       JSON.stringify({ error: (e as Error).message }),
-      { status: 500, headers: JSON_HEADERS }
+      { status: 500, headers: jsonHeaders(req) }
     );
   }
 });

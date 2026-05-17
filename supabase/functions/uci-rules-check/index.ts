@@ -34,7 +34,8 @@ const RESEND_FROM               = Deno.env.get("RESEND_FROM") ?? "ArtCyc Coach <
 // @ts-ignore Deno-Runtime
 const CRON_SECRET               = Deno.env.get("CRON_SECRET") ?? "";
 
-const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
+// @ts-ignore Deno-Runtime resolution
+import { jsonHeaders } from "../_shared/cors.ts";
 
 const LANG_LABEL: Record<string, string> = {
   de: "Deutsch",
@@ -69,17 +70,17 @@ Deno.serve(async (req: Request) => {
   if (CRON_SECRET) {
     const got = req.headers.get("x-cron-secret") || "";
     if (got !== CRON_SECRET) {
-      return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: JSON_HEADERS });
+      return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: jsonHeaders(req) });
     }
   }
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return new Response(JSON.stringify({ error: "Supabase-Env-Vars fehlen" }), { status: 500, headers: JSON_HEADERS });
+    return new Response(JSON.stringify({ error: "Supabase-Env-Vars fehlen" }), { status: 500, headers: jsonHeaders(req) });
   }
 
   const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const { data: versions, error: vErr } = await supa.from("uci_rules_versions").select("*");
   if (vErr || !versions) {
-    return new Response(JSON.stringify({ error: "DB read failed: " + (vErr?.message || "no data") }), { status: 500, headers: JSON_HEADERS });
+    return new Response(JSON.stringify({ error: "DB read failed: " + (vErr?.message || "no data") }), { status: 500, headers: jsonHeaders(req) });
   }
 
   const results: any[] = [];
@@ -175,5 +176,5 @@ Deno.serve(async (req: Request) => {
     checked: results.length,
     changed: changed.length,
     results,
-  }), { headers: JSON_HEADERS });
+  }), { headers: jsonHeaders(req) });
 });

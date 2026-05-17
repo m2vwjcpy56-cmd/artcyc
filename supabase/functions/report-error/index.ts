@@ -42,12 +42,8 @@ const FEEDBACK_EMAIL            = Deno.env.get("FEEDBACK_EMAIL") ?? "";
 // @ts-ignore Deno-Runtime
 const RESEND_FROM               = Deno.env.get("RESEND_FROM") ?? "ArtCyc Coach <onboarding@resend.dev>";
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-const JSON_HEADERS = { ...CORS_HEADERS, "Content-Type": "application/json; charset=utf-8" };
+// @ts-ignore Deno-Runtime resolution
+import { corsHeaders, jsonHeaders } from "../_shared/cors.ts";
 
 // =============================================================
 // Rate-Limit (In-Memory). Funktion-Instanzen leben pro Deploy-Region
@@ -129,16 +125,16 @@ async function sendMail({ subject, html, text }: { subject: string; html: string
 
 // @ts-ignore Deno-Runtime
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
   if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
+    return new Response("Method not allowed", { status: 405, headers: corsHeaders(req) });
   }
 
   // IP-Rate-Limit zuerst — schützt vor Flood-Bots die nur den anon-Key haben.
   const ip = clientIp(req);
   if (!ipAllowed(ip)) {
     return new Response(JSON.stringify({ error: "rate limited" }), {
-      status: 429, headers: JSON_HEADERS,
+      status: 429, headers: jsonHeaders(req),
     });
   }
 
@@ -146,7 +142,7 @@ Deno.serve(async (req: Request) => {
   const lenHeader = parseInt(req.headers.get("content-length") || "0", 10);
   if (lenHeader > 64 * 1024) {
     return new Response(JSON.stringify({ error: "body too large" }), {
-      status: 413, headers: JSON_HEADERS,
+      status: 413, headers: jsonHeaders(req),
     });
   }
 
@@ -162,7 +158,7 @@ Deno.serve(async (req: Request) => {
   const lang       = String(body?.lang       || "").slice(0, 10);
   const fingerprint= String(body?.fingerprint|| "").slice(0, 64);
   if (!message) {
-    return new Response(JSON.stringify({ error: "message fehlt" }), { status: 400, headers: JSON_HEADERS });
+    return new Response(JSON.stringify({ error: "message fehlt" }), { status: 400, headers: jsonHeaders(req) });
   }
 
   // Optional: User-Identifikation aus Bearer Token (User-JWT, nicht anon).
@@ -277,6 +273,6 @@ ${escapeHtml(message)}${stack ? "\n\n" + escapeHtml(stack) : ""}
 
   return new Response(
     JSON.stringify({ ok: true, id: rowId, mail_sent: mailSent, mail_error: mailError, deduped: dedupSkip }),
-    { headers: JSON_HEADERS }
+    { headers: jsonHeaders(req) }
   );
 });
