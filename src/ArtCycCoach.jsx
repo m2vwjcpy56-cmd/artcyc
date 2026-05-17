@@ -2451,7 +2451,7 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
 // Risiko → Empfehlung). Keine externe AI-Anfrage nötig.
 // Rückgabe: { lines: string[], rich: boolean }
 // =============================================================
-function generateExerciseInsight(exercise, sessions, t) {
+function generateExerciseInsight(exercise, sessions, t, programs, competitions) {
   if (!exercise || !sessions) return null;
   const exSessions = sessions.filter(s => s.exerciseId === exercise.id);
   const entries = exSessions.flatMap(s => s.entries || []);
@@ -2597,7 +2597,44 @@ function generateExerciseInsight(exercise, sessions, t) {
     else if (delta <= -10) lines.push(t('aiInsight.trendDown', { recent: recentRate, older: olderRate, delta: -delta }));
   }
   if (daysSinceLast != null && daysSinceLast > 30) lines.push(t('aiInsight.staleDays', { days: daysSinceLast }));
-  return { lines, rich: false };
+
+  // Wettkampf-Insight ergänzen (auch bei mittlerem/wenig Trainings-Volumen)
+  appendCompetitionInsight(lines, exercise, programs, competitions, rate, t);
+  return { lines, rich: lines.length > 2 };
+}
+
+// Hängt Wettkampf-bezogene Tipps an die Insight-Zeilenliste an.
+// Punkt-Abzug-Logik:
+//   x  = 0.2,  ~ = 0.5,  | = 1.0,  ○ = 2.0  (siehe UCI 8.4.027)
+function appendCompetitionInsight(lines, exercise, programs, competitions, trainRate, t) {
+  if (!programs || !competitions || !exercise) return;
+  const stats = calcExerciseCompetitionStats(exercise, programs, competitions);
+  if (stats.wettkaempfe === 0) {
+    lines.push(t('aiInsight.compNoData'));
+    return;
+  }
+  if (stats.wettkaempfe < 3) {
+    lines.push(t('aiInsight.compFew', { n: stats.wettkaempfe }));
+    return;
+  }
+  const totalDeduction = stats.cross * 0.2 + stats.wave * 0.5 + stats.bar * 1.0 + stats.circle * 2.0;
+  const avgDedRaw = totalDeduction / stats.wettkaempfe;
+  const avgDed = avgDedRaw.toFixed(2);
+
+  if      (avgDedRaw < 0.15) lines.push(t('aiInsight.compClean',  { n: stats.wettkaempfe, avgDed }));
+  else if (avgDedRaw < 0.6)  lines.push(t('aiInsight.compMixed',  { n: stats.wettkaempfe, avgDed }));
+  else                       lines.push(t('aiInsight.compShaky',  { n: stats.wettkaempfe, avgDed }));
+
+  // Auffällige Einzel-Symbol-Häufungen
+  if (stats.circle >= 2) lines.push(t('aiInsight.compFalls',  { falls: stats.circle, sym: '○' }));
+  if (stats.bar    >= 3) lines.push(t('aiInsight.compMauten', { mauten: stats.bar }));
+
+  // Vergleich Training vs. Wettkampf — Mismatch wenn Training sehr gut aber Wettkampf instabil
+  if (trainRate >= 80 && avgDedRaw >= 0.4) {
+    lines.push(t('aiInsight.compMismatch', { trainRate }));
+  } else if (trainRate >= 60 && avgDedRaw < 0.3) {
+    lines.push(t('aiInsight.compMatch', { trainRate }));
+  }
 }
 
 function calcExerciseTrainingStats(exercise, sessions, ropeFilter = null) {
@@ -3371,7 +3408,7 @@ function FloatingChat({ data, setData, profile, refreshers, open, onClose }) {
               <button onClick={onClose} className="text-amber-500 font-medium text-[15px]">{t('chat.done')}</button>
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-amber-500" />
-                <span className="font-semibold text-[15px]">KI-Coach</span>
+                <span className="font-semibold text-[15px]">ArtCyc Coach</span>
               </div>
               <button onClick={clearChat} disabled={messages.length === 0}
                 className="text-slate-500 text-[13px] disabled:opacity-30">{t('chat.titleNew')}</button>
@@ -4214,12 +4251,13 @@ export default function App() {
         }}>
         <Brand size="sm" />
         <div className="flex items-center gap-2">
-          {/* KI-Coach — eckige Pille mit Sparkles + Name (Brand-Orange-Gradient) */}
+          {/* KI-Coach — kompakte eckige Pille mit Sparkles + Mini-'KI'-Label
+              (voller Name 'ArtCyc Coach' erscheint erst im geöffneten Sheet) */}
           <button onClick={() => setChatOpen(true)}
-            className="bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white rounded-xl px-2.5 py-1.5 text-[12px] font-semibold flex items-center gap-1 shadow-[0_2px_6px_rgba(255,149,0,0.25)] active:scale-95 transition"
-            aria-label="KI-Coach öffnen">
+            className="bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white rounded-xl px-2 py-1.5 text-[11px] font-semibold flex items-center gap-1 shadow-[0_2px_6px_rgba(255,149,0,0.25)] active:scale-95 transition"
+            aria-label="ArtCyc Coach öffnen">
             <Sparkles size={14} strokeWidth={2.4} />
-            <span>KI-Coach</span>
+            <span>KI</span>
           </button>
           <button onClick={() => setView('einstellungen')}
             className={'w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90 ' +
@@ -4257,7 +4295,7 @@ export default function App() {
         <button onClick={() => setChatOpen(true)}
           className="mt-3 flex items-center gap-3 px-3 py-2.5 rounded-2xl text-left transition bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white shadow-[0_2px_8px_rgba(255,149,0,0.25)] hover:brightness-105 active:scale-[0.98]">
           <Sparkles size={18} strokeWidth={2.4} />
-          <span className="font-semibold">KI-Coach</span>
+          <span className="font-semibold">Coach öffnen</span>
         </button>
       </aside>
 
@@ -4838,10 +4876,9 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           onTapWettkampf={() => setView('wettkampf')} />
       )}
 
-      {/* Trainings-Heatmap */}
-      {(data.sessions || []).length > 0 && (
-        <TrainingHeatmap sessions={data.sessions || []} />
-      )}
+      {/* (Trainings-Aktivitäts-Heatmap entfernt — sagt einem Sportler/Trainer
+           wenig über tatsächliche Fortschritte; die Top-Stats und der
+           Wettkampf-Verlauf sind aussagekräftiger.) */}
 
       {/* Pro Übung */}
       <section className="space-y-3">
@@ -6800,7 +6837,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
 
         {/* KI-Insight — regel-basierter Trainer-Tipp (1 Zeile bei wenig Daten, ausführlich ab ≥ 30 Versuchen) */}
         {(() => {
-          const insight = generateExerciseInsight(exercise, data.sessions || [], t);
+          const insight = generateExerciseInsight(exercise, data.sessions || [], t, data.programs || [], data.competitions || []);
           if (!insight || !insight.lines || insight.lines.length === 0) return null;
           return (
             <div className="bg-gradient-to-br from-[#FF9500]/10 to-[#FF6D00]/10 rounded-2xl p-4 flex gap-3 items-start">
@@ -7235,37 +7272,55 @@ function UebungenView({ data, setData, onBack }) {
           </button>
         </header>
 
-        {/* iOS-style Inset Grouped List */}
+        {/* iOS-style Inset Grouped List
+            Layout pro Zeile:
+              [Name groß]                           [Code mono + chevron]
+              [stats-zeile sekundär — kompakt]
+            Trainings-Rate wird als farbige Badge rechts gezeigt, damit
+            man auf einen Blick sieht welche Übung sicher sitzt. */}
         <IOSList footer="Tippe auf eine Übung um Statistik (Training + Wettkampf) zu sehen.">
           {data.exercises.map(ex => {
             const compStats = calcExerciseCompetitionStats(ex, data.programs || [], data.competitions || []);
             const totalErrors = compStats.cross + compStats.wave + compStats.bar + compStats.circle;
             const trainStats = calcExerciseTrainingStats(ex, data.sessions || []);
+            const rateColor = trainStats.rate >= 80 ? 'text-[#34C759]'
+              : trainStats.rate >= 60 ? 'text-[#FF9500]'
+              : 'text-[#FF3B30]';
             return (
               <IOSListRow
                 key={ex.id}
                 onClick={() => setSelected(ex)}
-                className={!ex.active ? 'opacity-60' : ''}>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-medium text-[15px] text-[#000]">{localizedExerciseName(ex)}</h3>
-                  {ex.uci_code && <IOSTag color="blue">UCI {ex.uci_code}</IOSTag>}
-                  {ex.category_mode === 3 && <IOSTag color="orange">3-Status</IOSTag>}
-                  {!ex.active && <IOSTag color="gray">archiviert</IOSTag>}
+                className={!ex.active ? 'opacity-60' : ''}
+                trailing={
+                  <div className="flex items-center gap-2 shrink-0">
+                    {trainStats.total > 0 && (
+                      <span className={'text-[13px] font-semibold tabular-nums ' + rateColor}>{trainStats.rate}%</span>
+                    )}
+                    <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
+                  </div>
+                }>
+                <div className="flex items-baseline gap-1.5 min-w-0">
+                  <h3 className="font-medium text-[15px] text-[#000] truncate">{localizedExerciseName(ex)}</h3>
+                  {ex.uci_code && <span className="text-[11px] text-[#8E8E93] font-mono tabular-nums shrink-0">{ex.uci_code}</span>}
                 </div>
                 <div className="text-[13px] text-[#8E8E93] mt-0.5 flex items-center gap-1.5 flex-wrap">
-                  {Number(ex.points) > 0 && <span>{Number(ex.points).toFixed(1)} Pkt</span>}
-                  {trainStats.total > 0 && (
-                    <>
-                      <span>·</span>
-                      <span className={trainStats.rate >= 80 ? 'text-[#34C759]' : trainStats.rate >= 60 ? 'text-[#FF9500]' : 'text-[#FF3B30]'}>
-                        Training {trainStats.rate}%
-                      </span>
-                    </>
-                  )}
+                  {Number(ex.points) > 0 && <span className="font-medium">{Number(ex.points).toFixed(1)} Pkt</span>}
                   {compStats.wettkaempfe > 0 && (
                     <>
+                      {Number(ex.points) > 0 && <span>·</span>}
+                      <span>{compStats.wettkaempfe}× Wettkampf{totalErrors === 0 ? ' ✓' : ' (' + totalErrors + ' ' + (totalErrors === 1 ? 'Fehler' : 'Fehler') + ')'}</span>
+                    </>
+                  )}
+                  {ex.category_mode === 3 && (
+                    <>
                       <span>·</span>
-                      <span>{compStats.wettkaempfe} WK{totalErrors === 0 ? ' ✓' : ' · ' + totalErrors + ' Fehler'}</span>
+                      <span className="text-[#FF9500]">3-Status</span>
+                    </>
+                  )}
+                  {!ex.active && (
+                    <>
+                      <span>·</span>
+                      <span>archiviert</span>
                     </>
                   )}
                 </div>

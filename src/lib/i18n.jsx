@@ -375,7 +375,7 @@ const dict = {
     'chat.phase.writing': 'schreibt…',
     'chat.phase.tool': 'Aktion wird vorbereitet…',
 
-    'aiInsight.title': 'Trainer-Tipp',
+    'aiInsight.title': 'ArtCyc Coach',
     'aiInsight.noData': 'Noch keine Trainingsdaten — beim nächsten Logbuch-Eintrag erscheint hier eine Einschätzung.',
     'aiInsight.veryNew': 'Erst {n} Versuche — sammle ein paar Sessions mehr für eine belastbare Aussage.',
     'aiInsight.solid': 'Solide Quote ({rate}%) über {sessions} Sessions — bleib dran, das sitzt.',
@@ -426,7 +426,18 @@ const dict = {
     'aiInsight.recoTechnique': 'Empfehlung: gezielt an einer Schwachstelle in der Technik arbeiten.',
     'aiInsight.ropeSplit': 'Mit Seil: {rWith}% · ohne Seil: {rWithout}%.',
     'aiInsight.ropeBetterWith': 'Mit Seil läufts besser ({rWith}% vs. {rWithout}% ohne).',
-    'aiInsight.ropeBetterWithout': 'Ohne Seil läufts besser ({rWithout}% vs. {rWith}% mit).'
+    'aiInsight.ropeBetterWithout': 'Ohne Seil läufts besser ({rWithout}% vs. {rWith}% mit).',
+
+    // Wettkampf-bezogene Insights
+    'aiInsight.compNoData': 'Noch nicht im Wettkampf gefahren — sammle Wertungsbögen.',
+    'aiInsight.compFew': '{n}× im Wettkampf gestellt — noch wenig Vergleichsdaten.',
+    'aiInsight.compClean': '{n}× im Wettkampf, durchschnittlich {avgDed} Pkt Abzug — sehr sauber.',
+    'aiInsight.compMixed': '{n}× im Wettkampf, durchschnittlich {avgDed} Pkt Abzug.',
+    'aiInsight.compShaky': '{n}× im Wettkampf, durchschnittlich {avgDed} Pkt Abzug — instabil unter Druck.',
+    'aiInsight.compFalls': 'Auffällig: {falls} Sturz/Stürze ({sym}) in Wettkämpfen — Risiko prüfen.',
+    'aiInsight.compMauten': '{mauten} Mauten (|) in Wettkämpfen — die kosten am meisten.',
+    'aiInsight.compMismatch': 'Training läuft mit {trainRate}%, im Wettkampf aber häufig Abzüge — Wettkampf-Routinen üben.',
+    'aiInsight.compMatch': 'Wettkampf-Leistung passt zur Trainings-Quote ({trainRate}%) — verlässlich.'
   },
 
   en: {
@@ -748,7 +759,7 @@ const dict = {
     'chat.phase.writing': 'writing…',
     'chat.phase.tool': 'preparing action…',
 
-    'aiInsight.title': 'Coach tip',
+    'aiInsight.title': 'ArtCyc Coach',
     'aiInsight.noData': 'No training data yet — log a session and an insight will appear here.',
     'aiInsight.veryNew': 'Only {n} attempts — collect a few more sessions for a reliable read.',
     'aiInsight.solid': 'Solid {rate}% rate over {sessions} sessions — keep it up.',
