@@ -49,12 +49,12 @@ jobs:
             echo "::error::SUPABASE_ACCESS_TOKEN-Secret fehlt."
             exit 1
           fi
-          # Alle docs/*-setup.sql Files via Supabase Management API
-          # auf die DB anwenden. Die Skripte selbst sind idempotent
-          # (CREATE IF NOT EXISTS, DROP POLICY IF EXISTS ...) — können
-          # also gefahrlos bei jedem Lauf erneut ausgeführt werden.
+          # Alle docs/*-setup.sql und docs/*-seed.sql Files via Supabase
+          # Management API auf die DB anwenden. Die Skripte selbst sind
+          # idempotent (CREATE IF NOT EXISTS, ON CONFLICT DO UPDATE, ...)
+          # — können also gefahrlos bei jedem Lauf erneut ausgeführt werden.
           shopt -s nullglob
-          for sql in docs/*-setup.sql; do
+          for sql in docs/*-setup.sql docs/*-seed.sql; do
             echo "─── $sql ───"
             PAYLOAD=$(jq -Rs '{query: .}' < "$sql")
             HTTP_CODE=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
@@ -79,6 +79,7 @@ jobs:
           ANTHROPIC_MODEL:       ${{ secrets.ANTHROPIC_MODEL }}
           OPENROUTER_API_KEY:    ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_MODEL:      ${{ secrets.OPENROUTER_MODEL }}
+          CRON_SECRET:           ${{ secrets.CRON_SECRET }}
         run: |
           # Sync optionaler Function-Secrets aus GitHub auf Supabase.
           # Wenn ein GitHub-Secret nicht gesetzt ist, wird der Eintrag
@@ -98,6 +99,7 @@ jobs:
           push_secret ANTHROPIC_MODEL     "$ANTHROPIC_MODEL"
           push_secret OPENROUTER_API_KEY  "$OPENROUTER_API_KEY"
           push_secret OPENROUTER_MODEL    "$OPENROUTER_MODEL"
+          push_secret CRON_SECRET         "$CRON_SECRET"
 
       - name: Deploy all functions
         env:
