@@ -424,23 +424,41 @@ function openRouterHeaders() {
   return h;
 }
 
-// Baut die Message-Reihenfolge inkl. eines finalen Sprach-Reminder-
-// Eintrags direkt vor der Antwort. Recency-Bias bei kleinen Modellen
-// wie gpt-4o-mini: die letzte System-Message wird viel zuverlässiger
-// respektiert als eine am Anfang.
-function buildMessages(systemPrompt: string, messages: any[], langTail: string): any[] {
-  const out = [{ role: "system", content: systemPrompt }, ...messages];
+// Baut die Message-Reihenfolge mit drei Sprach-Verstärkern:
+//  1. System-Prompt am Anfang sagt explizit die Sprache
+//  2. Die LETZTE user-Message wird mit einem unsichtbaren Sprach-
+//     Marker geprefixt: "[Antworte ausschließlich auf Englisch.] ..."
+//     Der Marker wird NICHT im Chat-Verlauf gespeichert (nur fürs
+//     LLM beim Senden injiziert). Das ist die zuverlässigste Methode
+//     bei kleinen Modellen wie gpt-4o-mini, die System-Anweisungen
+//     manchmal ignorieren wenn der Großteil des Prompts in einer
+//     anderen Sprache ist.
+//  3. Finale system-Message als Recency-Reminder
+function buildMessages(systemPrompt: string, messages: any[], langTail: string, langName: string): any[] {
+  const out: any[] = [{ role: "system", content: systemPrompt }];
+  const msgs = messages.slice();
+  // Letzte user-Message finden und Marker prepend
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i]?.role === "user" && typeof msgs[i]?.content === "string") {
+      msgs[i] = {
+        ...msgs[i],
+        content: `[Reply strictly in ${langName} — this is the user's app language.]\n\n${msgs[i].content}`,
+      };
+      break;
+    }
+  }
+  out.push(...msgs);
   if (langTail) out.push({ role: "system", content: langTail });
   return out;
 }
 
-async function callOpenRouter(systemPrompt: string, messages: any[], langTail: string) {
+async function callOpenRouter(systemPrompt: string, messages: any[], langTail: string, langName: string) {
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: openRouterHeaders(),
     body: JSON.stringify({
       model: OPENROUTER_MODEL,
-      messages: buildMessages(systemPrompt, messages, langTail),
+      messages: buildMessages(systemPrompt, messages, langTail, langName),
       tools: TOOLS,
       tool_choice: "auto",
       max_tokens: 1500,
@@ -453,13 +471,13 @@ async function callOpenRouter(systemPrompt: string, messages: any[], langTail: s
   return await res.json();
 }
 
-async function callOpenRouterStream(systemPrompt: string, messages: any[], langTail: string) {
+async function callOpenRouterStream(systemPrompt: string, messages: any[], langTail: string, langName: string) {
   return await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: openRouterHeaders(),
     body: JSON.stringify({
       model: OPENROUTER_MODEL,
-      messages: buildMessages(systemPrompt, messages, langTail),
+      messages: buildMessages(systemPrompt, messages, langTail, langName),
       tools: TOOLS,
       tool_choice: "auto",
       max_tokens: 1500,
@@ -532,7 +550,7 @@ Deno.serve(async (req: Request) => {
     // TransformStream-Pattern statt ReadableStream-pull():
     // imperativer, kein Close-Race, sauberes finally für Cleanup.
     if (wantStream) {
-      const upstream = await callOpenRouterStream(systemPrompt, messages, langTail);
+      const upstream = await callOpenRouterStream(systemPrompt, messages, langTail, langName);
       if (!upstream.ok) {
         const txt = await upstream.text();
         return new Response(JSON.stringify({ error: `OpenRouter ${upstream.status}: ${txt}` }), {
@@ -662,7 +680,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ─── Non-Streaming-Pfad: einmal abrufen, in altes Antwort-Format wandeln ───
-    const result = await callOpenRouter(systemPrompt, messages, langTail);
+    const result = await callOpenRouter(systemPrompt, messages, langTail, langName);
     const choice = result?.choices?.[0];
     const msg = choice?.message || {};
     const text = typeof msg.content === "string" ? msg.content : "";
