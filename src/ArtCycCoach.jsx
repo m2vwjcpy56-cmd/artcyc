@@ -12,6 +12,7 @@ import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fet
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud, fileToBase64 } from './lib/feedback.js';
 import { parseProgramFile } from './lib/programImport.js';
+import { loadUciExercisesFromDb, getRulesLanguage, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS } from './lib/uciRules.js';
 
 // =============================================================
 // UCI 2026 Datenbank: Alle Disziplinen
@@ -3671,6 +3672,43 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
 
+  // Reglement-Sprache: separat von App-Sprache wählbar. 'auto' = App-Sprache spiegeln
+  // mit Fallback auf 'en' falls App-Sprache keine UCI-Sprache ist.
+  const [rulesLangPref, setRulesLangPrefState] = useState(() => {
+    try {
+      const v = localStorage.getItem(RULES_LANG_KEY);
+      if (v === 'auto' || SUPPORTED_RULES_LANGS.includes(v)) return v;
+    } catch {}
+    return 'auto';
+  });
+  const setRulesLangPref = useCallback((v) => {
+    setRulesLangPrefState(v);
+    try { localStorage.setItem(RULES_LANG_KEY, v); } catch {}
+  }, []);
+  const effectiveRulesLang = getRulesLanguage(lang, rulesLangPref);
+
+  // UCI-Übungen aus DB nachladen sobald wir wissen welche Sprache; bei Wechsel re-fetchen.
+  useEffect(() => {
+    if (!session) return; // erst nach Login DB-Zugriff
+    let cancelled = false;
+    loadUciExercisesFromDb(effectiveRulesLang).then(rows => {
+      if (cancelled || !rows) return;
+      setActiveDb(rows);
+    });
+    return () => { cancelled = true; };
+  }, [session, effectiveRulesLang]);
+
+  // App-Notices (UCI-Reglement-Update etc.)
+  const [notices, setNotices] = useState([]);
+  useEffect(() => {
+    if (!session) { setNotices([]); return; }
+    fetchActiveNotices().then(setNotices);
+  }, [session?.user?.id]);
+  const dismissNoticeLocal = useCallback(async (id) => {
+    setNotices(ns => ns.filter(n => n.id !== id));
+    await dismissNotice(id);
+  }, []);
+
   // Theme: 'system' folgt prefers-color-scheme, 'light'/'dark' überschreiben
   const [theme, setTheme] = useState(() => {
     try {
@@ -4101,7 +4139,7 @@ export default function App() {
   else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} />;
-  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} setView={setView} onOpenFeedback={openFeedback} />;
+  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={openFeedback} />;
   else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} ownData={effectiveData} />;
   else if (view === 'export') viewEl = <ExportView data={effectiveData} setView={setView} />;
   else if (view === 'kuer' || view === 'video') {
@@ -4182,6 +4220,51 @@ export default function App() {
 
       {/* Globales Feedback-Modal — kann aus Dashboard, Settings o.\xa0a. geöffnet werden */}
       {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
+
+      {/* App-Notices (z. B. neues UCI-Reglement) — als floatender Toast */}
+      {notices.length > 0 && (
+        <NoticeBanner notices={notices} onDismiss={dismissNoticeLocal} />
+      )}
+    </div>
+  );
+}
+
+// =============================================================
+// NoticeBanner — zeigt aktive app_notices als floatenden Toast unten
+// =============================================================
+function NoticeBanner({ notices, onDismiss }) {
+  const { t } = useI18n();
+  const top = notices[0]; // nur die neueste auf einmal zeigen
+  if (!top) return null;
+  const Icon = top.category === 'update' ? FileText : (top.category === 'warning' ? AlertTriangle : Info);
+  const color = top.category === 'update' ? '#FF9500' : (top.category === 'warning' ? '#FF3B30' : '#007AFF');
+  return (
+    <div className="fixed left-0 right-0 z-40 px-3 pointer-events-none"
+         style={{ bottom: 'calc(env(safe-area-inset-bottom) + 84px)' }}>
+      <div className="mx-auto max-w-md bg-white dark:bg-[#1c1c1e] rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.18)] border border-slate-200/60 dark:border-slate-800 p-4 pointer-events-auto">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ background: color + '22', color }}>
+            <Icon size={20} strokeWidth={2.4} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-[15px]">{top.title || t('rulesUpdate.bannerTitle')}</div>
+            {top.body && <div className="text-[13px] text-[#3C3C43] dark:text-slate-300 mt-0.5 leading-snug">{top.body}</div>}
+            <div className="flex gap-2 mt-2.5">
+              {top.link_url && (
+                <a href={top.link_url} target="_blank" rel="noopener noreferrer"
+                  className="text-[13px] font-medium px-3 py-1.5 rounded-full active:opacity-70"
+                  style={{ background: color, color: '#fff' }}>
+                  {top.link_label || t('rulesUpdate.openPdf')}
+                </a>
+              )}
+              <button onClick={() => onDismiss(top.id)}
+                className="text-[13px] font-medium px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 active:opacity-70">
+                {t('rulesUpdate.dismiss')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -5624,7 +5707,7 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
 // =============================================================
 // EINSTELLUNGEN (Skeleton — wird in Stufe 8 ausgebaut)
 // =============================================================
-function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, refreshAthletes, theme, setTheme, langPref, setLangPref, setView, onOpenFeedback }) {
+function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, refreshAthletes, theme, setTheme, langPref, setLangPref, rulesLangPref, setRulesLangPref, setView, onOpenFeedback }) {
   const { t } = useI18n();
   const roleLabel = profile?.role === 'admin' ? t('role.admin') : profile?.role === 'coach' ? t('role.coach') : t('role.athlete');
   const syncLabel = cloudStatus === 'syncing' ? t('settings.cloudSyncing') : cloudStatus === 'error' ? t('settings.cloudSyncError') : t('settings.cloudSynced');
@@ -5762,6 +5845,31 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
         ))}
       </IOSList>
 
+      {/* Reglement-Sprache — separate Wahl für UCI-Übungs-Namen */}
+      {setRulesLangPref && (
+        <IOSList header={t('settings.rulesLanguage')} footer={t('settings.rulesLanguageFooter')}>
+          <IOSListRow
+            onClick={() => setRulesLangPref('auto')}
+            trailing={rulesLangPref === 'auto' ? <Check size={20} strokeWidth={2.8} className="text-[#FF9500]" /> : <span className="w-5" />}>
+            <span className="flex items-center gap-3">
+              <FileText size={18} className="text-[#8E8E93]" />
+              <span className="text-[15px]">{t('settings.rulesLanguageAuto')}</span>
+            </span>
+          </IOSListRow>
+          {LANGUAGES.filter(l => SUPPORTED_RULES_LANGS.includes(l.code)).map(l => (
+            <IOSListRow
+              key={l.code}
+              onClick={() => setRulesLangPref(l.code)}
+              trailing={rulesLangPref === l.code ? <Check size={20} strokeWidth={2.8} className="text-[#FF9500]" /> : <span className="w-5" />}>
+              <span className="flex items-center gap-3">
+                <span className="text-[18px] leading-none">{l.flag}</span>
+                <span className="text-[15px]">{l.native}</span>
+              </span>
+            </IOSListRow>
+          ))}
+        </IOSList>
+      )}
+
       {/* Trainer-Zugriff */}
       {session && (
         <IOSList
@@ -5842,8 +5950,6 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
           </span>
         </IOSListRow>
       </IOSList>
-
-      <ReglementSettings data={data} setData={setData} />
 
       <BackupSettings data={data} setData={setData} />
 
@@ -6170,268 +6276,6 @@ function FeedbackModal({ onClose }) {
   );
 }
 
-// =============================================================
-// REGLEMENT-EINSTELLUNGEN
-// =============================================================
-function ReglementSettings({ data, setData }) {
-  const { t } = useI18n();
-  const [parseStatus, setParseStatus] = useState(null); // null | 'parsing' | 'success' | 'error'
-  const [parseMsg, setParseMsg] = useState('');
-  const [previewDb, setPreviewDb] = useState(null);
-  const [showAllExercises, setShowAllExercises] = useState(false);
-  const [filterDisc, setFilterDisc] = useState('1er');
-  const fileInputRef = useState(null)[0];
-
-  const isCustom = !!(data.uci_custom && data.uci_custom.length > 0);
-  const currentCount = getUciDb().length;
-  const byDiscipline = useMemo(() => {
-    const counts = {};
-    DISCIPLINES.forEach(d => counts[d.id] = 0);
-    getUciDb().forEach(e => { if (counts[e.d] !== undefined) counts[e.d]++; });
-    return counts;
-  }, [data.uci_custom]);
-
-  const handlePdfUpload = async (file) => {
-    if (!file) return;
-    setParseStatus('parsing');
-    setParseMsg('Lade PDF-Bibliothek…');
-    setPreviewDb(null);
-
-    try {
-      setParseMsg('Lade PDF-Bibliothek…');
-      const fullText = await extractPdfText(file);
-
-      setParseMsg('Extrahiere Übungen…');
-      // Pattern: "1001  a  Reitsitz HR. 0,5"
-      const pattern = /(\d{4})\s+([a-z])\s+([^\n]+?)\s+(\d+,\d+)/g;
-      const seen = new Map();
-      let m;
-      while ((m = pattern.exec(fullText)) !== null) {
-        const code = m[1];
-        const letter = m[2];
-        const name = m[3].trim();
-        const pts = parseFloat(m[4].replace(',', '.'));
-        const fullCode = code + letter;
-        // Disziplin aus erstem Ziffer ableiten
-        const first = code[0];
-        let disc = null;
-        if (first === '1') disc = '1er';
-        else if (first === '2') disc = '2er';
-        else if (first === '4') disc = '4er';
-        else if (first === '6') disc = '6er';
-        if (!disc) continue;
-        if (seen.has(fullCode)) continue;
-        seen.set(fullCode, { c: fullCode, n: name, p: pts, d: disc });
-      }
-
-      const newDb = Array.from(seen.values());
-      if (newDb.length < 100) {
-        throw new Error('Nur ' + newDb.length + ' Übungen gefunden — das PDF-Layout passt nicht zum erwarteten Format. Übernahme abgebrochen.');
-      }
-
-      setPreviewDb(newDb);
-      setParseStatus('success');
-      const counts = {};
-      DISCIPLINES.forEach(d => counts[d.id] = 0);
-      newDb.forEach(e => counts[e.d]++);
-      const summary = DISCIPLINES.map(d => d.id + ': ' + counts[d.id]).join(' · ');
-      setParseMsg(newDb.length + ' Übungen erkannt (' + summary + ')');
-    } catch (err) {
-      setParseStatus('error');
-      setParseMsg('Fehler: ' + (err.message || 'PDF konnte nicht verarbeitet werden'));
-    }
-  };
-
-  const applyPreview = () => {
-    if (!previewDb) return;
-    if (!confirm('Aktuelle UCI-Datenbank durch ' + previewDb.length + ' neue Übungen ersetzen?')) return;
-    setData({
-      ...data,
-      uci_custom: previewDb,
-      uci_updated: new Date().toISOString()
-    });
-    setPreviewDb(null);
-    setParseStatus(null);
-    setParseMsg('');
-  };
-
-  const resetToDefault = () => {
-    if (!confirm('Auf eingebaute UCI 2026 zurücksetzen?')) return;
-    setData({ ...data, uci_custom: null, uci_updated: null });
-  };
-
-  const exportJson = () => {
-    const json = JSON.stringify(getUciDb(), null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'uci-database-' + (data.uci_version || '2026') + '.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleJsonUpload = async (file) => {
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-      if (!Array.isArray(parsed)) throw new Error('Datei muss ein Array sein');
-      // Validierung
-      const valid = parsed.every(e => e.c && e.n && typeof e.p === 'number' && e.d);
-      if (!valid) throw new Error('Format falsch — jeder Eintrag braucht c, n, p, d');
-      if (parsed.length === 0) throw new Error('Datei ist leer');
-      if (!confirm('Datenbank durch ' + parsed.length + ' Übungen ersetzen?')) return;
-      setData({ ...data, uci_custom: parsed, uci_updated: new Date().toISOString() });
-      alert('UCI-Datenbank aktualisiert.');
-    } catch (err) {
-      alert('Fehler: ' + (err.message || 'JSON konnte nicht geladen werden'));
-    }
-  };
-
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 space-y-4">
-      <h2 className="font-semibold flex items-center gap-2"><FileText size={16} /> {t('uci.title')}</h2>
-
-      {/* Status */}
-      <div className="bg-slate-50 rounded-xl p-3 space-y-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-medium text-slate-500">{t('uci.activeDb')}</span>
-          <span className={'text-xs font-medium px-2 py-0.5 rounded-full ' +
-            (isCustom ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700')}>
-            {isCustom ? 'Custom · ' + currentCount + ' Übungen' : 'UCI 2026 · ' + currentCount + ' Übungen'}
-          </span>
-        </div>
-        <div className="grid grid-cols-4 gap-1 text-xs">
-          {DISCIPLINES.map(d => (
-            <div key={d.id} className="bg-white rounded-lg px-2 py-1.5 text-center">
-              <div className="font-semibold text-slate-900">{byDiscipline[d.id]}</div>
-              <div className="text-slate-500">{d.id}</div>
-            </div>
-          ))}
-        </div>
-        {data.uci_updated && (
-          <div className="text-xs text-slate-500">
-            Zuletzt aktualisiert: {new Date(data.uci_updated).toLocaleString('de-DE')}
-          </div>
-        )}
-      </div>
-
-      {/* PDF Upload */}
-      <div>
-        <h3 className="text-sm font-semibold mb-2">📄 {t('uci.newPdfSection')}</h3>
-        <p className="text-xs text-slate-500 mb-2 leading-relaxed">
-          ⚠️ {t('uci.betaWarning')}
-        </p>
-        <label className="block">
-          <input type="file" accept="application/pdf"
-            onChange={e => handlePdfUpload(e.target.files && e.target.files[0])}
-            className="hidden" id="pdf-upload-input" />
-          <button onClick={() => document.getElementById('pdf-upload-input').click()}
-            disabled={parseStatus === 'parsing'}
-            className="w-full bg-white border-2 border-dashed border-slate-300 hover:border-amber-400 px-4 py-4 rounded-xl text-sm font-medium flex items-center gap-2 justify-center disabled:opacity-50">
-            <FileText size={16} /> PDF auswählen
-          </button>
-        </label>
-
-        {parseStatus === 'parsing' && (
-          <div className="mt-2 p-3 bg-sky-50 border border-sky-200 rounded-xl text-sm text-sky-900">
-            ⏳ {parseMsg}
-          </div>
-        )}
-        {parseStatus === 'success' && previewDb && (
-          <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm space-y-2">
-            <div className="text-emerald-900">✓ {parseMsg}</div>
-            <div className="flex gap-2">
-              <button onClick={applyPreview}
-                className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium">
-                Übernehmen
-              </button>
-              <button onClick={() => { setPreviewDb(null); setParseStatus(null); setParseMsg(''); }}
-                className="bg-white border border-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium">
-                Verwerfen
-              </button>
-            </div>
-          </div>
-        )}
-        {parseStatus === 'error' && (
-          <div className="mt-2 p-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-900">
-            ✗ {parseMsg}
-            <div className="text-xs mt-1 opacity-80">
-              Tipp: Nutze stattdessen den JSON-Import unten oder schick mir das PDF.
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* JSON Import/Export */}
-      <div>
-        <h3 className="text-sm font-semibold mb-2">📦 {t('uci.jsonBackup')}</h3>
-        <p className="text-xs text-slate-500 mb-2">
-          Sicherer Weg: Aktuelle DB exportieren oder eine geprüfte JSON-Version importieren.
-        </p>
-        <div className="grid grid-cols-2 gap-2">
-          <button onClick={exportJson}
-            className="bg-white border border-slate-300 hover:bg-slate-50 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center">
-            <Download size={14} /> Exportieren
-          </button>
-          <label className="bg-white border border-slate-300 hover:bg-slate-50 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
-            <FileText size={14} /> Importieren
-            <input type="file" accept="application/json"
-              onChange={e => handleJsonUpload(e.target.files && e.target.files[0])}
-              className="hidden" />
-          </label>
-        </div>
-      </div>
-
-      {/* Reset auf Default */}
-      {isCustom && (
-        <div className="pt-3 border-t border-slate-200">
-          <button onClick={resetToDefault}
-            className="text-sm text-slate-600 hover:text-slate-900 flex items-center gap-1.5">
-            <RotateCcw size={14} /> Auf eingebaute UCI 2026 zurücksetzen
-          </button>
-        </div>
-      )}
-
-      {/* Übungen browsen */}
-      <div className="pt-3 border-t border-slate-200">
-        <button onClick={() => setShowAllExercises(!showAllExercises)}
-          className="text-sm text-slate-600 hover:text-slate-900 flex items-center gap-1.5">
-          {showAllExercises ? '↑ Übungen verbergen' : '↓ Aktive Übungen anzeigen'}
-        </button>
-        {showAllExercises && (
-          <div className="mt-3 space-y-2">
-            <div className="flex gap-1.5">
-              {DISCIPLINES.map(d => (
-                <button key={d.id} onClick={() => setFilterDisc(d.id)}
-                  className={'text-xs px-2 py-1 rounded-lg ' +
-                    (filterDisc === d.id ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700')}>
-                  {d.id} ({byDiscipline[d.id]})
-                </button>
-              ))}
-            </div>
-            <div className="border border-slate-200 rounded-xl max-h-64 overflow-y-auto">
-              {getUciDb().filter(e => e.d === filterDisc).slice(0, 100).map(e => (
-                <div key={e.c} className="px-3 py-1.5 border-b border-slate-100 text-xs flex justify-between gap-2">
-                  <span className="truncate"><span className="text-slate-400">{e.c}</span> {e.n}</span>
-                  <span className="text-slate-500 shrink-0">{e.p} Pkt</span>
-                </div>
-              ))}
-              {byDiscipline[filterDisc] > 100 && (
-                <div className="px-3 py-2 text-xs text-slate-500 text-center">
-                  …und {byDiscipline[filterDisc] - 100} weitere
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // =============================================================
 // BACKUP-EINSTELLUNGEN (komplettes App-Backup)
