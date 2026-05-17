@@ -8164,6 +8164,7 @@ function WettkampfView({ data, setData, dbAthletes }) {
       programs={programs}
       athletes={athletes}
       existingExercises={data.exercises || []}
+      existingCompetitions={competitions}
       onSave={(payload) => {
         // ALLES in EINEM setData-Call → keine Race-Conditions
         const c = payload.competition;
@@ -8399,7 +8400,7 @@ function ValidationCheck({ pdfRef, t1, t2 }) {
   );
 }
 
-function WettkampfEditor({ competition, programs, athletes, existingExercises, onSave, onCancel }) {
+function WettkampfEditor({ competition, programs, athletes, existingExercises, existingCompetitions, onSave, onCancel }) {
   const { t } = useI18n();
   const isNew = !competition;
   const [name, setName] = useState((competition && competition.name) || '');
@@ -8814,6 +8815,36 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
     if (window.confirm(confirmMsg)) onCancel();
   };
 
+  // Duplikats-Erkennung: prüft, ob der aktuell geöffnete Import-Preview bereits
+  // als Wettkampf existiert (gleicher Name + Datum, optional auch Startnummer).
+  // Beim Bearbeiten (competition gesetzt) ignorieren wir den Wettkampf selbst.
+  const duplicateCompetition = (() => {
+    if (!importPreview) return null;
+    if (!importPreview.wettbewerb || !importPreview.datum) return null;
+    const list = existingCompetitions || [];
+    return list.find(c => {
+      if (competition && c.id === competition.id) return false;
+      if ((c.name || '').trim() !== (importPreview.wettbewerb || '').trim()) return false;
+      if ((c.date || '') !== (importPreview.datum || '')) return false;
+      // Zusätzlich Startnummer matchen, falls beide gesetzt
+      if (importPreview.startnr && c.start_nr) {
+        return String(c.start_nr).trim() === String(importPreview.startnr).trim();
+      }
+      return true;
+    }) || null;
+  })();
+
+  // Übernehmen mit Duplikat-Confirm
+  const handleApplyImport = () => {
+    if (duplicateCompetition) {
+      const msg = 'Es existiert bereits ein Wettkampf mit gleichem Namen und Datum:\n\n„' +
+        duplicateCompetition.name + '" am ' + formatDateShort(duplicateCompetition.date) +
+        '\n\nTrotzdem übernehmen? Es wird ein zweiter Wettkampf-Eintrag angelegt.';
+      if (!window.confirm(msg)) return;
+    }
+    applyImport(importPreview);
+  };
+
   return (
     <div className="-mx-3 sm:mx-0">
       {/* iOS Sticky Top-Bar */}
@@ -8834,19 +8865,30 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
           - Programm da + offener Import-Preview → eindeutige „Vorschau, noch nicht übernommen"-Karte
           - Programm da, Werte bereits aktiv → normale Score-Card */}
       {program && importPreview ? (
-        <div className="sticky top-[52px] z-10 px-3 pt-2 pb-2 ios-header-bg backdrop-blur-xl">
-          <div className="bg-violet-50 dark:bg-violet-950/40 border border-violet-300 dark:border-violet-900/60 rounded-2xl px-3 py-2 flex items-center gap-2 shadow-[0_4px_12px_rgba(0,0,0,0.15)]">
-            <FileText size={16} className="text-violet-700 dark:text-violet-300 shrink-0" />
+        <div className="sticky top-[52px] z-10 px-3 pt-2 pb-2 ios-header-bg backdrop-blur-xl space-y-1.5">
+          <div className={'rounded-2xl px-3 py-2 flex items-center gap-2 shadow-[0_4px_12px_rgba(0,0,0,0.15)] ' +
+            (duplicateCompetition
+              ? 'bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900/60'
+              : 'bg-violet-50 dark:bg-violet-950/40 border border-violet-300 dark:border-violet-900/60')}>
+            {duplicateCompetition
+              ? <AlertTriangle size={16} className="text-amber-700 dark:text-amber-300 shrink-0" />
+              : <FileText size={16} className="text-violet-700 dark:text-violet-300 shrink-0" />}
             <div className="flex-1 min-w-0">
-              <div className="text-[10px] uppercase tracking-wide text-violet-700 dark:text-violet-300 font-semibold leading-tight">Vorschau · nicht übernommen</div>
+              <div className={'text-[10px] uppercase tracking-wide font-semibold leading-tight ' +
+                (duplicateCompetition ? 'text-amber-700 dark:text-amber-300' : 'text-violet-700 dark:text-violet-300')}>
+                {duplicateCompetition ? 'Bereits importiert' : 'Vorschau · nicht übernommen'}
+              </div>
               <div className="text-[12px] text-slate-800 dark:text-violet-100 leading-tight truncate">
-                {typeof importPreview.endergebnis === 'number'
-                  ? 'PDF-Endergebnis: ' + importPreview.endergebnis.toFixed(2)
-                  : 'PDF erkannt — Werte unten übernehmen'}
+                {duplicateCompetition
+                  ? '„' + duplicateCompetition.name + '" am ' + formatDateShort(duplicateCompetition.date)
+                  : (typeof importPreview.endergebnis === 'number'
+                      ? 'PDF-Endergebnis: ' + importPreview.endergebnis.toFixed(2)
+                      : 'PDF erkannt — Werte unten übernehmen')}
               </div>
             </div>
-            <button onClick={() => applyImport(importPreview)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1 shrink-0">
+            <button onClick={handleApplyImport}
+              className={'text-white px-3 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1 shrink-0 ' +
+                (duplicateCompetition ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700')}>
               <Check size={12} strokeWidth={3} /> {t('pdfImport.apply')}
             </button>
           </div>
@@ -8954,9 +8996,18 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
                   ⚠️ {importPreview.warnings.join(' · ')}
                 </div>
               )}
+              {duplicateCompetition && (
+                <div className="text-xs bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900/60 rounded-lg p-2 flex items-start gap-2">
+                  <AlertTriangle size={14} className="text-amber-700 dark:text-amber-300 shrink-0 mt-0.5" />
+                  <div className="text-amber-900 dark:text-amber-200">
+                    <strong>Wettkampf bereits importiert.</strong> „{duplicateCompetition.name}" am {formatDateShort(duplicateCompetition.date)} ist schon angelegt. Beim Übernehmen wird ein zweiter Eintrag erzeugt.
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2 pt-1">
-                <button onClick={() => applyImport(importPreview)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1">
+                <button onClick={handleApplyImport}
+                  className={'text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1 ' +
+                    (duplicateCompetition ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700')}>
                   <Check size={14} /> {t('pdfImport.apply')}
                 </button>
                 <button onClick={() => { setImportPreview(null); setImportStatus(null); setImportMsg(''); }}
