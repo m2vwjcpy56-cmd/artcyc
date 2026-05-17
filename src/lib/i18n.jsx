@@ -434,8 +434,7 @@ const dict = {
     'aiInsight.compClean': '{n}× im Wettkampf, durchschnittlich {avgDed} Pkt Abzug — sehr sauber.',
     'aiInsight.compMixed': '{n}× im Wettkampf, durchschnittlich {avgDed} Pkt Abzug.',
     'aiInsight.compShaky': '{n}× im Wettkampf, durchschnittlich {avgDed} Pkt Abzug — instabil unter Druck.',
-    'aiInsight.compFalls': 'Auffällig: {falls} Sturz/Stürze ({sym}) in Wettkämpfen — Risiko prüfen.',
-    'aiInsight.compMauten': '{mauten} Mauten (|) in Wettkämpfen — die kosten am meisten.',
+    'aiInsight.compTopSymbol': 'Häufigster Abzug im Wettkampf: {name} ({sym}) — Ø {avg} pro Wettkampf ({total} in {n} Wettkämpfen).',
     'aiInsight.compMismatch': 'Training läuft mit {trainRate}%, im Wettkampf aber häufig Abzüge — Wettkampf-Routinen üben.',
     'aiInsight.compMatch': 'Wettkampf-Leistung passt zur Trainings-Quote ({trainRate}%) — verlässlich.'
   },

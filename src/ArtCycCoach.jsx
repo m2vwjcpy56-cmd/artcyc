@@ -2463,8 +2463,19 @@ function generateExerciseInsight(exercise, sessions, t, programs, competitions) 
   const target = typeof exercise.target_rate === 'number' ? exercise.target_rate : null;
 
   // Edge cases — sehr wenig Daten
-  if (total === 0)   return { lines: [t('aiInsight.noData')],                 rich: false };
-  if (total < 10)    return { lines: [t('aiInsight.veryNew', { n: total })], rich: false };
+  // Edge-Cases: wenige/keine Trainingsdaten — aber falls Wettkampf-Daten
+  // vorhanden sind, hängen wir die trotzdem dran (Trainer-Tipp wirkt sonst
+  // nutzlos für rein wettkampf-aktive Übungen).
+  if (total === 0) {
+    const lines = [t('aiInsight.noData')];
+    appendCompetitionInsight(lines, exercise, programs, competitions, 0, t);
+    return { lines, rich: lines.length > 1 };
+  }
+  if (total < 10) {
+    const lines = [t('aiInsight.veryNew', { n: total })];
+    appendCompetitionInsight(lines, exercise, programs, competitions, rate, t);
+    return { lines, rich: lines.length > 1 };
+  }
 
   // Stale check (länger als 30 Tage)
   const sessionDates = exSessions.map(s => s.date).filter(Boolean).sort();
@@ -2576,7 +2587,11 @@ function generateExerciseInsight(exercise, sessions, t, programs, competitions) 
     // 9) Streak (Erfolge am Stück) — nur erwähnen wenn beeindruckend
     if (bestStreak >= 10) lines.push(t('aiInsight.bestStreak', { n: bestStreak }));
 
-    // 10) Konkrete Empfehlung am Ende
+    // 10) Wettkampf-Insight ergänzen (vor der Empfehlung, damit die Reco
+    //     auch die Wettkampf-Daten reflektieren könnte)
+    appendCompetitionInsight(lines, exercise, programs, competitions, rate, t);
+
+    // 11) Konkrete Empfehlung am Ende
     if      (target != null && rate < target - 5)   lines.push(t('aiInsight.recoFocus'));
     else if (rate >= 85)                             lines.push(rate >= 95 ? t('aiInsight.recoVariety') : t('aiInsight.recoMaintain'));
     else if (rate < 55)                              lines.push(t('aiInsight.recoTechnique'));
@@ -2625,9 +2640,24 @@ function appendCompetitionInsight(lines, exercise, programs, competitions, train
   else if (avgDedRaw < 0.6)  lines.push(t('aiInsight.compMixed',  { n: stats.wettkaempfe, avgDed }));
   else                       lines.push(t('aiInsight.compShaky',  { n: stats.wettkaempfe, avgDed }));
 
-  // Auffällige Einzel-Symbol-Häufungen
-  if (stats.circle >= 2) lines.push(t('aiInsight.compFalls',  { falls: stats.circle, sym: '○' }));
-  if (stats.bar    >= 3) lines.push(t('aiInsight.compMauten', { mauten: stats.bar }));
+  // Häufigstes Symbol: zeigt was bei Wettkämpfen am meisten kostet.
+  // Sortiert nach gesamtem Punkt-Beitrag (count × weight) — Stürze haben
+  // mehr Gewicht als Kreuze, daher landet '○' bei gleich vielen Vorkommen oben.
+  const symbols = [
+    { keySingular: 'Kreuz',  keyPlural: 'Kreuze',  sym: 'x', count: stats.cross,  weight: 0.2 },
+    { keySingular: 'Welle',  keyPlural: 'Wellen',  sym: '~', count: stats.wave,   weight: 0.5 },
+    { keySingular: 'Maute',  keyPlural: 'Mauten',  sym: '|', count: stats.bar,    weight: 1.0 },
+    { keySingular: 'Sturz',  keyPlural: 'Stürze',  sym: '○', count: stats.circle, weight: 2.0 },
+  ].filter(s => s.count > 0);
+
+  if (symbols.length > 0) {
+    const top = [...symbols].sort((a, b) => (b.count * b.weight) - (a.count * a.weight))[0];
+    const avgPerWk = (top.count / stats.wettkaempfe).toFixed(1).replace('.', ',');
+    const name = top.count === 1 ? top.keySingular : top.keyPlural;
+    lines.push(t('aiInsight.compTopSymbol', {
+      name, sym: top.sym, total: top.count, avg: avgPerWk, n: stats.wettkaempfe
+    }));
+  }
 
   // Vergleich Training vs. Wettkampf — Mismatch wenn Training sehr gut aber Wettkampf instabil
   if (trainRate >= 80 && avgDedRaw >= 0.4) {
@@ -8144,13 +8174,33 @@ function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onRemove }) {
 // =============================================================
 // WETTKAMPF
 // =============================================================
+// Persistiert WettkampfView- + Editor-State über Tab-Wechsel hinweg.
+// Sonst geht beim Wechsel auf Training/Dashboard alles verloren, weil
+// React die View-Komponente unmoutet. localStorage = einfacher Auto-Save.
+const WK_VIEW_STATE_KEY = 'artcyc:wk-view:v1';
+
 function WettkampfView({ data, setData, dbAthletes }) {
   const { t } = useI18n();
   const [tab, setTab] = useState('wettkaempfe'); // 'wettkaempfe' | 'programme'
-  const [editId, setEditId] = useState(null);
+
+  // Persistierter Editor-Öffnungs-Zustand
+  const initView = (() => {
+    try {
+      const raw = localStorage.getItem(WK_VIEW_STATE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return { editId: null, showNew: false };
+  })();
+  const [editId, setEditId] = useState(initView.editId);
+  const [showNew, setShowNew] = useState(initView.showNew);
   const [viewId, setViewId] = useState(null);
-  const [showNew, setShowNew] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(WK_VIEW_STATE_KEY, JSON.stringify({ editId, showNew }));
+    } catch {}
+  }, [editId, showNew]);
 
   // Wenn Tab Programme, render ProgrammeView eingebettet
   if (tab === 'programme') {
@@ -8469,17 +8519,36 @@ function ValidationCheck({ pdfRef, t1, t2 }) {
 function WettkampfEditor({ competition, programs, athletes, existingExercises, existingCompetitions, onSave, onCancel }) {
   const { t } = useI18n();
   const isNew = !competition;
-  const [name, setName] = useState((competition && competition.name) || '');
-  const [date, setDate] = useState((competition && competition.date) || new Date().toISOString().slice(0, 10));
-  const [location, setLocation] = useState((competition && competition.location) || '');
-  const [host, setHost] = useState((competition && competition.host) || '');
-  const [startNr, setStartNr] = useState((competition && competition.start_nr) || '');
-  const [athleteId, setAthleteId] = useState((competition && competition.athlete_id) || ((athletes || [])[0] && (athletes || [])[0].id) || '');
-  const [programId, setProgramId] = useState((competition && competition.program_id) || (programs[0] && programs[0].id) || '');
+
+  // Draft-Persistierung: alle Form-Felder werden bei Änderung in localStorage
+  // gespiegelt, damit ein Tab-Wechsel oder App-Reload nichts wegwirft.
+  // Beim Speichern + bewussten Verwerfen wird der Draft gelöscht.
+  const DRAFT_KEY = 'artcyc:wk-draft:' + (competition?.id || 'new');
+  const draftRef = useRef(null);
+  if (draftRef.current === null) {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      draftRef.current = raw ? JSON.parse(raw) : false;
+    } catch {
+      draftRef.current = false;
+    }
+  }
+  const draft = draftRef.current || null;
+  const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch {} };
+
+  const initVal = (key, fallback) => (draft && key in draft) ? draft[key] : fallback;
+
+  const [name, setName] = useState(() => initVal('name', (competition && competition.name) || ''));
+  const [date, setDate] = useState(() => initVal('date', (competition && competition.date) || new Date().toISOString().slice(0, 10)));
+  const [location, setLocation] = useState(() => initVal('location', (competition && competition.location) || ''));
+  const [host, setHost] = useState(() => initVal('host', (competition && competition.host) || ''));
+  const [startNr, setStartNr] = useState(() => initVal('startNr', (competition && competition.start_nr) || ''));
+  const [athleteId, setAthleteId] = useState(() => initVal('athleteId', (competition && competition.athlete_id) || ((athletes || [])[0] && (athletes || [])[0].id) || ''));
+  const [programId, setProgramId] = useState(() => initVal('programId', (competition && competition.program_id) || (programs[0] && programs[0].id) || ''));
   // Beim PDF-Import: neue Programme und Übungen werden hier zwischengespeichert,
   // erst beim Speichern committet (eine atomare Datenänderung statt mehrere)
-  const [pendingNewProgram, setPendingNewProgram] = useState(null);
-  const [pendingNewExercises, setPendingNewExercises] = useState([]);
+  const [pendingNewProgram, setPendingNewProgram] = useState(() => initVal('pendingNewProgram', null));
+  const [pendingNewExercises, setPendingNewExercises] = useState(() => initVal('pendingNewExercises', []));
 
   // pendingNewProgram hat Vorrang — neu erstelltes Programm aus PDF wird angezeigt, bevor es gespeichert ist
   const program = pendingNewProgram || programs.find(p => p.id === programId);
@@ -8492,14 +8561,24 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     });
   };
 
-  const [table1, setTable1] = useState(() => initEntries(competition && competition.table1));
-  const [table2, setTable2] = useState(() => initEntries(competition && competition.table2));
-  const [t1S, setT1S] = useState((competition && competition.t1_schwierigkeit) || 0);
-  const [t2S, setT2S] = useState((competition && competition.t2_schwierigkeit) || 0);
+  const [table1, setTable1] = useState(() => initVal('table1', initEntries(competition && competition.table1)));
+  const [table2, setTable2] = useState(() => initVal('table2', initEntries(competition && competition.table2)));
+  const [t1S, setT1S] = useState(() => initVal('t1S', (competition && competition.t1_schwierigkeit) || 0));
+  const [t2S, setT2S] = useState(() => initVal('t2S', (competition && competition.t2_schwierigkeit) || 0));
   const [activeTable, setActiveTable] = useState(1);
   const [showExercises, setShowExercises] = useState(true);
   // Referenz-Werte aus letztem PDF-Import zur Validierung
-  const [pdfRef, setPdfRef] = useState(competition && competition.pdf_ref ? competition.pdf_ref : null);
+  const [pdfRef, setPdfRef] = useState(() => initVal('pdfRef', competition && competition.pdf_ref ? competition.pdf_ref : null));
+
+  // Draft schreiben sobald sich etwas ändert
+  useEffect(() => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({
+        name, date, location, host, startNr, athleteId, programId,
+        pendingNewProgram, pendingNewExercises, table1, table2, t1S, t2S, pdfRef
+      }));
+    } catch {}
+  }, [DRAFT_KEY, name, date, location, host, startNr, athleteId, programId, pendingNewProgram, pendingNewExercises, table1, table2, t1S, t2S, pdfRef]);
 
   // PDF-Import State
   const [importStatus, setImportStatus] = useState(null); // null | 'parsing' | 'success' | 'error'
@@ -8853,6 +8932,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     // Wenn ein neues Programm aus PDF erzeugt wurde, dessen ID nehmen
     const finalProgramId = pendingNewProgram ? pendingNewProgram.id : programId;
     if (!finalProgramId) return;
+    clearDraft(); // erfolgreich gespeichert → Draft entsorgen
     onSave({
       competition: {
         id: (competition && competition.id) || uid(),
@@ -8878,7 +8958,10 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
   // (User-Feedback: hat versehentlich „Fertig" gedrückt und alles war weg.)
   const handleCancel = () => {
     const confirmMsg = t('competition.discardChanges');
-    if (window.confirm(confirmMsg)) onCancel();
+    if (window.confirm(confirmMsg)) {
+      clearDraft(); // bewusst verworfen → Draft auch weg
+      onCancel();
+    }
   };
 
   // Duplikats-Erkennung: prüft, ob der aktuell geöffnete Import-Preview bereits
