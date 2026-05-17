@@ -46,17 +46,28 @@ export function getRulesLanguage(appLang, pref) {
  */
 export async function loadUciExercisesFromDb(lang) {
   try {
-    const { data, error } = await supabase
-      .from('uci_exercises')
-      .select('code, discipline, points, name_de, name_en, name_fr')
-      .eq('version', '2026')
-      .order('code');
-    if (error) {
-      console.warn('[uciRules] DB-Read failed:', error.message);
-      return null;
+    // PostgREST/Supabase liefert per Default nur 1000 Rows pro Query —
+    // bei 2034 Übungen würden 1034 fehlen. Wir paginieren über .range()
+    // bis nichts mehr kommt.
+    const PAGE = 1000;
+    const all = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase
+        .from('uci_exercises')
+        .select('code, discipline, points, name_de, name_en, name_fr')
+        .eq('version', '2026')
+        .order('code')
+        .range(from, from + PAGE - 1);
+      if (error) {
+        console.warn('[uciRules] DB-Read failed:', error.message);
+        return null;
+      }
+      if (!Array.isArray(data) || data.length === 0) break;
+      all.push(...data);
+      if (data.length < PAGE) break; // letzte Seite
     }
-    if (!Array.isArray(data) || data.length === 0) return null;
-    return data.map(r => ({
+    if (all.length === 0) return null;
+    return all.map(r => ({
       c: r.code,
       // Reglement-Sprache + Fallback-Kaskade: pref → en → de
       n: r['name_' + lang] || r.name_en || r.name_de || r.code,
