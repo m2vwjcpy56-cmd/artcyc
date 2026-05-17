@@ -111,8 +111,18 @@ jobs:
           # Alle Functions im supabase/functions-Ordner deployen.
           # JWT-Verification bleibt aktiv (Default) — sowohl chat als
           # auch submit-feedback prüfen den User-Token selbst.
+          #
+          # Ordner mit führendem Unterstrich (z. B. _shared/) werden
+          # übersprungen — das ist die Supabase-Konvention für Code der
+          # zwischen Functions geteilt wird (importiert via ../_shared/…).
+          # Supabase lehnt Function-Namen mit führendem _ ab, also würde
+          # ein versehentlicher Deploy den ganzen Workflow killen.
           for fn in supabase/functions/*/; do
             name=$(basename "$fn")
+            if [[ "$name" == _* ]]; then
+              echo "Skipping shared dir: $name"
+              continue
+            fi
             echo "Deploying function: $name"
             supabase functions deploy "$name" --project-ref "$SUPABASE_PROJECT_REF"
           done
