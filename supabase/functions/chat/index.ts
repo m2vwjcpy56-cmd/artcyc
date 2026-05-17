@@ -424,15 +424,23 @@ function openRouterHeaders() {
   return h;
 }
 
-async function callOpenRouter(systemPrompt: string, messages: any[]) {
-  // OpenAI-Format: system als erste Message mit role=system
-  const msgs = [{ role: "system", content: systemPrompt }, ...messages];
+// Baut die Message-Reihenfolge inkl. eines finalen Sprach-Reminder-
+// Eintrags direkt vor der Antwort. Recency-Bias bei kleinen Modellen
+// wie gpt-4o-mini: die letzte System-Message wird viel zuverlässiger
+// respektiert als eine am Anfang.
+function buildMessages(systemPrompt: string, messages: any[], langTail: string): any[] {
+  const out = [{ role: "system", content: systemPrompt }, ...messages];
+  if (langTail) out.push({ role: "system", content: langTail });
+  return out;
+}
+
+async function callOpenRouter(systemPrompt: string, messages: any[], langTail: string) {
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: openRouterHeaders(),
     body: JSON.stringify({
       model: OPENROUTER_MODEL,
-      messages: msgs,
+      messages: buildMessages(systemPrompt, messages, langTail),
       tools: TOOLS,
       tool_choice: "auto",
       max_tokens: 1500,
@@ -445,14 +453,13 @@ async function callOpenRouter(systemPrompt: string, messages: any[]) {
   return await res.json();
 }
 
-async function callOpenRouterStream(systemPrompt: string, messages: any[]) {
-  const msgs = [{ role: "system", content: systemPrompt }, ...messages];
+async function callOpenRouterStream(systemPrompt: string, messages: any[], langTail: string) {
   return await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: openRouterHeaders(),
     body: JSON.stringify({
       model: OPENROUTER_MODEL,
-      messages: msgs,
+      messages: buildMessages(systemPrompt, messages, langTail),
       tools: TOOLS,
       tool_choice: "auto",
       max_tokens: 1500,
@@ -513,13 +520,19 @@ Deno.serve(async (req: Request) => {
         .sort((a: any, b: any) => String(b?.date || "").localeCompare(String(a?.date || "")))
         .slice(0, MAX_SESSIONS_IN_PROMPT);
     }
-    const systemPrompt = buildSystemPrompt(capped_app_data, user_name, typeof lang === "string" ? lang : "de");
+    const effectiveLang = typeof lang === "string" ? lang : "de";
+    const systemPrompt = buildSystemPrompt(capped_app_data, user_name, effectiveLang);
+    // Letzte System-Message direkt vor der Antwort — kleine LLMs
+    // (gpt-4o-mini) respektieren diese Position viel zuverlässiger als
+    // eine Anweisung am Anfang des Prompts (Recency-Bias).
+    const langName = (LANG_INSTRUCTIONS[effectiveLang] || LANG_INSTRUCTIONS.de).name;
+    const langTail = `REMINDER: respond in ${langName}. Do not switch to another language unless the user explicitly does so in their last message.`;
 
     // ─── Streaming-Pfad: OpenRouter-SSE → Anthropic-kompatible SSE ───
     // TransformStream-Pattern statt ReadableStream-pull():
     // imperativer, kein Close-Race, sauberes finally für Cleanup.
     if (wantStream) {
-      const upstream = await callOpenRouterStream(systemPrompt, messages);
+      const upstream = await callOpenRouterStream(systemPrompt, messages, langTail);
       if (!upstream.ok) {
         const txt = await upstream.text();
         return new Response(JSON.stringify({ error: `OpenRouter ${upstream.status}: ${txt}` }), {
@@ -649,7 +662,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ─── Non-Streaming-Pfad: einmal abrufen, in altes Antwort-Format wandeln ───
-    const result = await callOpenRouter(systemPrompt, messages);
+    const result = await callOpenRouter(systemPrompt, messages, langTail);
     const choice = result?.choices?.[0];
     const msg = choice?.message || {};
     const text = typeof msg.content === "string" ? msg.content : "";
