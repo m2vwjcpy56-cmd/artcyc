@@ -2726,7 +2726,7 @@ function migrateExerciseLabels(data) {
 
 const CHAT_HISTORY_KEY = 'artcyc:chat:v1';
 
-async function callChatApi(messages, appData, userName) {
+async function callChatApi(messages, appData, userName, lang) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw new Error('Nicht angemeldet');
@@ -2746,6 +2746,7 @@ async function callChatApi(messages, appData, userName) {
         programs: appData?.programs || [],
       },
       user_name: userName || null,
+      lang: lang || 'de',
     }),
   });
   if (!res.ok) {
@@ -2789,7 +2790,7 @@ function sanitizeMessagesForApi(msgs) {
  *   onPhase(name)        für interne Phasen ('thinking', 'tool')
  *   onFinal(content,act) am Ende mit komplettem Text + ggf. Action
  */
-async function callChatApiStream(messages, appData, userName, callbacks) {
+async function callChatApiStream(messages, appData, userName, lang, callbacks) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw new Error('Nicht angemeldet');
@@ -2809,6 +2810,7 @@ async function callChatApiStream(messages, appData, userName, callbacks) {
         programs: appData?.programs || [],
       },
       user_name: userName || null,
+      lang: lang || 'de',
     }),
   });
   if (!res.ok || !res.body) {
@@ -3191,6 +3193,7 @@ async function applyChatAction(action, data, setData, refreshers) {
 }
 
 function FloatingChat({ data, setData, profile, refreshers }) {
+  const { lang } = useI18n();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -3248,7 +3251,7 @@ function FloatingChat({ data, setData, profile, refreshers }) {
       setErr('Antwort wurde unterbrochen — bitte nochmal probieren.');
     }, 60000);
     try {
-      const result = await callChatApiStream(next, data, profile?.display_name, {
+      const result = await callChatApiStream(next, data, profile?.display_name, lang, {
         onTextDelta: (t) => {
           if (firstDelta) { setPhase('writing'); firstDelta = false; }
           partialText += t;
@@ -4376,25 +4379,25 @@ function AuthScreen() {
         if (error) throw error;
         if (data.user && !data.session) {
           // Bestätigungs-E-Mail wurde geschickt
-          setInfo('Wir haben dir eine Bestätigungs-E-Mail an ' + email.trim() + ' geschickt. Klicke den Link in der E-Mail, dann kannst du dich einloggen.');
+          setInfo(t('validation.confirmEmailSent', { email: email.trim() }));
         }
       }
     } catch (e) {
-      setErr(e.message || 'Es ist ein Fehler aufgetreten.');
+      setErr(e.message || t('validation.genericError'));
     } finally {
       setBusy(false);
     }
   };
 
   const forgot = async () => {
-    if (!validEmail) { setErr('Bitte E-Mail eintragen.'); return; }
+    if (!validEmail) { setErr(t('validation.invalidEmail')); return; }
     setBusy(true); setErr(''); setInfo('');
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
       if (error) throw error;
-      setInfo('Falls die Adresse registriert ist, hast du gleich eine E-Mail mit einem Reset-Link.');
+      setInfo(t('validation.resetSent'));
     } catch (e) {
-      setErr(e.message || 'Fehler beim Reset.');
+      setErr(e.message || t('validation.resetError'));
     } finally { setBusy(false); }
   };
 
@@ -8778,11 +8781,11 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
               <div className="flex gap-2 pt-1">
                 <button onClick={() => applyImport(importPreview)}
                   className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1">
-                  <Check size={14} /> Übernehmen
+                  <Check size={14} /> {t('pdfImport.apply')}
                 </button>
                 <button onClick={() => { setImportPreview(null); setImportStatus(null); setImportMsg(''); }}
                   className="bg-white border border-slate-300 px-3 py-1.5 rounded-lg text-sm font-medium">
-                  Verwerfen
+                  {t('pdfImport.discard')}
                 </button>
               </div>
             </div>
@@ -10208,25 +10211,25 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
         <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
           {competition.start_nr && (
             <div>
-              <div className="text-xs text-slate-500">Startnummer</div>
+              <div className="text-xs text-slate-500">{t('detail.startNumber')}</div>
               <div className="font-medium">{competition.start_nr}</div>
             </div>
           )}
           {athlete && (
             <div>
-              <div className="text-xs text-slate-500">Sportler</div>
+              <div className="text-xs text-slate-500">{t('detail.athlete')}</div>
               <div className="font-medium truncate">{athlete.name}</div>
             </div>
           )}
           {competition.host && (
             <div>
-              <div className="text-xs text-slate-500">Ausrichter</div>
+              <div className="text-xs text-slate-500">{t('detail.host')}</div>
               <div className="font-medium truncate">{competition.host}</div>
             </div>
           )}
           {program && (
             <div>
-              <div className="text-xs text-slate-500">Programm</div>
+              <div className="text-xs text-slate-500">{t('detail.program')}</div>
               <div className="font-medium truncate">{program.name}</div>
             </div>
           )}
