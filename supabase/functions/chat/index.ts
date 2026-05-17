@@ -17,17 +17,20 @@
 // @ts-ignore Deno-Runtime
 const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY") ?? "";
 // @ts-ignore Deno-Runtime
-// Default-Modell: `anthropic/claude-haiku-4.5` — best-in-class bei
-// multilingualem Instruction-Following. gpt-4o-mini war zwar günstiger
-// (~6× Faktor) hat aber Sprach-Anweisungen oft ignoriert (z. B. weiter
-// auf Deutsch geantwortet obwohl die App auf Englisch war). Für eine
-// Single-Tenant-App ist der Cost-Unterschied vernachlässigbar.
+// Default-Modell: `google/gemini-2.5-flash` — sehr starkes multi-
+// language pre-training (Google-typisch), günstig (~$0.30/$2.50 pro
+// M tokens), gutes Instruction-Following. gpt-4o-mini hatte
+// Probleme die Sprach-Anweisungen zu befolgen wenn der Großteil
+// des Prompt-Kontexts (Tool-Descriptions, Vokabel-Tabelle) deutsch
+// war — bei Gemini gewinnt die explizite Anweisung zuverlässiger.
 //
 // Override via Supabase-Secret OPENROUTER_MODEL ohne Code-Deploy.
-// Gängige Alternativen wenn Cost-sensitiv:
-//   google/gemini-2.5-flash, google/gemini-flash-1.5,
-//   openai/gpt-4o-mini, meta-llama/llama-3.3-70b-instruct
-const OPENROUTER_MODEL   = Deno.env.get("OPENROUTER_MODEL") ?? "anthropic/claude-haiku-4.5";
+// Alternativen:
+//   anthropic/claude-haiku-4.5  — etwas besser bei Instruction-
+//     Following, aber ~3× teurer ($1/$5)
+//   openai/gpt-4o-mini          — günstigste Option ($0.15/$0.60),
+//     aber multilingual unzuverlässig
+const OPENROUTER_MODEL   = Deno.env.get("OPENROUTER_MODEL") ?? "google/gemini-2.5-flash";
 // Optional: für OpenRouter-Analytics — zeigt auf welcher Site die Calls landen.
 // Wenn leer, wird der Header ausgelassen.
 // @ts-ignore Deno-Runtime
