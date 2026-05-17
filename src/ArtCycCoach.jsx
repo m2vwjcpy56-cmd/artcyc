@@ -9142,6 +9142,7 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
 // AthleteDetailView — Coach-View für Trainings/Wettkämpfe eines Sportlers (read-only)
 // =============================================================
 function AthleteDetailView({ athlete, ownData, onBack }) {
+  const { t } = useI18n();
   const [remoteData, setRemoteData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -9249,44 +9250,36 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
 
       {!loading && !err && (
         <>
-          {/* Top Stats */}
+          {/* Top Stats — konsistente StatCards wie im Dashboard */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-amber-50 rounded-2xl border border-amber-100 p-4">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Trophy size={14} className="text-amber-700" />
-                <span className="text-xs font-medium text-amber-700">Bestleistung</span>
-              </div>
-              <div className="text-2xl font-bold text-slate-900">{bestComp ? bestComp.final.toFixed(2) : '—'}</div>
-              <div className="text-xs text-slate-500 mt-0.5 truncate">{bestComp ? bestComp.c.name : 'Noch kein Wettkampf'}</div>
-            </div>
-            <div className="bg-emerald-50 rounded-2xl border border-emerald-100 p-4">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Target size={14} className="text-emerald-700" />
-                <span className="text-xs font-medium text-emerald-700">Wettkämpfe</span>
-              </div>
-              <div className="text-2xl font-bold text-slate-900">{compRows.length}</div>
-              <div className="text-xs text-slate-500 mt-0.5">
-                {compRows[0] ? 'zuletzt ' + formatDateShort(compRows[0].c.date) : '—'}
-              </div>
-            </div>
-            <div className="bg-sky-50 rounded-2xl border border-sky-100 p-4">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Dumbbell size={14} className="text-sky-700" />
-                <span className="text-xs font-medium text-sky-700">Sessions</span>
-              </div>
-              <div className="text-2xl font-bold text-slate-900">{sessions.length}</div>
-              <div className="text-xs text-slate-500 mt-0.5">
-                {lastSessionDate ? 'zuletzt ' + formatDateShort(lastSessionDate) : '—'}
-              </div>
-            </div>
-            <div className="bg-violet-50 rounded-2xl border border-violet-100 p-4">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <BarChart3 size={14} className="text-violet-700" />
-                <span className="text-xs font-medium text-violet-700">Übungen aktiv</span>
-              </div>
-              <div className="text-2xl font-bold text-slate-900">{exerciseStats.length}</div>
-              <div className="text-xs text-slate-500 mt-0.5">getrackt</div>
-            </div>
+            <StatCard
+              icon={Trophy}
+              label={t('dashboard.bestScore')}
+              value={bestComp ? bestComp.final.toFixed(2) : t('detail.noData')}
+              sub={bestComp ? bestComp.c.name : '—'}
+              color="amber"
+            />
+            <StatCard
+              icon={Target}
+              label={t('detail.competitions')}
+              value={compRows.length}
+              sub={compRows[0] ? t('dashboard.lastTrained', { date: formatDateShort(compRows[0].c.date) }) : t('detail.noData')}
+              color="emerald"
+            />
+            <StatCard
+              icon={Dumbbell}
+              label={t('detail.sessions')}
+              value={sessions.length}
+              sub={lastSessionDate ? t('dashboard.lastTrained', { date: formatDateShort(lastSessionDate) }) : t('detail.noData')}
+              color="sky"
+            />
+            <StatCard
+              icon={BarChart3}
+              label={t('nav.uebungen')}
+              value={exerciseStats.length}
+              sub={t('detail.attempts').toLowerCase()}
+              color="violet"
+            />
           </div>
 
           {/* Übungen */}
