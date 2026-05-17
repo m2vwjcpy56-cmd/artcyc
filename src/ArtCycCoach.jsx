@@ -3225,9 +3225,8 @@ async function applyChatAction(action, data, setData, refreshers) {
   return '⚠ Aktion „' + action.tool + '" nicht erkannt';
 }
 
-function FloatingChat({ data, setData, profile, refreshers }) {
+function FloatingChat({ data, setData, profile, refreshers, open, onClose }) {
   const { t, lang } = useI18n();
-  const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -3355,26 +3354,21 @@ function FloatingChat({ data, setData, profile, refreshers }) {
     try { localStorage.removeItem(CHAT_HISTORY_KEY); } catch {}
   };
 
+  // Der Trigger-Button sitzt jetzt im App-Header (siehe App-Component).
+  // Hier wird nur noch das Chat-Sheet kontrolliert via open-prop.
+  if (!open) return null;
+
   return (
     <>
-      {/* Floating Button */}
-      <button
-        onClick={() => setOpen(true)}
-        className="fixed z-30 right-4 w-14 h-14 rounded-full bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white shadow-lg shadow-orange-500/30 flex items-center justify-center active:scale-95 transition sm:bottom-6"
-        style={{ bottom: 'calc(7.5rem + env(safe-area-inset-bottom))' }}
-        aria-label="KI-Coach öffnen">
-        <Sparkles size={24} strokeWidth={2.2} />
-      </button>
-
       {/* Chat-Sheet */}
       {open && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
           <div
             className="bg-[#F2F2F7] rounded-t-3xl sm:rounded-3xl w-full max-w-2xl h-[85vh] sm:h-[80vh] shadow-2xl flex flex-col overflow-hidden"
             onClick={e => e.stopPropagation()}>
             {/* Header */}
             <div className="bg-white/90 backdrop-blur-xl border-b border-slate-200/60 px-4 py-3 flex items-center justify-between">
-              <button onClick={() => setOpen(false)} className="text-amber-500 font-medium text-[15px]">{t('chat.done')}</button>
+              <button onClick={onClose} className="text-amber-500 font-medium text-[15px]">{t('chat.done')}</button>
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-amber-500" />
                 <span className="font-semibold text-[15px]">KI-Coach</span>
@@ -3707,6 +3701,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Reglement-Sprache: separat von App-Sprache wählbar. 'auto' = App-Sprache spiegeln
   // mit Fallback auf 'en' falls App-Sprache keine UCI-Sprache ist.
@@ -4211,19 +4206,28 @@ export default function App() {
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif' }}>
       {/* Mobile Header — iOS Navigation Bar Style */}
       <div
-        className="ios-header-bg sm:hidden px-4 pb-3 flex items-center justify-between sticky top-0 z-30"
+        className="ios-header-bg sm:hidden px-4 pb-3 flex items-center justify-between gap-2 sticky top-0 z-30"
         style={{
           paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)',
           backdropFilter: 'blur(20px) saturate(180%)',
           WebkitBackdropFilter: 'blur(20px) saturate(180%)'
         }}>
         <Brand size="sm" />
-        <button onClick={() => setView('einstellungen')}
-          className={'w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90 ' +
-            (view === 'einstellungen' ? 'text-[#FF9500]' : 'text-[#3C3C43]')}
-          aria-label={t('nav.einstellungen')}>
-          <SettingsIcon size={22} strokeWidth={1.8} />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* KI-Coach — eckige Pille mit Sparkles + Name (Brand-Orange-Gradient) */}
+          <button onClick={() => setChatOpen(true)}
+            className="bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white rounded-xl px-2.5 py-1.5 text-[12px] font-semibold flex items-center gap-1 shadow-[0_2px_6px_rgba(255,149,0,0.25)] active:scale-95 transition"
+            aria-label="KI-Coach öffnen">
+            <Sparkles size={14} strokeWidth={2.4} />
+            <span>KI-Coach</span>
+          </button>
+          <button onClick={() => setView('einstellungen')}
+            className={'w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90 ' +
+              (view === 'einstellungen' ? 'text-[#FF9500]' : 'text-[#3C3C43]')}
+            aria-label={t('nav.einstellungen')}>
+            <SettingsIcon size={22} strokeWidth={1.8} />
+          </button>
+        </div>
       </div>
 
       {/* Desktop Sidebar */}
@@ -4248,6 +4252,13 @@ export default function App() {
             </button>
           );
         })}
+
+        {/* KI-Coach — eigene Pille im Brand-Look, abgehoben vom regulären Nav */}
+        <button onClick={() => setChatOpen(true)}
+          className="mt-3 flex items-center gap-3 px-3 py-2.5 rounded-2xl text-left transition bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white shadow-[0_2px_8px_rgba(255,149,0,0.25)] hover:brightness-105 active:scale-[0.98]">
+          <Sparkles size={18} strokeWidth={2.4} />
+          <span className="font-semibold">KI-Coach</span>
+        </button>
       </aside>
 
       <SwipeableMain
@@ -4263,11 +4274,13 @@ export default function App() {
         view={view}
         setView={setView} />
 
-      {/* KI-Coach (Floating-Chat) */}
+      {/* KI-Coach Chat-Sheet — Trigger sitzt im Header/Sidebar */}
       <FloatingChat
         data={effectiveData}
         setData={save}
         profile={profile}
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
         refreshers={{
           sessions:    refreshSessions,
           exercises:   refreshExercises,
