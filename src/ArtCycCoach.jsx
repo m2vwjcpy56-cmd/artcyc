@@ -2414,8 +2414,10 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
     cross: 0, wave: 0, bar: 0, circle: 0,
     schwPctSum: 0,                     // Summe Schwierigkeits-Abwertung in % über alle Stellungen
     schwPctNonZero: 0,                 // Anzahl Stellungen mit %-Abwertung > 0
+    schwPctHist: {},                   // { '10': 2, '50': 1, '100': 3, ... } — Häufigkeit pro %-Stufe
     taktSum: 0,                        // Summe anerkannte taktische Punktzahl
     taktCount: 0,                      // Anzahl Stellungen mit taktischer Aufwertung
+    taktHist: {},                      // { '3.7': 2, '3.5': 1, ... } — Häufigkeit pro Punkt-Wert
     count: 0, wettkaempfe: 0
   };
   if (!exercise || !competitions || competitions.length === 0) return stats;
@@ -2442,9 +2444,18 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
         stats.circle += Number(e.circle || 0);
         const pct = Number(e.schwPct || 0);
         stats.schwPctSum += pct;
-        if (pct > 0) stats.schwPctNonZero += 1;
+        if (pct > 0) {
+          stats.schwPctNonZero += 1;
+          const key = String(pct);
+          stats.schwPctHist[key] = (stats.schwPctHist[key] || 0) + 1;
+        }
         const takt = Number(e.taktischePunkte || 0);
-        if (takt > 0) { stats.taktSum += takt; stats.taktCount += 1; }
+        if (takt > 0) {
+          stats.taktSum += takt;
+          stats.taktCount += 1;
+          const tk = takt.toFixed(1);
+          stats.taktHist[tk] = (stats.taktHist[tk] || 0) + 1;
+        }
         stats.count += 1;
       });
     });
@@ -7079,82 +7090,113 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
           </div>
           {compStats.wettkaempfe > 0 ? (
             <>
-              {/* Durchschnitt pro Wettkampf (Summe KG1 + KG2 / Anzahl WK) */}
+              {/* Symbol-Verteilung — Ø pro Wettkampf, kompakt mit dezenten
+                  Farben (Dashboard-Stil, dark-mode-fest) */}
               <div className="grid grid-cols-4 gap-2 text-center">
-                <div className="bg-slate-100 rounded-lg py-2">
-                  <div className="text-xs text-slate-600 font-bold">x</div>
-                  <div className="font-bold text-lg">Ø {(compStats.cross / compStats.wettkaempfe).toFixed(1)}</div>
-                  <div className="text-[10px] text-slate-400">{compStats.cross} ges.</div>
+                <div className="bg-slate-100 dark:bg-slate-900/50 rounded-xl py-2.5">
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-bold leading-none">x</div>
+                  <div className="font-bold text-[17px] text-slate-900 dark:text-slate-100 leading-tight mt-1 tabular-nums">Ø {(compStats.cross / compStats.wettkaempfe).toFixed(1)}</div>
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">{compStats.cross} ges.</div>
                 </div>
-                <div className="bg-slate-100 rounded-lg py-2">
-                  <div className="text-xs text-slate-600 font-bold">~</div>
-                  <div className="font-bold text-lg">Ø {(compStats.wave / compStats.wettkaempfe).toFixed(1)}</div>
-                  <div className="text-[10px] text-slate-400">{compStats.wave} ges.</div>
+                <div className="bg-slate-100 dark:bg-slate-900/50 rounded-xl py-2.5">
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-bold leading-none">~</div>
+                  <div className="font-bold text-[17px] text-slate-900 dark:text-slate-100 leading-tight mt-1 tabular-nums">Ø {(compStats.wave / compStats.wettkaempfe).toFixed(1)}</div>
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">{compStats.wave} ges.</div>
                 </div>
-                <div className="bg-slate-100 rounded-lg py-2">
-                  <div className="text-xs text-slate-600 font-bold">|</div>
-                  <div className="font-bold text-lg">Ø {(compStats.bar / compStats.wettkaempfe).toFixed(1)}</div>
-                  <div className="text-[10px] text-slate-400">{compStats.bar} ges.</div>
+                <div className="bg-slate-100 dark:bg-slate-900/50 rounded-xl py-2.5">
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-bold leading-none">|</div>
+                  <div className="font-bold text-[17px] text-slate-900 dark:text-slate-100 leading-tight mt-1 tabular-nums">Ø {(compStats.bar / compStats.wettkaempfe).toFixed(1)}</div>
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">{compStats.bar} ges.</div>
                 </div>
-                <div className="bg-rose-100 rounded-lg py-2">
-                  <div className="text-xs text-rose-700 font-bold">○</div>
-                  <div className="font-bold text-lg text-rose-700">Ø {(compStats.circle / compStats.wettkaempfe).toFixed(1)}</div>
-                  <div className="text-[10px] text-rose-400">{compStats.circle} ges.</div>
+                <div className="bg-rose-50 dark:bg-rose-950/30 rounded-xl py-2.5 border border-rose-100 dark:border-rose-900/40">
+                  <div className="text-[11px] text-rose-600 dark:text-rose-400 font-bold leading-none">○</div>
+                  <div className="font-bold text-[17px] text-rose-700 dark:text-rose-300 leading-tight mt-1 tabular-nums">Ø {(compStats.circle / compStats.wettkaempfe).toFixed(1)}</div>
+                  <div className="text-[10px] text-rose-400 dark:text-rose-500 leading-tight">{compStats.circle} ges.</div>
                 </div>
               </div>
-              {/* Durchschnittlicher Punktabzug pro Wettkampf — inklusive
-                  Schwierigkeits-Abwertung (Punkte × Σ%/100), nicht nur Symbole. */}
+
+              {/* Ø Punktabzug pro Wettkampf — inklusive Schwierigkeits-Effekt
+                  (Punkte × Σ%/100). Im Dashboard-Stil mit dark-mode. */}
               {(() => {
                 const dedSymbols = compStats.cross * 0.2 + compStats.wave * 0.5 + compStats.bar * 1.0 + compStats.circle * 2.0;
                 const dedSchw    = (Number(exercise.points || 0) * compStats.schwPctSum) / 100;
                 const totalDed = dedSymbols + dedSchw;
                 const avgDed = compStats.count > 0 ? totalDed / compStats.count : 0;
                 return (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg py-3 px-4 flex items-baseline justify-between">
+                  <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40 rounded-2xl py-3 px-4 flex items-baseline justify-between">
                     <div>
-                      <div className="text-xs text-slate-700">Ø Punktabzug pro Wettkampf</div>
+                      <div className="text-[12px] text-amber-900 dark:text-amber-200 font-medium">Ø Punktabzug pro Wettkampf</div>
                       {dedSchw > 0 && (
-                        <div className="text-[10px] text-slate-500">inkl. Schwierigkeits-Abwertung</div>
+                        <div className="text-[10px] text-amber-700/70 dark:text-amber-400/70">inkl. Schwierigkeits-Abwertung</div>
                       )}
                     </div>
-                    <div className="font-bold text-2xl text-amber-700">−{avgDed.toFixed(2)}</div>
+                    <div className="font-bold text-[22px] text-amber-700 dark:text-amber-300 tabular-nums">−{avgDed.toFixed(2)}</div>
                   </div>
                 );
               })()}
 
-              {/* Schwierigkeits-Abwertung (in %) — nur wenn welche aufgetreten ist.
-                  Zeigt Durchschnitt über die Stellungen, die überhaupt eine
-                  Abwertung hatten — sonst würde der Wert durch ohne-Abwertung-
-                  Stellungen verwässert. */}
+              {/* Schwierigkeits-Abwertung — Histogramm pro %-Stufe, sortiert
+                  absteigend. Zeigt sofort, wie oft welche Stufe gefallen ist. */}
               {compStats.schwPctNonZero > 0 && (() => {
-                const avgPctRaw = compStats.schwPctSum / compStats.schwPctNonZero;
-                const avgPct = Math.round(avgPctRaw);
-                // Punkt-Effekt: Original-Punkte × % der Stellungen-Stichprobe
-                const sharePct = (compStats.schwPctNonZero / compStats.count) * 100;
+                const entries = Object.entries(compStats.schwPctHist)
+                  .map(([pct, n]) => ({ pct: Number(pct), n }))
+                  .sort((a, b) => b.pct - a.pct);
+                const maxN = Math.max(...entries.map(e => e.n));
+                const sharePct = Math.round((compStats.schwPctNonZero / compStats.count) * 100);
                 return (
-                  <div className="bg-violet-50 border border-violet-200 rounded-lg py-2.5 px-4 flex items-baseline justify-between">
-                    <div>
-                      <div className="text-xs text-slate-700">Schwierigkeits-Abwertung</div>
-                      <div className="text-[10px] text-slate-500">in {Math.round(sharePct)}% der Stellungen</div>
+                  <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900/40 rounded-2xl py-3 px-4 space-y-2">
+                    <div className="flex items-baseline justify-between">
+                      <div className="text-[12px] text-violet-900 dark:text-violet-200 font-medium">Schwierigkeits-Abwertung</div>
+                      <div className="text-[10px] text-violet-700/70 dark:text-violet-400/70">in {sharePct}% der Stellungen</div>
                     </div>
-                    <div className="font-bold text-lg text-violet-700">Ø −{avgPct}%</div>
+                    <div className="space-y-1">
+                      {entries.map(({ pct, n }) => (
+                        <div key={pct} className="flex items-center gap-2 text-[12px]">
+                          <span className="text-violet-900 dark:text-violet-200 font-medium tabular-nums w-12 shrink-0">−{pct}%</span>
+                          <div className="flex-1 bg-violet-100 dark:bg-violet-900/40 rounded-full h-2 overflow-hidden">
+                            <div className="h-full bg-violet-500 dark:bg-violet-400 rounded-full"
+                              style={{ width: ((n / maxN) * 100) + '%' }} />
+                          </div>
+                          <span className="text-violet-900 dark:text-violet-200 tabular-nums w-8 text-right shrink-0">{n}×</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 );
               })()}
 
-              {/* Taktische Aufwertung — bei z.B. Lenkraddrehung, wo eine
-                  Stellung mit angepasster Punktzahl gewertet wird. Nur einblenden
-                  wenn überhaupt taktisch gefahren. */}
+              {/* Taktische Aufwertung — Original-Punkte zum Vergleich, plus
+                  Häufigkeit pro taktisch gewertetem Wert (z.B. 3,7 Pkt × 2). */}
               {compStats.taktCount > 0 && (() => {
-                const avgTakt = compStats.taktSum / compStats.taktCount;
-                const sharePct = (compStats.taktCount / compStats.count) * 100;
+                const entries = Object.entries(compStats.taktHist)
+                  .map(([pts, n]) => ({ pts: Number(pts), n }))
+                  .sort((a, b) => b.pts - a.pts);
+                const maxN = Math.max(...entries.map(e => e.n));
+                const sharePct = Math.round((compStats.taktCount / compStats.count) * 100);
+                const origPts = Number(exercise.points || 0);
                 return (
-                  <div className="bg-sky-50 border border-sky-200 rounded-lg py-2.5 px-4 flex items-baseline justify-between">
-                    <div>
-                      <div className="text-xs text-slate-700">Taktische Aufwertung</div>
-                      <div className="text-[10px] text-slate-500">in {Math.round(sharePct)}% der Stellungen · Ø-Pkte</div>
+                  <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/40 rounded-2xl py-3 px-4 space-y-2">
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <div className="text-[12px] text-sky-900 dark:text-sky-200 font-medium">Taktische Aufwertung</div>
+                        {origPts > 0 && (
+                          <div className="text-[10px] text-sky-700/70 dark:text-sky-400/70">Original {origPts.toFixed(1)} Pkt</div>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-sky-700/70 dark:text-sky-400/70">in {sharePct}% der Stellungen</div>
                     </div>
-                    <div className="font-bold text-lg text-sky-700">{avgTakt.toFixed(1)}</div>
+                    <div className="space-y-1">
+                      {entries.map(({ pts, n }) => (
+                        <div key={pts} className="flex items-center gap-2 text-[12px]">
+                          <span className="text-sky-900 dark:text-sky-200 font-medium tabular-nums w-14 shrink-0">{pts.toFixed(1)} Pkt</span>
+                          <div className="flex-1 bg-sky-100 dark:bg-sky-900/40 rounded-full h-2 overflow-hidden">
+                            <div className="h-full bg-sky-500 dark:bg-sky-400 rounded-full"
+                              style={{ width: ((n / maxN) * 100) + '%' }} />
+                          </div>
+                          <span className="text-sky-900 dark:text-sky-200 tabular-nums w-8 text-right shrink-0">{n}×</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 );
               })()}
