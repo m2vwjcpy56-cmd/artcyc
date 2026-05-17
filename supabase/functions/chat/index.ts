@@ -38,6 +38,63 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const JSON_HEADERS = { ...CORS_HEADERS, "Content-Type": "application/json; charset=utf-8" };
+
+// =============================================================
+// Rate-Limit + Body-Größen-Schutz
+// =============================================================
+//
+// Auth ist schon durch Supabase JWT-Boundary gewährleistet — d. h. nur
+// eingeloggte User kommen überhaupt hier an. Wir cappen zusätzlich:
+//   • Max 256 kB Request-Body (das ist viel — komplettes app_data passt
+//     in der Regel in <50 kB Komprimiertes JSON)
+//   • Max 30 Calls / 10 min / Token-Subject (verhindert OpenRouter-
+//     Cost-Blowup durch eingeloggte Troll-Accounts)
+//   • app_data.sessions wird intern auf die letzten 500 Einträge gecappt
+//     (alte Sessions sind für den KI-Coach selten relevant)
+//
+// Buckets sind In-Memory — pro Edge-Function-Instanz. Reicht als
+// Pragmatismus gegen Einzeltäter, kein Schutz gegen distributed abuse.
+const MAX_BODY_BYTES        = 256 * 1024;
+const RL_WINDOW_MS          = 10 * 60_000;
+const RL_MAX_CALLS          = 30;
+const MAX_SESSIONS_IN_PROMPT = 500;
+
+const userBuckets = new Map<string, number[]>();
+function userBucketCheck(subject: string): boolean {
+  const now = Date.now();
+  const arr = (userBuckets.get(subject) ?? []).filter(ts => now - ts < RL_WINDOW_MS);
+  if (arr.length >= RL_MAX_CALLS) {
+    userBuckets.set(subject, arr);
+    return false;
+  }
+  arr.push(now);
+  userBuckets.set(subject, arr);
+  if (userBuckets.size > 5000) {
+    for (const [k, v] of userBuckets) {
+      if (!v.some(ts => now - ts < RL_WINDOW_MS)) userBuckets.delete(k);
+    }
+  }
+  return true;
+}
+
+// JWT-Subject (User-ID) aus dem Bearer-Token lesen — wir validieren NICHT,
+// das hat die Edge-Boundary schon gemacht. Nur Subject extrahieren.
+function tokenSubject(req: Request): string {
+  try {
+    const auth = req.headers.get("Authorization") || "";
+    const token = auth.replace(/^Bearer\s+/i, "").trim();
+    if (!token) return "anon";
+    const parts = token.split(".");
+    if (parts.length !== 3) return "anon";
+    // base64url → base64 → JSON
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    const json = JSON.parse(atob(padded));
+    return String(json.sub || "anon");
+  } catch {
+    return "anon";
+  }
+}
 const SSE_HEADERS  = {
   ...CORS_HEADERS,
   "Content-Type": "text/event-stream; charset=utf-8",
@@ -401,6 +458,22 @@ Deno.serve(async (req: Request) => {
       status: 500, headers: JSON_HEADERS,
     });
   }
+  // Body-Größe checken bevor wir das JSON parsen
+  const contentLength = parseInt(req.headers.get("content-length") || "0", 10);
+  if (contentLength > MAX_BODY_BYTES) {
+    return new Response(JSON.stringify({ error: "Body zu groß — max " + (MAX_BODY_BYTES / 1024) + " kB" }), {
+      status: 413, headers: JSON_HEADERS,
+    });
+  }
+
+  // Per-User-Rate-Limit
+  const subject = tokenSubject(req);
+  if (!userBucketCheck(subject)) {
+    return new Response(JSON.stringify({ error: "rate limited — bitte später nochmal" }), {
+      status: 429, headers: JSON_HEADERS,
+    });
+  }
+
   try {
     const url = new URL(req.url);
     const wantStream = url.searchParams.get("stream") === "1";
@@ -410,7 +483,17 @@ Deno.serve(async (req: Request) => {
         status: 400, headers: JSON_HEADERS,
       });
     }
-    const systemPrompt = buildSystemPrompt(app_data || {}, user_name);
+
+    // app_data hard cappen — alte Sessions tragen wenig bei zur LLM-Antwort,
+    // kosten aber Tokens. Behalte die neuesten N.
+    const capped_app_data: any = { ...(app_data || {}) };
+    if (Array.isArray(capped_app_data.sessions) && capped_app_data.sessions.length > MAX_SESSIONS_IN_PROMPT) {
+      capped_app_data.sessions = capped_app_data.sessions
+        .slice()
+        .sort((a: any, b: any) => String(b?.date || "").localeCompare(String(a?.date || "")))
+        .slice(0, MAX_SESSIONS_IN_PROMPT);
+    }
+    const systemPrompt = buildSystemPrompt(capped_app_data, user_name);
 
     // ─── Streaming-Pfad: OpenRouter-SSE → Anthropic-kompatible SSE ───
     // TransformStream-Pattern statt ReadableStream-pull():
