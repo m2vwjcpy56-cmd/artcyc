@@ -2066,7 +2066,19 @@ function localizedExerciseName(ex) {
 }
 
 const DATA_KEY = 'artcyc:test:v3';
-const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+// Echte UUID (v4) — die DB-Tabellen erwarten UUID-Format. crypto.randomUUID()
+// gibt es ab iOS Safari 15.4 und in allen aktuellen Browsern; der manuelle
+// Fallback ist für sehr alte Umgebungen (eigentlich nicht mehr nötig).
+const uid = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // RFC4122 v4 Fallback (basiert auf Math.random — nur als Notbremse)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+};
 
 // Berechnung der Abzüge pro Übung
 // =============================================================
@@ -8350,10 +8362,6 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
   const [showExercises, setShowExercises] = useState(true);
   // Referenz-Werte aus letztem PDF-Import zur Validierung
   const [pdfRef, setPdfRef] = useState(competition && competition.pdf_ref ? competition.pdf_ref : null);
-  // Ziel-Endergebnis für Vorbereitungs-Modus (optional)
-  const [targetScore, setTargetScore] = useState(
-    competition && typeof competition.target_score === 'number' ? String(competition.target_score) : ''
-  );
 
   // PDF-Import State
   const [importStatus, setImportStatus] = useState(null); // null | 'parsing' | 'success' | 'error'
@@ -8719,7 +8727,6 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
         t1_schwierigkeit: Number(t1S) || 0,
         t2_schwierigkeit: Number(t2S) || 0,
         pdf_ref: pdfRef,
-        target_score: targetScore.trim() === '' ? null : Number(targetScore) || null,
         created: (competition && competition.created) || new Date().toISOString()
       },
       newProgram: pendingNewProgram,
@@ -8769,24 +8776,6 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
               <div className="text-[22px] font-bold text-amber-400 leading-tight tabular-nums">{finalScore.toFixed(2)}</div>
             </div>
           </div>
-          {/* Ziel-Vergleich (wenn target_score gesetzt) */}
-          {(() => {
-            const target = Number(targetScore);
-            if (!targetScore || !Number.isFinite(target) || target <= 0) return null;
-            const diff = finalScore - target;
-            const diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2);
-            const color = diff >= 0 ? 'text-emerald-400' : 'text-rose-400';
-            return (
-              <div className="mt-1.5 bg-slate-900 text-white rounded-xl px-3 py-1.5 flex items-baseline justify-between shadow-[0_4px_12px_rgba(0,0,0,0.15)]">
-                <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                  <Target size={12} /> {t('competition.targetScore')}: <strong className="text-white tabular-nums">{target.toFixed(2)}</strong>
-                </div>
-                <div className={'text-[15px] font-bold tabular-nums ' + color}>
-                  {diffStr}
-                </div>
-              </div>
-            );
-          })()}
         </div>
       )}
 
@@ -8939,18 +8928,6 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
                 <span className="text-slate-400">Wird beim PDF-Import automatisch erkannt oder neu angelegt</span>
               )}
             </div>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-500 mb-1 flex items-center gap-1">
-              <Target size={12} /> Ziel-Endergebnis <span className="text-slate-400 font-normal">(optional)</span>
-            </label>
-            <input
-              type="number" step="0.01" inputMode="decimal"
-              value={targetScore}
-              onChange={e => setTargetScore(e.target.value)}
-              placeholder="z.B. 190.00"
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
-            <p className="text-[11px] text-slate-500 mt-1">Im Live-Ergebnis siehst du dann „+/− zum Ziel" während des Eintragens.</p>
           </div>
         </div>
       </div>
