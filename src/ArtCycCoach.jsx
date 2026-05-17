@@ -8194,7 +8194,34 @@ function WettkampfView({ data, setData, dbAthletes }) {
     />;
   }
 
-  const sorted = [...competitions].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  // Wettkämpfe mit berechnetem Endergebnis annotieren + nach Datum sortieren
+  const enriched = competitions.map(c => {
+    const program = programs.find(p => p.id === c.program_id);
+    const t1 = program ? calcTableResult(program, c.table1, c.t1_schwierigkeit) : null;
+    const t2 = program ? calcTableResult(program, c.table2, c.t2_schwierigkeit) : null;
+    const final = (t1 && t2) ? Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100 : null;
+    return { c, final };
+  });
+  const sorted = [...enriched].sort((a, b) => (b.c.date || '').localeCompare(a.c.date || ''));
+
+  // Aggregat-Statistiken über alle Wettkämpfe mit gültigem Endergebnis
+  const withFinal = enriched.filter(x => x.final !== null);
+  const stats = (() => {
+    if (withFinal.length === 0) return { best: null, avg: null, last: sorted[0] || null };
+    const best = withFinal.reduce((a, b) => b.final > a.final ? b : a);
+    const avg = withFinal.reduce((s, x) => s + x.final, 0) / withFinal.length;
+    return { best, avg, last: sorted[0] };
+  })();
+  const currentYear = new Date().getFullYear();
+  const thisYearCount = competitions.filter(c => (c.date || '').startsWith(String(currentYear))).length;
+
+  // Gruppierung pro Jahr (descending). „—" wenn Datum fehlt.
+  const byYear = sorted.reduce((acc, x) => {
+    const y = (x.c.date || '').slice(0, 4) || '—';
+    (acc[y] = acc[y] || []).push(x);
+    return acc;
+  }, {});
+  const years = Object.keys(byYear).sort((a, b) => b.localeCompare(a));
 
   return (
     <div className="space-y-5">
@@ -8231,36 +8258,69 @@ function WettkampfView({ data, setData, dbAthletes }) {
           </button>
         </div>
       ) : (
-        <IOSList>
-          {sorted.map(c => {
-            const program = programs.find(p => p.id === c.program_id);
-            const t1 = program ? calcTableResult(program, c.table1, c.t1_schwierigkeit) : null;
-            const t2 = program ? calcTableResult(program, c.table2, c.t2_schwierigkeit) : null;
-            const final = (t1 && t2) ? Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100 : null;
-            const athlete = athletes.find(a => a.id === c.athlete_id);
-            return (
-              <IOSListRow
-                key={c.id}
-                onClick={() => setViewId(c.id)}
-                trailing={
-                  <div className="flex items-center gap-2 shrink-0">
-                    {final !== null && (
-                      <div className="text-right">
-                        <div className="text-[14px] font-bold text-[#FF9500] leading-none">{final.toFixed(2)}</div>
-                        <div className="text-[10px] text-[#8E8E93] uppercase tracking-wide font-medium mt-0.5">Pkt</div>
+        <>
+          {/* Top-Stats (Design wie Dashboard) */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard
+              icon={Trophy}
+              label={t('dashboard.bestScore')}
+              value={stats.best ? stats.best.final.toFixed(2) : '—'}
+              sub={stats.best ? stats.best.c.name.slice(0, 24) : '—'}
+              color="amber"
+            />
+            <StatCard
+              icon={Target}
+              label={t('dashboard.competitions')}
+              value={competitions.length}
+              sub={stats.last ? formatDateShort(stats.last.c.date) : '—'}
+              color="emerald"
+            />
+            <StatCard
+              icon={Calendar}
+              label={String(currentYear)}
+              value={thisYearCount}
+              sub={thisYearCount === 1 ? 'Wettkampf' : 'Wettkämpfe'}
+              color="sky"
+            />
+            <StatCard
+              icon={TrendingUp}
+              label="Ø Ergebnis"
+              value={stats.avg !== null ? stats.avg.toFixed(2) : '—'}
+              sub={withFinal.length > 0 ? 'aus ' + withFinal.length : 'noch keine'}
+              color="violet"
+            />
+          </div>
+
+          {/* Wettkampf-Listen pro Jahr (absteigend, neuestes Jahr oben) */}
+          {years.map(year => (
+            <IOSList key={year} header={year === '—' ? 'Ohne Datum' : year}>
+              {byYear[year].map(({ c, final }) => {
+                const athlete = athletes.find(a => a.id === c.athlete_id);
+                return (
+                  <IOSListRow
+                    key={c.id}
+                    onClick={() => setViewId(c.id)}
+                    trailing={
+                      <div className="flex items-center gap-2 shrink-0">
+                        {final !== null && (
+                          <div className="text-right">
+                            <div className="text-[14px] font-bold text-[#FF9500] leading-none">{final.toFixed(2)}</div>
+                            <div className="text-[10px] text-[#8E8E93] uppercase tracking-wide font-medium mt-0.5">Pkt</div>
+                          </div>
+                        )}
+                        <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
                       </div>
-                    )}
-                    <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
-                  </div>
-                }>
-                <div className="font-medium text-[15px] text-[#000] truncate">{c.name}</div>
-                <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">
-                  {c.date}{c.location ? ' · ' + c.location : ''}{athlete ? ' · ' + athlete.name : ''}
-                </div>
-              </IOSListRow>
-            );
-          })}
-        </IOSList>
+                    }>
+                    <div className="font-medium text-[15px] text-[#000] truncate">{c.name}</div>
+                    <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">
+                      {formatDateShort(c.date)}{c.location ? ' · ' + c.location : ''}{athlete ? ' · ' + athlete.name : ''}
+                    </div>
+                  </IOSListRow>
+                );
+              })}
+            </IOSList>
+          ))}
+        </>
       )}
     </div>
   );
@@ -8768,8 +8828,30 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, o
         </button>
       </div>
 
-      {/* Sticky Score-Card direkt unter dem Header — beim Scrollen immer sichtbar */}
-      {program && (
+      {/* Sticky-Bereich direkt unter dem Header.
+          Drei mögliche Zustände:
+          - Kein Programm geladen → leer (kein sticky)
+          - Programm da + offener Import-Preview → eindeutige „Vorschau, noch nicht übernommen"-Karte
+          - Programm da, Werte bereits aktiv → normale Score-Card */}
+      {program && importPreview ? (
+        <div className="sticky top-[52px] z-10 px-3 pt-2 pb-2 ios-header-bg backdrop-blur-xl">
+          <div className="bg-violet-50 dark:bg-violet-950/40 border border-violet-300 dark:border-violet-900/60 rounded-2xl px-3 py-2 flex items-center gap-2 shadow-[0_4px_12px_rgba(0,0,0,0.15)]">
+            <FileText size={16} className="text-violet-700 dark:text-violet-300 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-[10px] uppercase tracking-wide text-violet-700 dark:text-violet-300 font-semibold leading-tight">Vorschau · nicht übernommen</div>
+              <div className="text-[12px] text-slate-800 dark:text-violet-100 leading-tight truncate">
+                {typeof importPreview.endergebnis === 'number'
+                  ? 'PDF-Endergebnis: ' + importPreview.endergebnis.toFixed(2)
+                  : 'PDF erkannt — Werte unten übernehmen'}
+              </div>
+            </div>
+            <button onClick={() => applyImport(importPreview)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1 shrink-0">
+              <Check size={12} strokeWidth={3} /> {t('pdfImport.apply')}
+            </button>
+          </div>
+        </div>
+      ) : program && (
         <div className="sticky top-[52px] z-10 px-3 pt-2 pb-2 ios-header-bg backdrop-blur-xl">
           <div className="bg-slate-900 text-white rounded-2xl px-3 py-2 grid grid-cols-3 items-center gap-2 shadow-[0_4px_12px_rgba(0,0,0,0.15)]">
             <div className="text-center">
