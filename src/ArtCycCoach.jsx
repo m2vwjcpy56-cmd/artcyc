@@ -2410,7 +2410,14 @@ function calcTableResult(program, entries, schwierigkeit = 0) {
 
 // Wettkampf-Statistik pro Übung — summiert x/~/|/○ über alle Wettkämpfe in beiden KGs
 function calcExerciseCompetitionStats(exercise, programs, competitions) {
-  const stats = { cross: 0, wave: 0, bar: 0, circle: 0, schwPctSum: 0, count: 0, wettkaempfe: 0 };
+  const stats = {
+    cross: 0, wave: 0, bar: 0, circle: 0,
+    schwPctSum: 0,                     // Summe Schwierigkeits-Abwertung in % über alle Stellungen
+    schwPctNonZero: 0,                 // Anzahl Stellungen mit %-Abwertung > 0
+    taktSum: 0,                        // Summe anerkannte taktische Punktzahl
+    taktCount: 0,                      // Anzahl Stellungen mit taktischer Aufwertung
+    count: 0, wettkaempfe: 0
+  };
   if (!exercise || !competitions || competitions.length === 0) return stats;
   const programMap = new Map((programs || []).map(p => [p.id, p]));
   const matches = (ex) => {
@@ -2433,7 +2440,11 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
         stats.wave += Number(e.wave || 0);
         stats.bar += Number(e.bar || 0);
         stats.circle += Number(e.circle || 0);
-        stats.schwPctSum += Number(e.schwPct || 0);
+        const pct = Number(e.schwPct || 0);
+        stats.schwPctSum += pct;
+        if (pct > 0) stats.schwPctNonZero += 1;
+        const takt = Number(e.taktischePunkte || 0);
+        if (takt > 0) { stats.taktSum += takt; stats.taktCount += 1; }
         stats.count += 1;
       });
     });
@@ -5574,6 +5585,31 @@ function TrainingView({ data, setData, setView }) {
     return Array.from(map, ([id, name]) => ({ id, name }));
   }, [indexedAll]);
 
+  // Aggregat-Stats für die Top-Cards
+  const trainTopStats = (() => {
+    const all = data.sessions || [];
+    const entries = all.flatMap(s => s.entries || []);
+    const total = entries.length;
+    const success = entries.filter(e => e === 'success').length;
+    const rate = total > 0 ? Math.round(success / total * 100) : 0;
+    const days = new Set(all.map(s => s.date).filter(Boolean));
+    const exIds = new Set(all.map(s => s.exerciseId).filter(Boolean));
+    // Aktuelle Streak: aufeinanderfolgende Trainingstage rückwärts ab heute
+    const dayStrs = Array.from(days).sort((a, b) => b.localeCompare(a));
+    let streak = 0;
+    if (dayStrs.length > 0) {
+      let cursor = new Date();
+      cursor.setHours(0, 0, 0, 0);
+      const set = new Set(dayStrs);
+      for (let i = 0; i < 365; i++) {
+        const k = cursor.toISOString().slice(0, 10);
+        if (set.has(k)) { streak += 1; cursor.setDate(cursor.getDate() - 1); }
+        else break;
+      }
+    }
+    return { sessionCount: all.length, days: days.size, exCount: exIds.size, rate, streak };
+  })();
+
   return (
     <div className="space-y-4">
       <header className="flex items-end justify-between flex-wrap gap-3 pt-2 px-1">
@@ -5586,6 +5622,40 @@ function TrainingView({ data, setData, setView }) {
           <Plus size={16} strokeWidth={2.5} /> {t('training.logButton')}
         </button>
       </header>
+
+      {/* Top-Stats — nur sichtbar wenn Sessions vorhanden */}
+      {totalCount > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <StatCard
+            icon={TrendingUp}
+            label="Erfolgsquote"
+            value={trainTopStats.rate + '%'}
+            sub="über alle Sessions"
+            color={trainTopStats.rate >= 80 ? 'emerald' : trainTopStats.rate >= 60 ? 'amber' : 'rose'}
+          />
+          <StatCard
+            icon={Calendar}
+            label="Trainingstage"
+            value={trainTopStats.days}
+            sub={trainTopStats.streak > 1 ? trainTopStats.streak + '× in Serie' : (trainTopStats.streak === 1 ? 'heute aktiv' : '—')}
+            color="sky"
+          />
+          <StatCard
+            icon={Dumbbell}
+            label="Sessions"
+            value={trainTopStats.sessionCount}
+            sub={trainTopStats.exCount + ' Übungen'}
+            color="violet"
+          />
+          <StatCard
+            icon={Activity}
+            label="Aktuelle Serie"
+            value={trainTopStats.streak}
+            sub={trainTopStats.streak === 1 ? 'Tag' : 'Tage'}
+            color="orange"
+          />
+        </div>
+      )}
 
       {/* Suche */}
       {totalCount > 0 && (
@@ -6768,8 +6838,11 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
         const e2 = (comp.table2 || [])[idx] || {};
         result.push({
           competition: comp,
+          exPoints: Number(ex.points || 0),
           k1cross: Number(e1.cross || 0), k1wave: Number(e1.wave || 0), k1bar: Number(e1.bar || 0), k1circle: Number(e1.circle || 0),
-          k2cross: Number(e2.cross || 0), k2wave: Number(e2.wave || 0), k2bar: Number(e2.bar || 0), k2circle: Number(e2.circle || 0)
+          k2cross: Number(e2.cross || 0), k2wave: Number(e2.wave || 0), k2bar: Number(e2.bar || 0), k2circle: Number(e2.circle || 0),
+          k1schwPct: Number(e1.schwPct || 0), k2schwPct: Number(e2.schwPct || 0),
+          k1takt: Number(e1.taktischePunkte || 0), k2takt: Number(e2.taktischePunkte || 0)
         });
       });
     }
@@ -7029,14 +7102,59 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                   <div className="text-[10px] text-rose-400">{compStats.circle} ges.</div>
                 </div>
               </div>
-              {/* Durchschnittlicher Punktabzug pro Wettkampf */}
+              {/* Durchschnittlicher Punktabzug pro Wettkampf — inklusive
+                  Schwierigkeits-Abwertung (Punkte × Σ%/100), nicht nur Symbole. */}
               {(() => {
-                const totalDed = compStats.cross * 0.2 + compStats.wave * 0.5 + compStats.bar * 1.0 + compStats.circle * 2.0;
-                const avgDed = totalDed / compStats.wettkaempfe;
+                const dedSymbols = compStats.cross * 0.2 + compStats.wave * 0.5 + compStats.bar * 1.0 + compStats.circle * 2.0;
+                const dedSchw    = (Number(exercise.points || 0) * compStats.schwPctSum) / 100;
+                const totalDed = dedSymbols + dedSchw;
+                const avgDed = compStats.count > 0 ? totalDed / compStats.count : 0;
                 return (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg py-3 px-4 flex items-baseline justify-between">
-                    <div className="text-xs text-slate-700">Ø Punktabzug pro Wettkampf</div>
+                    <div>
+                      <div className="text-xs text-slate-700">Ø Punktabzug pro Wettkampf</div>
+                      {dedSchw > 0 && (
+                        <div className="text-[10px] text-slate-500">inkl. Schwierigkeits-Abwertung</div>
+                      )}
+                    </div>
                     <div className="font-bold text-2xl text-amber-700">−{avgDed.toFixed(2)}</div>
+                  </div>
+                );
+              })()}
+
+              {/* Schwierigkeits-Abwertung (in %) — nur wenn welche aufgetreten ist.
+                  Zeigt Durchschnitt über die Stellungen, die überhaupt eine
+                  Abwertung hatten — sonst würde der Wert durch ohne-Abwertung-
+                  Stellungen verwässert. */}
+              {compStats.schwPctNonZero > 0 && (() => {
+                const avgPctRaw = compStats.schwPctSum / compStats.schwPctNonZero;
+                const avgPct = Math.round(avgPctRaw);
+                // Punkt-Effekt: Original-Punkte × % der Stellungen-Stichprobe
+                const sharePct = (compStats.schwPctNonZero / compStats.count) * 100;
+                return (
+                  <div className="bg-violet-50 border border-violet-200 rounded-lg py-2.5 px-4 flex items-baseline justify-between">
+                    <div>
+                      <div className="text-xs text-slate-700">Schwierigkeits-Abwertung</div>
+                      <div className="text-[10px] text-slate-500">in {Math.round(sharePct)}% der Stellungen</div>
+                    </div>
+                    <div className="font-bold text-lg text-violet-700">Ø −{avgPct}%</div>
+                  </div>
+                );
+              })()}
+
+              {/* Taktische Aufwertung — bei z.B. Lenkraddrehung, wo eine
+                  Stellung mit angepasster Punktzahl gewertet wird. Nur einblenden
+                  wenn überhaupt taktisch gefahren. */}
+              {compStats.taktCount > 0 && (() => {
+                const avgTakt = compStats.taktSum / compStats.taktCount;
+                const sharePct = (compStats.taktCount / compStats.count) * 100;
+                return (
+                  <div className="bg-sky-50 border border-sky-200 rounded-lg py-2.5 px-4 flex items-baseline justify-between">
+                    <div>
+                      <div className="text-xs text-slate-700">Taktische Aufwertung</div>
+                      <div className="text-[10px] text-slate-500">in {Math.round(sharePct)}% der Stellungen · Ø-Pkte</div>
+                    </div>
+                    <div className="font-bold text-lg text-sky-700">{avgTakt.toFixed(1)}</div>
                   </div>
                 );
               })()}
@@ -7048,15 +7166,21 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                     const wSum = c.k1wave + c.k2wave;
                     const bSum = c.k1bar + c.k2bar;
                     const cSum = c.k1circle + c.k2circle;
-                    const total = xSum + wSum + bSum + cSum;
+                    const totalSymbols = xSum + wSum + bSum + cSum;
+                    // Schw% und Taktik aggregiert über beide KGs: max statt sum,
+                    // weil in beiden KGs derselbe %-Wert üblich ist (eine Stellung
+                    // ist taktisch oder nicht — die zwei KG bewerten denselben Ablauf).
+                    const schwPct = Math.max(c.k1schwPct, c.k2schwPct);
+                    const taktPts = Math.max(c.k1takt, c.k2takt);
+                    const hasMod = schwPct > 0 || taktPts > 0;
                     return (
                       <div key={i} className="flex items-start justify-between gap-2 text-sm py-1">
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{c.competition.name}</div>
                           <div className="text-xs text-slate-500">{c.competition.date}</div>
                         </div>
-                        <div className="flex flex-wrap gap-1 text-xs justify-end shrink-0">
-                          {total === 0 ? (
+                        <div className="flex flex-wrap gap-1 text-xs justify-end shrink-0 max-w-[55%]">
+                          {totalSymbols === 0 && !hasMod ? (
                             <span className="text-emerald-700 font-medium">✓ sauber</span>
                           ) : (
                             <>
@@ -7064,6 +7188,8 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                               {wSum > 0 && <span className="bg-slate-100 px-1.5 py-0.5 rounded"><strong>~</strong>×{wSum}</span>}
                               {bSum > 0 && <span className="bg-slate-100 px-1.5 py-0.5 rounded"><strong>|</strong>×{bSum}</span>}
                               {cSum > 0 && <span className="bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded"><strong>○</strong>×{cSum}</span>}
+                              {schwPct > 0 && <span className="bg-violet-100 text-violet-800 px-1.5 py-0.5 rounded">Schw −{schwPct}%</span>}
+                              {taktPts > 0 && <span className="bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded">Takt {taktPts.toFixed(1)}</span>}
                             </>
                           )}
                         </div>
@@ -7287,14 +7413,9 @@ function UebungenView({ data, setData, onBack }) {
     <div className="min-h-screen bg-[#F2F2F7] p-4 sm:p-8">
       <div className="max-w-3xl mx-auto space-y-1.5 sm:space-y-5">
         <header className="flex items-end justify-between gap-3 pt-2 mb-3 sm:mb-0">
-          <div className="flex items-end gap-1 min-w-0">
-            <button onClick={onBack} className="p-2 -ml-2 text-[#FF9500] active:opacity-50">
-              <ChevronLeft size={28} strokeWidth={2.6} />
-            </button>
-            <div className="min-w-0">
-              <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('exercises.title')}</h1>
-              <p className="text-[13px] text-[#8E8E93] mt-1">{data.exercises.filter(e => e.active).length} aktiv · {data.exercises.filter(e => !e.active).length} {t('exercises.archived')}</p>
-            </div>
+          <div className="min-w-0">
+            <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('exercises.title')}</h1>
+            <p className="text-[13px] text-[#8E8E93] mt-1">{data.exercises.filter(e => e.active).length} aktiv · {data.exercises.filter(e => !e.active).length} {t('exercises.archived')}</p>
           </div>
           <button onClick={() => setShowNew(true)}
             className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-[14px] flex items-center gap-1.5 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
@@ -7311,10 +7432,16 @@ function UebungenView({ data, setData, onBack }) {
         <IOSList footer="Tippe auf eine Übung um Statistik (Training + Wettkampf) zu sehen.">
           {data.exercises.map(ex => {
             const compStats = calcExerciseCompetitionStats(ex, data.programs || [], data.competitions || []);
-            // Punkt-Abzug-Logik (UCI 8.4.027): x=0.2, ~=0.5, |=1.0, ○=2.0.
-            // 'Ø Abzug pro Wettkampf' = Summe / Anzahl KG-Stellungen (count = 2×wettkaempfe)
-            // = Mittel über KGs, was direkt dem Beitrag zum Endergebnis entspricht.
-            const totalDeduction = compStats.cross * 0.2 + compStats.wave * 0.5 + compStats.bar * 1.0 + compStats.circle * 2.0;
+            // Vollständiger Punktverlust = Symbol-Abzüge + Schwierigkeits-Abwertung.
+            // Symbol-Logik (UCI 8.4.027): x=0.2, ~=0.5, |=1.0, ○=2.0.
+            // Schw-Effekt pro Stellung: ex.points × schwPct/100. Aufsummiert für
+            // alle Stellungen, dann durch count (= 2 × wettkaempfe) geteilt =
+            // mittlerer Beitrag aufs Endergebnis. Ohne diesen Anteil würde eine
+            // 100%-Schw-Abwertung als 'sauber' erscheinen, obwohl die halbe
+            // Übungspunktzahl weggefallen ist.
+            const dedSymbols = compStats.cross * 0.2 + compStats.wave * 0.5 + compStats.bar * 1.0 + compStats.circle * 2.0;
+            const dedSchw    = (Number(ex.points || 0) * compStats.schwPctSum) / 100;
+            const totalDeduction = dedSymbols + dedSchw;
             const avgDeduction = compStats.count > 0 ? totalDeduction / compStats.count : 0;
             const trainStats = calcExerciseTrainingStats(ex, data.sessions || []);
             const rateColor = trainStats.rate >= 80 ? 'text-[#34C759]'
@@ -8179,6 +8306,224 @@ function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onRemove }) {
 // React die View-Komponente unmoutet. localStorage = einfacher Auto-Save.
 const WK_VIEW_STATE_KEY = 'artcyc:wk-view:v1';
 
+// =============================================================
+// BULK-IMPORT — mehrere PDFs auf einmal als Wettkämpfe übernehmen
+// =============================================================
+function BulkImportModal({ data, athletes, onApply, onClose }) {
+  const [items, setItems] = useState([]); // { filename, parsed, duplicate, error, selected, athleteId }
+  const [busy, setBusy] = useState(false);
+  const defaultAthleteId = (athletes && athletes[0] && athletes[0].id) || '';
+
+  const handleFiles = async (fileList) => {
+    if (!fileList || fileList.length === 0) return;
+    setBusy(true);
+    const additions = [];
+    for (const file of Array.from(fileList)) {
+      try {
+        const parsed = await parsePdfFully(file);
+        const dup = (data.competitions || []).find(c => {
+          if ((c.name || '').trim() !== (parsed.wettbewerb || '').trim()) return false;
+          if ((c.date || '') !== (parsed.datum || '')) return false;
+          if (parsed.startnr && c.start_nr) return String(c.start_nr).trim() === String(parsed.startnr).trim();
+          return true;
+        });
+        additions.push({
+          filename: file.name, parsed, duplicate: dup || null, error: null,
+          selected: !dup, athleteId: defaultAthleteId
+        });
+      } catch (e) {
+        additions.push({ filename: file.name, parsed: null, duplicate: null, error: e.message || 'Fehler', selected: false });
+      }
+    }
+    setItems(prev => [...prev, ...additions]);
+    setBusy(false);
+  };
+
+  const toggle = (idx) => setItems(items.map((it, i) => i === idx ? { ...it, selected: !it.selected } : it));
+  const setAthlete = (idx, aId) => setItems(items.map((it, i) => i === idx ? { ...it, athleteId: aId } : it));
+
+  // Aus allen ausgewählten Items neue Programme/Übungen/Wettkämpfe aufbauen.
+  // Pro PDF wird ein eigenes Programm angelegt (keine sophistizierten Matches —
+  // bei Bedarf kann der User später Programme zusammenführen).
+  const apply = () => {
+    const newComps = [];
+    const newProgs = [];
+    const newExes = [];
+    const dbExes = data.exercises || [];
+
+    for (const item of items) {
+      if (!item.selected || !item.parsed) continue;
+      const p = item.parsed;
+      if (!p.exerciseRows || p.exerciseRows.length === 0) continue;
+
+      const disc = p.disziplin
+        ? (['1er', '2er', '4er', '6er'].find(d => p.disziplin.toLowerCase().includes(d)) || '1er')
+        : '1er';
+      const progId = uid();
+      const progExercises = p.exerciseRows.map((r, idx) => ({
+        id: 'p_ex_' + idx + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        nr: idx + 1,
+        name: r.name || ('Übung ' + (idx + 1)),
+        code: r.code || null,
+        points: Number(r.points || 0)
+      }));
+      newProgs.push({
+        id: progId,
+        name: p.disziplin ? p.disziplin.replace('Kunstradsport', '').trim() : (p.wettbewerb || 'Programm') + ' (' + disc + ')',
+        discipline: disc,
+        exercises: progExercises,
+        created: new Date().toISOString()
+      });
+
+      // Neue Übungen sammeln
+      for (const ex of progExercises) {
+        const isMatch = (dbEx) => {
+          if (ex.code && dbEx.uci_code) return ex.code === dbEx.uci_code;
+          return (dbEx.name || '').trim().toLowerCase() === (ex.name || '').trim().toLowerCase()
+            && Number(dbEx.points || 0) === Number(ex.points || 0);
+        };
+        if (!dbExes.some(isMatch) && !newExes.some(isMatch)) {
+          newExes.push({
+            id: uid(),
+            name: ex.name,
+            uci_code: ex.code || null,
+            uci_disc: disc || null,
+            points: Number(ex.points || 0),
+            active: true,
+            category_mode: 2,
+            third_label: null,
+            default_series: 10,
+            created: new Date().toISOString()
+          });
+        }
+      }
+
+      const buildTable = (kgKey) => progExercises.map((ex, idx) => {
+        const r = p.exerciseRows[idx] || {};
+        const kg = r[kgKey] || {};
+        return {
+          exerciseId: ex.id, included: true,
+          cross: Number(kg.X || 0), wave: Number(kg.W || 0),
+          bar: Number(kg.S || 0), circle: Number(kg.K || 0),
+          schwPct: Number(kg.p || 0), taktischePunkte: Number(kg.T || 0)
+        };
+      });
+
+      newComps.push({
+        id: uid(),
+        name: p.wettbewerb || 'Wettkampf',
+        date: p.datum || new Date().toISOString().slice(0, 10),
+        location: p.ort || '',
+        host: p.ausrichter || '',
+        start_nr: p.startnr || '',
+        athlete_id: item.athleteId || null,
+        program_id: progId,
+        table1: buildTable('kg1'),
+        table2: buildTable('kg2'),
+        t1_schwierigkeit: 0,
+        t2_schwierigkeit: 0,
+        pdf_ref: {
+          kg1_ausfuehrung: p.kg1_ausfuehrung, kg2_ausfuehrung: p.kg2_ausfuehrung,
+          kg1_schwierigkeit: p.kg1_schwierigkeit, kg2_schwierigkeit: p.kg2_schwierigkeit,
+          kg1_gesamt: p.kg1_gesamtabzug, kg2_gesamt: p.kg2_gesamtabzug,
+          kg1_ausgefahren: p.kg1_ausgefahren, kg2_ausgefahren: p.kg2_ausgefahren,
+          endergebnis: p.endergebnis
+        },
+        created: new Date().toISOString()
+      });
+    }
+
+    onApply({ newComps, newProgs, newExes });
+  };
+
+  const selectedCount = items.filter(it => it.selected).length;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={onClose}>
+      <div className="bg-white dark:bg-[#1c1c1e] rounded-t-3xl sm:rounded-3xl w-full max-w-2xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden"
+        onClick={e => e.stopPropagation()}>
+        <div className="px-4 py-3 flex items-center justify-between border-b border-slate-200/60 dark:border-slate-800">
+          <button onClick={onClose} className="text-[#007AFF] font-medium text-[15px]">Abbrechen</button>
+          <span className="font-semibold text-[15px]">Mehrere PDFs</span>
+          <button onClick={apply} disabled={selectedCount === 0}
+            className="text-[#FF9500] font-semibold text-[15px] disabled:opacity-30">
+            {selectedCount > 0 ? selectedCount + ' anlegen' : 'Anlegen'}
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {items.length === 0 && !busy && (
+            <div className="text-center py-8">
+              <FileText size={36} className="mx-auto text-slate-300 mb-3" />
+              <p className="text-sm text-slate-500 mb-4 px-6">Mehrere Wertungsberichts-PDFs auf einmal hochladen. Pro PDF wird ein eigener Wettkampf-Eintrag mit Programm angelegt.</p>
+              <label className="inline-flex bg-[#FF9500] text-white px-5 py-2.5 rounded-xl text-sm font-semibold cursor-pointer items-center gap-1.5">
+                <FileText size={14} strokeWidth={2.4} /> PDFs auswählen
+                <input type="file" accept="application/pdf" multiple
+                  onChange={e => handleFiles(e.target.files)} className="hidden" />
+              </label>
+            </div>
+          )}
+          {busy && <div className="text-center py-6 text-sm text-slate-500">⏳ Lese PDFs …</div>}
+          {items.length > 0 && items.map((item, i) => (
+            <div key={i} className={'rounded-xl border p-3 ' +
+              (item.error ? 'bg-rose-50 border-rose-200 dark:bg-rose-950/30 dark:border-rose-900/40'
+                : item.duplicate ? 'bg-amber-50 border-amber-300 dark:bg-amber-950/30 dark:border-amber-900/40'
+                : item.selected ? 'bg-emerald-50 border-emerald-300 dark:bg-emerald-950/30 dark:border-emerald-900/40'
+                : 'bg-slate-50 border-slate-200 dark:bg-slate-900/40 dark:border-slate-800')}>
+              <div className="flex items-start gap-3">
+                {!item.error && (
+                  <input type="checkbox" checked={item.selected} onChange={() => toggle(i)}
+                    className="mt-1 w-4 h-4 accent-emerald-600 shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  {item.error ? (
+                    <>
+                      <div className="text-sm font-medium text-rose-900 dark:text-rose-200">✗ {item.filename}</div>
+                      <div className="text-xs text-rose-700 dark:text-rose-300 mt-0.5">{item.error}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-sm font-medium truncate text-slate-900 dark:text-slate-100">
+                        {item.parsed.wettbewerb || item.filename}
+                      </div>
+                      <div className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                        {item.parsed.datum && formatDateShort(item.parsed.datum)}
+                        {item.parsed.starter && ' · ' + item.parsed.starter}
+                        {item.parsed.exerciseRows && ' · ' + item.parsed.exerciseRows.length + ' Übungen'}
+                        {typeof item.parsed.endergebnis === 'number' && ' · ' + item.parsed.endergebnis.toFixed(2) + ' Pkt'}
+                      </div>
+                      {item.duplicate && (
+                        <div className="text-xs text-amber-800 dark:text-amber-200 mt-1.5 flex items-start gap-1">
+                          <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+                          <span>Bereits importiert — „{item.duplicate.name}" am {formatDateShort(item.duplicate.date)}</span>
+                        </div>
+                      )}
+                      {athletes && athletes.length > 1 && (
+                        <select value={item.athleteId} onChange={e => setAthlete(i, e.target.value)}
+                          className="mt-2 text-xs bg-white dark:bg-white/10 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 w-full text-slate-900 dark:text-slate-100">
+                          <option value="">— Sportler:in wählen —</option>
+                          {athletes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+          {items.length > 0 && !busy && (
+            <label className="block text-center text-[14px] text-[#007AFF] cursor-pointer py-2 mt-2">
+              + weitere PDFs hinzufügen
+              <input type="file" accept="application/pdf" multiple
+                onChange={e => handleFiles(e.target.files)} className="hidden" />
+            </label>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WettkampfView({ data, setData, dbAthletes }) {
   const { t } = useI18n();
   const [tab, setTab] = useState('wettkaempfe'); // 'wettkaempfe' | 'programme'
@@ -8193,6 +8538,7 @@ function WettkampfView({ data, setData, dbAthletes }) {
   })();
   const [editId, setEditId] = useState(initView.editId);
   const [showNew, setShowNew] = useState(initView.showNew);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [viewId, setViewId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
@@ -8358,11 +8704,37 @@ function WettkampfView({ data, setData, dbAthletes }) {
         <div>
           <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('competition.title')}</h1>
         </div>
-        <button onClick={() => setShowNew(true)}
-          className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
-          <Plus size={16} strokeWidth={2.5} /> {t('common.new')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowBulkImport(true)}
+            className="bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200 px-3 py-2 rounded-full font-medium text-[13px] flex items-center gap-1.5 active:scale-95 transition"
+            title="Mehrere PDFs auf einmal importieren">
+            <FileText size={14} strokeWidth={2.4} /> Bulk
+          </button>
+          <button onClick={() => setShowNew(true)}
+            className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
+            <Plus size={16} strokeWidth={2.5} /> {t('common.new')}
+          </button>
+        </div>
       </header>
+
+      {showBulkImport && (
+        <BulkImportModal
+          data={data}
+          athletes={athletes}
+          onClose={() => setShowBulkImport(false)}
+          onApply={({ newComps, newProgs, newExes }) => {
+            // ALLES in EINEM setData — Programme/Übungen VOR den Wettkämpfen,
+            // sonst verweisen FKs auf noch-nicht-existierende Datensätze.
+            setData({
+              ...data,
+              programs: [...(data.programs || []), ...newProgs],
+              exercises: [...(data.exercises || []), ...newExes],
+              competitions: [...(data.competitions || []), ...newComps]
+            });
+            setShowBulkImport(false);
+          }}
+        />
+      )}
 
       {competitions.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-8 text-center">
@@ -8446,6 +8818,95 @@ function WettkampfView({ data, setData, dbAthletes }) {
 // =============================================================
 // WETTKAMPF-EDITOR
 // =============================================================
+
+// Wertungsbericht-Text → strukturierte Stammdaten + Footer-Punktwerte.
+// Top-Level, damit Single-Editor UND Bulk-Import sie verwenden können.
+function parseWertungsbericht(text) {
+  const result = { errors: [] };
+  // STOP-Lookahead: Pattern muss zwei Sorten Begrenzer akzeptieren, weil das PDF
+  // alles in eine Zeile streamt:
+  //   1. Echte Labels mit Doppelpunkt — z.B. "Datum:", "Startnummer:" — sicher
+  //      identifizierbar.
+  //   2. Tabellen-Header ohne Doppelpunkt — "Üb-Nr", "Übungstext", "Pkte" — die
+  //      direkt nach den Stammdaten als Spalten-Überschriften auftauchen.
+  // (.*?) statt (.+?), damit ein leeres Feld (PDF mit "Ort:" direkt gefolgt
+  // von "Datum:") sauber als null erkannt wird statt den Folge-Wert einzusaugen.
+  const LABELS_WITH_COLON = '(?:Wettbewerb|Ort|Datum|Ausrichter|Startnummer|Starter|Verein|Disziplin|Ansager|Schreiber|Chief|Abzug|Gesamtabzug|Aufgestellte|Endergebnis|Ausgefahrene)';
+  // \b funktioniert in JS-Regex nur mit ASCII — `Üb-Nr` startet mit Ü und hätte
+  // keine Wortgrenze davor. Daher fordern wir explizit \s+ vor dem Tabellen-Marker.
+  const TABLE_MARKERS = '(?:Üb-Nr|Übungstext|Pkte)';
+  const STOP = '(?=\\s*' + LABELS_WITH_COLON + '\\s*:|\\s+' + TABLE_MARKERS + '|\\n|\\r|$)';
+  const field = (label) => {
+    const m = text.match(new RegExp(label + ':\\s*(.*?)' + STOP));
+    if (!m) return null;
+    let v = m[1].trim();
+    if (v.length > 100) v = v.slice(0, 100).trim();
+    return v || null;
+  };
+
+  result.wettbewerb = field('Wettbewerb');
+  result.ort = field('Ort');
+  result.ausrichter = field('Ausrichter');
+  result.startnr = field('Startnummer');
+  result.starter = field('Starter');
+  result.verein = field('Verein');
+  const dM = text.match(/Disziplin:\s*([^]+?)(?=\s*(?:\d{4}[a-z]|Üb-Nr|Übungstext|\b\d{1,2}\s+\d{4})|\s{2,}|\n|$)/);
+  if (dM) {
+    let d = dM[1].trim();
+    if (d.length > 80) d = d.slice(0, 80).trim();
+    result.disziplin = d || null;
+  }
+
+  const datumM = text.match(/Datum:\s*(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+  if (datumM) {
+    result.datum = datumM[3] + '-' + datumM[2].padStart(2, '0') + '-' + datumM[1].padStart(2, '0');
+  }
+
+  const schwM = [...text.matchAll(/Abzug Schwierigkeit:\s*([\d,\.]+)/g)];
+  const ausfM = [...text.matchAll(/Abzug Ausführung:\s*([\d,\.]+)/g)];
+  const gesM = [...text.matchAll(/Gesamtabzug:\s*([\d,\.]+)/g)];
+  const ausgefM = [...text.matchAll(/Ausgefahrene Punkte:\s*([\d,\.]+)/g)];
+  const aufM = text.match(/Aufgestellte Punkte:\s*([\d,\.]+)/);
+  const endM = text.match(/Endergebnis:\s*([\d,\.]+)/);
+  const num = (s) => parseFloat(String(s).replace(',', '.'));
+
+  if (schwM.length >= 2) { result.kg1_schwierigkeit = num(schwM[0][1]); result.kg2_schwierigkeit = num(schwM[1][1]); }
+  if (ausfM.length >= 2) { result.kg1_ausfuehrung = num(ausfM[0][1]);   result.kg2_ausfuehrung = num(ausfM[1][1]); }
+  if (gesM.length >= 2)  { result.kg1_gesamtabzug = num(gesM[0][1]);    result.kg2_gesamtabzug = num(gesM[1][1]); }
+  if (ausgefM.length >= 2) { result.kg1_ausgefahren = num(ausgefM[0][1]); result.kg2_ausgefahren = num(ausgefM[1][1]); }
+  if (aufM) result.aufgestellt = num(aufM[1]);
+  if (endM) result.endergebnis = num(endM[1]);
+
+  if (!result.wettbewerb && !result.starter) {
+    result.errors.push('Konnte keine Wettkampf-Daten erkennen — ist das ein Wertungsbericht-PDF?');
+  }
+  return result;
+}
+
+// Komplettes PDF → parsed Object inkl. exerciseRows + position-aware Footer.
+// Wird vom Bulk-Import benutzt; der Single-Editor hat noch eigene Logik für
+// das Status-Update zwischendurch.
+async function parsePdfFully(file) {
+  const fullText = await extractPdfText(file);
+  const parsed = parseWertungsbericht(fullText);
+  if (parsed.errors.length > 0) throw new Error(parsed.errors.join(', '));
+  try {
+    const items = await extractPdfItems(file);
+    const rows = parseWertungsbogenRows(items);
+    if (rows.length > 0) parsed.exerciseRows = rows;
+    const footerPos = parseFooterPositional(items);
+    // Position-aware Footer überschreibt Text-Werte (zuverlässiger)
+    ['kg1_schwierigkeit','kg2_schwierigkeit','kg1_ausfuehrung','kg2_ausfuehrung',
+     'kg1_gesamtabzug','kg2_gesamtabzug','kg1_ausgefahren','kg2_ausgefahren',
+     'aufgestellt','endergebnis'].forEach(k => {
+      if (typeof footerPos[k] === 'number') parsed[k] = footerPos[k];
+    });
+  } catch {
+    // Position-Parser fehlgeschlagen — wir behalten Text-Werte
+  }
+  return parsed;
+}
+
 // =============================================================
 // VALIDIERUNG gegen PDF-Soll
 // =============================================================
@@ -8570,22 +9031,32 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
   // Referenz-Werte aus letztem PDF-Import zur Validierung
   const [pdfRef, setPdfRef] = useState(() => initVal('pdfRef', competition && competition.pdf_ref ? competition.pdf_ref : null));
 
-  // Draft schreiben sobald sich etwas ändert
+  // PDF-Import State — wird ebenfalls mit-persistiert, damit nach einem
+  // Tab-Wechsel die 'Erkannt'-Karte + der Übernehmen-Button erhalten bleiben.
+  // 'parsing' wird nicht restauriert (kein laufender Parse mehr) — fällt auf null.
+  const [importStatus, setImportStatus] = useState(() => {
+    const v = initVal('importStatus', null);
+    return v === 'parsing' ? null : v;
+  });
+  const [importMsg, setImportMsg] = useState(() => initVal('importMsg', ''));
+  const [importPreview, setImportPreview] = useState(() => initVal('importPreview', null));
+  const [showPasteArea, setShowPasteArea] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+
+  // Draft schreiben sobald sich etwas ändert (nach allen useStates!).
+  // importPreview kann groß sein (mit exerciseRows) — passt aber locker
+  // in localStorage (5MB-Limit pro Origin).
   useEffect(() => {
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({
         name, date, location, host, startNr, athleteId, programId,
-        pendingNewProgram, pendingNewExercises, table1, table2, t1S, t2S, pdfRef
+        pendingNewProgram, pendingNewExercises, table1, table2, t1S, t2S, pdfRef,
+        importStatus, importMsg, importPreview
       }));
     } catch {}
-  }, [DRAFT_KEY, name, date, location, host, startNr, athleteId, programId, pendingNewProgram, pendingNewExercises, table1, table2, t1S, t2S, pdfRef]);
-
-  // PDF-Import State
-  const [importStatus, setImportStatus] = useState(null); // null | 'parsing' | 'success' | 'error'
-  const [importMsg, setImportMsg] = useState('');
-  const [importPreview, setImportPreview] = useState(null);
-  const [showPasteArea, setShowPasteArea] = useState(false);
-  const [pasteText, setPasteText] = useState('');
+  }, [DRAFT_KEY, name, date, location, host, startNr, athleteId, programId,
+      pendingNewProgram, pendingNewExercises, table1, table2, t1S, t2S, pdfRef,
+      importStatus, importMsg, importPreview]);
 
   // (Früher: useEffect der bei programId-Wechsel table1/table2 reset hat — entfernt,
   //  weil das Programm nur noch beim PDF-Import gesetzt wird und applyImport die Tabellen
@@ -8600,88 +9071,8 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     setter(prev => prev.map((e, i) => i === idx ? { ...e, [key]: val } : e));
   };
 
-  // Wertungsbericht aus PDF-Text parsen
-  const parseWertungsbericht = (text) => {
-    const result = { errors: [] };
-    // STOP-Lookahead: Pattern muss zwei Sorten Begrenzer akzeptieren, weil das PDF
-    // alles in eine Zeile streamt:
-    //   1. Echte Labels mit Doppelpunkt — z.B. "Datum:", "Startnummer:" — sicher
-    //      identifizierbar. (Schlichtes \b reichte hier nicht: ein Ortsname wie
-    //      "Karlsruhe-Datum-Land" hätte fälschlich an "Datum" gestoppt.)
-    //   2. Tabellen-Header ohne Doppelpunkt — "Üb-Nr", "Übungstext", "Pkte" — die
-    //      direkt nach den Stammdaten als Spalten-Überschriften auftauchen. Diese
-    //      brauchen \b, weil kein : folgt. Erste Kategorie scheitert daran, dass
-    //      sonst der Ausrichter-Wert in den Tabellen-Header reinläuft.
-    // (.*?) statt (.+?), damit ein leeres Feld (PDF mit "Ort:" direkt gefolgt
-    // von "Datum:") sauber als null erkannt wird statt den Folge-Wert einzusaugen.
-    const LABELS_WITH_COLON = '(?:Wettbewerb|Ort|Datum|Ausrichter|Startnummer|Starter|Verein|Disziplin|Ansager|Schreiber|Chief|Abzug|Gesamtabzug|Aufgestellte|Endergebnis|Ausgefahrene)';
-    // \b funktioniert in JS-Regex nur mit ASCII — `Üb-Nr` startet mit Ü und hätte
-    // keine Wortgrenze davor. Daher fordern wir explizit \s+ (mindestens 1 Whitespace)
-    // vor dem Tabellen-Marker.
-    const TABLE_MARKERS = '(?:Üb-Nr|Übungstext|Pkte)';
-    const STOP = '(?=\\s*' + LABELS_WITH_COLON + '\\s*:|\\s+' + TABLE_MARKERS + '|\\n|\\r|$)';
-    const field = (label) => {
-      const m = text.match(new RegExp(label + ':\\s*(.*?)' + STOP));
-      if (!m) return null;
-      // Aufräumen: zu langes? abschneiden
-      let v = m[1].trim();
-      if (v.length > 100) v = v.slice(0, 100).trim();
-      return v || null;
-    };
-
-    result.wettbewerb = field('Wettbewerb');
-    result.ort = field('Ort');
-    result.ausrichter = field('Ausrichter');
-    result.startnr = field('Startnummer');
-    result.starter = field('Starter');
-    result.verein = field('Verein');
-    // Disziplin extra: stoppt am ersten 4-stelligen Code (Übungs-Bereich) oder bei "1 " "2 " etc.
-    const dM = text.match(/Disziplin:\s*([^]+?)(?=\s*(?:\d{4}[a-z]|Üb-Nr|Übungstext|\b\d{1,2}\s+\d{4})|\s{2,}|\n|$)/);
-    if (dM) {
-      let d = dM[1].trim();
-      if (d.length > 80) d = d.slice(0, 80).trim();
-      result.disziplin = d || null;
-    }
-
-    const datumM = text.match(/Datum:\s*(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-    if (datumM) {
-      result.datum = datumM[3] + '-' + datumM[2].padStart(2, '0') + '-' + datumM[1].padStart(2, '0');
-    }
-
-    // Footer (zwei Mal: KG1 + KG2)
-    const schwM = [...text.matchAll(/Abzug Schwierigkeit:\s*([\d,\.]+)/g)];
-    const ausfM = [...text.matchAll(/Abzug Ausführung:\s*([\d,\.]+)/g)];
-    const gesM = [...text.matchAll(/Gesamtabzug:\s*([\d,\.]+)/g)];
-    const ausgefM = [...text.matchAll(/Ausgefahrene Punkte:\s*([\d,\.]+)/g)];
-    const aufM = text.match(/Aufgestellte Punkte:\s*([\d,\.]+)/);
-    const endM = text.match(/Endergebnis:\s*([\d,\.]+)/);
-
-    const num = (s) => parseFloat(String(s).replace(',', '.'));
-
-    if (schwM.length >= 2) {
-      result.kg1_schwierigkeit = num(schwM[0][1]);
-      result.kg2_schwierigkeit = num(schwM[1][1]);
-    }
-    if (ausfM.length >= 2) {
-      result.kg1_ausfuehrung = num(ausfM[0][1]);
-      result.kg2_ausfuehrung = num(ausfM[1][1]);
-    }
-    if (gesM.length >= 2) {
-      result.kg1_gesamtabzug = num(gesM[0][1]);
-      result.kg2_gesamtabzug = num(gesM[1][1]);
-    }
-    if (ausgefM.length >= 2) {
-      result.kg1_ausgefahren = num(ausgefM[0][1]);
-      result.kg2_ausgefahren = num(ausgefM[1][1]);
-    }
-    if (aufM) result.aufgestellt = num(aufM[1]);
-    if (endM) result.endergebnis = num(endM[1]);
-
-    if (!result.wettbewerb && !result.starter) {
-      result.errors.push('Konnte keine Wettkampf-Daten erkennen — ist das ein Wertungsbericht-PDF?');
-    }
-    return result;
-  };
+  // (parseWertungsbericht ist jetzt eine top-level Funktion — siehe oben.
+  // Damit kann auch der Bulk-Import sie nutzen.)
 
   const applyImport = (parsed) => {
     if (parsed.wettbewerb) setName(parsed.wettbewerb);

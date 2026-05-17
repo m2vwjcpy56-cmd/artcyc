@@ -93,7 +93,7 @@ const dict = {
 
     // Dashboard
     'dashboard.title': 'Dashboard',
-    'dashboard.subtitle': 'Trainings-Statistiken im Überblick',
+    'dashboard.subtitle': 'Training & Wettkampf im Überblick',
     'dashboard.bestScore': 'Bestleistung',
     'dashboard.competitions': 'Wettkämpfe',
     'dashboard.trainingDays': 'Trainingstage',
@@ -483,7 +483,7 @@ const dict = {
     'role.athlete': 'Athlete',
 
     'dashboard.title': 'Dashboard',
-    'dashboard.subtitle': 'Your training stats at a glance',
+    'dashboard.subtitle': 'Training & competition at a glance',
     'dashboard.bestScore': 'Best score',
     'dashboard.competitions': 'Competitions',
     'dashboard.trainingDays': 'Training days',
