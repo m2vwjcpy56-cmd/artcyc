@@ -6,11 +6,11 @@ import {
   Settings as SettingsIcon, LogOut, Shield, User, RotateCcw,
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
-  Sun, Moon, SunMoon, Globe
+  Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon
 } from 'lucide-react';
 import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
-import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud } from './lib/feedback.js';
+import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud, fileToBase64 } from './lib/feedback.js';
 import { parseProgramFile } from './lib/programImport.js';
 
 // =============================================================
@@ -5876,6 +5876,13 @@ function FeedbackModal({ onClose }) {
   const [busy, setBusy] = useState(false);
   const [list, setList] = useState(() => getFeedback());
   const [justSent, setJustSent] = useState(false);
+  // attachments-Pipeline: jeder Eintrag = { id, name, type, size, dataUrl, base64 }
+  const [attachments, setAttachments] = useState([]);
+  const [attachError, setAttachError] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const ATTACH_MAX_PER_FILE_MB = 10;
+  const ATTACH_MAX_TOTAL_MB    = 20;
 
   const categories = [
     { id: 'bug',      label: t('feedback.categoryBug'),      color: 'text-[#FF3B30]' },
@@ -5884,24 +5891,74 @@ function FeedbackModal({ onClose }) {
     { id: 'other',    label: t('feedback.categoryOther'),    color: 'text-[#8E8E93]' }
   ];
 
+  const handleFilesPicked = async (fileList) => {
+    setAttachError(null);
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    const currentTotal = attachments.reduce((sum, a) => sum + (a.size || 0), 0);
+    const limitFile  = ATTACH_MAX_PER_FILE_MB * 1024 * 1024;
+    const limitTotal = ATTACH_MAX_TOTAL_MB    * 1024 * 1024;
+    const next = [...attachments];
+    let runningTotal = currentTotal;
+    for (const f of files) {
+      if (f.size > limitFile) {
+        setAttachError(t('feedback.attachTooBig', { size: (f.size / 1024 / 1024).toFixed(1), max: ATTACH_MAX_PER_FILE_MB }));
+        continue;
+      }
+      if (runningTotal + f.size > limitTotal) {
+        setAttachError(t('feedback.attachTotalTooBig', { totalMax: ATTACH_MAX_TOTAL_MB }));
+        continue;
+      }
+      try {
+        const base64 = await fileToBase64(f);
+        next.push({
+          id: 'att_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          name: f.name,
+          type: f.type || 'application/octet-stream',
+          size: f.size,
+          dataUrl: f.type && f.type.startsWith('image/') ? ('data:' + f.type + ';base64,' + base64) : null,
+          base64,
+        });
+        runningTotal += f.size;
+      } catch (err) {
+        setAttachError(String(err?.message || err));
+      }
+    }
+    setAttachments(next);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeAttachment = (id) => {
+    setAttachments(prev => prev.filter(a => a.id !== id));
+    setAttachError(null);
+  };
+
   const [mailWarning, setMailWarning] = useState(null); // null | string (Fehler-Text vom Server)
   const send = async () => {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
     setBusy(true);
     setMailWarning(null);
-    const id = submitFeedback({ text: trimmed, category, source: 'user' });
+    const id = submitFeedback({ text: trimmed, category, source: 'user', attachments });
+    const attsForUpload = attachments.map(a => ({
+      name: a.name,
+      type: a.type,
+      content_base64: a.base64,
+    }));
     setText('');
+    setAttachments([]);
     setList(getFeedback());
     setJustSent(true);
     // Im Hintergrund in die Cloud pushen — DB-Insert + Auto-Mail.
     // Fehlschlag schlägt nicht durch: der Eintrag bleibt lokal mit
     // synced=false und kann manuell per Mail-Knopf rausgeschickt werden.
-    pushFeedbackToCloud(supabase, getFeedback().find(e => e.id === id))
+    pushFeedbackToCloud(supabase, getFeedback().find(e => e.id === id), attsForUpload.length ? attsForUpload : null)
       .then(r => {
         setList(getFeedback());
         if (r && r.ok && !r.mail_sent) {
           setMailWarning(r.mail_error || 'Mail wurde nicht verschickt — Resend-API-Key fehlt oder Empfänger ist nicht freigeschaltet (Resend Test-Modus erlaubt nur Senden an die Resend-Account-Mail bis Domain verifiziert ist).');
+        } else if (r && r.ok && r.attachment_warning) {
+          setMailWarning(r.attachment_warning);
         }
       })
       .catch(() => {});
@@ -5958,6 +6015,56 @@ function FeedbackModal({ onClose }) {
               className="w-full bg-transparent text-[15px] outline-none resize-y placeholder:text-[#C7C7CC]" />
           </div>
 
+          {/* Anhänge: Datei/Foto picker + Vorschau-Liste */}
+          <div className="space-y-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,application/pdf,text/plain,application/json,.csv,.log"
+              onChange={e => handleFilesPicked(e.target.files)}
+              className="hidden" />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full bg-white text-[#007AFF] py-3 rounded-2xl text-[15px] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:opacity-60 flex items-center justify-center gap-2">
+              <Paperclip size={16} strokeWidth={2.4} /> {t('feedback.attach')}
+            </button>
+            <p className="text-[12px] text-[#8E8E93] text-center px-3 leading-snug">
+              {t('feedback.attachHint', { max: ATTACH_MAX_PER_FILE_MB, totalMax: ATTACH_MAX_TOTAL_MB })}
+            </p>
+            {attachError && (
+              <div className="bg-red-50 text-[#FF3B30] text-[13px] rounded-xl p-3">
+                {attachError}
+              </div>
+            )}
+            {attachments.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
+                {attachments.map((a, i) => (
+                  <div key={a.id} className={'flex items-center gap-3 px-3 py-2.5 ' + (i > 0 ? 'border-t border-[rgba(198,198,200,0.4)]' : '')}>
+                    {a.dataUrl
+                      ? <img src={a.dataUrl} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                      : <div className="w-12 h-12 rounded-lg bg-[#F2F2F7] flex items-center justify-center flex-shrink-0">
+                          <Paperclip size={18} className="text-[#8E8E93]" />
+                        </div>}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[14px] font-medium truncate">{a.name}</div>
+                      <div className="text-[12px] text-[#8E8E93]">
+                        {(a.size / 1024).toFixed(a.size > 1024 * 1024 ? 0 : 1)} {a.size > 1024 * 1024 ? 'MB' : 'KB'}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeAttachment(a.id)}
+                      aria-label={t('feedback.attachRemove')}
+                      className="text-[#FF3B30] active:opacity-60 p-1">
+                      <X size={18} strokeWidth={2.4} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Send-Button */}
           <button
             onClick={send}
@@ -6005,6 +6112,12 @@ function FeedbackModal({ onClose }) {
                     </span>
                   </div>
                   <div className="text-[14px] whitespace-pre-wrap">{e.text}</div>
+                  {Array.isArray(e.attachments) && e.attachments.length > 0 && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[12px] text-[#8E8E93]">
+                      <Paperclip size={12} />
+                      <span>{e.attachments.length} · {e.attachments.map(a => a.name).join(', ')}</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </IOSList>
