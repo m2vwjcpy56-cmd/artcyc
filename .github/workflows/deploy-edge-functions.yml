@@ -56,12 +56,15 @@ jobs:
           shopt -s nullglob
           for sql in docs/*-setup.sql docs/*-seed.sql; do
             echo "─── $sql ───"
-            PAYLOAD=$(jq -Rs '{query: .}' < "$sql")
+            # Payload in Datei schreiben statt als Kommandozeilen-Argument
+            # an curl — sonst ARG_MAX-Overflow bei großen Seeds (z. B.
+            # uci-exercises-de-seed.sql mit ~600 kB).
+            jq -Rs '{query: .}' < "$sql" > /tmp/payload.json
             HTTP_CODE=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
               -X POST "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
               -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
               -H "Content-Type: application/json" \
-              -d "$PAYLOAD")
+              --data-binary @/tmp/payload.json)
             cat /tmp/resp.json; echo
             if [ "$HTTP_CODE" -ge 400 ]; then
               echo "::error::SQL '$sql' fehlgeschlagen (HTTP $HTTP_CODE)"
