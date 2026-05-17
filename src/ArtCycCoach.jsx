@@ -6034,7 +6034,7 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
         </div>
         <div className="px-4 py-3.5 flex items-center justify-between gap-3">
           <span className="text-[15px] text-[#3C3C43]">{t('settings.aboutVersion')}</span>
-          <span className="text-[15px] text-[#8E8E93]">Stufe 8 · Test</span>
+          <span className="text-[15px] text-[#8E8E93] tabular-nums">{__APP_VERSION__} · Build {__BUILD_DATE__}</span>
         </div>
         <div className="px-4 py-3.5 flex items-center justify-between gap-3">
           <span className="text-[15px] text-[#3C3C43]">{t('settings.aboutRulesVersion')}</span>
@@ -8338,12 +8338,12 @@ function ValidationCheck({ pdfRef, t1, t2 }) {
 
   // Pro KG: Ist (berechnet) vs. Soll (aus PDF)
   const checks = [
-    { label: 'KG 1 Ausführung', ist: t1.abzugAusfuehrung, soll: pdfRef.kg1_ausfuehrung },
-    { label: 'KG 1 Schwierigkeit', ist: t1.abzugSchwierigkeit, soll: pdfRef.kg1_schwierigkeit },
-    { label: 'KG 1 Gesamt', ist: t1.abzugGesamt, soll: pdfRef.kg1_gesamt },
-    { label: 'KG 2 Ausführung', ist: t2.abzugAusfuehrung, soll: pdfRef.kg2_ausfuehrung },
-    { label: 'KG 2 Schwierigkeit', ist: t2.abzugSchwierigkeit, soll: pdfRef.kg2_schwierigkeit },
-    { label: 'KG 2 Gesamt', ist: t2.abzugGesamt, soll: pdfRef.kg2_gesamt }
+    { label: 'Kampfgericht 1 Ausführung', ist: t1.abzugAusfuehrung, soll: pdfRef.kg1_ausfuehrung },
+    { label: 'Kampfgericht 1 Schwierigkeit', ist: t1.abzugSchwierigkeit, soll: pdfRef.kg1_schwierigkeit },
+    { label: 'Kampfgericht 1 Gesamt', ist: t1.abzugGesamt, soll: pdfRef.kg1_gesamt },
+    { label: 'Kampfgericht 2 Ausführung', ist: t2.abzugAusfuehrung, soll: pdfRef.kg2_ausfuehrung },
+    { label: 'Kampfgericht 2 Schwierigkeit', ist: t2.abzugSchwierigkeit, soll: pdfRef.kg2_schwierigkeit },
+    { label: 'Kampfgericht 2 Gesamt', ist: t2.abzugGesamt, soll: pdfRef.kg2_gesamt }
   ];
 
   // Endergebnis berechnet vs. PDF
@@ -10444,19 +10444,19 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
         </div>
       )}
 
-      {/* Tab-Umschaltung KG1/KG2 */}
+      {/* Tab-Umschaltung Kampfgericht 1 / 2 */}
       {program && (
         <>
           <div className="flex gap-2">
             <button onClick={() => setActiveTable(1)}
               className={'flex-1 py-2.5 rounded-xl font-semibold ' +
                 (activeTable === 1 ? 'bg-slate-900 text-white' : 'bg-white border border-slate-300 text-slate-700')}>
-              KG 1: {t1 && t1.ergebnis.toFixed(2)}
+              Kampfgericht 1: {t1 && t1.ergebnis.toFixed(2)}
             </button>
             <button onClick={() => setActiveTable(2)}
               className={'flex-1 py-2.5 rounded-xl font-semibold ' +
                 (activeTable === 2 ? 'bg-slate-900 text-white' : 'bg-white border border-slate-300 text-slate-700')}>
-              KG 2: {t2 && t2.ergebnis.toFixed(2)}
+              Kampfgericht 2: {t2 && t2.ergebnis.toFixed(2)}
             </button>
           </div>
 

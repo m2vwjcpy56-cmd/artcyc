@@ -1,8 +1,21 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { readFileSync } from 'node:fs';
+
+// Build-Konstanten — werden zur Build-Zeit ins Bundle injiziert.
+// Damit zeigt die App Version + Build-Datum in den Einstellungen an.
+// (Lesen via fs statt JSON-Import-Attribute, damit's auf älteren
+// Node-Versionen ohne `with { type: 'json' }`-Support funktioniert.)
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+const APP_VERSION = pkg.version;
+const BUILD_DATE = new Date().toISOString().slice(0, 10);
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __BUILD_DATE__: JSON.stringify(BUILD_DATE),
+  },
   plugins: [
     react(),
     VitePWA({

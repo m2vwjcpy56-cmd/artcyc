@@ -1,5 +1,26 @@
 # ArtCyc Coach — Briefing für Claude Code
 
+## Versionierung (SemVer-light)
+
+Die App nutzt **`Major.Minor.Patch`** in [package.json](package.json). Die
+Einstellungen-Seite zeigt automatisch `<version> · Build <YYYY-MM-DD>` aus den
+Vite-Build-Konstanten `__APP_VERSION__` / `__BUILD_DATE__` (siehe
+[vite.config.js](vite.config.js)).
+
+**Wann was bumpen — vor dem Commit kurz prüfen:**
+
+- **Patch** (`0.9.0` → `0.9.1`) — einzelne Bug-Fixes, kleine UX-Polish-Schritte,
+  Copy-Änderungen. Standard für die meisten Commits.
+- **Minor** (`0.9.x` → `0.10.0`) — neues Feature, mehrere zusammenhängende
+  Verbesserungen, neue UI-Sektion, neue i18n-Sprache.
+- **Major** (`0.x` → `1.0.0`) — erst wenn die App raus aus „Beta/Test" ist:
+  alle Hauptfeatures stabil, kein Setup-Mode mehr. Danach Major nur noch für
+  Datenmodell-Migrationen oder große Redesigns.
+
+Konkret: beim Editieren von Code, der live geht, immer auch
+`package.json` → `version` mit hochziehen. Das Build-Datum aktualisiert sich
+automatisch beim nächsten `npm run build`.
+
 ## Was ist das?
 
 **ArtCyc Coach** ist eine Trainings- und Wettkampf-Tracker-Webapp für **Kunstradsport**
