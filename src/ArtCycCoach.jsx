@@ -6,11 +6,11 @@ import {
   Settings as SettingsIcon, LogOut, Shield, User, RotateCcw,
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
-  Sun, Moon, SunMoon, Globe
+  Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon
 } from 'lucide-react';
 import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
-import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud } from './lib/feedback.js';
+import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud, fileToBase64 } from './lib/feedback.js';
 import { parseProgramFile } from './lib/programImport.js';
 
 // =============================================================
@@ -4831,6 +4831,7 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
 // Zeigt die letzten 26 Wochen (≈6 Monate) als 7×26-Grid.
 // Jede Zelle ein Tag, gefärbt nach Anzahl Sessions/Serien.
 function TrainingHeatmap({ sessions }) {
+  const { t } = useI18n();
   const { weeks, monthLabels, totalDaysActive, totalSeries } = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -4905,9 +4906,9 @@ function TrainingHeatmap({ sessions }) {
     <section>
       <div className="flex items-center justify-between mb-2 px-4">
         <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
-          Trainings-Aktivität
+          {t('dashboard.trainingActivity')}
         </div>
-        <span className="text-[12px] text-[#8E8E93]">{totalDaysActive} Tage · {totalSeries} Serien</span>
+        <span className="text-[12px] text-[#8E8E93]">{t('dashboard.activityFooter', { n: totalDaysActive, series: totalSeries })}</span>
       </div>
       <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 overflow-x-auto" data-no-swipe="true">
         <svg width={W} height={H} style={{ minWidth: W }}>
@@ -4950,21 +4951,35 @@ function TrainingHeatmap({ sessions }) {
   );
 }
 
-function StatCard({ icon: Icon, label, value, sub, color }) {
+function StatCard({ icon: Icon, label, value, sub, color = 'sky', size = 'normal' }) {
+  // Farb-Map: jede Farbe deckt Hintergrund, Akzent (Icon + Label) und Border ab.
+  // Bei dunklen Modi greift dark:* damit die Cards auf dem dunklen Dashboard
+  // gut wirken (siehe Screenshot des Users).
   const colors = {
-    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    sky: 'bg-sky-50 text-sky-700 border-sky-100',
-    violet: 'bg-violet-50 text-violet-700 border-violet-100',
-    amber: 'bg-amber-50 text-amber-700 border-amber-100'
+    amber:   'bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/40',
+    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/40',
+    sky:     'bg-sky-50 text-sky-700 border-sky-100 dark:bg-sky-950/30 dark:text-sky-300 dark:border-sky-900/40',
+    violet:  'bg-violet-50 text-violet-700 border-violet-100 dark:bg-violet-950/30 dark:text-violet-300 dark:border-violet-900/40',
+    orange:  'bg-orange-50 text-orange-700 border-orange-100 dark:bg-orange-950/30 dark:text-orange-300 dark:border-orange-900/40',
+    rose:    'bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-900/40',
+    blue:    'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-900/40',
+    slate:   'bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900/40 dark:text-slate-300 dark:border-slate-800',
   };
+  const sizes = {
+    normal: { wrap: 'p-4', icon: 14, label: 'text-xs', value: 'text-2xl', sub: 'text-xs' },
+    large:  { wrap: 'p-5', icon: 16, label: 'text-[13px]', value: 'text-[32px] leading-tight', sub: 'text-[13px]' },
+  };
+  const s = sizes[size] || sizes.normal;
   return (
-    <div className={'rounded-2xl border p-4 ' + colors[color]}>
+    <div className={'rounded-2xl border ' + s.wrap + ' ' + (colors[color] || colors.sky)}>
       <div className="flex items-center gap-1.5 mb-1.5">
-        <Icon size={14} />
-        <span className="text-xs font-medium">{label}</span>
+        <Icon size={s.icon} />
+        <span className={s.label + ' font-medium'}>{label}</span>
       </div>
-      <div className="text-2xl font-bold text-slate-900">{value}</div>
-      <div className="text-xs text-slate-500 mt-0.5">{sub}</div>
+      <div className={s.value + ' font-bold text-slate-900 dark:text-white'}>{value}</div>
+      {sub !== undefined && sub !== '' && (
+        <div className={s.sub + ' text-slate-500 dark:text-slate-400 mt-0.5'}>{sub}</div>
+      )}
     </div>
   );
 }
@@ -5750,16 +5765,16 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
       {/* Trainer-Zugriff */}
       {session && (
         <IOSList
-          header="Trainer-Zugriff"
+          header={t('settings.trainerAccess')}
           footer={trainerLinks.length === 0
             ? (profile?.role === 'athlete'
-                ? 'Aktuell hat kein Trainer Zugriff auf deine Daten. Um Zugriff zu geben: Sportler-Tab → „Trainer einladen".'
-                : 'Aktuell hat kein Trainer Zugriff auf deine Daten.')
-            : 'Beim Widerrufen verliert die Person sofort den Zugriff. Du kannst sie später erneut einladen.'}>
+                ? t('settings.trainerAccessEmptyAthlete')
+                : t('settings.trainerAccessEmptyOther'))
+            : t('settings.trainerAccessFooter')}>
           {trainerLinks.length === 0 ? (
             <div className="px-4 py-3.5 flex items-center gap-3">
               <Shield size={18} className="text-[#8E8E93]" />
-              <span className="text-[15px] text-[#8E8E93]">Niemand hat Zugriff</span>
+              <span className="text-[15px] text-[#8E8E93]">{t('settings.noTrainerAccess')}</span>
             </div>
           ) : (
             trainerLinks.map(link => (
@@ -5772,7 +5787,7 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
                   onClick={() => onRevokeTrainer(link.athleteId, link.coachName)}
                   disabled={revokeBusy}
                   className="text-[14px] text-[#FF3B30] px-3 py-1.5 rounded-full font-medium active:opacity-50 disabled:opacity-40 shrink-0">
-                  Widerrufen
+                  {t('settings.trainerRevoke')}
                 </button>
               </div>
             ))
@@ -5782,15 +5797,15 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
 
       {/* Cloud-Migration */}
       <IOSList
-        header="Cloud-Daten"
+        header={t('settings.cloudData')}
         footer={alreadyMigrated
-          ? 'Deine Daten liegen in relationalen Cloud-Tabellen. Trainer:innen mit Zugriff können sie sehen und bearbeiten.'
-          : 'Trainings/Wettkämpfe liegen aktuell nur als Snapshot in der Cloud. Für Trainer-Zusammenarbeit müssen sie einmal in relationale Tabellen verschoben werden.'}>
+          ? t('settings.cloudDataFooter')
+          : t('settings.cloudDataNotMigratedFooter')}>
         {alreadyMigrated ? (
           <div className="px-4 py-3.5 flex items-center gap-3">
             <Archive size={18} className="text-[#34C759]" />
-            <span className="text-[15px] flex-1">Migration abgeschlossen</span>
-            <IOSTag color="green">aktiv</IOSTag>
+            <span className="text-[15px] flex-1">{t('settings.migrated')}</span>
+            <IOSTag color="green">{t('settings.migrationActive')}</IOSTag>
           </div>
         ) : (
           <IOSListRow
@@ -5876,6 +5891,13 @@ function FeedbackModal({ onClose }) {
   const [busy, setBusy] = useState(false);
   const [list, setList] = useState(() => getFeedback());
   const [justSent, setJustSent] = useState(false);
+  // attachments-Pipeline: jeder Eintrag = { id, name, type, size, dataUrl, base64 }
+  const [attachments, setAttachments] = useState([]);
+  const [attachError, setAttachError] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const ATTACH_MAX_PER_FILE_MB = 10;
+  const ATTACH_MAX_TOTAL_MB    = 20;
 
   const categories = [
     { id: 'bug',      label: t('feedback.categoryBug'),      color: 'text-[#FF3B30]' },
@@ -5884,24 +5906,74 @@ function FeedbackModal({ onClose }) {
     { id: 'other',    label: t('feedback.categoryOther'),    color: 'text-[#8E8E93]' }
   ];
 
+  const handleFilesPicked = async (fileList) => {
+    setAttachError(null);
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    const currentTotal = attachments.reduce((sum, a) => sum + (a.size || 0), 0);
+    const limitFile  = ATTACH_MAX_PER_FILE_MB * 1024 * 1024;
+    const limitTotal = ATTACH_MAX_TOTAL_MB    * 1024 * 1024;
+    const next = [...attachments];
+    let runningTotal = currentTotal;
+    for (const f of files) {
+      if (f.size > limitFile) {
+        setAttachError(t('feedback.attachTooBig', { size: (f.size / 1024 / 1024).toFixed(1), max: ATTACH_MAX_PER_FILE_MB }));
+        continue;
+      }
+      if (runningTotal + f.size > limitTotal) {
+        setAttachError(t('feedback.attachTotalTooBig', { totalMax: ATTACH_MAX_TOTAL_MB }));
+        continue;
+      }
+      try {
+        const base64 = await fileToBase64(f);
+        next.push({
+          id: 'att_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          name: f.name,
+          type: f.type || 'application/octet-stream',
+          size: f.size,
+          dataUrl: f.type && f.type.startsWith('image/') ? ('data:' + f.type + ';base64,' + base64) : null,
+          base64,
+        });
+        runningTotal += f.size;
+      } catch (err) {
+        setAttachError(String(err?.message || err));
+      }
+    }
+    setAttachments(next);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeAttachment = (id) => {
+    setAttachments(prev => prev.filter(a => a.id !== id));
+    setAttachError(null);
+  };
+
   const [mailWarning, setMailWarning] = useState(null); // null | string (Fehler-Text vom Server)
   const send = async () => {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
     setBusy(true);
     setMailWarning(null);
-    const id = submitFeedback({ text: trimmed, category, source: 'user' });
+    const id = submitFeedback({ text: trimmed, category, source: 'user', attachments });
+    const attsForUpload = attachments.map(a => ({
+      name: a.name,
+      type: a.type,
+      content_base64: a.base64,
+    }));
     setText('');
+    setAttachments([]);
     setList(getFeedback());
     setJustSent(true);
     // Im Hintergrund in die Cloud pushen — DB-Insert + Auto-Mail.
     // Fehlschlag schlägt nicht durch: der Eintrag bleibt lokal mit
     // synced=false und kann manuell per Mail-Knopf rausgeschickt werden.
-    pushFeedbackToCloud(supabase, getFeedback().find(e => e.id === id))
+    pushFeedbackToCloud(supabase, getFeedback().find(e => e.id === id), attsForUpload.length ? attsForUpload : null)
       .then(r => {
         setList(getFeedback());
         if (r && r.ok && !r.mail_sent) {
           setMailWarning(r.mail_error || 'Mail wurde nicht verschickt — Resend-API-Key fehlt oder Empfänger ist nicht freigeschaltet (Resend Test-Modus erlaubt nur Senden an die Resend-Account-Mail bis Domain verifiziert ist).');
+        } else if (r && r.ok && r.attachment_warning) {
+          setMailWarning(r.attachment_warning);
         }
       })
       .catch(() => {});
@@ -5958,6 +6030,56 @@ function FeedbackModal({ onClose }) {
               className="w-full bg-transparent text-[15px] outline-none resize-y placeholder:text-[#C7C7CC]" />
           </div>
 
+          {/* Anhänge: Datei/Foto picker + Vorschau-Liste */}
+          <div className="space-y-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,application/pdf,text/plain,application/json,.csv,.log"
+              onChange={e => handleFilesPicked(e.target.files)}
+              className="hidden" />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full bg-white text-[#007AFF] py-3 rounded-2xl text-[15px] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:opacity-60 flex items-center justify-center gap-2">
+              <Paperclip size={16} strokeWidth={2.4} /> {t('feedback.attach')}
+            </button>
+            <p className="text-[12px] text-[#8E8E93] text-center px-3 leading-snug">
+              {t('feedback.attachHint', { max: ATTACH_MAX_PER_FILE_MB, totalMax: ATTACH_MAX_TOTAL_MB })}
+            </p>
+            {attachError && (
+              <div className="bg-red-50 text-[#FF3B30] text-[13px] rounded-xl p-3">
+                {attachError}
+              </div>
+            )}
+            {attachments.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
+                {attachments.map((a, i) => (
+                  <div key={a.id} className={'flex items-center gap-3 px-3 py-2.5 ' + (i > 0 ? 'border-t border-[rgba(198,198,200,0.4)]' : '')}>
+                    {a.dataUrl
+                      ? <img src={a.dataUrl} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                      : <div className="w-12 h-12 rounded-lg bg-[#F2F2F7] flex items-center justify-center flex-shrink-0">
+                          <Paperclip size={18} className="text-[#8E8E93]" />
+                        </div>}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[14px] font-medium truncate">{a.name}</div>
+                      <div className="text-[12px] text-[#8E8E93]">
+                        {(a.size / 1024).toFixed(a.size > 1024 * 1024 ? 0 : 1)} {a.size > 1024 * 1024 ? 'MB' : 'KB'}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeAttachment(a.id)}
+                      aria-label={t('feedback.attachRemove')}
+                      className="text-[#FF3B30] active:opacity-60 p-1">
+                      <X size={18} strokeWidth={2.4} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Send-Button */}
           <button
             onClick={send}
@@ -6005,6 +6127,12 @@ function FeedbackModal({ onClose }) {
                     </span>
                   </div>
                   <div className="text-[14px] whitespace-pre-wrap">{e.text}</div>
+                  {Array.isArray(e.attachments) && e.attachments.length > 0 && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[12px] text-[#8E8E93]">
+                      <Paperclip size={12} />
+                      <span>{e.attachments.length} · {e.attachments.map(a => a.name).join(', ')}</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </IOSList>
@@ -6046,6 +6174,7 @@ function FeedbackModal({ onClose }) {
 // REGLEMENT-EINSTELLUNGEN
 // =============================================================
 function ReglementSettings({ data, setData }) {
+  const { t } = useI18n();
   const [parseStatus, setParseStatus] = useState(null); // null | 'parsing' | 'success' | 'error'
   const [parseMsg, setParseMsg] = useState('');
   const [previewDb, setPreviewDb] = useState(null);
@@ -6164,12 +6293,12 @@ function ReglementSettings({ data, setData }) {
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 space-y-4">
-      <h2 className="font-semibold flex items-center gap-2"><FileText size={16} /> UCI-Reglement</h2>
+      <h2 className="font-semibold flex items-center gap-2"><FileText size={16} /> {t('uci.title')}</h2>
 
       {/* Status */}
       <div className="bg-slate-50 rounded-xl p-3 space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-medium text-slate-500">Aktive Datenbank:</span>
+          <span className="text-xs font-medium text-slate-500">{t('uci.activeDb')}</span>
           <span className={'text-xs font-medium px-2 py-0.5 rounded-full ' +
             (isCustom ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700')}>
             {isCustom ? 'Custom · ' + currentCount + ' Übungen' : 'UCI 2026 · ' + currentCount + ' Übungen'}
@@ -6192,9 +6321,9 @@ function ReglementSettings({ data, setData }) {
 
       {/* PDF Upload */}
       <div>
-        <h3 className="text-sm font-semibold mb-2">📄 Neues UCI-Reglement (PDF)</h3>
+        <h3 className="text-sm font-semibold mb-2">📄 {t('uci.newPdfSection')}</h3>
         <p className="text-xs text-slate-500 mb-2 leading-relaxed">
-          ⚠️ <strong>Beta-Funktion:</strong> Der PDF-Parser sucht nach dem typischen UCI-Tabellenformat (z.B. „1001 a Reitsitz HR. 0,5"). Bei Layout-Änderungen kann's schiefgehen. Im Zweifel JSON-Import nutzen.
+          ⚠️ {t('uci.betaWarning')}
         </p>
         <label className="block">
           <input type="file" accept="application/pdf"
@@ -6239,7 +6368,7 @@ function ReglementSettings({ data, setData }) {
 
       {/* JSON Import/Export */}
       <div>
-        <h3 className="text-sm font-semibold mb-2">📦 Backup als JSON</h3>
+        <h3 className="text-sm font-semibold mb-2">📦 {t('uci.jsonBackup')}</h3>
         <p className="text-xs text-slate-500 mb-2">
           Sicherer Weg: Aktuelle DB exportieren oder eine geprüfte JSON-Version importieren.
         </p>
@@ -6708,6 +6837,44 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
             </div>
           </div>
         </header>
+
+        {/* Top-Stats: 2x2 farbige StatCards für Erfolgsquote, Sessions, Versuche, Wettkämpfe */}
+        {trainStats.total > 0 && (
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard
+              icon={Target}
+              label={t('detail.successRate')}
+              value={trainStats.rate + '%'}
+              sub={trainStats.success + ' / ' + trainStats.total}
+              color={trainStats.rate >= 80 ? 'emerald' : trainStats.rate >= 60 ? 'amber' : 'rose'}
+            />
+            <StatCard
+              icon={Dumbbell}
+              label={t('detail.sessions')}
+              value={trainStats.sessions}
+              sub={t('detail.attempts') + ': ' + trainStats.total}
+              color="violet"
+            />
+            {compList.length > 0 && (
+              <StatCard
+                icon={Trophy}
+                label={t('detail.competitions')}
+                value={compList.length}
+                sub={compList[0]?.competition?.date ? formatDateShort(compList[0].competition.date) : t('detail.noData')}
+                color="orange"
+              />
+            )}
+            {sessionList.length > 0 && (
+              <StatCard
+                icon={Calendar}
+                label={t('detail.lastTrained')}
+                value={formatDateShort(sessionList[0].session.date)}
+                sub={sessionList[0].rate + '% · ' + sessionList[0].success + '/' + sessionList[0].total}
+                color="sky"
+              />
+            )}
+          </div>
+        )}
 
         {/* KI-Insight — regel-basierter Trainer-Tipp (1 Zeile bei wenig Daten, ausführlich ab ≥ 30 Versuchen) */}
         {(() => {
@@ -9448,22 +9615,22 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-medium text-[15px] text-[#000] truncate">{a.name}</h3>
               <IOSTag color={a.type === 'team' ? 'blue' : 'gray'}>
-                {a.type === 'team' ? 'Team' : 'Sportler'}
+                {a.type === 'team' ? t('athletes.tagTeam') : t('athletes.tagAthlete')}
               </IOSTag>
               {badges}
               {linkedToUser ? (
-                <IOSTag color="green">eigener Account</IOSTag>
+                <IOSTag color="green">{t('athletes.tagOwnAccount')}</IOSTag>
               ) : (
-                <IOSTag color="orange">ohne Account</IOSTag>
+                <IOSTag color="orange">{t('athletes.tagNoAccount')}</IOSTag>
               )}
               {linkedToCoach && (() => {
                 const coach = profileById.get(a.created_by_coach_id);
-                const coachName = coach?.display_name || 'Trainer';
+                const coachName = coach?.display_name || t('role.coach');
                 if (isMine) {
-                  return <IOSTag color="purple">Trainer: {coachName}</IOSTag>;
+                  return <IOSTag color="purple">{t('athletes.tagCoach', { name: coachName })}</IOSTag>;
                 }
                 return isManagedByMe
-                  ? <IOSTag color="blue">von mir</IOSTag>
+                  ? <IOSTag color="blue">{t('athletes.tagByMe')}</IOSTag>
                   : <IOSTag color="purple">{coachName}</IOSTag>;
               })()}
             </div>
@@ -9471,12 +9638,12 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
             {a.notes && <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">{a.notes}</div>}
             {a.claim_code && (
               <div className="text-[12px] mt-2 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-                <div className="text-amber-900 font-medium mb-0.5">Claim-Code (noch offen)</div>
+                <div className="text-amber-900 font-medium mb-0.5">{t('athletes.claimCodePending')}</div>
                 <div className="font-mono text-base text-amber-900 tracking-wider">{a.claim_code}</div>
                 <div className="text-[11px] text-amber-700 mt-0.5">
                   {!linkedToUser
-                    ? 'Sportler gibt diesen Code in seinen Einstellungen ein um sich zu verknüpfen.'
-                    : 'Trainer:in gibt diesen Code in seinen Einstellungen ein um Zugriff zu erhalten.'}
+                    ? t('athletes.claimCodeAthleteHint')
+                    : t('athletes.claimCodeCoachHint')}
                 </div>
               </div>
             )}
@@ -9501,19 +9668,19 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
           {!isMine && (isManagedByMe || isAdmin) && (
             <button onClick={() => setViewingAthlete(a)}
               className="text-[13px] bg-slate-100 text-slate-800 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
-              <BarChart3 size={13} /> Daten ansehen
+              <BarChart3 size={13} /> {t('athletes.viewData')}
             </button>
           )}
           {canGenerateCode && (
             a.claim_code ? (
               <button onClick={() => onClearCode(a.id)} disabled={busy}
                 className="text-[13px] text-[#FF3B30] px-2 py-1 active:opacity-70 font-medium">
-                Code widerrufen
+                {t('athletes.revokeCode')}
               </button>
             ) : (
               <button onClick={() => onGenerateCode(a.id)} disabled={busy}
                 className="text-[13px] bg-amber-100 text-amber-900 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
-                <KeyRound size={13} /> {!linkedToUser ? 'Code für Sportler generieren' : 'Trainer einladen'}
+                <KeyRound size={13} /> {!linkedToUser ? t('athletes.generateCodeForAthlete') : t('athletes.inviteCoach')}
               </button>
             )
           )}
@@ -9531,12 +9698,12 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
         <div className="flex gap-2">
           <button onClick={() => { setShowRedeemModal(true); setRedeemCode(''); }}
             className="bg-white border border-slate-300 px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 active:scale-95 transition">
-            <KeyRound size={16} /> Code einlösen
+            <KeyRound size={16} /> {t('athletes.redeemCode')}
           </button>
           {isCoach && (
             <button onClick={() => setShowNew(true)}
               className="bg-slate-900 text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-sm active:scale-95 transition">
-              <Plus size={16} /> Sportler anlegen
+              <Plus size={16} /> {t('athletes.createAthlete')}
             </button>
           )}
         </div>
@@ -9546,10 +9713,10 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
         <div className="flex gap-2 items-start">
           <Info size={18} className="shrink-0 mt-0.5" />
           <div>
-            <strong>So funktionieren Codes:</strong>
+            <strong>{t('athletes.codesInfoTitle')}</strong>
             <ul className="list-disc ml-4 mt-1 space-y-0.5 text-[13px]">
-              <li><strong>Trainer:in</strong> legt Sportler ohne Account an → generiert Code → Sportler löst ein.</li>
-              <li><strong>Sportler:in</strong> generiert Code an eigenem Profil → Trainer:in löst ein → bekommt Zugriff.</li>
+              <li><strong>{t('role.coach')}</strong> {t('athletes.codesInfoCoachLine')}</li>
+              <li><strong>{t('role.athlete')}</strong> {t('athletes.codesInfoAthleteLine')}</li>
             </ul>
           </div>
         </div>
@@ -9568,21 +9735,21 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
 
       {/* Eigener Sportler-Eintrag */}
       {myAthlete && (
-        <IOSList header="Mein Profil">
-          {renderAthleteCard(myAthlete, <IOSTag color="blue">ich</IOSTag>)}
+        <IOSList header={t('athletes.sectionMyProfile')}>
+          {renderAthleteCard(myAthlete, <IOSTag color="blue">{t('athletes.tagMe')}</IOSTag>)}
         </IOSList>
       )}
 
       {/* Vom User verwaltete Sportler */}
       {managedAthletes.length > 0 && (
-        <IOSList header="Von mir verwaltet">
+        <IOSList header={t('athletes.sectionManagedByMe')}>
           {managedAthletes.map(a => renderAthleteCard(a, null))}
         </IOSList>
       )}
 
       {/* Admin-Sicht: alle anderen */}
       {isAdmin && otherAthletesAdminView.length > 0 && (
-        <IOSList header="Alle anderen (Admin-Sicht)">
+        <IOSList header={t('athletes.sectionAdminOthers')}>
           {otherAthletesAdminView.map(a => renderAthleteCard(a, null))}
         </IOSList>
       )}
@@ -9590,11 +9757,11 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
       {(managedAthletes.length === 0 && !myAthlete) && (
         <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-8 text-center">
           <Users size={32} className="mx-auto text-slate-300 mb-3" />
-          <h3 className="font-semibold mb-1">Noch keine Sportler</h3>
-          <p className="text-sm text-slate-500 mb-4">Lege deinen ersten Sportler an.</p>
+          <h3 className="font-semibold mb-1">{t('athletes.empty')}</h3>
+          <p className="text-sm text-slate-500 mb-4">{t('athletes.emptyHint')}</p>
           <button onClick={() => setShowNew(true)}
             className="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-medium">
-            Sportler anlegen
+            {t('athletes.createAthlete')}
           </button>
         </div>
       )}
@@ -9613,20 +9780,18 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
           onClick={() => setShowRedeemModal(false)}>
           <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md" onClick={e => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="font-semibold text-lg">Claim-Code einlösen</h3>
+              <h3 className="font-semibold text-lg">{t('athletes.redeemModalTitle')}</h3>
               <button onClick={() => setShowRedeemModal(false)} className="p-2 -m-2 text-slate-500"><X size={20} /></button>
             </div>
             <div className="p-5 space-y-4">
               <p className="text-sm text-slate-600">
-                Gib den 6-stelligen Code ein, den du erhalten hast.
-                Je nachdem wer den Code erstellt hat, wird der Sportler-Eintrag mit deinem Account
-                verknüpft <em>oder</em> du bekommst Trainer-Zugriff darauf.
+                {t('athletes.redeemModalHint')}
               </p>
               <input
                 type="text"
                 value={redeemCode}
                 onChange={e => setRedeemCode(e.target.value.toUpperCase())}
-                placeholder="z.B. AB23CD"
+                placeholder={t('athletes.redeemPlaceholder')}
                 maxLength={8}
                 autoFocus
                 inputMode="latin"
@@ -9641,11 +9806,11 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
               <div className="flex gap-2">
                 <button onClick={() => setShowRedeemModal(false)}
                   className="flex-1 bg-white border border-slate-300 px-5 py-3 rounded-xl font-medium">
-                  Abbrechen
+                  {t('common.cancel')}
                 </button>
                 <button onClick={onRedeemCode} disabled={busy || !redeemCode.trim()}
                   className="flex-1 bg-emerald-600 text-white px-5 py-3 rounded-xl font-medium disabled:opacity-50">
-                  {busy ? '…' : 'Einlösen'}
+                  {busy ? '…' : t('athletes.redeem')}
                 </button>
               </div>
             </div>
@@ -9657,6 +9822,7 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
 }
 
 function AthleteEditor({ open, athlete, onClose, onSave, busy = false }) {
+  const { t } = useI18n();
   const [name, setName] = useState('');
   const [type, setType] = useState('athlete');
   const [notes, setNotes] = useState('');
@@ -9688,40 +9854,40 @@ function AthleteEditor({ open, athlete, onClose, onSave, busy = false }) {
         {/* iOS Header: Cancel | Title | Save */}
         <div className="sticky top-0 bg-[#F2F2F7]/95 backdrop-blur-xl px-4 py-3 flex items-center justify-between z-10">
           <button onClick={onClose} className="text-[17px] text-[#007AFF] active:opacity-60 px-1">
-            Abbrechen
+            {t('common.cancel')}
           </button>
-          <h3 className="font-semibold text-[17px]">{athlete ? 'Bearbeiten' : 'Neu anlegen'}</h3>
+          <h3 className="font-semibold text-[17px]">{athlete ? t('athletes.editorTitleEdit') : t('athletes.editorTitleNew')}</h3>
           <button onClick={doSave} disabled={!canSave}
             className="text-[17px] text-[#FF9500] font-semibold active:opacity-60 disabled:opacity-30 px-1">
-            {busy ? '…' : 'Fertig'}
+            {busy ? '…' : t('common.done')}
           </button>
         </div>
 
         <div className="px-3 py-4 space-y-5">
           {/* Name + Typ */}
-          <IOSList header="Sportler:in">
+          <IOSList header={t('athletes.typeAthlete')}>
             <div className="px-4 py-3 flex items-center gap-3">
-              <label className="text-[15px] text-[#3C3C43] w-20 shrink-0">Name</label>
+              <label className="text-[15px] text-[#3C3C43] w-20 shrink-0">{t('athletes.editorName')}</label>
               <input value={name} onChange={e => setName(e.target.value)}
-                placeholder="Name oder Teamname" autoFocus
+                placeholder={t('athletes.editorNamePlaceholder')} autoFocus
                 className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
             </div>
             <div className="px-4 py-3 flex items-center gap-3">
-              <label className="text-[15px] text-[#3C3C43] w-20 shrink-0">Typ</label>
+              <label className="text-[15px] text-[#3C3C43] w-20 shrink-0">{t('athletes.type')}</label>
               <select value={type} onChange={e => setType(e.target.value)}
                 className="flex-1 bg-transparent text-[15px] outline-none appearance-none">
-                <option value="athlete">Sportler:in</option>
-                <option value="team">Team / Mannschaft</option>
+                <option value="athlete">{t('athletes.typeAthlete')}</option>
+                <option value="team">{t('athletes.typeTeam')}</option>
               </select>
               <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
             </div>
           </IOSList>
 
           {/* Verein / Notizen */}
-          <IOSList header="Verein / Notizen">
+          <IOSList header={t('athletes.notes')}>
             <div className="px-4 py-3">
               <input value={notes} onChange={e => setNotes(e.target.value)}
-                placeholder="z. B. RKV Denkendorf"
+                placeholder={t('athletes.notesPlaceholder')}
                 className="w-full bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
             </div>
           </IOSList>
@@ -10160,6 +10326,7 @@ function ExportTraining({ data }) {
 // WETTKAMPF-DETAIL (read-only)
 // =============================================================
 function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDelete }) {
+  const { t } = useI18n();
   const [activeTable, setActiveTable] = useState(1);
 
   if (!competition) return null;
@@ -10221,35 +10388,39 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
         </div>
       </div>
 
-      {/* Ergebnis-Übersicht */}
+      {/* Ergebnis-Übersicht — farbige StatCards im Dashboard-Stil */}
       {t1 && t2 && (
-        <div className="bg-slate-900 text-white rounded-2xl p-4">
-          <div className="grid grid-cols-2 gap-3 text-center mb-3">
-            <div className="bg-slate-800 rounded-xl p-3">
-              <div className="text-xs text-slate-400 uppercase tracking-wide">Aufgestellt</div>
-              <div className="text-2xl font-bold mt-1">{t1.aufgestellt.toFixed(2)}</div>
-            </div>
-            <div className="bg-amber-500 text-slate-900 rounded-xl p-3">
-              <div className="text-xs uppercase tracking-wide font-semibold">Endergebnis</div>
-              <div className="text-2xl font-bold mt-1">{finalScore !== null ? finalScore.toFixed(2) : '—'}</div>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="bg-slate-800 rounded-xl p-3">
-              <div className="text-xs text-slate-400">Kampfgericht 1</div>
-              <div className="font-bold text-lg">{t1.ergebnis.toFixed(2)}</div>
-              <div className="text-xs text-slate-400 mt-1">
-                Ausf -{t1.abzugAusfuehrung.toFixed(2)} · Schw -{t1.abzugSchwierigkeit.toFixed(2)}
-              </div>
-            </div>
-            <div className="bg-slate-800 rounded-xl p-3">
-              <div className="text-xs text-slate-400">Kampfgericht 2</div>
-              <div className="font-bold text-lg">{t2.ergebnis.toFixed(2)}</div>
-              <div className="text-xs text-slate-400 mt-1">
-                Ausf -{t2.abzugAusfuehrung.toFixed(2)} · Schw -{t2.abzugSchwierigkeit.toFixed(2)}
-              </div>
-            </div>
-          </div>
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard
+            icon={Trophy}
+            label={t('detail.finalScore')}
+            value={finalScore !== null ? finalScore.toFixed(2) : t('detail.noData')}
+            sub={t('detail.difficulty') + ': ' + t1.aufgestellt.toFixed(2)}
+            color="orange"
+            size="large"
+          />
+          <StatCard
+            icon={Sparkles}
+            label={t('detail.difficulty')}
+            value={t1.aufgestellt.toFixed(2)}
+            sub=""
+            color="violet"
+            size="large"
+          />
+          <StatCard
+            icon={BarChart3}
+            label={t('detail.kg1Score')}
+            value={t1.ergebnis.toFixed(2)}
+            sub={'-' + t1.abzugAusfuehrung.toFixed(2) + ' · -' + t1.abzugSchwierigkeit.toFixed(2)}
+            color="sky"
+          />
+          <StatCard
+            icon={BarChart3}
+            label={t('detail.kg2Score')}
+            value={t2.ergebnis.toFixed(2)}
+            sub={'-' + t2.abzugAusfuehrung.toFixed(2) + ' · -' + t2.abzugSchwierigkeit.toFixed(2)}
+            color="emerald"
+          />
         </div>
       )}
 

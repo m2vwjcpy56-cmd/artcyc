@@ -32,7 +32,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "
 // @ts-ignore Deno-Runtime
 const RESEND_API_KEY            = Deno.env.get("RESEND_API_KEY") ?? "";
 // @ts-ignore Deno-Runtime
-const FEEDBACK_EMAIL            = Deno.env.get("FEEDBACK_EMAIL") ?? "attika-schubladen-0v@icloud.com";
+const FEEDBACK_EMAIL            = Deno.env.get("FEEDBACK_EMAIL") ?? "";
 // Resend liefert Mails unter dem onboarding@resend.dev-Sender ohne
 // Domain-Verification — perfekt für den schnellen Start.
 // @ts-ignore Deno-Runtime
@@ -52,22 +52,94 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: "📝 Sonstiges",
 };
 
-async function sendMail({ from, to, subject, html, text }: {
+type ResendAttachment = { filename: string; content: string; content_type?: string };
+
+async function sendMail({ from, to, subject, html, text, attachments }: {
   from: string; to: string; subject: string; html: string; text: string;
+  attachments?: ResendAttachment[];
 }) {
+  const body: Record<string, unknown> = { from, to, subject, html, text };
+  if (attachments && attachments.length) body.attachments = attachments;
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": "Bearer " + RESEND_API_KEY,
     },
-    body: JSON.stringify({ from, to, subject, html, text }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const errText = await res.text();
     throw new Error(`Resend ${res.status}: ${errText}`);
   }
   return await res.json();
+}
+
+// Validiert/Normalisiert Anhänge aus dem Request. Filter raus was zu groß
+// ist (Resend-Limit liegt bei ~40 MB inkl. HTML — wir gehen auf 25 MB
+// summe und 10 MB pro File, damit der Insert nicht failt). Akzeptiert
+// pro Eintrag { name, type, content_base64 }.
+//
+// Hardening:
+//   • Extension-Whitelist (kein .exe, .html, .js, .svg, ...)
+//   • Filename auf [A-Za-z0-9._-] reduziert (verhindert Pfad-Traversal
+//     und exotische Unicode-Tricks in Mail-Clients)
+//   • content_type wird aus fester Map basierend auf Extension gesetzt —
+//     User-eingegebener MIME-Type wird verworfen (verhindert dass
+//     `image.png` als text/html geliefert wird)
+const MAX_PER_FILE_MB  = 10;
+const MAX_TOTAL_MB     = 25;
+const EXT_MIME: Record<string, string> = {
+  png:  "image/png",
+  jpg:  "image/jpeg",
+  jpeg: "image/jpeg",
+  gif:  "image/gif",
+  webp: "image/webp",
+  heic: "image/heic",
+  heif: "image/heif",
+  pdf:  "application/pdf",
+  txt:  "text/plain",
+  log:  "text/plain",
+  csv:  "text/csv",
+  json: "application/json",
+};
+function sanitizeFilename(raw: string): { name: string; ext: string } {
+  const base = raw.replace(/^.*[\\\/]/, "").slice(0, 200); // letztes Segment
+  // Nur ASCII-Whitelist erlauben; alles andere zu '_'
+  const cleaned = base.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^\.+/, "_") || "attachment";
+  const m = cleaned.match(/\.([A-Za-z0-9]+)$/);
+  const ext = m ? m[1].toLowerCase() : "";
+  return { name: cleaned, ext };
+}
+function normalizeAttachments(raw: unknown): { atts: ResendAttachment[]; warning: string | null } {
+  if (!Array.isArray(raw) || raw.length === 0) return { atts: [], warning: null };
+  const out: ResendAttachment[] = [];
+  let totalBytes = 0;
+  let skipped = 0;
+  const reasons: string[] = [];
+  for (const a of raw) {
+    if (!a || typeof a !== "object") { skipped++; continue; }
+    const rawName = String((a as any).name || "attachment");
+    const content = String((a as any).content_base64 || "");
+    if (!content) { skipped++; reasons.push("empty"); continue; }
+
+    const { name: filename, ext } = sanitizeFilename(rawName);
+    const mime = EXT_MIME[ext];
+    if (!mime) { skipped++; reasons.push(`disallowed type: .${ext || "(none)"}`); continue; }
+
+    // Base64-Plausibilität: nur A-Z, a-z, 0-9, +, /, = erlaubt
+    if (!/^[A-Za-z0-9+/=\r\n]+$/.test(content)) { skipped++; reasons.push("invalid base64"); continue; }
+    const approxBytes = Math.floor(content.replace(/[\r\n=]/g, "").length * 0.75);
+    if (approxBytes > MAX_PER_FILE_MB * 1024 * 1024) { skipped++; reasons.push("file too large"); continue; }
+    if (totalBytes + approxBytes > MAX_TOTAL_MB * 1024 * 1024) { skipped++; reasons.push("total size exceeded"); continue; }
+
+    totalBytes += approxBytes;
+    out.push({ filename, content, content_type: mime });
+  }
+  const warning = skipped > 0
+    ? `${skipped} Anhang/Anhänge übersprungen (${[...new Set(reasons)].join(", ")})`
+    : null;
+  return { atts: out, warning };
 }
 
 function escapeHtml(s: string): string {
@@ -132,6 +204,11 @@ Deno.serve(async (req: Request) => {
     ? body.category : "other";
   const source = ["user", "ai"].includes(body?.source) ? body.source : "user";
 
+  // Anhänge — werden NICHT in der DB persistiert (zu groß für JSONB-Spalten),
+  // aber an die Resend-Mail angehängt. Falls die Mail wegen Größe failt,
+  // bleibt das Feedback selbst trotzdem in der DB.
+  const { atts: attachments, warning: attWarning } = normalizeAttachments(body?.attachments);
+
   // Insert via User-Client → RLS greift, user_id muss = auth.uid() sein
   const { data: row, error: insertErr } = await supaUser
     .from("feedback")
@@ -154,18 +231,24 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // Mail verschicken (nur wenn Resend-Key da ist)
+  // Mail verschicken (nur wenn Resend-Key + Empfänger gesetzt sind)
   let mailSent = false;
   let mailError: string | null = null;
-  if (RESEND_API_KEY) {
+  if (!FEEDBACK_EMAIL) {
+    mailError = "FEEDBACK_EMAIL env-var not set";
+  } else if (RESEND_API_KEY) {
     const subject = `ArtCyc Coach Feedback — ${CATEGORY_LABELS[category] || category}`;
     const safeText = escapeHtml(text);
+    const attachList = attachments.length
+      ? `<p style="margin:0 0 6px"><strong>Anhänge:</strong> ${attachments.length} · ${escapeHtml(attachments.map(a => a.filename).join(", "))}</p>`
+      : "";
     const html = `
       <div style="font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',system-ui,sans-serif;font-size:15px;line-height:1.5;color:#0f172a">
         <h2 style="margin:0 0 12px;font-size:18px">Neues Feedback in ArtCyc Coach</h2>
         <p style="margin:0 0 6px"><strong>Kategorie:</strong> ${CATEGORY_LABELS[category] || category}</p>
         <p style="margin:0 0 6px"><strong>Quelle:</strong> ${source === "ai" ? "KI-Coach" : "User"}</p>
         <p style="margin:0 0 6px"><strong>User:</strong> ${escapeHtml(profile?.display_name || "")} &lt;${escapeHtml(user.email || "")}&gt;</p>
+        ${attachList}
         <hr style="border:0;border-top:1px solid #e2e8f0;margin:14px 0" />
         <div style="white-space:pre-wrap">${safeText}</div>
         <hr style="border:0;border-top:1px solid #e2e8f0;margin:14px 0" />
@@ -195,6 +278,7 @@ Deno.serve(async (req: Request) => {
         subject,
         html,
         text: plain,
+        attachments,
       });
       mailSent = true;
     } catch (e) {
@@ -203,7 +287,14 @@ Deno.serve(async (req: Request) => {
   }
 
   return new Response(
-    JSON.stringify({ ok: true, id: row.id, mail_sent: mailSent, mail_error: mailError }),
+    JSON.stringify({
+      ok: true,
+      id: row.id,
+      mail_sent: mailSent,
+      mail_error: mailError,
+      attachment_warning: attWarning,
+      attachment_count: attachments.length,
+    }),
     { headers: JSON_HEADERS }
   );
 });
