@@ -23,6 +23,25 @@ SELECT id, created_by_coach_id FROM athletes
 WHERE created_by_coach_id IS NOT NULL
 ON CONFLICT DO NOTHING;
 
+-- Auto-Sync-Trigger: künftige Inserts/Updates auf athletes.created_by_coach_id
+-- spiegeln sich automatisch in athlete_coaches. So muss App-Code sich nicht
+-- um die Join-Tabelle kümmern und alte 1:1-Code-Pfade bleiben kompatibel.
+CREATE OR REPLACE FUNCTION sync_athlete_main_coach()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.created_by_coach_id IS NOT NULL THEN
+    INSERT INTO athlete_coaches (athlete_id, coach_id)
+    VALUES (NEW.id, NEW.created_by_coach_id)
+    ON CONFLICT DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_sync_athlete_main_coach ON athletes;
+CREATE TRIGGER trg_sync_athlete_main_coach
+  AFTER INSERT OR UPDATE OF created_by_coach_id ON athletes
+  FOR EACH ROW EXECUTE FUNCTION sync_athlete_main_coach();
+
 -- =====================================================
 -- 2) coach_invites — ein Code pro Trainer-Slot
 -- =====================================================
