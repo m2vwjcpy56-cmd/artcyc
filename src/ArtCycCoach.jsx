@@ -6,9 +6,10 @@ import {
   Settings as SettingsIcon, LogOut, Shield, User, RotateCcw,
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
-  Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon
+  Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
+  Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX
 } from 'lucide-react';
-import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise } from './lib/supabase';
+import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud, fileToBase64 } from './lib/feedback.js';
 import { parseProgramFile } from './lib/programImport.js';
@@ -10096,6 +10097,437 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
   );
 }
 
+// =============================================================
+// ADMIN — Account-Verwaltung (NUR für App-Owner sichtbar)
+// =============================================================
+// Diese Komponenten werden ausschließlich für info@neue-weberei.de
+// gerendert. Die Edge-Function hat zusätzlich eine harte Allowlist,
+// d. h. selbst wenn ein anderer User durch UI-Manipulation diese
+// Komponente sieht, kann er keine Aktion ausführen.
+
+function fmtDateTime(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+  } catch { return iso; }
+}
+
+function AdminUserPanel({ open, user, onClose, onMutated }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [info, setInfo] = useState('');
+  const [actionLink, setActionLink] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editName, setEditName] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [editEmail, setEditEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+
+  useEffect(() => {
+    if (open && user) {
+      setNewName(user.profile?.display_name || '');
+      setNewEmail(user.email || '');
+      setErr(''); setInfo(''); setActionLink('');
+      setConfirmDelete(false); setEditName(false); setEditEmail(false);
+    }
+  }, [open, user]);
+
+  if (!open || !user) return null;
+
+  const isConfirmed = !!user.email_confirmed_at;
+  const role = user.profile?.role || '—';
+  const displayName = user.profile?.display_name || user.user_metadata?.display_name || '—';
+
+  const run = async (label, fn) => {
+    setBusy(true); setErr(''); setInfo(''); setActionLink('');
+    try {
+      const { data, error } = await fn();
+      if (error) throw new Error(error.message);
+      setInfo(label);
+      if (data?.action_link) setActionLink(data.action_link);
+      if (onMutated) await onMutated();
+    } catch (e) {
+      setErr(e.message || 'Aktion fehlgeschlagen');
+    } finally { setBusy(false); }
+  };
+
+  const copyLink = async () => {
+    if (!actionLink) return;
+    try {
+      await navigator.clipboard.writeText(actionLink);
+      setInfo('Link in Zwischenablage kopiert');
+    } catch {
+      setErr('Konnte nicht in Zwischenablage kopieren');
+    }
+  };
+
+  const doImpersonate = async () => {
+    if (!confirm('Als „' + (user.email || user.id) + '" einloggen?\n\nDeine aktuelle Admin-Session wird beendet. Du musst dich danach selbst wieder neu einloggen.')) return;
+    setBusy(true); setErr(''); setInfo(''); setActionLink('');
+    try {
+      const { data, error } = await adminCreateImpersonation(user.id);
+      if (error) throw new Error(error.message);
+      if (!data?.action_link) throw new Error('Kein Login-Link erhalten');
+      // Eigene Session beenden, dann Link öffnen (Magic-Link loggt automatisch ein)
+      await supabase.auth.signOut();
+      window.location.href = data.action_link;
+    } catch (e) {
+      setErr(e.message || 'Impersonation fehlgeschlagen');
+      setBusy(false);
+    }
+  };
+
+  const doDelete = async () => {
+    setBusy(true); setErr(''); setInfo('');
+    try {
+      const { error } = await adminDeleteUser(user.id);
+      if (error) throw new Error(error.message);
+      setInfo('User gelöscht');
+      if (onMutated) await onMutated();
+      onClose();
+    } catch (e) {
+      setErr(e.message || 'Löschen fehlgeschlagen');
+    } finally { setBusy(false); }
+  };
+
+  const saveName = async () => {
+    if (!newName.trim()) { setErr('Name darf nicht leer sein'); return; }
+    await run('Anzeigename gespeichert', () => adminSetDisplayName(user.id, newName.trim()));
+    setEditName(false);
+  };
+
+  const saveEmail = async () => {
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newEmail.trim())) { setErr('E-Mail ungültig'); return; }
+    await run('E-Mail geändert', () => adminUpdateEmail(user.id, newEmail.trim(), false));
+    setEditEmail(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-[#F2F2F7] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="sticky top-0 bg-[#F2F2F7]/95 backdrop-blur-xl px-4 py-3 flex items-center justify-between z-10 border-b border-[#C6C6C8]/40">
+          <button onClick={onClose} className="text-[17px] text-[#FF9500] active:opacity-60 px-1 flex items-center gap-1">
+            <ChevronLeft size={20} strokeWidth={2.6} /> Zurück
+          </button>
+          <h3 className="font-semibold text-[17px]">Admin · Account</h3>
+          <span className="w-12" />
+        </div>
+
+        <div className="px-3 py-4 space-y-5">
+          {/* Identität */}
+          <IOSList header="Account">
+            <div className="px-4 py-3 flex items-center justify-between gap-3">
+              <span className="text-[15px] text-[#3C3C43]">E-Mail</span>
+              {editEmail ? (
+                <div className="flex items-center gap-2 flex-1 ml-3">
+                  <input value={newEmail} onChange={e => setNewEmail(e.target.value)} type="email"
+                    className="flex-1 bg-white border border-slate-300 rounded-lg px-2 py-1 text-[13px] outline-none" />
+                  <button onClick={saveEmail} disabled={busy} className="text-[13px] text-[#FF9500] font-medium">OK</button>
+                  <button onClick={() => setEditEmail(false)} className="text-[13px] text-[#8E8E93]">×</button>
+                </div>
+              ) : (
+                <button onClick={() => setEditEmail(true)} className="text-[15px] text-right truncate ml-3 active:opacity-60">
+                  {user.email || '—'}
+                </button>
+              )}
+            </div>
+            <div className="px-4 py-3 flex items-center justify-between gap-3">
+              <span className="text-[15px] text-[#3C3C43]">Name</span>
+              {editName ? (
+                <div className="flex items-center gap-2 flex-1 ml-3">
+                  <input value={newName} onChange={e => setNewName(e.target.value)}
+                    className="flex-1 bg-white border border-slate-300 rounded-lg px-2 py-1 text-[13px] outline-none" />
+                  <button onClick={saveName} disabled={busy} className="text-[13px] text-[#FF9500] font-medium">OK</button>
+                  <button onClick={() => setEditName(false)} className="text-[13px] text-[#8E8E93]">×</button>
+                </div>
+              ) : (
+                <button onClick={() => setEditName(true)} className="text-[15px] text-right truncate ml-3 active:opacity-60">
+                  {displayName}
+                </button>
+              )}
+            </div>
+            <div className="px-4 py-3 flex items-center justify-between gap-3">
+              <span className="text-[15px] text-[#3C3C43]">Rolle</span>
+              <div className="flex gap-1">
+                {['athlete', 'coach', 'admin'].map(r => (
+                  <button key={r} onClick={() => run('Rolle gesetzt: ' + r, () => adminSetRole(user.id, r))}
+                    disabled={busy || role === r}
+                    className={'text-[12px] px-2.5 py-1 rounded-full font-medium ' + (role === r
+                      ? 'bg-[#FF9500] text-white'
+                      : 'bg-white border border-slate-300 text-slate-700 active:opacity-60')}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="px-4 py-3 flex items-center justify-between gap-3">
+              <span className="text-[15px] text-[#3C3C43]">Status</span>
+              <span className="text-[13px]">
+                {isConfirmed
+                  ? <IOSTag color="green">bestätigt {fmtDateTime(user.email_confirmed_at)}</IOSTag>
+                  : <IOSTag color="orange">noch nicht bestätigt</IOSTag>}
+              </span>
+            </div>
+            <div className="px-4 py-3 flex items-center justify-between gap-3">
+              <span className="text-[15px] text-[#3C3C43]">Registriert</span>
+              <span className="text-[13px] text-[#8E8E93]">{fmtDateTime(user.created_at)}</span>
+            </div>
+            <div className="px-4 py-3 flex items-center justify-between gap-3">
+              <span className="text-[15px] text-[#3C3C43]">Letzter Login</span>
+              <span className="text-[13px] text-[#8E8E93]">{fmtDateTime(user.last_sign_in_at)}</span>
+            </div>
+            <div className="px-4 py-3 flex items-center justify-between gap-3">
+              <span className="text-[15px] text-[#3C3C43]">User-ID</span>
+              <button onClick={() => { navigator.clipboard.writeText(user.id); setInfo('User-ID kopiert'); }}
+                className="text-[11px] font-mono text-[#8E8E93] truncate ml-3 active:opacity-60 max-w-[180px]">
+                {user.id}
+              </button>
+            </div>
+          </IOSList>
+
+          {/* Mail-Aktionen */}
+          <IOSList header="Mail-Aktionen" footer={'„Action-Link" ist auch ohne Mail-Empfang nutzbar — kannst du direkt an Simon weitergeben.'}>
+            {!isConfirmed && (
+              <button onClick={() => run('Bestätigungs-Mail erneut verschickt', () => adminResendConfirmation({ user_id: user.id }))}
+                disabled={busy}
+                className="w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 disabled:opacity-50">
+                <MailCheck size={18} className="text-[#FF9500]" />
+                <span className="text-[15px]">Bestätigungs-Mail erneut senden</span>
+              </button>
+            )}
+            {!isConfirmed && (
+              <button onClick={() => run('E-Mail manuell bestätigt', () => adminConfirmEmail(user.id))}
+                disabled={busy}
+                className="w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 disabled:opacity-50">
+                <Check size={18} className="text-[#34C759]" />
+                <span className="text-[15px]">E-Mail manuell als bestätigt markieren</span>
+              </button>
+            )}
+            <button onClick={() => run('Magic-Link erzeugt', () => adminSendMagicLink({ user_id: user.id }))}
+              disabled={busy}
+              className="w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 disabled:opacity-50">
+              <KeyRound size={18} className="text-[#007AFF]" />
+              <span className="text-[15px]">Magic-Login-Link erzeugen</span>
+            </button>
+            <button onClick={() => run('Passwort-Reset-Mail erzeugt', () => adminSendPasswordReset({ user_id: user.id }))}
+              disabled={busy}
+              className="w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 disabled:opacity-50">
+              <RefreshCw size={18} className="text-[#007AFF]" />
+              <span className="text-[15px]">Passwort-Reset-Link senden</span>
+            </button>
+          </IOSList>
+
+          {/* Action-Link Anzeige */}
+          {actionLink && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-2">
+              <div className="text-[12px] font-semibold text-amber-900 uppercase tracking-wide">Action-Link</div>
+              <div className="text-[11px] font-mono text-amber-900 break-all">{actionLink}</div>
+              <div className="flex gap-2">
+                <button onClick={copyLink} className="flex-1 bg-white border border-amber-300 px-3 py-1.5 rounded-full text-[12px] font-medium flex items-center justify-center gap-1.5 active:opacity-60">
+                  <Copy size={12} /> Kopieren
+                </button>
+                <a href={actionLink} target="_blank" rel="noopener noreferrer"
+                  className="flex-1 bg-amber-600 text-white px-3 py-1.5 rounded-full text-[12px] font-medium flex items-center justify-center gap-1.5 active:opacity-60">
+                  <ExternalLink size={12} /> Öffnen
+                </a>
+              </div>
+            </div>
+          )}
+
+          {/* Gefährliche Aktionen */}
+          <IOSList header="Power-User" footer="Impersonation: Du wirst ausgeloggt und automatisch als Ziel-User eingeloggt — danach musst du dich selbst wieder neu anmelden.">
+            <button onClick={doImpersonate} disabled={busy}
+              className="w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 disabled:opacity-50">
+              <Crown size={18} className="text-[#FF9500]" />
+              <span className="text-[15px]">Als dieser User einloggen</span>
+            </button>
+            <button onClick={() => setConfirmDelete(true)} disabled={busy}
+              className="w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 disabled:opacity-50">
+              <UserX size={18} className="text-[#FF3B30]" />
+              <span className="text-[15px] text-[#FF3B30]">Account komplett löschen</span>
+            </button>
+          </IOSList>
+
+          {/* Verknüpfte Athleten */}
+          {user.athletes && user.athletes.length > 0 && (
+            <IOSList header="Verknüpfte Sportler">
+              {user.athletes.map(a => (
+                <div key={a.id + a.link} className="px-4 py-3 flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[15px] truncate">{a.name}</div>
+                    <div className="text-[12px] text-[#8E8E93]">
+                      {a.link === 'self' ? 'eigener Sportler-Eintrag' : 'vom User als Trainer angelegt'}
+                    </div>
+                  </div>
+                  <IOSTag color={a.link === 'self' ? 'blue' : 'purple'}>
+                    {a.link === 'self' ? 'self' : 'coach'}
+                  </IOSTag>
+                </div>
+              ))}
+            </IOSList>
+          )}
+
+          {/* Feedback */}
+          {err && (
+            <div className="bg-rose-50 border border-rose-200 text-rose-900 text-sm rounded-xl p-3">✗ {err}</div>
+          )}
+          {info && !err && (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 text-sm rounded-xl p-3">✓ {info}</div>
+          )}
+        </div>
+
+        {/* Delete-Confirm */}
+        {confirmDelete && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
+            <div className="bg-white rounded-3xl p-5 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+              <h3 className="font-semibold text-[17px] mb-2">Account löschen?</h3>
+              <p className="text-[14px] text-[#8E8E93] mb-4">
+                „{user.email}" wird endgültig gelöscht. Alle verknüpften Sportler-Einträge, Sessions, Wettkämpfe etc. werden via Cascade ebenfalls entfernt. Das ist nicht rückgängig zu machen.
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setConfirmDelete(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 font-medium text-sm">Abbrechen</button>
+                <button onClick={() => { setConfirmDelete(false); doDelete(); }}
+                  className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white font-medium text-sm">Löschen</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdminAccountsView({ open, onClose, initialFilter = '', autoOpenUserId = null }) {
+  const [users, setUsers] = useState(null);
+  const [err, setErr] = useState('');
+  const [filter, setFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all'); // all|unconfirmed|orphan
+  const [selectedUser, setSelectedUser] = useState(null);
+
+  const reload = useCallback(async () => {
+    setErr('');
+    const { data, error } = await adminListUsers();
+    if (error) { setErr(error.message); setUsers([]); return; }
+    setUsers(data?.users || []);
+  }, []);
+
+  useEffect(() => { if (open) { setFilter(initialFilter); reload(); } }, [open, initialFilter, reload]);
+
+  // Auto-open Panel wenn autoOpenUserId gesetzt und User in Liste gefunden
+  useEffect(() => {
+    if (autoOpenUserId && users) {
+      const hit = users.find(u => u.id === autoOpenUserId);
+      if (hit) setSelectedUser(hit);
+    }
+  }, [autoOpenUserId, users]);
+
+  // Selected-User nach reload mit fresher Version aus der Liste ersetzen
+  useEffect(() => {
+    if (selectedUser && users) {
+      const fresh = users.find(u => u.id === selectedUser.id);
+      if (fresh && fresh !== selectedUser) setSelectedUser(fresh);
+    }
+  }, [users]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!open) return null;
+
+  const filtered = (users || []).filter(u => {
+    if (statusFilter === 'unconfirmed' && u.email_confirmed_at) return false;
+    if (statusFilter === 'orphan' && (u.athletes && u.athletes.length > 0)) return false;
+    if (!filter.trim()) return true;
+    const q = filter.toLowerCase();
+    return (u.email || '').toLowerCase().includes(q)
+      || (u.profile?.display_name || '').toLowerCase().includes(q)
+      || u.id.toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="fixed inset-0 z-40 bg-[#F2F2F7] flex flex-col">
+      <div className="sticky top-0 bg-[#F2F2F7]/95 backdrop-blur-xl px-4 py-3 flex items-center justify-between z-10 border-b border-[#C6C6C8]/40">
+        <button onClick={onClose} className="text-[17px] text-[#FF9500] active:opacity-60 px-1 flex items-center gap-1">
+          <ChevronLeft size={20} strokeWidth={2.6} /> Zurück
+        </button>
+        <h3 className="font-semibold text-[17px]">Alle Accounts</h3>
+        <button onClick={reload} className="text-[#007AFF] active:opacity-60 px-1">
+          <RefreshCw size={18} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
+        {/* Suche + Filter */}
+        <div className="bg-white rounded-2xl px-3 py-2 flex items-center gap-2">
+          <Search size={16} className="text-[#8E8E93]" />
+          <input value={filter} onChange={e => setFilter(e.target.value)}
+            placeholder="E-Mail, Name oder ID suchen…"
+            className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
+        </div>
+        <div className="bg-[#E5E5EA] rounded-2xl p-1 flex gap-1 text-[13px]">
+          {[
+            { id: 'all', label: 'Alle' },
+            { id: 'unconfirmed', label: 'Unbestätigt' },
+            { id: 'orphan', label: 'Ohne Sportler' },
+          ].map(f => (
+            <button key={f.id} onClick={() => setStatusFilter(f.id)}
+              className={'flex-1 px-3 py-1.5 rounded-xl font-medium ' + (statusFilter === f.id ? 'bg-white shadow-sm' : 'text-[#3C3C43] active:opacity-60')}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {err && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-900 text-sm rounded-xl p-3">✗ {err}</div>
+        )}
+
+        {users === null ? (
+          <div className="text-center py-12 text-[#8E8E93]">
+            <Loader2 size={20} className="animate-spin mx-auto mb-2" /> Lade Accounts…
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12 text-[#8E8E93]">Keine Accounts gefunden.</div>
+        ) : (
+          <IOSList header={`${filtered.length} Account${filtered.length === 1 ? '' : 's'}`}>
+            {filtered.map(u => {
+              const isConfirmed = !!u.email_confirmed_at;
+              const role = u.profile?.role || 'athlete';
+              return (
+                <button key={u.id} onClick={() => setSelectedUser(u)}
+                  className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left active:bg-[#D1D1D6]/40">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[15px] font-medium truncate">{u.profile?.display_name || u.email || u.id.slice(0, 8)}</span>
+                      {!isConfirmed && <IOSTag color="orange">unbestätigt</IOSTag>}
+                      {role === 'admin' && <IOSTag color="orange">admin</IOSTag>}
+                      {role === 'coach' && <IOSTag color="purple">coach</IOSTag>}
+                      {u.athletes && u.athletes.length > 0 && (
+                        <IOSTag color="blue">{u.athletes.length} Sportler</IOSTag>
+                      )}
+                    </div>
+                    <div className="text-[13px] text-[#8E8E93] truncate mt-0.5">{u.email}</div>
+                    <div className="text-[11px] text-[#C7C7CC] mt-0.5">
+                      Reg. {fmtDateTime(u.created_at)} · Login {fmtDateTime(u.last_sign_in_at)}
+                    </div>
+                  </div>
+                  <ChevronRight size={16} className="text-[#C7C7CC] shrink-0" />
+                </button>
+              );
+            })}
+          </IOSList>
+        )}
+      </div>
+
+      <AdminUserPanel
+        open={!!selectedUser}
+        user={selectedUser}
+        onClose={() => setSelectedUser(null)}
+        onMutated={reload}
+      />
+    </div>
+  );
+}
+
 function SportlerView({ profile, session, athletes, profiles, refreshAthletes, ownData }) {
   const { t } = useI18n();
   // ALLE Hooks MÜSSEN vor dem ersten conditional return aufgerufen werden
@@ -10114,13 +10546,29 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
   const [info, setInfo] = useState('');
   const [showRedeemModal, setShowRedeemModal] = useState(false);
   const [redeemCode, setRedeemCode] = useState('');
+  // Owner-only Admin-UI State
+  const [showAdminAccounts, setShowAdminAccounts] = useState(false);
+  const [adminPrefilter, setAdminPrefilter] = useState('');
+  const [adminPreselectUserId, setAdminPreselectUserId] = useState(null);
 
   if (viewingAthlete) {
     return <AthleteDetailView athlete={viewingAthlete} ownData={ownData} onBack={() => setViewingAthlete(null)} />;
   }
 
+  // Owner = harter Email-Check. NUR für Ruben sichtbar.
+  // Selbst wenn jemand anders versehentlich profiles.role = 'admin' bekommt,
+  // sieht er hier nichts — und die Edge-Function lehnt seine Calls eh ab.
+  const isOwner = isAppOwner(session);
   const isAdmin = profile?.role === 'admin';
   const isCoach = profile?.role === 'coach' || isAdmin;
+
+  const openAdminFor = (a) => {
+    // Per-Athlet Admin-Panel: wir öffnen die Account-Übersicht und
+    // filtern auf die Athleten-Email (oder, wenn verknüpft, auf die User-ID).
+    setAdminPrefilter(a.email || a.name || '');
+    setAdminPreselectUserId(a.auth_user_id || null);
+    setShowAdminAccounts(true);
+  };
   const myUserId = session?.user?.id;
   const myAthlete = athletes.find(a => a.auth_user_id === myUserId);
   const managedAthletes = athletes.filter(a => a.created_by_coach_id === myUserId && a.id !== (myAthlete?.id));
@@ -10244,12 +10692,21 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
               </div>
             )}
           </div>
-          {canEdit && (
+          {(canEdit || isOwner) && (
             <div className="flex gap-1">
-              <button onClick={() => setEditing(a)}
-                className="p-2 text-[#007AFF] active:bg-[#D1D1D6]/40 rounded-full">
-                <Edit2 size={16} />
-              </button>
+              {isOwner && (linkedToUser || a.email) && (
+                <button onClick={() => openAdminFor(a)}
+                  className="p-2 text-[#FF9500] active:bg-[#D1D1D6]/40 rounded-full"
+                  title="Admin: Account verwalten">
+                  <Crown size={16} />
+                </button>
+              )}
+              {canEdit && (
+                <button onClick={() => setEditing(a)}
+                  className="p-2 text-[#007AFF] active:bg-[#D1D1D6]/40 rounded-full">
+                  <Edit2 size={16} />
+                </button>
+              )}
               {canDelete && (
                 <button onClick={() => onDeleteAthlete(a)}
                   className="p-2 text-[#FF3B30] active:bg-[#D1D1D6]/40 rounded-full">
@@ -10291,7 +10748,14 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
         <div>
           <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('athletes.title')}</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {isOwner && (
+            <button onClick={() => { setAdminPrefilter(''); setAdminPreselectUserId(null); setShowAdminAccounts(true); }}
+              className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-sm active:scale-95 transition"
+              title="Owner-Admin: Alle Accounts">
+              <Crown size={16} /> Alle Accounts
+            </button>
+          )}
           <button onClick={() => { setShowRedeemModal(true); setRedeemCode(''); }}
             className="bg-white border border-slate-300 px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 active:scale-95 transition">
             <KeyRound size={16} /> {t('athletes.redeemCode')}
@@ -10412,6 +10876,16 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
             </div>
           </div>
         </div>
+      )}
+
+      {/* Owner-only Admin-Account-Übersicht */}
+      {isOwner && (
+        <AdminAccountsView
+          open={showAdminAccounts}
+          onClose={() => { setShowAdminAccounts(false); setAdminPreselectUserId(null); setAdminPrefilter(''); }}
+          initialFilter={adminPrefilter}
+          autoOpenUserId={adminPreselectUserId}
+        />
       )}
     </div>
   );

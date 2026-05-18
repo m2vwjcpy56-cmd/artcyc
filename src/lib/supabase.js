@@ -279,3 +279,77 @@ export async function redeemAthleteCode(code) {
   const { data, error } = await supabase.rpc('redeem_athlete_code', { input_code: code });
   return { data, error };
 }
+
+// =============================================================
+// Admin-Users — privilegierte Auth-Aktionen
+// =============================================================
+// Diese Funktionen sind NUR für den App-Owner (Ruben) gedacht.
+// Die Edge-Function lehnt Aufrufe von allen anderen E-Mails ab.
+// Wir prüfen die Owner-Eigenschaft zusätzlich im Frontend (s.u.),
+// damit Buttons gar nicht erst angezeigt werden.
+
+// Wer ist Owner? Halten wir im Frontend deckungsgleich mit der
+// Edge-Function-Allowlist (OWNER_EMAILS env-var).
+export const OWNER_EMAILS = ['info@neue-weberei.de'];
+
+export function isAppOwner(session) {
+  const email = (session?.user?.email || '').toLowerCase();
+  return !!email && OWNER_EMAILS.includes(email);
+}
+
+async function callAdminFn(action, payload = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { error: { message: 'Nicht angemeldet' } };
+  const { data, error } = await supabase.functions.invoke('admin-users', {
+    body: { action, ...payload },
+  });
+  if (error) {
+    // Edge-Function-Fehler kommen oft als FunctionsHttpError mit
+    // einem context-Body — den extrahieren wir lesbar.
+    let msg = error.message || 'Admin-Aufruf fehlgeschlagen';
+    try {
+      const ctx = error.context;
+      if (ctx && typeof ctx.json === 'function') {
+        const body = await ctx.json();
+        if (body?.error) msg = body.error;
+      }
+    } catch { /* ignore */ }
+    return { error: { message: msg } };
+  }
+  if (data?.error) return { error: { message: data.error } };
+  return { data };
+}
+
+export async function adminListUsers() {
+  return callAdminFn('list_users');
+}
+export async function adminGetUser({ user_id, email } = {}) {
+  return callAdminFn('get_user', { user_id, email });
+}
+export async function adminResendConfirmation({ user_id, email } = {}) {
+  return callAdminFn('resend_confirmation', { user_id, email });
+}
+export async function adminSendMagicLink({ user_id, email } = {}) {
+  return callAdminFn('send_magic_link', { user_id, email });
+}
+export async function adminSendPasswordReset({ user_id, email } = {}) {
+  return callAdminFn('send_password_reset', { user_id, email });
+}
+export async function adminConfirmEmail(user_id) {
+  return callAdminFn('confirm_email', { user_id });
+}
+export async function adminSetRole(user_id, role) {
+  return callAdminFn('set_role', { user_id, role });
+}
+export async function adminSetDisplayName(user_id, display_name) {
+  return callAdminFn('set_display_name', { user_id, display_name });
+}
+export async function adminUpdateEmail(user_id, email, confirm = false) {
+  return callAdminFn('update_email', { user_id, email, confirm });
+}
+export async function adminDeleteUser(user_id) {
+  return callAdminFn('delete_user', { user_id });
+}
+export async function adminCreateImpersonation(user_id) {
+  return callAdminFn('create_impersonation', { user_id });
+}
