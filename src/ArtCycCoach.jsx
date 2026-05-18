@@ -2398,11 +2398,18 @@ function getAnerkanntePunkte(w, exercise) {
 }
 
 function calcTableResult(program, entries, schwierigkeit = 0) {
-  // Aufgestellt = Summe der anerkannten Punkte (mit taktischer Aufwertung)
-  const aufgestellt = program.exercises.reduce((sum, ex, idx) => {
+  // Aufgestellt = STRENG die Summe der Programm-Standardpunkte.
+  // Taktische Aufwertung (T = "Retusche") ist KEINE aufgestellte Schwierigkeit,
+  // sondern eine separate Aufwertung. Sie fließt ins Endergebnis (= anerkannt)
+  // ein, aber NICHT in die ausgewiesene Schwierigkeit.
+  const aufgestellt = program.exercises.reduce((sum, ex) => sum + Number(ex.points || 0), 0);
+  // Anerkannt = Summe der jeweils GELTENDEN Punkte (T wenn gesetzt, sonst Standard).
+  // Diese Logik ist identisch zum vorigen Verhalten — Endergebnisse bleiben gleich.
+  const anerkannt = program.exercises.reduce((sum, ex, idx) => {
     const e = (entries || [])[idx];
     return sum + getAnerkanntePunkte(e, ex);
   }, 0);
+  const taktBonus = anerkannt - aufgestellt;
   let exec = 0;
   let schw = Number(schwierigkeit || 0); // optionaler Pauschal-Schwierigkeitsabzug für Altdaten
   (entries || []).forEach((e, idx) => {
@@ -2414,10 +2421,12 @@ function calcTableResult(program, entries, schwierigkeit = 0) {
   const total = exec + schw;
   return {
     aufgestellt: Math.round(aufgestellt * 100) / 100,
+    taktBonus: Math.round(taktBonus * 100) / 100,
+    anerkannt: Math.round(anerkannt * 100) / 100,
     abzugAusfuehrung: Math.round(exec * 100) / 100,
     abzugSchwierigkeit: Math.round(schw * 100) / 100,
     abzugGesamt: Math.round(total * 100) / 100,
-    ergebnis: Math.round((aufgestellt - total) * 100) / 100
+    ergebnis: Math.round((anerkannt - total) * 100) / 100
   };
 }
 
@@ -10002,20 +10011,32 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
     let cancelled = false;
     (async () => {
       if (!athlete) return;
-      // Wenn Athlet einen Account hat → dessen Snapshot laden
-      // Sonst (Trainer-managed ohne Account) → eigene Daten nutzen (Sessions liegen in coach blob)
       if (athlete.auth_user_id) {
+        // Sportler mit Account → relationale Tabellen abfragen.
+        // RLS lässt durch wenn ich Coach des Sportlers oder Admin bin.
+        // Fallback auf alten Cloud-Snapshot, falls Tabellen leer (nicht migriert).
         setLoading(true); setErr('');
         try {
-          const snap = await fetchCloudSnapshot(athlete.auth_user_id);
-          if (!cancelled) setRemoteData(snap?.data || null);
+          const [sessions, competitions, programs, exercises] = await Promise.all([
+            fetchSessions(),
+            fetchCompetitions(),
+            fetchPrograms(),
+            fetchExercises(),
+          ]);
+          // Wenn relational nichts kam → Legacy-Snapshot probieren
+          if ((sessions || []).length === 0 && (competitions || []).length === 0) {
+            const snap = await fetchCloudSnapshot(athlete.auth_user_id);
+            if (!cancelled) setRemoteData(snap?.data || { sessions: [], competitions: [], programs: [], exercises: [] });
+          } else {
+            if (!cancelled) setRemoteData({ sessions, competitions, programs, exercises });
+          }
         } catch (e) {
           if (!cancelled) setErr('Daten konnten nicht geladen werden: ' + (e.message || e));
         } finally {
           if (!cancelled) setLoading(false);
         }
       } else {
-        setRemoteData(null); // signal: use ownData
+        setRemoteData(null); // signal: use ownData (Trainer-managed ohne Account)
       }
     })();
     return () => { cancelled = true; };
