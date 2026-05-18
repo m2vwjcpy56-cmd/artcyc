@@ -2857,7 +2857,25 @@ function migrateExerciseLabels(data) {
     });
     if (sessionChanged) { changed = true; }
   }
-  return { data: { ...data, exercises, sessions }, changed };
+  // 3. Hardcoded Default-Übungen aus altem SetupScreen entfernen, falls
+  //    sie keine Sessions UND keine Programm-Referenzen haben. Diese IDs
+  //    'ex1' (Lenkerhandstand) und 'ex2' (Maute-Sprung) wurden vor dem
+  //    leeren-Setup-Fix automatisch jedem User angelegt.
+  let exercises2 = exercises;
+  const defaultIds = ['ex1', 'ex2'];
+  const usedExIds = new Set();
+  (sessions || []).forEach(s => { if (s?.exerciseId) usedExIds.add(s.exerciseId); });
+  (data.programs || []).forEach(p => (p.exercises || []).forEach(e => {
+    if (e?.id) usedExIds.add(e.id);
+  }));
+  const before = exercises2.length;
+  exercises2 = exercises2.filter(ex => {
+    if (!defaultIds.includes(ex.id)) return true;
+    return usedExIds.has(ex.id); // nur behalten wenn referenziert
+  });
+  if (exercises2.length !== before) changed = true;
+
+  return { data: { ...data, exercises: exercises2, sessions }, changed };
 }
 
 // =============================================================
@@ -7984,7 +8002,7 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
           </IOSListRow>
           {Number(statusMode) === 3 && (
             <div className="px-4 py-3 flex items-center gap-3">
-              <label className="text-[15px] text-[#3C3C43] w-28 shrink-0">Name</label>
+              <label className="text-[15px] text-[#3C3C43] w-36 shrink-0">3. Kategorie</label>
               <input value={thirdLabel} onChange={e => setThirdLabel(e.target.value)}
                 placeholder="Gefährlich, Unsicher, …"
                 className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC] text-right" />

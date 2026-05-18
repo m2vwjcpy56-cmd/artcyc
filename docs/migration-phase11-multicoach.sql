@@ -44,6 +44,29 @@ CREATE INDEX IF NOT EXISTS coach_invites_athlete_idx ON coach_invites(athlete_id
 CREATE INDEX IF NOT EXISTS coach_invites_code_idx ON coach_invites(claim_code) WHERE used_at IS NULL;
 
 -- =====================================================
+-- 3a) athletes RLS — auch Multi-Coaches via athlete_coaches durchlassen
+-- =====================================================
+DROP POLICY IF EXISTS "athletes_select" ON athletes;
+DROP POLICY IF EXISTS "athletes_update" ON athletes;
+CREATE POLICY "athletes_select" ON athletes FOR SELECT USING (
+  auth_user_id = auth.uid()
+  OR created_by_coach_id = auth.uid()
+  OR EXISTS (SELECT 1 FROM athlete_coaches ac WHERE ac.athlete_id = athletes.id AND ac.coach_id = auth.uid())
+  OR is_admin()
+);
+CREATE POLICY "athletes_update" ON athletes FOR UPDATE USING (
+  auth_user_id = auth.uid()
+  OR created_by_coach_id = auth.uid()
+  OR EXISTS (SELECT 1 FROM athlete_coaches ac WHERE ac.athlete_id = athletes.id AND ac.coach_id = auth.uid())
+  OR is_admin()
+) WITH CHECK (
+  auth_user_id = auth.uid()
+  OR created_by_coach_id = auth.uid()
+  OR EXISTS (SELECT 1 FROM athlete_coaches ac WHERE ac.athlete_id = athletes.id AND ac.coach_id = auth.uid())
+  OR is_admin()
+);
+
+-- =====================================================
 -- 3) RLS — Sportler verwaltet, Coach sieht eigene, Admin alles
 -- =====================================================
 ALTER TABLE athlete_coaches ENABLE ROW LEVEL SECURITY;
