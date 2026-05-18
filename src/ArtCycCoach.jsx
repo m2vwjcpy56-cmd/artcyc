@@ -2063,6 +2063,18 @@ function localizedExerciseName(ex) {
     const hit = activeUciByCode.get(code);
     if (hit && hit.n) return hit.n;
   }
+  // Reparatur-Fallback für generische Namen ("Übung 18") aus PDF-Imports,
+  // wo der Parser den Namen nicht extrahieren konnte: per Punkte+Disziplin
+  // EINDEUTIG in der UCI-DB matchen. Nur wenn genau 1 Treffer → übernehmen.
+  const isGeneric = /^Übung\s+\d+$/.test((ex.name || '').trim());
+  if (isGeneric) {
+    const pts = Number(ex.points || 0);
+    const disc = ex.uci_disc;
+    if (pts > 0 && disc) {
+      const candidates = activeUciDb.filter(u => Math.abs(u.p - pts) < 0.001 && u.d === disc);
+      if (candidates.length === 1) return candidates[0].n;
+    }
+  }
   return ex.name || '';
 }
 
@@ -8443,13 +8455,35 @@ function BulkImportModal({ data, athletes, onApply, onClose }) {
         ? (['1er', '2er', '4er', '6er'].find(d => p.disziplin.toLowerCase().includes(d)) || '1er')
         : '1er';
       const progId = uid();
-      const progExercises = p.exerciseRows.map((r, idx) => ({
-        id: 'p_ex_' + idx + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-        nr: idx + 1,
-        name: r.name || ('Übung ' + (idx + 1)),
-        code: r.code || null,
-        points: Number(r.points || 0)
-      }));
+      const progExercises = p.exerciseRows.map((r, idx) => {
+        // Wenn Name fehlt, versuche UCI-DB:
+        //  1. via Code (eindeutig)
+        //  2. via Punkte + Disziplin (nur wenn eindeutiger Treffer)
+        let resolvedName = r.name || null;
+        let resolvedCode = r.code || null;
+        if (!resolvedName) {
+          if (resolvedCode) {
+            const hit = activeUciByCode.get(resolvedCode);
+            if (hit && hit.n) resolvedName = hit.n;
+          } else {
+            const pts = Number(r.points || 0);
+            if (pts > 0 && disc) {
+              const cands = activeUciDb.filter(u => Math.abs(u.p - pts) < 0.001 && u.d === disc);
+              if (cands.length === 1) {
+                resolvedName = cands[0].n;
+                resolvedCode = cands[0].c;
+              }
+            }
+          }
+        }
+        return {
+          id: 'p_ex_' + idx + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          nr: idx + 1,
+          name: resolvedName || ('Übung ' + (idx + 1)),
+          code: resolvedCode,
+          points: Number(r.points || 0)
+        };
+      });
       newProgs.push({
         id: progId,
         name: p.disziplin ? p.disziplin.replace('Kunstradsport', '').trim() : (p.wettbewerb || 'Programm') + ' (' + disc + ')',
@@ -9204,13 +9238,33 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             ? parsed.disziplin.replace('Kunstradsport', '').trim()
             : (parsed.wettbewerb || 'Programm') + ' (' + disc + ')',
           discipline: disc,
-          exercises: parsed.exerciseRows.map((r, idx) => ({
-            id: 'p_ex_' + idx + '_' + Date.now(),
-            nr: idx + 1,
-            name: r.name || ('Übung ' + (idx + 1)),
-            code: r.code || null,
-            points: Number(r.points || 0)
-          })),
+          exercises: parsed.exerciseRows.map((r, idx) => {
+            // UCI-DB-Lookup wenn Name fehlt: erst per Code, dann per Punkte+Disziplin
+            let resolvedName = r.name || null;
+            let resolvedCode = r.code || null;
+            if (!resolvedName) {
+              if (resolvedCode) {
+                const hit = activeUciByCode.get(resolvedCode);
+                if (hit && hit.n) resolvedName = hit.n;
+              } else {
+                const pts = Number(r.points || 0);
+                if (pts > 0 && disc) {
+                  const cands = activeUciDb.filter(u => Math.abs(u.p - pts) < 0.001 && u.d === disc);
+                  if (cands.length === 1) {
+                    resolvedName = cands[0].n;
+                    resolvedCode = cands[0].c;
+                  }
+                }
+              }
+            }
+            return {
+              id: 'p_ex_' + idx + '_' + Date.now(),
+              nr: idx + 1,
+              name: resolvedName || ('Übung ' + (idx + 1)),
+              code: resolvedCode,
+              points: Number(r.points || 0)
+            };
+          }),
           created: new Date().toISOString()
         };
         setPendingNewProgram(newProg);
