@@ -3996,16 +3996,22 @@ export default function App() {
   // Athletes aus Supabase laden (Phase 9a — DB-basiert statt JSONB-Blob)
   const [dbAthletes, setDbAthletes] = useState([]);
   const [dbProfiles, setDbProfiles] = useState([]);
+  const [dbAthleteCoaches, setDbAthleteCoaches] = useState([]);
   // Phase 9d-3: alle "großen" Entitäten kommen aus DB-Tabellen
   const [dbSessions, setDbSessions] = useState([]);
   const [dbCompetitions, setDbCompetitions] = useState([]);
   const [dbPrograms, setDbPrograms] = useState([]);
   const [dbExercises, setDbExercises] = useState([]);
   const refreshAthletes = useCallback(async () => {
-    if (!session) { setDbAthletes([]); setDbProfiles([]); return; }
-    const [list, profs] = await Promise.all([fetchAthletes(), fetchProfiles()]);
+    if (!session) { setDbAthletes([]); setDbProfiles([]); setDbAthleteCoaches([]); return; }
+    const [list, profs, links] = await Promise.all([
+      fetchAthletes(),
+      fetchProfiles(),
+      fetchAthleteCoaches(),
+    ]);
     setDbAthletes(list);
     setDbProfiles(profs);
+    setDbAthleteCoaches(links);
   }, [session]);
   const refreshSessions = useCallback(async () => {
     if (!session) { setDbSessions([]); return; }
@@ -4441,7 +4447,7 @@ export default function App() {
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} />;
   else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={openFeedback} />;
-  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { setSelectedAthleteId(id); setView('dashboard'); }} myAthleteId={myAthleteId} setView={setView} />;
+  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} athleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { setSelectedAthleteId(id); setView('dashboard'); }} myAthleteId={myAthleteId} setView={setView} />;
   else if (view === 'export') viewEl = <ExportView data={effectiveData} setView={setView} />;
   else if (view === 'kuer' || view === 'video') {
     viewEl = <ComingSoon viewId={view} />;
@@ -10924,7 +10930,7 @@ function AdminAccountsView({ open, onClose, initialFilter = '', autoOpenUserId =
   );
 }
 
-function SportlerView({ profile, session, athletes, profiles, refreshAthletes, ownData, onPickAthlete, myAthleteId, setView }) {
+function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [], refreshAthletes, ownData, onPickAthlete, myAthleteId, setView }) {
   const { t } = useI18n();
   // ALLE Hooks MÜSSEN vor dem ersten conditional return aufgerufen werden
   // (Rules-of-Hooks). Nach dem viewingAthlete-Early-Return waren ehemals
@@ -10968,9 +10974,25 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
   };
   const myUserId = session?.user?.id;
   const myAthlete = athletes.find(a => a.auth_user_id === myUserId);
-  const managedAthletes = athletes.filter(a => a.created_by_coach_id === myUserId && a.id !== (myAthlete?.id));
+  // Set aller Athleten-IDs, für die ich (per athlete_coaches) Trainer bin —
+  // unabhängig vom legacy `created_by_coach_id`-Feld.
+  const myCoachAthleteIds = useMemo(() => {
+    const s = new Set();
+    (athleteCoaches || []).forEach(link => {
+      if (link.coach_id === myUserId) s.add(link.athlete_id);
+    });
+    return s;
+  }, [athleteCoaches, myUserId]);
+  const managedAthletes = athletes.filter(a => (
+    (a.created_by_coach_id === myUserId || myCoachAthleteIds.has(a.id))
+    && a.id !== (myAthlete?.id)
+  ));
   const otherAthletesAdminView = isAdmin
-    ? athletes.filter(a => a.id !== (myAthlete?.id) && a.created_by_coach_id !== myUserId)
+    ? athletes.filter(a => (
+        a.id !== (myAthlete?.id)
+        && a.created_by_coach_id !== myUserId
+        && !myCoachAthleteIds.has(a.id)
+      ))
     : [];
 
   const onGenerateCode = async (athleteId) => {
@@ -11053,7 +11075,7 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
 
   const renderAthleteCard = (a, badges) => {
     const isMine = a.auth_user_id === myUserId;
-    const isManagedByMe = a.created_by_coach_id === myUserId;
+    const isManagedByMe = a.created_by_coach_id === myUserId || myCoachAthleteIds.has(a.id);
     const linkedToUser = !!a.auth_user_id;
     const linkedToCoach = !!a.created_by_coach_id;
     const canEdit = isMine || isManagedByMe || isAdmin;
