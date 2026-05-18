@@ -8736,14 +8736,14 @@ function WettkampfView({ data, setData, dbAthletes }) {
   // Aggregat-Statistiken über alle Wettkämpfe mit gültigem Endergebnis
   const withFinal = enriched.filter(x => x.final !== null);
   const stats = (() => {
-    if (withFinal.length === 0) return { best: null, avg: null, avgDed: null, last: sorted[0] || null };
+    if (withFinal.length === 0) return { best: null, avg: null, minDed: null, last: sorted[0] || null };
     const best = withFinal.reduce((a, b) => b.final > a.final ? b : a);
     const avg = withFinal.reduce((s, x) => s + x.final, 0) / withFinal.length;
     const withDed = withFinal.filter(x => x.ded !== null);
-    const avgDed = withDed.length > 0
-      ? withDed.reduce((s, x) => s + x.ded, 0) / withDed.length
+    const minDed = withDed.length > 0
+      ? withDed.reduce((a, b) => b.ded < a.ded ? b : a)
       : null;
-    return { best, avg, avgDed, last: sorted[0] };
+    return { best, avg, minDed, last: sorted[0] };
   })();
   const currentYear = new Date().getFullYear();
   const thisYearCount = competitions.filter(c => (c.date || '').startsWith(String(currentYear))).length;
@@ -8843,9 +8843,9 @@ function WettkampfView({ data, setData, dbAthletes }) {
             />
             <StatCard
               icon={TrendingUp}
-              label="Ø Abzug"
-              value={stats.avgDed !== null ? stats.avgDed.toFixed(2) : '—'}
-              sub={withFinal.length > 0 ? 'aus ' + withFinal.length : 'noch keine'}
+              label="Geringster Abzug"
+              value={stats.minDed ? stats.minDed.ded.toFixed(2) : '—'}
+              sub={stats.minDed ? stats.minDed.c.name.slice(0, 24) : '—'}
               color="violet"
             />
           </div>
