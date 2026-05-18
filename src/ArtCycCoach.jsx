@@ -3804,6 +3804,93 @@ function Brand({ size = 'md' }) {
 // =============================================================
 const THEME_KEY = 'artcyc:theme'; // 'system' | 'light' | 'dark'
 
+// =============================================================
+// Pull-to-Refresh — globaler Hook + Indikator
+// =============================================================
+// Native iOS-Mail-Style: am oberen Rand nach unten ziehen löst
+// einen Daten-Refresh aus. Wir hängen uns an Window-Touch-Events,
+// weil das App-Layout window-scroll nutzt (kein innerer Container).
+// Trigger-Schwelle: 60px gezogen → onRefresh. Über 120px gedämpft.
+function usePullToRefresh(onRefresh, enabled = true) {
+  const [pull, setPull] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const pullRef = useRef(0);
+  const startRef = useRef(0);
+  const pullingRef = useRef(false);
+  const refreshingRef = useRef(false);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const onStart = (e) => {
+      if (refreshingRef.current) return;
+      if (window.scrollY > 5) return;
+      startRef.current = e.touches[0].clientY;
+      pullingRef.current = true;
+    };
+    const onMove = (e) => {
+      if (!pullingRef.current || refreshingRef.current) return;
+      if (window.scrollY > 5) {
+        pullingRef.current = false; pullRef.current = 0; setPull(0); return;
+      }
+      const dy = e.touches[0].clientY - startRef.current;
+      if (dy < 0) {
+        pullingRef.current = false; pullRef.current = 0; setPull(0); return;
+      }
+      // Resistance: dy * 0.5, clamped at 120
+      const p = Math.min(dy * 0.5, 120);
+      pullRef.current = p;
+      setPull(p);
+    };
+    const onEnd = async () => {
+      if (!pullingRef.current) return;
+      pullingRef.current = false;
+      const shouldRefresh = pullRef.current > 60;
+      if (shouldRefresh) {
+        refreshingRef.current = true;
+        setRefreshing(true);
+        setPull(60);
+        try { await onRefresh(); } catch (e) { console.warn('PTR refresh failed:', e); }
+        refreshingRef.current = false;
+        setRefreshing(false);
+      }
+      pullRef.current = 0;
+      setPull(0);
+    };
+    window.addEventListener('touchstart', onStart, { passive: true });
+    window.addEventListener('touchmove', onMove, { passive: true });
+    window.addEventListener('touchend', onEnd);
+    window.addEventListener('touchcancel', onEnd);
+    return () => {
+      window.removeEventListener('touchstart', onStart);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onEnd);
+      window.removeEventListener('touchcancel', onEnd);
+    };
+  }, [onRefresh, enabled]);
+
+  return { pull, refreshing };
+}
+
+function PullToRefreshIndicator({ pull, refreshing }) {
+  if (pull === 0 && !refreshing) return null;
+  const progress = Math.min(pull / 60, 1);
+  const offset = refreshing ? 60 : pull;
+  return (
+    <div className="fixed top-0 left-0 right-0 z-[60] flex justify-center pointer-events-none"
+      style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      <div className="bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl shadow-[0_2px_8px_rgba(0,0,0,0.15)] rounded-full p-2.5 mt-2"
+        style={{ transform: `translateY(${offset - 56}px)`, transition: refreshing ? 'transform 0.2s ease-out' : 'none' }}>
+        {refreshing ? (
+          <Loader2 size={18} className="text-[#FF9500] animate-spin" />
+        ) : (
+          <RotateCcw size={18} className="text-[#FF9500]"
+            style={{ transform: `rotate(${progress * 360}deg)`, opacity: 0.3 + progress * 0.7 }} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const { t, lang, langPref, setLangPref } = useI18n();
   const [data, setData] = useState(null);
@@ -3944,6 +4031,18 @@ export default function App() {
     refreshPrograms();
     refreshExercises();
   }, [refreshAthletes, refreshSessions, refreshCompetitions, refreshPrograms, refreshExercises]);
+
+  // Pull-to-Refresh: alle relationalen Tabellen + Athleten neu laden
+  const refreshAll = useCallback(async () => {
+    await Promise.all([
+      refreshAthletes(),
+      refreshSessions(),
+      refreshCompetitions(),
+      refreshPrograms(),
+      refreshExercises(),
+    ]);
+  }, [refreshAthletes, refreshSessions, refreshCompetitions, refreshPrograms, refreshExercises]);
+  const { pull: ptrPull, refreshing: ptrRefreshing } = usePullToRefresh(refreshAll, !!session);
 
   // Lokale Daten erst nach Login laden (DATA_KEY pro User getrennt)
   const userDataKey = session ? DATA_KEY + ':' + session.user.id : null;
@@ -4314,6 +4413,7 @@ export default function App() {
     <div
       className="min-h-screen bg-[#F2F2F7] text-slate-900 flex flex-col sm:flex-row antialiased"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif' }}>
+      <PullToRefreshIndicator pull={ptrPull} refreshing={ptrRefreshing} />
       {/* Mobile Header — iOS Navigation Bar Style */}
       <div
         className="ios-header-bg sm:hidden px-4 pb-3 flex items-center justify-between gap-2 sticky top-0 z-30"
