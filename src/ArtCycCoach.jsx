@@ -7409,6 +7409,24 @@ function UebungenView({ data, setData, onBack }) {
   const [selected, setSelected] = useState(null); // Übung in Detail-Ansicht
   const [pendingDelete, setPendingDelete] = useState(null);
 
+  // Sortierung wie beim Protokollieren: aktive Übungen zuerst, davon die
+  // häufigst-trainierten oben (= „was ich oft anpacke ist sofort sichtbar"),
+  // dann untrainierte aktive alphabetisch, archivierte ganz unten.
+  const sortedExercises = useMemo(() => {
+    const count = new Map();
+    for (const s of (data.sessions || [])) {
+      if (s.exerciseId) count.set(s.exerciseId, (count.get(s.exerciseId) || 0) + 1);
+    }
+    const cmp = (a, b) => {
+      if (a.active !== b.active) return a.active ? -1 : 1;
+      const ca = count.get(a.id) || 0;
+      const cb = count.get(b.id) || 0;
+      if (ca !== cb) return cb - ca;
+      return (a.name || '').localeCompare(b.name || '', 'de');
+    };
+    return [...(data.exercises || [])].sort(cmp);
+  }, [data.exercises, data.sessions]);
+
   const upsert = (ex) => {
     const exists = data.exercises.find(e => e.id === ex.id);
     setData({
@@ -7495,7 +7513,7 @@ function UebungenView({ data, setData, onBack }) {
             Trainings-Rate wird als farbige Badge rechts gezeigt, damit
             man auf einen Blick sieht welche Übung sicher sitzt. */}
         <IOSList footer="Tippe auf eine Übung um Statistik (Training + Wettkampf) zu sehen.">
-          {data.exercises.map(ex => {
+          {sortedExercises.map(ex => {
             const compStats = calcExerciseCompetitionStats(ex, data.programs || [], data.competitions || []);
             // Vollständiger Punktverlust = Symbol-Abzüge + Schwierigkeits-Abwertung.
             // Symbol-Logik (UCI 8.4.027): x=0.2, ~=0.5, |=1.0, ○=2.0.
