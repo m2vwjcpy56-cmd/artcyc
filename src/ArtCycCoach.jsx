@@ -4269,10 +4269,9 @@ export default function App() {
   if (!data) {
     return <SetupScreen onStart={() => save({
       sessions: [],
-      exercises: [
-        { id: 'ex1', name: 'Lenkerhandstand', uci_code: '1124c', uci_disc: '1er', active: true, category_mode: 2, third_label: null, default_series: 10 },
-        { id: 'ex2', name: 'Maute-Sprung', uci_code: null, uci_disc: null, active: true, category_mode: 3, third_label: 'Getroffen', fail_label: 'Gefährlich', success_label: 'Geklappt', default_series: 10, has_rope_variant: true }
-      ],
+      // Keine Default-Übungen — neue User starten mit leerer Liste.
+      // Übungen werden über „+ Neu", PDF-Import oder Programm-Import angelegt.
+      exercises: [],
       // Programme leer — User legt selbst an oder importiert XML/XQZ/PDF.
       programs: [],
       competitions: [],
