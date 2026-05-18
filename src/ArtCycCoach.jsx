@@ -6106,7 +6106,7 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
 // =============================================================
 // EINSTELLUNGEN (Skeleton — wird in Stufe 8 ausgebaut)
 // =============================================================
-function MyCoachesSection({ athlete, profilesById, onRefresh }) {
+function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
   const [coaches, setCoaches] = useState([]);
   const [invites, setInvites] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -6167,6 +6167,7 @@ function MyCoachesSection({ athlete, profilesById, onRefresh }) {
   };
 
   return (
+    <div id={anchorId} style={{ scrollMarginTop: 'calc(env(safe-area-inset-top) + 64px)' }}>
     <IOSList
       header={'Meine Trainer · ' + athlete.name}
       footer="Codes erneuern sich automatisch alle 24 Stunden, solange sie nicht eingelöst sind.">
@@ -6217,6 +6218,7 @@ function MyCoachesSection({ athlete, profilesById, onRefresh }) {
       {err && <div className="px-4 py-2 text-[12px] text-[#FF3B30]">✗ {err}</div>}
       {info && !err && <div className="px-4 py-2 text-[12px] text-[#34C759]">✓ {info}</div>}
     </IOSList>
+    </div>
   );
 }
 
@@ -6406,14 +6408,15 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
       )}
 
       {/* Meine Trainer (Multi-Coach) — pro eigenen Sportler-Eintrag eine Sektion */}
-      {session && myAthletes.map(a => {
+      {session && myAthletes.map((a, idx) => {
         const profileMap = new Map((dbProfiles || []).map(p => [p.id, p]));
         return (
           <MyCoachesSection
             key={a.id}
             athlete={a}
             profilesById={profileMap}
-            onRefresh={refreshAthletes} />
+            onRefresh={refreshAthletes}
+            anchorId={idx === 0 ? 'settings-coaches' : undefined} />
         );
       })}
 
@@ -11148,10 +11151,17 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
             )
           )}
           {/* Eigener Sportler-Eintrag: „Trainer verwalten" springt in
-              Einstellungen (dort kann man Trainer hinzufügen/entfernen,
-              Codes generieren + rotieren lassen). */}
+              Einstellungen UND scrollt direkt zur „Meine Trainer"-Sektion. */}
           {isMine && setView && (
-            <button onClick={() => setView('einstellungen')}
+            <button onClick={() => {
+              setView('einstellungen');
+              // requestAnimationFrame zweimal, damit React den View
+              // gemountet hat, bevor wir das DOM-Element suchen.
+              requestAnimationFrame(() => requestAnimationFrame(() => {
+                const el = document.getElementById('settings-coaches');
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }));
+            }}
               className="text-[13px] bg-amber-100 text-amber-900 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
               <UserCog size={13} /> Trainer verwalten
             </button>
