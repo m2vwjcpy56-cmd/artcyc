@@ -6252,24 +6252,12 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
   const syncLabel = cloudStatus === 'syncing' ? t('settings.cloudSyncing') : cloudStatus === 'error' ? t('settings.cloudSyncError') : t('settings.cloudSynced');
   const syncTagColor = cloudStatus === 'syncing' ? 'orange' : cloudStatus === 'error' ? 'red' : 'green';
 
-  // Trainer-Verknüpfungen: zeigen wer Zugriff auf MEINE Daten hat
+  // Eigene Athleten-Einträge — von MyCoachesSection (unten) als Source für
+  // pro-Athlet-Multi-Coach-Verwaltung genutzt. Legacy `trainerLinks` /
+  // `onRevokeTrainer` (1:1-Modell) wurden mit Phase 11 abgelöst, siehe
+  // MyCoachesSection.
   const myUserId = session?.user?.id;
   const myAthletes = (dbAthletes || []).filter(a => a.auth_user_id === myUserId);
-  const trainerLinks = myAthletes
-    .filter(a => a.created_by_coach_id)
-    .map(a => {
-      const coachProfile = (dbProfiles || []).find(p => p.id === a.created_by_coach_id);
-      return { athleteId: a.id, athleteName: a.name, coachId: a.created_by_coach_id, coachName: coachProfile?.display_name || 'Unbekannt' };
-    });
-  const [revokeBusy, setRevokeBusy] = useState(false);
-  const onRevokeTrainer = async (athleteId, coachName) => {
-    if (!confirm('Trainer „' + coachName + '" den Zugriff auf deine Daten entziehen?')) return;
-    setRevokeBusy(true);
-    const { error } = await updateAthlete(athleteId, { created_by_coach_id: null });
-    if (error) alert('Fehler: ' + error.message);
-    await refreshAthletes();
-    setRevokeBusy(false);
-  };
 
   // Phase 9d-2: Migration Blob → Tabellen
   const [migrateBusy, setMigrateBusy] = useState(false);
@@ -11032,20 +11020,9 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
     setBusy(false);
   };
 
-  // Sportler löst Trainer-Verknüpfung UND generiert direkt neuen Code,
-  // damit ein anderer Trainer einlösen kann. Die redeem-RPC würde sonst
-  // mit „bereits mit Trainer verknüpft" abblocken.
-  const onSwitchCoach = async (athleteId, coachName) => {
-    if (!confirm('Aktuellen Trainer (' + (coachName || '—') + ') entfernen und neuen Code generieren?\n\nDer bisherige Trainer hat danach keinen Zugriff mehr auf deine Daten.')) return;
-    setBusy(true); setErr(''); setInfo('');
-    const { error: revokeErr } = await updateAthlete(athleteId, { created_by_coach_id: null });
-    if (revokeErr) { setErr(revokeErr.message); setBusy(false); return; }
-    const { error: codeErr } = await generateClaimCodeForAthlete(athleteId);
-    if (codeErr) { setErr(codeErr.message); setBusy(false); return; }
-    setInfo('Neuer Code generiert — gib ihn deinem neuen Trainer weiter.');
-    await refreshAthletes();
-    setBusy(false);
-  };
+  // (Legacy 1:1 „Trainer wechseln" wurde durch Multi-Coach-Flow in den
+  // Einstellungen abgelöst — der „Trainer verwalten"-Button im Sportler-
+  // Tab springt jetzt direkt in MyCoachesSection.)
 
   const onRedeemCode = async () => {
     if (!redeemCode.trim()) return;

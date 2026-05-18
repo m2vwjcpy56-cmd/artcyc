@@ -44,7 +44,35 @@ CREATE INDEX IF NOT EXISTS coach_invites_athlete_idx ON coach_invites(athlete_id
 CREATE INDEX IF NOT EXISTS coach_invites_code_idx ON coach_invites(claim_code) WHERE used_at IS NULL;
 
 -- =====================================================
--- 3a) athletes RLS — auch Multi-Coaches via athlete_coaches durchlassen
+-- 3a) Systemische RLS-Hygiene — alle Stellen die früher nur via
+--      `created_by_coach_id` (1:1) prüften, jetzt auch via athlete_coaches.
+-- =====================================================
+
+-- athletes_insert: is_coach()-Pflicht raus, damit auch reine Sportler-Profile
+-- eigene Athleten-Einträge anlegen können (z. B. Verein-Mode).
+DROP POLICY IF EXISTS "athletes_insert" ON athletes;
+CREATE POLICY "athletes_insert" ON athletes FOR INSERT WITH CHECK (
+  auth_user_id = auth.uid()
+  OR created_by_coach_id = auth.uid()
+  OR is_admin()
+);
+
+-- user_data_snapshots_select: auch Multi-Coaches dürfen den Legacy-Snapshot
+-- ihres Sportlers lesen (für nicht-migrierte Bestandsuser).
+DROP POLICY IF EXISTS "user_data_select" ON user_data_snapshots;
+CREATE POLICY "user_data_select" ON user_data_snapshots FOR SELECT USING (
+  user_id = auth.uid()
+  OR is_admin()
+  OR EXISTS (
+    SELECT 1 FROM athletes a
+    WHERE a.auth_user_id = user_data_snapshots.user_id
+      AND (a.created_by_coach_id = auth.uid()
+           OR EXISTS (SELECT 1 FROM athlete_coaches ac WHERE ac.athlete_id = a.id AND ac.coach_id = auth.uid()))
+  )
+);
+
+-- =====================================================
+-- 3b) athletes RLS — auch Multi-Coaches via athlete_coaches durchlassen
 -- =====================================================
 DROP POLICY IF EXISTS "athletes_select" ON athletes;
 DROP POLICY IF EXISTS "athletes_update" ON athletes;
