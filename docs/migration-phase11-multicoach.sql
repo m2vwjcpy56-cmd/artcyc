@@ -29,13 +29,17 @@ ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS coach_invites (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   athlete_id            UUID NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
-  claim_code            TEXT NOT NULL UNIQUE,
+  -- claim_code wird auf NULL gesetzt sobald used_at gefüllt ist (= verbrannt).
+  -- UNIQUE erlaubt mehrere NULLs in Postgres-Default.
+  claim_code            TEXT UNIQUE,
   label                 TEXT,
   claim_code_rotated_at TIMESTAMPTZ DEFAULT NOW(),
   used_at               TIMESTAMPTZ,
   used_by_coach_id      UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at            TIMESTAMPTZ DEFAULT NOW()
 );
+-- Falls Tabelle schon mit NOT NULL existiert:
+ALTER TABLE coach_invites ALTER COLUMN claim_code DROP NOT NULL;
 CREATE INDEX IF NOT EXISTS coach_invites_athlete_idx ON coach_invites(athlete_id);
 CREATE INDEX IF NOT EXISTS coach_invites_code_idx ON coach_invites(claim_code) WHERE used_at IS NULL;
 
