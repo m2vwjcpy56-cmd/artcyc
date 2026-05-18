@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX
 } from 'lucide-react';
-import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation } from './lib/supabase';
+import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud, fileToBase64 } from './lib/feedback.js';
 import { parseProgramFile } from './lib/programImport.js';
@@ -6106,6 +6106,120 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
 // =============================================================
 // EINSTELLUNGEN (Skeleton — wird in Stufe 8 ausgebaut)
 // =============================================================
+function MyCoachesSection({ athlete, profilesById, onRefresh }) {
+  const [coaches, setCoaches] = useState([]);
+  const [invites, setInvites] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [info, setInfo] = useState('');
+
+  const reload = useCallback(async () => {
+    const [c, i] = await Promise.all([
+      fetchAthleteCoaches(athlete.id),
+      fetchCoachInvites(athlete.id),
+    ]);
+    setCoaches(c);
+    setInvites(i.filter(x => !x.used_at));
+  }, [athlete.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try { await rotateStaleCoachInvites(athlete.id); } catch { /* nicht kritisch */ }
+      if (!cancelled) await reload();
+    })();
+    return () => { cancelled = true; };
+  }, [athlete.id, reload]);
+
+  const onGenerate = async () => {
+    setBusy(true); setErr(''); setInfo('');
+    const labelInput = prompt('Optional: Name des Trainers (z.B. „Trainer Müller")');
+    const label = (labelInput || '').trim() || null;
+    const { error } = await generateCoachInvite(athlete.id, label);
+    if (error) setErr(error.message);
+    else setInfo('Code generiert. Gib ihn deinem Trainer.');
+    await reload();
+    setBusy(false);
+  };
+
+  const onRemoveCoach = async (coachId, coachName) => {
+    if (!confirm('Trainer „' + coachName + '" entfernen? Er verliert dann Zugriff auf deine Daten.')) return;
+    setBusy(true); setErr(''); setInfo('');
+    const { error } = await removeAthleteCoach(athlete.id, coachId);
+    if (error) setErr(error.message);
+    else setInfo('Trainer entfernt.');
+    await reload();
+    if (onRefresh) await onRefresh();
+    setBusy(false);
+  };
+
+  const onDeleteInvite = async (id) => {
+    if (!confirm('Code zurückziehen? Wer ihn hat, kann sich dann nicht mehr verknüpfen.')) return;
+    setBusy(true); setErr(''); setInfo('');
+    await deleteCoachInvite(id);
+    await reload();
+    setBusy(false);
+  };
+
+  const onCopyCode = async (code) => {
+    try { await navigator.clipboard.writeText(code); setInfo('Code kopiert.'); }
+    catch { setErr('Kopieren fehlgeschlagen.'); }
+  };
+
+  return (
+    <IOSList
+      header={'Meine Trainer · ' + athlete.name}
+      footer="Codes erneuern sich automatisch alle 24 Stunden, solange sie nicht eingelöst sind.">
+      {coaches.length === 0 && invites.length === 0 && (
+        <div className="px-4 py-3.5 flex items-center gap-3">
+          <Shield size={18} className="text-[#8E8E93]" />
+          <span className="text-[15px] text-[#8E8E93]">Noch keine Trainer verknüpft.</span>
+        </div>
+      )}
+      {coaches.map(c => {
+        const p = profilesById.get(c.coach_id);
+        const name = p?.display_name || 'Trainer';
+        return (
+          <div key={c.coach_id} className="px-4 py-3 flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="font-medium text-[15px] truncate">{name}</div>
+              <div className="text-[11px] text-[#8E8E93]">verknüpft seit {fmtDateTime(c.added_at)}</div>
+            </div>
+            <button onClick={() => onRemoveCoach(c.coach_id, name)} disabled={busy}
+              className="text-[14px] text-[#FF3B30] px-3 py-1.5 rounded-full font-medium active:opacity-50 disabled:opacity-40 shrink-0">
+              Entfernen
+            </button>
+          </div>
+        );
+      })}
+      {invites.map(inv => (
+        <div key={inv.id} className="px-4 py-3 flex items-center gap-3">
+          <KeyRound size={16} className="text-[#FF9500] shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="font-mono text-[15px] font-semibold tracking-wider">{inv.claim_code}</div>
+            <div className="text-[11px] text-[#8E8E93] truncate">
+              {inv.label ? inv.label + ' · ' : ''}aktualisiert {fmtDateTime(inv.claim_code_rotated_at)}
+            </div>
+          </div>
+          <button onClick={() => onCopyCode(inv.claim_code)} className="p-2 text-[#007AFF] active:opacity-60" aria-label="Code kopieren">
+            <Copy size={14} />
+          </button>
+          <button onClick={() => onDeleteInvite(inv.id)} disabled={busy} className="p-2 text-[#FF3B30] active:opacity-60" aria-label="Code löschen">
+            <Trash2 size={14} />
+          </button>
+        </div>
+      ))}
+      <button onClick={onGenerate} disabled={busy}
+        className="w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 disabled:opacity-50">
+        <Plus size={18} className="text-[#FF9500]" />
+        <span className="text-[15px] text-[#FF9500] font-medium">Neuen Trainer einladen</span>
+      </button>
+      {err && <div className="px-4 py-2 text-[12px] text-[#FF3B30]">✗ {err}</div>}
+      {info && !err && <div className="px-4 py-2 text-[12px] text-[#34C759]">✓ {info}</div>}
+    </IOSList>
+  );
+}
+
 function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, refreshAthletes, theme, setTheme, langPref, setLangPref, rulesLangPref, setRulesLangPref, setView, onOpenFeedback }) {
   const { t } = useI18n();
   const roleLabel = profile?.role === 'admin' ? t('role.admin') : profile?.role === 'coach' ? t('role.coach') : t('role.athlete');
@@ -6291,38 +6405,17 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
         </IOSList>
       )}
 
-      {/* Trainer-Zugriff */}
-      {session && (
-        <IOSList
-          header={t('settings.trainerAccess')}
-          footer={trainerLinks.length === 0
-            ? (profile?.role === 'athlete'
-                ? t('settings.trainerAccessEmptyAthlete')
-                : t('settings.trainerAccessEmptyOther'))
-            : t('settings.trainerAccessFooter')}>
-          {trainerLinks.length === 0 ? (
-            <div className="px-4 py-3.5 flex items-center gap-3">
-              <Shield size={18} className="text-[#8E8E93]" />
-              <span className="text-[15px] text-[#8E8E93]">{t('settings.noTrainerAccess')}</span>
-            </div>
-          ) : (
-            trainerLinks.map(link => (
-              <div key={link.athleteId} className="px-4 py-3 flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium text-[15px] truncate">{link.coachName}</div>
-                  <div className="text-[13px] text-[#8E8E93] truncate">„{link.athleteName}"</div>
-                </div>
-                <button
-                  onClick={() => onRevokeTrainer(link.athleteId, link.coachName)}
-                  disabled={revokeBusy}
-                  className="text-[14px] text-[#FF3B30] px-3 py-1.5 rounded-full font-medium active:opacity-50 disabled:opacity-40 shrink-0">
-                  {t('settings.trainerRevoke')}
-                </button>
-              </div>
-            ))
-          )}
-        </IOSList>
-      )}
+      {/* Meine Trainer (Multi-Coach) — pro eigenen Sportler-Eintrag eine Sektion */}
+      {session && myAthletes.map(a => {
+        const profileMap = new Map((dbProfiles || []).map(p => [p.id, p]));
+        return (
+          <MyCoachesSection
+            key={a.id}
+            athlete={a}
+            profilesById={profileMap}
+            onRefresh={refreshAthletes} />
+        );
+      })}
 
       {/* Cloud-Migration */}
       <IOSList

@@ -279,6 +279,66 @@ export async function migrateBlobToTables() {
   return { data, error };
 }
 
+// =============================================================
+// Multi-Trainer (Phase 11) — athlete_coaches + coach_invites
+// =============================================================
+// Mehrere Trainer pro Sportler. Jeder Trainer hat seinen eigenen Code.
+// Codes rotieren automatisch, wenn sie >24h alt und nicht eingelöst sind
+// (Lazy-Rotation beim Anzeigen).
+
+export async function generateCoachInvite(athleteId, label = null) {
+  const { data, error } = await supabase.rpc('generate_coach_invite', {
+    target_athlete_id: athleteId,
+    label_text: label,
+  });
+  return { data, error };
+}
+
+export async function rotateStaleCoachInvites(athleteId) {
+  const { data, error } = await supabase.rpc('rotate_stale_coach_invites', {
+    target_athlete_id: athleteId,
+  });
+  return { data, error };
+}
+
+export async function fetchCoachInvites(athleteId = null) {
+  let q = supabase.from('coach_invites')
+    .select('id, athlete_id, claim_code, label, claim_code_rotated_at, used_at, used_by_coach_id, created_at')
+    .order('created_at', { ascending: false });
+  if (athleteId) q = q.eq('athlete_id', athleteId);
+  const { data, error } = await q;
+  if (error) { console.warn('coach_invites fetch:', error.message); return []; }
+  return data || [];
+}
+
+export async function deleteCoachInvite(id) {
+  const { error } = await supabase.from('coach_invites').delete().eq('id', id);
+  return { error };
+}
+
+export async function fetchAthleteCoaches(athleteId = null) {
+  let q = supabase.from('athlete_coaches')
+    .select('athlete_id, coach_id, added_at')
+    .order('added_at', { ascending: true });
+  if (athleteId) q = q.eq('athlete_id', athleteId);
+  const { data, error } = await q;
+  if (error) { console.warn('athlete_coaches fetch:', error.message); return []; }
+  return data || [];
+}
+
+export async function removeAthleteCoach(athleteId, coachId) {
+  const { error } = await supabase.from('athlete_coaches')
+    .delete()
+    .eq('athlete_id', athleteId)
+    .eq('coach_id', coachId);
+  // Wenn das der „Haupt-Coach" (athletes.created_by_coach_id) war, dann auch dort entfernen.
+  await supabase.from('athletes')
+    .update({ created_by_coach_id: null })
+    .eq('id', athleteId)
+    .eq('created_by_coach_id', coachId);
+  return { error };
+}
+
 // Bidirektionaler Code-Einlöser (Phase 9b):
 // - Wenn der gefundene Athlet keinen User-Account hat → setzt eigenen User als auth_user_id
 // - Wenn der gefundene Athlet keinen Coach hat → setzt eigenen User als coach (nur für coach/admin)
