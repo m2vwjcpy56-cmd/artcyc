@@ -7958,12 +7958,6 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
               <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'success')}</span>
               <span className="text-xs opacity-80">{success}</span>
             </button>
-            <button onClick={() => setEntries([...entries, 'fail'])}
-              className="bg-rose-600 hover:bg-rose-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
-              <X size={26} strokeWidth={2.6} />
-              <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'fail')}</span>
-              <span className="text-xs opacity-80">{fail}</span>
-            </button>
             {use3 && (
               <button onClick={() => setEntries([...entries, 'third'])}
                 className="bg-amber-500 hover:bg-amber-600 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
@@ -7972,6 +7966,12 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
                 <span className="text-xs opacity-80">{third}</span>
               </button>
             )}
+            <button onClick={() => setEntries([...entries, 'fail'])}
+              className="bg-rose-600 hover:bg-rose-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+              <X size={26} strokeWidth={2.6} />
+              <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'fail')}</span>
+              <span className="text-xs opacity-80">{fail}</span>
+            </button>
           </div>
 
           {entries.length > 0 && (
