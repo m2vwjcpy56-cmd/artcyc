@@ -6801,6 +6801,8 @@ function ComingSoon({ viewId }) {
 // MAUTE-Spezial-Statistik (3-Kategorie-Visualisierung)
 // =============================================================
 function MauteStatsPanel({ exercise, sessions }) {
+  const [period, setPeriod] = useState('total'); // 'total' | '4w'
+
   const exSessions = useMemo(() => {
     return (sessions || [])
       .filter(s => s.exerciseId === exercise.id)
@@ -6838,17 +6840,26 @@ function MauteStatsPanel({ exercise, sessions }) {
     fail: acc.fail + s.fail,
     total: acc.total + s.total
   }), { success: 0, third: 0, fail: 0, total: 0 });
-  const pct = (n) => total.total ? Math.round((n / total.total) * 100) : 0;
 
-  // Gefahren-Quote pro Zeitfenster (gesamt + letzte 30 Tage + letzte 90 Tage)
+  // 4-Wochen-Fenster für Trend-Vergleich
   const today = new Date();
-  const cutoff30 = new Date(today.getTime() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-  const cutoff90 = new Date(today.getTime() - 90 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-  const window30 = exSessions.filter(s => s.date >= cutoff30).reduce((acc, s) => ({ fail: acc.fail + s.fail, total: acc.total + s.total }), { fail: 0, total: 0 });
-  const window90 = exSessions.filter(s => s.date >= cutoff90).reduce((acc, s) => ({ fail: acc.fail + s.fail, total: acc.total + s.total }), { fail: 0, total: 0 });
-  const gefPct30 = window30.total > 0 ? Math.round((window30.fail / window30.total) * 1000) / 10 : null;
-  const gefPct90 = window90.total > 0 ? Math.round((window90.fail / window90.total) * 1000) / 10 : null;
-  const gefPctTotal = total.total > 0 ? Math.round((total.fail / total.total) * 1000) / 10 : 0;
+  const cutoff4w = new Date(today.getTime() - 28 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const window4w = exSessions.filter(s => s.date >= cutoff4w).reduce((acc, s) => ({
+    success: acc.success + s.success,
+    third: acc.third + s.third,
+    fail: acc.fail + s.fail,
+    total: acc.total + s.total
+  }), { success: 0, third: 0, fail: 0, total: 0 });
+
+  // Aktive Auswahl
+  const view = period === '4w' ? window4w : total;
+  const viewLabel = period === '4w' ? 'Letzte 4 Wochen' : 'Gesamt';
+  const otherLabel = period === '4w' ? 'Gesamt' : 'Letzte 4 Wochen';
+  const otherView = period === '4w' ? total : window4w;
+  const pct = (n, base) => (base || total.total) ? Math.round((n / (base || total.total)) * 100) : 0;
+  const gefPctView = view.total > 0 ? Math.round((view.fail / view.total) * 1000) / 10 : 0;
+  const gefPctOther = otherView.total > 0 ? Math.round((otherView.fail / otherView.total) * 1000) / 10 : null;
+  const trendDelta = gefPctOther !== null ? Math.round((gefPctView - gefPctOther) * 10) / 10 : null;
 
   // SVG-Maße für Trend-Linie
   const TW = 320, TH = 120, TP = 12;
@@ -6871,68 +6882,77 @@ function MauteStatsPanel({ exercise, sessions }) {
   const barWidth = months.length > 0 ? (BW - 2 * BP) / months.length : 0;
   const maxJumpsPerMonth = Math.max(1, ...months.map(m => m.total));
 
+  const trendArrow = trendDelta === null ? '' : (trendDelta < -0.05 ? '↓' : trendDelta > 0.05 ? '↑' : '·');
+  const trendColor = trendDelta === null ? 'text-[#8E8E93]'
+    : (trendDelta < -0.05 ? 'text-[#34C759]'
+      : trendDelta > 0.05 ? 'text-[#FF3B30]'
+        : 'text-[#8E8E93]');
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 space-y-5">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold flex items-center gap-2">
-          <Target size={18} className="text-amber-500" /> Sprung-Statistik
+    <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-slate-200/60 dark:border-white/10 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="font-semibold flex items-center gap-2 text-[#000] dark:text-white">
+          <Target size={18} className="text-[#FF9500]" /> Sprung-Statistik
         </h2>
-        <span className="text-xs text-slate-500">{exSessions.length} Sessions · seit {exSessions[0].date}</span>
+        <span className="text-xs text-[#8E8E93]">{exSessions.length} Sessions · seit {exSessions[0].date}</span>
+      </div>
+
+      {/* iOS-Segmented-Control: Zeitraum-Switch */}
+      <div className="bg-[#E5E5EA] dark:bg-white/10 rounded-2xl p-1 flex gap-1">
+        <button onClick={() => setPeriod('total')}
+          className={'flex-1 px-3 py-1.5 rounded-xl text-[13px] font-medium transition ' +
+            (period === 'total' ? 'bg-white dark:bg-[#2c2c2e] shadow-sm text-[#000] dark:text-white' : 'text-[#3C3C43] dark:text-[#EBEBF5] active:opacity-60')}>
+          Gesamt
+        </button>
+        <button onClick={() => setPeriod('4w')}
+          className={'flex-1 px-3 py-1.5 rounded-xl text-[13px] font-medium transition ' +
+            (period === '4w' ? 'bg-white dark:bg-[#2c2c2e] shadow-sm text-[#000] dark:text-white' : 'text-[#3C3C43] dark:text-[#EBEBF5] active:opacity-60')}>
+          Letzte 4 Wochen
+        </button>
       </div>
 
       {/* Headline: Gefahren-Quote — wichtigste Kennzahl */}
-      <div className="bg-gradient-to-br from-rose-50 to-rose-100 border-2 border-rose-200 rounded-2xl p-4">
-        <div className="flex items-center gap-1.5 mb-2">
-          <AlertTriangle size={14} className="text-rose-700" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-800">Gefahren-Quote</span>
-        </div>
-        <div className="flex items-baseline gap-2">
-          <div className="text-5xl font-bold text-rose-700 leading-none">{gefPctTotal.toFixed(1)}<span className="text-2xl">%</span></div>
-          <div className="text-xs text-rose-700/80">
-            <div className="font-medium">{total.fail} von {total.total}</div>
-            <div className="opacity-75">Trainer am Seil</div>
+      <div className="bg-[#FFE5E5] dark:bg-rose-950/30 border border-rose-200/60 dark:border-rose-900/40 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-2 gap-2">
+          <div className="flex items-center gap-1.5">
+            <AlertTriangle size={14} className="text-rose-600 dark:text-rose-400" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-700 dark:text-rose-300">Gefahren-Quote · {viewLabel}</span>
           </div>
+          {trendDelta !== null && view.total > 0 && (
+            <span className={'text-[11px] font-semibold ' + trendColor}>
+              {trendArrow} {Math.abs(trendDelta).toFixed(1)}% vs. {otherLabel}
+            </span>
+          )}
         </div>
-        {(gefPct30 !== null || gefPct90 !== null) && (
-          <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-rose-200/60">
-            <div className="text-center">
-              <div className="text-[10px] uppercase tracking-wide text-rose-700/70 font-medium">Letzte 30 Tage</div>
-              <div className="font-bold text-rose-700">
-                {gefPct30 === null ? '—' : gefPct30.toFixed(1) + '%'}
-              </div>
-              {window30.total > 0 && (
-                <div className="text-[10px] text-rose-700/60">{window30.fail} / {window30.total} Sprünge</div>
-              )}
-            </div>
-            <div className="text-center">
-              <div className="text-[10px] uppercase tracking-wide text-rose-700/70 font-medium">Letzte 90 Tage</div>
-              <div className="font-bold text-rose-700">
-                {gefPct90 === null ? '—' : gefPct90.toFixed(1) + '%'}
-              </div>
-              {window90.total > 0 && (
-                <div className="text-[10px] text-rose-700/60">{window90.fail} / {window90.total} Sprünge</div>
-              )}
+        {view.total > 0 ? (
+          <div className="flex items-baseline gap-2">
+            <div className="text-5xl font-bold text-rose-600 dark:text-rose-300 leading-none">{gefPctView.toFixed(1)}<span className="text-2xl">%</span></div>
+            <div className="text-xs text-rose-700/80 dark:text-rose-300/80">
+              <div className="font-medium">{view.fail} von {view.total}</div>
+              <div className="opacity-75">Trainer am Seil</div>
             </div>
           </div>
+        ) : (
+          <div className="text-[14px] text-rose-700/70 dark:text-rose-300/70">Keine Daten in diesem Zeitraum.</div>
         )}
       </div>
 
-      {/* Gesamt-Zahlen */}
+      {/* 3-Box-Aufteilung — passend zum gewählten Zeitraum */}
       <div className="grid grid-cols-3 gap-2 text-center text-xs">
-        <div className="bg-emerald-50 rounded-lg py-2.5">
-          <div className="text-emerald-700 font-bold text-2xl">{pct(total.success)}%</div>
-          <div className="text-slate-600">{statusLabel(exercise, 'success')}</div>
-          <div className="text-[10px] text-slate-400 mt-0.5">{total.success}× absolut</div>
+        <div className="bg-emerald-50 dark:bg-emerald-950/40 rounded-xl py-2.5 px-1">
+          <div className="text-emerald-700 dark:text-emerald-400 font-bold text-2xl">{pct(view.success, view.total)}%</div>
+          <div className="text-[#3C3C43] dark:text-[#EBEBF5]">{statusLabel(exercise, 'success')}</div>
+          <div className="text-[10px] text-[#8E8E93] mt-0.5">{view.success}× absolut</div>
         </div>
-        <div className="bg-amber-50 rounded-lg py-2.5">
-          <div className="text-amber-700 font-bold text-2xl">{pct(total.third)}%</div>
-          <div className="text-slate-600">{statusLabel(exercise, 'third')}</div>
-          <div className="text-[10px] text-slate-400 mt-0.5">{total.third}× absolut</div>
+        <div className="bg-amber-50 dark:bg-amber-950/40 rounded-xl py-2.5 px-1">
+          <div className="text-amber-700 dark:text-amber-400 font-bold text-2xl">{pct(view.third, view.total)}%</div>
+          <div className="text-[#3C3C43] dark:text-[#EBEBF5]">{statusLabel(exercise, 'third')}</div>
+          <div className="text-[10px] text-[#8E8E93] mt-0.5">{view.third}× absolut</div>
         </div>
-        <div className="bg-rose-50 rounded-lg py-2.5">
-          <div className="text-rose-700 font-bold text-2xl">{pct(total.fail)}%</div>
-          <div className="text-slate-600">{statusLabel(exercise, 'fail')}</div>
-          <div className="text-[10px] text-slate-400 mt-0.5">{total.fail}× absolut</div>
+        <div className="bg-rose-50 dark:bg-rose-950/40 rounded-xl py-2.5 px-1">
+          <div className="text-rose-700 dark:text-rose-400 font-bold text-2xl">{pct(view.fail, view.total)}%</div>
+          <div className="text-[#3C3C43] dark:text-[#EBEBF5]">{statusLabel(exercise, 'fail')}</div>
+          <div className="text-[10px] text-[#8E8E93] mt-0.5">{view.fail}× absolut</div>
         </div>
       </div>
 
