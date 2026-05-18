@@ -4441,7 +4441,7 @@ export default function App() {
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} />;
   else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={openFeedback} />;
-  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { setSelectedAthleteId(id); setView('dashboard'); }} myAthleteId={myAthleteId} />;
+  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { setSelectedAthleteId(id); setView('dashboard'); }} myAthleteId={myAthleteId} setView={setView} />;
   else if (view === 'export') viewEl = <ExportView data={effectiveData} setView={setView} />;
   else if (view === 'kuer' || view === 'video') {
     viewEl = <ComingSoon viewId={view} />;
@@ -6133,9 +6133,9 @@ function MyCoachesSection({ athlete, profilesById, onRefresh }) {
 
   const onGenerate = async () => {
     setBusy(true); setErr(''); setInfo('');
-    const labelInput = prompt('Optional: Name des Trainers (z.B. „Trainer Müller")');
-    const label = (labelInput || '').trim() || null;
-    const { error } = await generateCoachInvite(athlete.id, label);
+    // Kein Label-Prompt — der echte Name kommt automatisch aus dem
+    // profiles.display_name des Trainers, sobald er den Code einlöst.
+    const { error } = await generateCoachInvite(athlete.id, null);
     if (error) setErr(error.message);
     else setInfo('Code generiert. Gib ihn deinem Trainer.');
     await reload();
@@ -6198,7 +6198,7 @@ function MyCoachesSection({ athlete, profilesById, onRefresh }) {
           <div className="min-w-0 flex-1">
             <div className="font-mono text-[15px] font-semibold tracking-wider">{inv.claim_code}</div>
             <div className="text-[11px] text-[#8E8E93] truncate">
-              {inv.label ? inv.label + ' · ' : ''}aktualisiert {fmtDateTime(inv.claim_code_rotated_at)}
+              Wartet auf Einlösung · aktualisiert {fmtDateTime(inv.claim_code_rotated_at)}
             </div>
           </div>
           <button onClick={() => onCopyCode(inv.claim_code)} className="p-2 text-[#007AFF] active:opacity-60" aria-label="Code kopieren">
@@ -10921,7 +10921,7 @@ function AdminAccountsView({ open, onClose, initialFilter = '', autoOpenUserId =
   );
 }
 
-function SportlerView({ profile, session, athletes, profiles, refreshAthletes, ownData, onPickAthlete, myAthleteId }) {
+function SportlerView({ profile, session, athletes, profiles, refreshAthletes, ownData, onPickAthlete, myAthleteId, setView }) {
   const { t } = useI18n();
   // ALLE Hooks MÜSSEN vor dem ersten conditional return aufgerufen werden
   // (Rules-of-Hooks). Nach dem viewingAthlete-Early-Return waren ehemals
@@ -11147,16 +11147,15 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
               </button>
             )
           )}
-          {/* Sportler mit bestehender Trainer-Verknüpfung: Trainer wechseln */}
-          {isMine && linkedToCoach && !a.claim_code && (() => {
-            const coach = profileById.get(a.created_by_coach_id);
-            return (
-              <button onClick={() => onSwitchCoach(a.id, coach?.display_name)} disabled={busy}
-                className="text-[13px] bg-amber-100 text-amber-900 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
-                <KeyRound size={13} /> Trainer wechseln
-              </button>
-            );
-          })()}
+          {/* Eigener Sportler-Eintrag: „Trainer verwalten" springt in
+              Einstellungen (dort kann man Trainer hinzufügen/entfernen,
+              Codes generieren + rotieren lassen). */}
+          {isMine && setView && (
+            <button onClick={() => setView('einstellungen')}
+              className="text-[13px] bg-amber-100 text-amber-900 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
+              <UserCog size={13} /> Trainer verwalten
+            </button>
+          )}
         </div>
       </div>
     );
