@@ -4245,66 +4245,93 @@ export default function App() {
     has_rope_variant: !!e.has_rope_variant
   }), []);
 
+  // Athleten-Auswahl: standardmäßig eigener Athlet (wenn vorhanden),
+  // sonst null (= „nur Trainer" — muss aktiv Sportler wählen).
+  // MUSS vor `save` stehen, damit dessen useCallback-Deps darauf zugreifen können.
+  const myAthleteId = useMemo(
+    () => dbAthletes.find(a => a.auth_user_id === session?.user?.id)?.id || null,
+    [dbAthletes, session?.user?.id]
+  );
+  const [selectedAthleteId, setSelectedAthleteId] = useState(null);
+  useEffect(() => {
+    if (selectedAthleteId) return;
+    if (myAthleteId) setSelectedAthleteId(myAthleteId);
+  }, [myAthleteId, selectedAthleteId]);
+  const selectedAthlete = useMemo(
+    () => dbAthletes.find(a => a.id === selectedAthleteId) || null,
+    [dbAthletes, selectedAthleteId]
+  );
+  const isOwnAthlete = !selectedAthlete || selectedAthlete.auth_user_id === session?.user?.id;
+  const isReadOnlyView = !!selectedAthleteId && !isOwnAthlete;
+
   const save = useCallback(async (next) => {
     setActiveDb(next.uci_custom);
-    // Phase 9d-3: wenn migriert, Entitäten in DB syncen statt nur in Blob.
-    // WICHTIG: Reihenfolge folgt Foreign-Key-Dependencies — Referenz-Tabellen
-    // VOR Tabellen, die sie referenzieren. Sonst kassiert Postgres FK-Violations
-    // (Supabase loggt nur in console.warn, deshalb sah's so aus als würde es
-    // 'einfach nicht speichern'). Konkrete Fälle:
-    //   competitions.program_id → programs.id  (Wettkampf nach Programm)
-    //   competitions.athlete_id → athletes.id  (Athleten gibt's bereits)
-    //   sessions.exercise_id    → exercises.id (Session nach Übung)
+
+    // Athleten-Scope für DB-Sync:
+    //  • selectedAthleteId gesetzt → wir bearbeiten genau diesen Athleten.
+    //    Sessions/Competitions werden auf athlete_id gefiltert (für current UND next),
+    //    damit der Diff nur Daten dieses Athleten anfasst — Daten anderer Athleten
+    //    bleiben in der DB unangetastet.
+    //  • Programs/Exercises: nur wenn eigener Athlet schreiben (sonst würde der
+    //    Trainer die Programme des Sportlers mit owner_id=trainer überschreiben).
+    const filterId = selectedAthleteId;
+    const sf = (s) => !filterId || (s.athleteId || s.athlete_id) === filterId;
+    const cf = (c) => !filterId || (c.athlete_id || c.athleteId) === filterId;
+    const ownerWritable = isOwnAthlete; // = eigener Athlet ODER kein Filter
+
     if (data && data.migrated_to_tables) {
       try {
-        // 1. Exercises (keine FKs)
-        if (next.exercises) {
+        if (ownerWritable && next.exercises) {
           const current = dbExercises.map(dbExerciseToBlob);
           await syncListToDb(current, next.exercises, upsertExercise, deleteExercise, normalizeExercise);
           await refreshExercises();
         }
-        // 2. Programs (programs.exercises ist JSONB, keine echte FK)
-        if (next.programs) {
+        if (ownerWritable && next.programs) {
           const current = dbPrograms.map(dbProgramToBlob);
           await syncListToDb(current, next.programs, upsertProgram, deleteProgram, normalizeProgram);
           await refreshPrograms();
         }
-        // 3. Sessions (verweist auf exercises + athletes)
         if (next.sessions) {
-          const currentSessions = dbSessions.map(dbSessionToBlob);
-          await syncSessionsToDb(currentSessions, next.sessions);
+          const current = dbSessions.map(dbSessionToBlob).filter(sf);
+          const newOnes = (next.sessions || []).filter(sf);
+          await syncSessionsToDb(current, newOnes);
           await refreshSessions();
         }
-        // 4. Competitions zuletzt (verweist auf programs + athletes)
         if (next.competitions) {
-          const current = dbCompetitions.map(dbCompetitionToBlob);
-          await syncListToDb(current, next.competitions, upsertCompetition, deleteCompetition, normalizeCompetition);
+          const current = dbCompetitions.map(dbCompetitionToBlob).filter(cf);
+          const newOnes = (next.competitions || []).filter(cf);
+          await syncListToDb(current, newOnes, upsertCompetition, deleteCompetition, normalizeCompetition);
           await refreshCompetitions();
         }
       } catch (e) {
         console.warn('DB-Sync fehlgeschlagen:', e);
       }
     }
-    // Bei migrierten Usern: Source of Truth = DB. Im Blob nur noch Preferences.
-    const blobNext = (data && data.migrated_to_tables)
-      ? { ...next, sessions: [], competitions: [], programs: [], exercises: [] }
-      : next;
-    setData(next);
-    if (userDataKey) await storage.set(userDataKey, JSON.stringify(blobNext));
-    // Debounced Cloud-Push
-    if (cloudPushTimer.id) clearTimeout(cloudPushTimer.id);
-    setCloudStatus('syncing');
-    cloudPushTimer.id = setTimeout(async () => {
-      const { error } = await pushCloudSnapshot(blobNext);
-      setCloudStatus(error ? 'error' : 'idle');
-    }, 2000);
+
+    // localStorage/Cloud-Snapshot nur bei eigenem Athleten anfassen.
+    // Bei fremdem Athleten: data + Blob unverändert lassen — die UI rebuildet
+    // sich nach refreshSessions/Competitions über effectiveData neu.
+    if (ownerWritable) {
+      const blobNext = (data && data.migrated_to_tables)
+        ? { ...next, sessions: [], competitions: [], programs: [], exercises: [] }
+        : next;
+      setData(next);
+      if (userDataKey) await storage.set(userDataKey, JSON.stringify(blobNext));
+      if (cloudPushTimer.id) clearTimeout(cloudPushTimer.id);
+      setCloudStatus('syncing');
+      cloudPushTimer.id = setTimeout(async () => {
+        const { error } = await pushCloudSnapshot(blobNext);
+        setCloudStatus(error ? 'error' : 'idle');
+      }, 2000);
+    }
   }, [
     userDataKey, cloudPushTimer, data,
     dbSessions, dbCompetitions, dbPrograms, dbExercises,
     dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob,
     syncSessionsToDb, syncListToDb,
     refreshSessions, refreshCompetitions, refreshPrograms, refreshExercises,
-    normalizeCompetition, normalizeProgram, normalizeExercise
+    normalizeCompetition, normalizeProgram, normalizeExercise,
+    selectedAthleteId, isOwnAthlete
   ]);
 
   const resetAll = useCallback(() => {
@@ -4328,7 +4355,6 @@ export default function App() {
     if (!data) return data;
     if (!data.migrated_to_tables) return data;
     // Maute-Sprung: has_rope_variant auto-aktivieren falls in DB nicht gesetzt
-    // (Migration läuft sonst nur auf lokalem Blob, nicht auf DB-Exercises)
     const exercises = dbExercises.map(e => {
       const blob = dbExerciseToBlob(e);
       if (!blob.has_rope_variant && (blob.name || '').toLowerCase().includes('maute')) {
@@ -4336,14 +4362,28 @@ export default function App() {
       }
       return blob;
     });
+    // Sessions/Competitions auf den ausgewählten Athleten filtern.
+    // Bei „eigener Sportler" filtern wir trotzdem (auch eigene Daten haben
+    // athlete_id gesetzt, also konsistente Filterung).
+    const filterId = selectedAthleteId;
+    const sessions = (filterId
+      ? dbSessions.filter(s => s.athlete_id === filterId)
+      : dbSessions
+    ).map(dbSessionToBlob);
+    const competitions = (filterId
+      ? dbCompetitions.filter(c => c.athlete_id === filterId)
+      : dbCompetitions
+    ).map(dbCompetitionToBlob);
     return {
       ...data,
-      sessions: dbSessions.map(dbSessionToBlob),
-      competitions: dbCompetitions.map(dbCompetitionToBlob),
+      sessions,
+      competitions,
       programs: dbPrograms.map(dbProgramToBlob),
-      exercises
+      exercises,
+      _viewingAthleteId: selectedAthleteId,
+      _isReadOnly: isReadOnlyView,
     };
-  }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob]);
+  }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob, selectedAthleteId, isReadOnlyView]);
 
   if (!authChecked || loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#F2F2F7] gap-5"
@@ -4401,7 +4441,7 @@ export default function App() {
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} />;
   else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={openFeedback} />;
-  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} ownData={effectiveData} />;
+  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { setSelectedAthleteId(id); setView('dashboard'); }} myAthleteId={myAthleteId} />;
   else if (view === 'export') viewEl = <ExportView data={effectiveData} setView={setView} />;
   else if (view === 'kuer' || view === 'video') {
     viewEl = <ComingSoon viewId={view} />;
@@ -4476,7 +4516,23 @@ export default function App() {
         view={view}
         setView={setView}
         visibleNav={nav.filter(n => !n.soon).slice(0, 5)}>
-        <div className="max-w-5xl mx-auto p-4 sm:p-8">{viewEl}</div>
+        <div className="max-w-5xl mx-auto p-4 sm:p-8">
+          {selectedAthlete && !isOwnAthlete && (
+            <div className="mb-4 -mt-1 bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 rounded-2xl px-4 py-2.5 flex items-center gap-2 text-[13px] font-medium shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+              <Crown size={14} strokeWidth={2.4} className="shrink-0" />
+              <span className="flex-1 truncate">
+                Du bearbeitest gerade <strong>{selectedAthlete.name}</strong>
+              </span>
+              {myAthleteId && (
+                <button onClick={() => setSelectedAthleteId(myAthleteId)}
+                  className="text-[12px] underline underline-offset-2 active:opacity-60 shrink-0">
+                  Zurück zu mir
+                </button>
+              )}
+            </div>
+          )}
+          {viewEl}
+        </div>
       </SwipeableMain>
 
       {/* Mobile Bottom-Nav — iOS 26 Liquid Glass Pill mit Finger-Drag */}
@@ -10752,7 +10808,7 @@ function AdminAccountsView({ open, onClose, initialFilter = '', autoOpenUserId =
   );
 }
 
-function SportlerView({ profile, session, athletes, profiles, refreshAthletes, ownData }) {
+function SportlerView({ profile, session, athletes, profiles, refreshAthletes, ownData, onPickAthlete, myAthleteId }) {
   const { t } = useI18n();
   // ALLE Hooks MÜSSEN vor dem ersten conditional return aufgerufen werden
   // (Rules-of-Hooks). Nach dem viewingAthlete-Early-Return waren ehemals
@@ -10762,7 +10818,6 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
     (profiles || []).forEach(p => m.set(p.id, p));
     return m;
   }, [profiles]);
-  const [viewingAthlete, setViewingAthlete] = useState(null);
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -10775,9 +10830,11 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
   const [adminPrefilter, setAdminPrefilter] = useState('');
   const [adminPreselectUserId, setAdminPreselectUserId] = useState(null);
 
-  if (viewingAthlete) {
-    return <AthleteDetailView athlete={viewingAthlete} ownData={ownData} onBack={() => setViewingAthlete(null)} />;
-  }
+  // „Daten ansehen" auf einem Athleten → wechselt die ganze App in die
+  // Sicht dieses Athleten (Dashboard/Training/Wettkampf/Übungen zeigen
+  // dessen Daten). Trainer können dann sogar Sessions/Wettkämpfe FÜR
+  // diesen Sportler erfassen (RLS lässt durch, wenn `created_by_coach_id`
+  // den Trainer enthält).
 
   // Owner = harter Email-Check. NUR für Ruben sichtbar.
   // Selbst wenn jemand anders versehentlich profiles.role = 'admin' bekommt,
@@ -10956,9 +11013,10 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
           )}
         </div>
         <div className="mt-2 flex gap-2 flex-wrap items-center">
-          {/* "Daten ansehen" für Athleten die ich verwalte (= mir gehört oder ich bin Coach) */}
-          {!isMine && (isManagedByMe || isAdmin) && (
-            <button onClick={() => setViewingAthlete(a)}
+          {/* "Daten ansehen / verwalten" → wechselt die ganze App in die
+              Sicht dieses Athleten (Trainer arbeitet dann FÜR ihn). */}
+          {!isMine && (isManagedByMe || isAdmin) && onPickAthlete && (
+            <button onClick={() => onPickAthlete(a.id)}
               className="text-[13px] bg-slate-100 text-slate-800 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
               <BarChart3 size={13} /> {t('athletes.viewData')}
             </button>
