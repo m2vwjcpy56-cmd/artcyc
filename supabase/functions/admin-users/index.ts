@@ -44,11 +44,18 @@ const SUPABASE_URL              = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_ANON_KEY         = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 // @ts-ignore Deno-Runtime
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-// Owner-Allowlist — komma-separierte E-Mail-Liste. NUR diese Adressen dürfen
-// diese Funktion aufrufen. Standardwert ist Rubens Adresse, damit die Funktion
-// auch ohne explizit gesetzte Env-Var sicher ist.
+// Owner-Allowlist — primärer Anker ist die stabile auth.users.id.
+// Komma-separierte UID-Liste in OWNER_USER_IDS. Defense-in-Depth:
+// Email-Fallback aus OWNER_EMAILS. Beide Defaults sind hardgecodet,
+// damit die Function auch ohne explizit gesetzte Env-Vars sicher ist.
 // @ts-ignore Deno-Runtime
-const OWNER_EMAILS_RAW = Deno.env.get("OWNER_EMAILS") ?? "info@neue-weberei.de";
+const OWNER_USER_IDS_RAW = Deno.env.get("OWNER_USER_IDS") ?? "339bfe2b-e0c5-4a1b-8a94-d44d2c0cb3d4";
+const OWNER_USER_IDS = OWNER_USER_IDS_RAW
+  .split(",")
+  .map(s => s.trim().toLowerCase())
+  .filter(Boolean);
+// @ts-ignore Deno-Runtime
+const OWNER_EMAILS_RAW = Deno.env.get("OWNER_EMAILS") ?? "felder-regenbogen9q@icloud.com,info@neue-weberei.de";
 const OWNER_EMAILS = OWNER_EMAILS_RAW
   .split(",")
   .map(s => s.trim().toLowerCase())
@@ -88,10 +95,13 @@ Deno.serve(async (req: Request) => {
   const callerId = userData.user.id;
   const callerEmail = (userData.user.email || "").toLowerCase();
 
-  // 2) Owner-Check: harte Allowlist (NICHT nur Admin-Rolle, sondern explizite
-  // E-Mail). So kann selbst ein User, der versehentlich Admin-Rolle bekommen
-  // hat, hier nichts ausrichten.
-  if (!callerEmail || !OWNER_EMAILS.includes(callerEmail)) {
+  // 2) Owner-Check: stabile UID als primärer Anker (überlebt Email-Wechsel
+  // und iCloud-Hide-My-Email-Toggles), E-Mail als Defense-in-Depth-Fallback.
+  // Auch ein User, der versehentlich profiles.role=admin bekommt, kommt hier
+  // nicht durch — er muss explizit in einer der Allowlists stehen.
+  const idOk = OWNER_USER_IDS.includes(callerId.toLowerCase());
+  const emailOk = !!callerEmail && OWNER_EMAILS.includes(callerEmail);
+  if (!idOk && !emailOk) {
     return badRequest(req, "Nur der App-Owner darf diese Aktion ausführen", 403);
   }
 

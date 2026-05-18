@@ -288,12 +288,22 @@ export async function redeemAthleteCode(code) {
 // Wir prüfen die Owner-Eigenschaft zusätzlich im Frontend (s.u.),
 // damit Buttons gar nicht erst angezeigt werden.
 
-// Wer ist Owner? Halten wir im Frontend deckungsgleich mit der
-// Edge-Function-Allowlist (OWNER_EMAILS env-var).
-export const OWNER_EMAILS = ['info@neue-weberei.de'];
+// Wer ist Owner? Primärer Anker ist die stabile Supabase-Auth-UID.
+// Email kann sich ändern (iCloud-Hide-My-Email, Provider-Wechsel) —
+// die UUID nicht. Email-Allowlist bleibt als Defense-in-Depth-Fallback.
+export const OWNER_USER_IDS = [
+  '339bfe2b-e0c5-4a1b-8a94-d44d2c0cb3d4', // Ruben
+];
+export const OWNER_EMAILS = [
+  'felder-regenbogen9q@icloud.com',
+  'info@neue-weberei.de',
+];
 
 export function isAppOwner(session) {
-  const email = (session?.user?.email || '').toLowerCase();
+  const u = session?.user;
+  if (!u) return false;
+  if (OWNER_USER_IDS.includes(u.id)) return true;
+  const email = (u.email || '').toLowerCase();
   return !!email && OWNER_EMAILS.includes(email);
 }
 
