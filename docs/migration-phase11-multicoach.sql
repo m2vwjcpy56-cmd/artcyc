@@ -174,7 +174,9 @@ $$;
 CREATE OR REPLACE FUNCTION redeem_athlete_code(input_code TEXT)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
-  rec record; inv record; result JSONB; recent_failed_count INT;
+  rec record; inv record;
+  inv_found BOOLEAN; rec_found BOOLEAN;
+  result JSONB; recent_failed_count INT;
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Nicht angemeldet'; END IF;
 
@@ -195,7 +197,8 @@ BEGIN
     JOIN athletes a ON a.id = ci.athlete_id
    WHERE ci.claim_code = input_code AND ci.used_at IS NULL
    LIMIT 1;
-  IF inv IS NOT NULL THEN
+  inv_found := FOUND;
+  IF inv_found THEN
     IF inv.athlete_user = auth.uid() THEN
       RAISE EXCEPTION 'Du kannst deinen eigenen Code nicht einloesen';
     END IF;
@@ -218,7 +221,8 @@ BEGIN
     FROM public.athletes
    WHERE claim_code = input_code AND claim_code_used_at IS NULL
    LIMIT 1;
-  IF rec IS NULL THEN
+  rec_found := FOUND;
+  IF NOT rec_found THEN
     INSERT INTO public.claim_code_attempts(user_id) VALUES (auth.uid());
     RAISE EXCEPTION 'Code ungueltig oder bereits eingeloest';
   END IF;
