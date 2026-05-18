@@ -10151,6 +10151,9 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
   const [editEmail, setEditEmail] = useState(false);
   const [newEmail, setNewEmail] = useState('');
 
+  // Reset nur bei echtem User-Wechsel (user.id ändert sich), NICHT bei
+  // bloßem Refresh des gleichen Users (sonst würde der gerade gesetzte
+  // actionLink nach onMutated→reload sofort wieder verschwinden).
   useEffect(() => {
     if (open && user) {
       setNewName(user.profile?.display_name || '');
@@ -10158,7 +10161,8 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
       setErr(''); setInfo(''); setActionLink('');
       setConfirmDelete(false); setEditName(false); setEditEmail(false);
     }
-  }, [open, user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, user?.id]);
 
   if (!open || !user) return null;
 
