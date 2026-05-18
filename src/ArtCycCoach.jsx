@@ -5977,6 +5977,10 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
     { id: 'dark',   label: t('settings.appearanceDark'),  Icon: Moon },
   ];
 
+  // Owner-Only Admin-Bereich (sichtbar nur für Ruben)
+  const isOwner = isAppOwner(session);
+  const [showAdminAccounts, setShowAdminAccounts] = useState(false);
+
   return (
     <div className="space-y-6">
       <header className="pt-2 px-1">
@@ -6007,6 +6011,24 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
             <span className="text-[15px] text-[#FF3B30] font-medium">{t('settings.signOut')}</span>
           </IOSListRow>
         </IOSList>
+      )}
+
+      {/* Owner-Admin — nur für Ruben sichtbar */}
+      {isOwner && (
+        <IOSList header="Admin" footer="Account-Verwaltung für alle registrierten Nutzer.">
+          <IOSListRow
+            onClick={() => setShowAdminAccounts(true)}
+            trailing={<ChevronRight size={16} className="text-[#C7C7CC]" />}>
+            <div className="flex items-center gap-3">
+              <Crown size={18} className="text-[#FF9500]" />
+              <span className="text-[15px]">Alle Accounts verwalten</span>
+            </div>
+          </IOSListRow>
+        </IOSList>
+      )}
+
+      {isOwner && (
+        <AdminAccountsView open={showAdminAccounts} onClose={() => setShowAdminAccounts(false)} />
       )}
 
       {/* Feedback — prominent direkt unter Account, blau-akzentuiert */}
@@ -8700,23 +8722,28 @@ function WettkampfView({ data, setData, dbAthletes }) {
     />;
   }
 
-  // Wettkämpfe mit berechnetem Endergebnis annotieren + nach Datum sortieren
+  // Wettkämpfe mit berechnetem Endergebnis + Gesamtabzug pro KG-Mittel annotieren
   const enriched = competitions.map(c => {
     const program = programs.find(p => p.id === c.program_id);
     const t1 = program ? calcTableResult(program, c.table1, c.t1_schwierigkeit) : null;
     const t2 = program ? calcTableResult(program, c.table2, c.t2_schwierigkeit) : null;
     const final = (t1 && t2) ? Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100 : null;
-    return { c, final };
+    const ded = (t1 && t2) ? Math.round(((t1.abzugGesamt + t2.abzugGesamt) / 2) * 100) / 100 : null;
+    return { c, final, ded };
   });
   const sorted = [...enriched].sort((a, b) => (b.c.date || '').localeCompare(a.c.date || ''));
 
   // Aggregat-Statistiken über alle Wettkämpfe mit gültigem Endergebnis
   const withFinal = enriched.filter(x => x.final !== null);
   const stats = (() => {
-    if (withFinal.length === 0) return { best: null, avg: null, last: sorted[0] || null };
+    if (withFinal.length === 0) return { best: null, avg: null, avgDed: null, last: sorted[0] || null };
     const best = withFinal.reduce((a, b) => b.final > a.final ? b : a);
     const avg = withFinal.reduce((s, x) => s + x.final, 0) / withFinal.length;
-    return { best, avg, last: sorted[0] };
+    const withDed = withFinal.filter(x => x.ded !== null);
+    const avgDed = withDed.length > 0
+      ? withDed.reduce((s, x) => s + x.ded, 0) / withDed.length
+      : null;
+    return { best, avg, avgDed, last: sorted[0] };
   })();
   const currentYear = new Date().getFullYear();
   const thisYearCount = competitions.filter(c => (c.date || '').startsWith(String(currentYear))).length;
@@ -8816,8 +8843,8 @@ function WettkampfView({ data, setData, dbAthletes }) {
             />
             <StatCard
               icon={TrendingUp}
-              label="Ø Ergebnis"
-              value={stats.avg !== null ? stats.avg.toFixed(2) : '—'}
+              label="Ø Abzug"
+              value={stats.avgDed !== null ? stats.avgDed.toFixed(2) : '—'}
               sub={withFinal.length > 0 ? 'aus ' + withFinal.length : 'noch keine'}
               color="violet"
             />
@@ -10445,8 +10472,9 @@ function AdminAccountsView({ open, onClose, initialFilter = '', autoOpenUserId =
   });
 
   return (
-    <div className="fixed inset-0 z-40 bg-[#F2F2F7] flex flex-col">
-      <div className="sticky top-0 bg-[#F2F2F7]/95 backdrop-blur-xl px-4 py-3 flex items-center justify-between z-10 border-b border-[#C6C6C8]/40">
+    <div className="fixed inset-0 z-40 bg-[#F2F2F7] flex flex-col"
+      style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      <div className="bg-[#F2F2F7]/95 backdrop-blur-xl px-4 py-3 flex items-center justify-between z-10 border-b border-[#C6C6C8]/40">
         <button onClick={onClose} className="text-[17px] text-[#FF9500] active:opacity-60 px-1 flex items-center gap-1">
           <ChevronLeft size={20} strokeWidth={2.6} /> Zurück
         </button>
@@ -10749,13 +10777,6 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
           <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('athletes.title')}</h1>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {isOwner && (
-            <button onClick={() => { setAdminPrefilter(''); setAdminPreselectUserId(null); setShowAdminAccounts(true); }}
-              className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-sm active:scale-95 transition"
-              title="Owner-Admin: Alle Accounts">
-              <Crown size={16} /> Alle Accounts
-            </button>
-          )}
           <button onClick={() => { setShowRedeemModal(true); setRedeemCode(''); }}
             className="bg-white border border-slate-300 px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 active:scale-95 transition">
             <KeyRound size={16} /> {t('athletes.redeemCode')}
