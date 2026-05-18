@@ -257,6 +257,13 @@ export async function fetchExercises() {
 export async function upsertExercise(ex) {
   const payload = { ...ex };
   if (!payload.id) delete payload.id;
+  // owner_id IMMER setzen — sonst landen Bulk-Importe als „globale UCI-Übungen"
+  // (owner_id IS NULL), was nur Admin-/Seed-Daten vorbehalten ist und beim
+  // PDF-Import zu Müll-Einträgen mit generischen Namen geführt hat.
+  if (payload.owner_id == null) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) payload.owner_id = user.id;
+  }
   const { data, error } = await supabase.from('exercises').upsert(payload).select().single();
   return { data, error };
 }

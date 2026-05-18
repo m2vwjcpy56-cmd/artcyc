@@ -4637,7 +4637,7 @@ function AuthScreen() {
               <div>
                 <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">{t('auth.displayName')}</label>
                 <input value={displayName} onChange={e => setDisplayName(e.target.value)}
-                  placeholder="z.B. Ruben"
+                  placeholder="Vor- oder Spitzname"
                   autoComplete="name"
                   className="w-full px-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
               </div>
@@ -10699,6 +10699,21 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
     setBusy(false);
   };
 
+  // Sportler löst Trainer-Verknüpfung UND generiert direkt neuen Code,
+  // damit ein anderer Trainer einlösen kann. Die redeem-RPC würde sonst
+  // mit „bereits mit Trainer verknüpft" abblocken.
+  const onSwitchCoach = async (athleteId, coachName) => {
+    if (!confirm('Aktuellen Trainer (' + (coachName || '—') + ') entfernen und neuen Code generieren?\n\nDer bisherige Trainer hat danach keinen Zugriff mehr auf deine Daten.')) return;
+    setBusy(true); setErr(''); setInfo('');
+    const { error: revokeErr } = await updateAthlete(athleteId, { created_by_coach_id: null });
+    if (revokeErr) { setErr(revokeErr.message); setBusy(false); return; }
+    const { error: codeErr } = await generateClaimCodeForAthlete(athleteId);
+    if (codeErr) { setErr(codeErr.message); setBusy(false); return; }
+    setInfo('Neuer Code generiert — gib ihn deinem neuen Trainer weiter.');
+    await refreshAthletes();
+    setBusy(false);
+  };
+
   const onRedeemCode = async () => {
     if (!redeemCode.trim()) return;
     setBusy(true); setErr(''); setInfo('');
@@ -10841,6 +10856,16 @@ function SportlerView({ profile, session, athletes, profiles, refreshAthletes, o
               </button>
             )
           )}
+          {/* Sportler mit bestehender Trainer-Verknüpfung: Trainer wechseln */}
+          {isMine && linkedToCoach && !a.claim_code && (() => {
+            const coach = profileById.get(a.created_by_coach_id);
+            return (
+              <button onClick={() => onSwitchCoach(a.id, coach?.display_name)} disabled={busy}
+                className="text-[13px] bg-amber-100 text-amber-900 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
+                <KeyRound size={13} /> Trainer wechseln
+              </button>
+            );
+          })()}
         </div>
       </div>
     );
