@@ -4506,7 +4506,7 @@ export default function App() {
   else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} />;
-  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={openFeedback} />;
+  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} dbAthleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={openFeedback} />;
   else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} athleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { setSelectedAthleteId(id); setView('dashboard'); }} myAthleteId={myAthleteId} setView={setView} />;
   else if (view === 'export') viewEl = <ExportView data={effectiveData} setView={setView} />;
   else if (view === 'kuer' || view === 'video') {
@@ -6327,7 +6327,7 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
   );
 }
 
-function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, refreshAthletes, theme, setTheme, langPref, setLangPref, rulesLangPref, setRulesLangPref, setView, onOpenFeedback }) {
+function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, dbAthleteCoaches, refreshAthletes, theme, setTheme, langPref, setLangPref, rulesLangPref, setRulesLangPref, setView, onOpenFeedback }) {
   const { t } = useI18n();
   const roleLabel = profile?.role === 'admin' ? t('role.admin') : profile?.role === 'coach' ? t('role.coach') : t('role.athlete');
   const syncLabel = cloudStatus === 'syncing' ? t('settings.cloudSyncing') : cloudStatus === 'error' ? t('settings.cloudSyncError') : t('settings.cloudSynced');
@@ -6562,6 +6562,43 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
       </IOSList>
 
       <BackupSettings data={data} setData={setData} />
+
+      {/* App-Cache + Diagnose */}
+      <IOSList header="Diagnose" footer={'Falls Sportler-Daten nicht angezeigt werden, hilft meistens „Cache leeren + neu laden". Die Diagnose-Info zeigt, welche Verknüpfungen die App lokal kennt.'}>
+        <IOSListRow
+          onClick={async () => {
+            if (!confirm('App-Cache leeren und neu laden?\n\nDeine Daten bleiben — nur der lokale Cache (Service Worker + Browser) wird zurückgesetzt.')) return;
+            try {
+              if ('serviceWorker' in navigator) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(regs.map(r => r.unregister()));
+              }
+              if ('caches' in window) {
+                const keys = await caches.keys();
+                await Promise.all(keys.map(k => caches.delete(k)));
+              }
+            } catch (e) { console.warn('Cache-Clear failed:', e); }
+            window.location.reload();
+          }}
+          trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
+          <span className="flex items-center gap-3">
+            <RefreshCw size={18} className="text-[#FF9500]" />
+            <span className="text-[15px] font-medium">App-Cache leeren + neu laden</span>
+          </span>
+        </IOSListRow>
+        <div className="px-4 py-3 text-[11px] font-mono text-[#8E8E93] leading-relaxed space-y-0.5 break-all">
+          <div>User-ID: {session?.user?.id || '—'}</div>
+          <div>E-Mail: {session?.user?.email || '—'}</div>
+          <div>Rolle: {profile?.role || '—'}</div>
+          <div>Athletes (sichtbar): {(dbAthletes || []).length}</div>
+          <div>Athlete-Coach-Links: {(dbAthleteCoaches || []).length}</div>
+          <div>Eigener Athlet: {(dbAthletes || []).find(a => a.auth_user_id === session?.user?.id)?.name || '— (kein eigener Eintrag)'}</div>
+          <div>Als Coach von: {(dbAthleteCoaches || []).filter(ac => ac.coach_id === session?.user?.id).map(ac => {
+            const a = (dbAthletes || []).find(x => x.id === ac.athlete_id);
+            return a?.name || ac.athlete_id.slice(0,8);
+          }).join(', ') || '—'}</div>
+        </div>
+      </IOSList>
 
       {/* Reset */}
       <IOSList footer={t('settings.resetFooter')}>
