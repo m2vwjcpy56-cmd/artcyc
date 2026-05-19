@@ -4297,16 +4297,38 @@ export default function App() {
     [dbAthletes, session?.user?.id]
   );
   const [selectedAthleteId, setSelectedAthleteId] = useState(null);
+  // Liste aller Athleten, auf die ich Zugriff habe — eigener + via athlete_coaches
+  // oder als Haupt-Coach + (für Admin: alle). Eigener immer zuerst.
+  const availableAthletes = useMemo(() => {
+    const list = [];
+    const own = dbAthletes.find(a => a.auth_user_id === session?.user?.id);
+    if (own) list.push(own);
+    const seen = new Set(list.map(a => a.id));
+    dbAthletes.forEach(a => {
+      if (seen.has(a.id)) return;
+      const isManaged = a.created_by_coach_id === session?.user?.id
+        || (dbAthleteCoaches || []).some(ac => ac.athlete_id === a.id && ac.coach_id === session?.user?.id);
+      if (isManaged) { list.push(a); seen.add(a.id); }
+    });
+    if (profile?.role === 'admin') {
+      dbAthletes.forEach(a => { if (!seen.has(a.id)) { list.push(a); seen.add(a.id); } });
+    }
+    return list;
+  }, [dbAthletes, dbAthleteCoaches, session?.user?.id, profile?.role]);
+  // Default-Auswahl: eigener Athlet wenn vorhanden, sonst der erste verfügbare
+  // (= erster managed Sportler für reine Trainer ohne eigenen Eintrag).
   useEffect(() => {
     if (selectedAthleteId) return;
-    if (myAthleteId) setSelectedAthleteId(myAthleteId);
-  }, [myAthleteId, selectedAthleteId]);
+    if (myAthleteId) { setSelectedAthleteId(myAthleteId); return; }
+    if (availableAthletes.length > 0) setSelectedAthleteId(availableAthletes[0].id);
+  }, [myAthleteId, selectedAthleteId, availableAthletes]);
   const selectedAthlete = useMemo(
     () => dbAthletes.find(a => a.id === selectedAthleteId) || null,
     [dbAthletes, selectedAthleteId]
   );
   const isOwnAthlete = !selectedAthlete || selectedAthlete.auth_user_id === session?.user?.id;
   const isReadOnlyView = !!selectedAthleteId && !isOwnAthlete;
+  const [showAthletePicker, setShowAthletePicker] = useState(false);
 
   const save = useCallback(async (next) => {
     setActiveDb(next.uci_custom);
@@ -4561,22 +4583,61 @@ export default function App() {
         setView={setView}
         visibleNav={nav.filter(n => !n.soon).slice(0, 5)}>
         <div className="max-w-5xl mx-auto p-4 sm:p-8">
-          {selectedAthlete && !isOwnAthlete && (
-            <div className="mb-4 -mt-1 bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 rounded-2xl px-4 py-2.5 flex items-center gap-2 text-[13px] font-medium shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
-              <Crown size={14} strokeWidth={2.4} className="shrink-0" />
-              <span className="flex-1 truncate">
-                Du bearbeitest gerade <strong>{selectedAthlete.name}</strong>
+          {/* Athleten-Banner — zeigt immer den aktiven Sportler, mit Picker
+              wenn mehrere wählbar sind. Bei nicht-eigenem orange (Trainer-Sicht),
+              bei eigenem dezent grau. */}
+          {selectedAthlete && (availableAthletes.length > 1 || !isOwnAthlete) && (
+            <button
+              onClick={() => availableAthletes.length > 1 && setShowAthletePicker(true)}
+              disabled={availableAthletes.length <= 1}
+              className={'w-full mb-4 -mt-1 rounded-2xl px-4 py-2.5 flex items-center gap-2 text-[13px] font-medium shadow-[0_1px_3px_rgba(0,0,0,0.05)] active:opacity-80 ' +
+                (isOwnAthlete
+                  ? 'bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300'
+                  : 'bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200')}>
+              {isOwnAthlete
+                ? <User size={14} strokeWidth={2.4} className="shrink-0" />
+                : <Crown size={14} strokeWidth={2.4} className="shrink-0" />}
+              <span className="flex-1 text-left truncate">
+                {isOwnAthlete ? 'Eigene Daten' : 'Du bearbeitest'}: <strong>{selectedAthlete.name}</strong>
               </span>
-              {myAthleteId && (
-                <button onClick={() => setSelectedAthleteId(myAthleteId)}
-                  className="text-[12px] underline underline-offset-2 active:opacity-60 shrink-0">
-                  Zurück zu mir
-                </button>
+              {availableAthletes.length > 1 && (
+                <span className="text-[11px] opacity-70 shrink-0">wechseln ▾</span>
               )}
-            </div>
+            </button>
           )}
           {viewEl}
         </div>
+
+        {/* Athleten-Picker-Sheet — zeigt alle wählbaren Sportler */}
+        {showAthletePicker && (
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={() => setShowAthletePicker(false)}>
+            <div className="bg-white dark:bg-[#1c1c1e] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl px-4 py-3 flex items-center justify-between border-b border-slate-200/60 dark:border-white/10">
+                <h3 className="font-semibold text-[17px]">Sportler auswählen</h3>
+                <button onClick={() => setShowAthletePicker(false)} className="p-1 text-[#8E8E93] active:opacity-60"><X size={20} /></button>
+              </div>
+              <div className="p-2">
+                {availableAthletes.map(a => {
+                  const isMe = a.auth_user_id === session?.user?.id;
+                  const isSel = a.id === selectedAthleteId;
+                  return (
+                    <button key={a.id} onClick={() => { setSelectedAthleteId(a.id); setShowAthletePicker(false); }}
+                      className={'w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 active:bg-[#D1D1D6]/40 ' +
+                        (isSel ? 'bg-[#FF9500]/10' : '')}>
+                      {isMe ? <User size={18} className="text-[#007AFF]" /> : <Crown size={18} className="text-[#FF9500]" />}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[15px] font-medium truncate">{a.name}</div>
+                        <div className="text-[12px] text-[#8E8E93]">{isMe ? 'mein Profil' : 'als Trainer'}</div>
+                      </div>
+                      {isSel && <Check size={18} className="text-[#FF9500]" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </SwipeableMain>
 
       {/* Mobile Bottom-Nav — iOS 26 Liquid Glass Pill mit Finger-Drag */}
