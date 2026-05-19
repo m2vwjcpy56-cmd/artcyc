@@ -3993,17 +3993,37 @@ export default function App() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const openFeedback = () => setFeedbackOpen(true);
 
-  // Supabase-Session prüfen + Listener
+  // Supabase-Session prüfen + Listener.
+  // ZUSÄTZLICH: Magic-Link-Impersonation-Tokens aus dem URL-Hash parsen.
+  // Unser Client läuft im PKCE-Flow, aber admin.generateLink liefert
+  // einen Implicit-Flow-Link (#access_token=…&refresh_token=…) — der
+  // wird vom PKCE-Client NICHT automatisch geparst. Daher: manuell.
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const hash = typeof window !== 'undefined' ? window.location.hash : '';
+        if (hash && hash.includes('access_token=')) {
+          const params = new URLSearchParams(hash.slice(1));
+          const access_token = params.get('access_token');
+          const refresh_token = params.get('refresh_token');
+          if (access_token && refresh_token) {
+            await supabase.auth.setSession({ access_token, refresh_token });
+            // Hash entfernen, damit ein Reload nicht erneut die alte Session setzt
+            window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+          }
+        }
+      } catch (e) { console.warn('Magic-Link-Hash konnte nicht verarbeitet werden:', e); }
+      if (cancelled) return;
+      const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
       setAuthChecked(true);
-    });
+    })();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, sess) => {
       setSession(sess);
       if (!sess) { setProfile(null); setData(null); }
     });
-    return () => subscription.unsubscribe();
+    return () => { cancelled = true; subscription.unsubscribe(); };
   }, []);
 
   // Profil laden bei Login
