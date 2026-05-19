@@ -4322,6 +4322,17 @@ export default function App() {
     if (myAthleteId) { setSelectedAthleteId(myAthleteId); return; }
     if (availableAthletes.length > 0) setSelectedAthleteId(availableAthletes[0].id);
   }, [myAthleteId, selectedAthleteId, availableAthletes]);
+
+  // Bei jedem Wechsel des aktiven Sportlers ALLE Daten neu laden — sonst
+  // bleiben veraltete Cache-Daten in dbSessions/dbCompetitions/etc. stehen
+  // (z. B. wenn beim ersten Login die RLS noch blockte und 0 lieferte).
+  useEffect(() => {
+    if (!session || !selectedAthleteId) return;
+    refreshSessions();
+    refreshCompetitions();
+    refreshPrograms();
+    refreshExercises();
+  }, [selectedAthleteId, session, refreshSessions, refreshCompetitions, refreshPrograms, refreshExercises]);
   const selectedAthlete = useMemo(
     () => dbAthletes.find(a => a.id === selectedAthleteId) || null,
     [dbAthletes, selectedAthleteId]
