@@ -63,7 +63,45 @@ CREATE INDEX IF NOT EXISTS coach_invites_athlete_idx ON coach_invites(athlete_id
 CREATE INDEX IF NOT EXISTS coach_invites_code_idx ON coach_invites(claim_code) WHERE used_at IS NULL;
 
 -- =====================================================
--- 3a) Systemische RLS-Hygiene — alle Stellen die früher nur via
+-- 3a) RLS-Rekursionsschutz mit SECURITY-DEFINER-Helpern
+--     Gegenseitige EXISTS-Queries zwischen athletes ↔ athlete_coaches
+--     führten zu leeren Ergebnissen (Postgres bricht RLS-Loops ab).
+--     Stattdessen Helper, die als Owner laufen und RLS umgehen.
+-- =====================================================
+CREATE OR REPLACE FUNCTION user_owns_athlete(athlete_uuid UUID)
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER
+SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM athletes
+    WHERE id = athlete_uuid AND auth_user_id = auth.uid()
+  )
+$$;
+
+CREATE OR REPLACE FUNCTION user_is_coach_of(athlete_uuid UUID)
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER
+SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM athlete_coaches
+    WHERE athlete_id = athlete_uuid AND coach_id = auth.uid()
+  )
+$$;
+
+-- athlete_coaches Policies — Helper statt EXISTS(athletes)
+DROP POLICY IF EXISTS "athlete_coaches_select" ON athlete_coaches;
+DROP POLICY IF EXISTS "athlete_coaches_insert" ON athlete_coaches;
+DROP POLICY IF EXISTS "athlete_coaches_delete" ON athlete_coaches;
+CREATE POLICY "athlete_coaches_select" ON athlete_coaches FOR SELECT USING (
+  coach_id = auth.uid() OR user_owns_athlete(athlete_id) OR is_admin()
+);
+CREATE POLICY "athlete_coaches_insert" ON athlete_coaches FOR INSERT WITH CHECK (
+  user_owns_athlete(athlete_id) OR is_admin()
+);
+CREATE POLICY "athlete_coaches_delete" ON athlete_coaches FOR DELETE USING (
+  coach_id = auth.uid() OR user_owns_athlete(athlete_id) OR is_admin()
+);
+
+-- =====================================================
+-- 3a-2) Systemische RLS-Hygiene — alle Stellen die früher nur via
 --      `created_by_coach_id` (1:1) prüften, jetzt auch via athlete_coaches.
 -- =====================================================
 
@@ -98,18 +136,18 @@ DROP POLICY IF EXISTS "athletes_update" ON athletes;
 CREATE POLICY "athletes_select" ON athletes FOR SELECT USING (
   auth_user_id = auth.uid()
   OR created_by_coach_id = auth.uid()
-  OR EXISTS (SELECT 1 FROM athlete_coaches ac WHERE ac.athlete_id = athletes.id AND ac.coach_id = auth.uid())
+  OR user_is_coach_of(id)
   OR is_admin()
 );
 CREATE POLICY "athletes_update" ON athletes FOR UPDATE USING (
   auth_user_id = auth.uid()
   OR created_by_coach_id = auth.uid()
-  OR EXISTS (SELECT 1 FROM athlete_coaches ac WHERE ac.athlete_id = athletes.id AND ac.coach_id = auth.uid())
+  OR user_is_coach_of(id)
   OR is_admin()
 ) WITH CHECK (
   auth_user_id = auth.uid()
   OR created_by_coach_id = auth.uid()
-  OR EXISTS (SELECT 1 FROM athlete_coaches ac WHERE ac.athlete_id = athletes.id AND ac.coach_id = auth.uid())
+  OR user_is_coach_of(id)
   OR is_admin()
 );
 
