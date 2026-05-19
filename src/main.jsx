@@ -12,6 +12,38 @@ import { registerSW } from 'virtual:pwa-register';
 // auch frühe Crashes (z. B. beim Bootstrap) einfangen.
 initErrorReporter();
 
+// Notfall-Bypass: ?sw_reset=1 in der URL → Service Worker komplett
+// deregistrieren + Caches löschen + Reload. Hilft wenn ein alter SW
+// die Update-Detection blockiert.
+if (typeof window !== 'undefined' && window.location.search.includes('sw_reset=1')) {
+  (async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    } catch { /* ignore */ }
+    window.location.replace('/');
+  })();
+}
+
+// Periodischer Update-Check zusätzlich zum vite-pwa-Default — hilft auf
+// iOS PWA, das den Auto-Update sonst manchmal Tage lang ignoriert.
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  const checkUpdate = async () => {
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const r of regs) await r.update();
+    } catch { /* ignore */ }
+  };
+  checkUpdate();
+  setInterval(checkUpdate, 60000);
+}
+
 // PWA-Update: zeigt einen Reload-Banner wenn neue Version verfügbar.
 // skipWaiting+clientsClaim in vite.config.js sorgt dafür, dass die neue
 // Version sofort übernommen wird sobald der User reload bestätigt.
