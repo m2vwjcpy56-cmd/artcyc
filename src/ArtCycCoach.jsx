@@ -10576,9 +10576,17 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
       const { data, error } = await adminCreateImpersonation(user.id);
       if (error) throw new Error(error.message);
       if (!data?.action_link) throw new Error('Kein Login-Link erhalten');
-      // Eigene Session beenden, dann Link öffnen (Magic-Link loggt automatisch ein)
-      await supabase.auth.signOut();
-      window.location.href = data.action_link;
+      // Link IMMER als Fallback anzeigen — falls signOut/redirect Race-Condition gibt,
+      // kann der User den Link manuell kopieren/öffnen.
+      setActionLink(data.action_link);
+      setInfo('Impersonation-Link erzeugt. Du wirst gleich ausgeloggt und automatisch als Ziel-User eingeloggt — falls nicht, nutze den Link unten.');
+      // Lokalen Sign-Out (clearedlokale Session/Tokens), dann mit replace navigieren.
+      // `scope: 'local'` lässt den Refresh-Token am Server gültig — irrelevant da Magic-Link
+      // ohnehin neu authentifiziert, aber vermeidet Server-Race.
+      try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* ignore */ }
+      // Kurze Pause, damit React den State + localStorage-Cleanup verarbeitet hat.
+      await new Promise(r => setTimeout(r, 250));
+      window.location.replace(data.action_link);
     } catch (e) {
       setErr(e.message || 'Impersonation fehlgeschlagen');
       setBusy(false);
