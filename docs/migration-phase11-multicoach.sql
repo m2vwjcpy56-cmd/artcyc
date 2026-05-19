@@ -101,6 +101,47 @@ CREATE POLICY "athlete_coaches_delete" ON athlete_coaches FOR DELETE USING (
 );
 
 -- =====================================================
+-- 3a-1.5) programs + exercises — Coaches lesen Sportler-Daten
+--   Diese Tabellen haben kein athlete_id, sondern owner_id = User-ID
+--   des Sportlers. Coach muss seine Sportler-Programme/Übungen lesen
+--   können (sonst kann calcTableResult Wettkämpfe nicht berechnen).
+-- =====================================================
+CREATE OR REPLACE FUNCTION public.can_access_user_data(user_uuid UUID)
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER
+SET search_path = public AS $$
+  SELECT user_uuid = auth.uid()
+    OR is_admin()
+    OR EXISTS (
+      SELECT 1 FROM athletes a
+      WHERE a.auth_user_id = user_uuid
+        AND (a.created_by_coach_id = auth.uid()
+             OR EXISTS (SELECT 1 FROM athlete_coaches ac WHERE ac.athlete_id = a.id AND ac.coach_id = auth.uid()))
+    )
+$$;
+
+DROP POLICY IF EXISTS "programs_select" ON programs;
+DROP POLICY IF EXISTS "programs_write" ON programs;
+CREATE POLICY "programs_select" ON programs FOR SELECT USING (
+  owner_id IS NULL OR can_access_user_data(owner_id)
+);
+CREATE POLICY "programs_write" ON programs FOR ALL USING (
+  owner_id = auth.uid() OR (owner_id IS NULL AND is_admin()) OR can_access_user_data(owner_id)
+) WITH CHECK (
+  owner_id = auth.uid() OR (owner_id IS NULL AND is_admin()) OR can_access_user_data(owner_id)
+);
+
+DROP POLICY IF EXISTS "exercises_select" ON exercises;
+DROP POLICY IF EXISTS "exercises_write" ON exercises;
+CREATE POLICY "exercises_select" ON exercises FOR SELECT USING (
+  owner_id IS NULL OR can_access_user_data(owner_id)
+);
+CREATE POLICY "exercises_write" ON exercises FOR ALL USING (
+  owner_id = auth.uid() OR (owner_id IS NULL AND is_admin()) OR can_access_user_data(owner_id)
+) WITH CHECK (
+  owner_id = auth.uid() OR (owner_id IS NULL AND is_admin()) OR can_access_user_data(owner_id)
+);
+
+-- =====================================================
 -- 3a-2) Systemische RLS-Hygiene — alle Stellen die früher nur via
 --      `created_by_coach_id` (1:1) prüften, jetzt auch via athlete_coaches.
 -- =====================================================
