@@ -4430,7 +4430,12 @@ export default function App() {
   // sonst Whitescreen-Crash sobald loading von true → false wechselt.
   const effectiveData = useMemo(() => {
     if (!data) return data;
-    if (!data.migrated_to_tables) return data;
+    // Wenn ein FREMDER Athlet aktiv ist (Coach-Sicht), IMMER die relationalen
+    // Tabellen nutzen — auch wenn der User selbst noch nicht migriert hat.
+    // Sonst sähe ein Coach den lokalen Blob seines eigenen Profils statt
+    // die echten Sportler-Daten.
+    const coachView = !!selectedAthleteId && !isOwnAthlete;
+    if (!data.migrated_to_tables && !coachView) return data;
     // Maute-Sprung: has_rope_variant auto-aktivieren falls in DB nicht gesetzt
     const exercises = dbExercises.map(e => {
       const blob = dbExerciseToBlob(e);
