@@ -8488,6 +8488,11 @@ function ProgrammeView({ data, setData }) {
   const [showNew, setShowNew] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
+  // Übungs-Detail-Navigation aus der Übungs-Liste am Ende
+  const [selectedExercise, setSelectedExercise] = useState(null);
+  const [editingExercise, setEditingExercise] = useState(null);
+  const [pendingDeleteExercise, setPendingDeleteExercise] = useState(null);
+
   const upsert = (prog) => {
     const list = data.programs || [];
     const exists = list.find(p => p.id === prog.id);
@@ -8501,6 +8506,32 @@ function ProgrammeView({ data, setData }) {
     setData({ ...data, programs: (data.programs || []).filter(p => p.id !== id) });
   };
 
+  // Übungs-CRUD (analog zu UebungenView), damit ExerciseDetail aus dieser
+  // View heraus voll funktioniert.
+  const upsertExercise = (ex) => {
+    const exists = (data.exercises || []).find(e => e.id === ex.id);
+    setData({
+      ...data,
+      exercises: exists
+        ? data.exercises.map(e => e.id === ex.id ? ex : e)
+        : [...(data.exercises || []), ex]
+    });
+  };
+  const toggleArchiveExercise = (id) => {
+    setData({
+      ...data,
+      exercises: (data.exercises || []).map(e => e.id === id ? { ...e, active: !e.active } : e)
+    });
+    if (selectedExercise && selectedExercise.id === id) {
+      setSelectedExercise({ ...selectedExercise, active: !selectedExercise.active });
+    }
+  };
+  const removeExercise = (id) => {
+    setData({ ...data, exercises: (data.exercises || []).filter(e => e.id !== id) });
+    setSelectedExercise(null);
+    setPendingDeleteExercise(null);
+  };
+
   if (showNew || editId) {
     const editing = editId ? (data.programs || []).find(p => p.id === editId) : null;
     return <ProgrammEditor
@@ -8510,7 +8541,122 @@ function ProgrammeView({ data, setData }) {
     />;
   }
 
+  if (editingExercise) {
+    return <ExerciseEditor
+      exercise={editingExercise}
+      onSave={(ex) => {
+        upsertExercise(ex);
+        setEditingExercise(null);
+        if (selectedExercise && selectedExercise.id === ex.id) setSelectedExercise(ex);
+      }}
+      onCancel={() => setEditingExercise(null)}
+    />;
+  }
+
+  if (selectedExercise) {
+    const current = (data.exercises || []).find(e => e.id === selectedExercise.id) || selectedExercise;
+    return (
+      <>
+        <ExerciseDetail
+          exercise={current}
+          data={data}
+          setData={setData}
+          onBack={() => setSelectedExercise(null)}
+          onEdit={() => setEditingExercise(current)}
+          onArchive={() => toggleArchiveExercise(current.id)}
+          onDelete={() => setPendingDeleteExercise(current)}
+        />
+        {pendingDeleteExercise && (
+          <DeleteConfirmModal
+            title="Übung löschen?"
+            message={'„' + pendingDeleteExercise.name + '" wirklich löschen? Erfasste Sessions bleiben erhalten.'}
+            onConfirm={() => removeExercise(pendingDeleteExercise.id)}
+            onCancel={() => setPendingDeleteExercise(null)}
+          />
+        )}
+      </>
+    );
+  }
+
   const programs = data.programs || [];
+  const competitions = data.competitions || [];
+
+  // Programm des letzten Wettkampfs (nach Datum) — wird oben prominent gezeigt.
+  const lastCompetition = competitions.length
+    ? [...competitions].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0]
+    : null;
+  const currentProgram = lastCompetition
+    ? programs.find(p => p.id === lastCompetition.program_id) || null
+    : null;
+  const otherPrograms = currentProgram
+    ? programs.filter(p => p.id !== currentProgram.id)
+    : programs;
+
+  // Übungs-Liste unter den Programmen:
+  // 1) zuerst die Übungen des aktuellen Programms (mit/ohne Daten)
+  // 2) dann weitere Übungen, die in Wettkämpfen vorkommen (aber nicht im
+  //    aktuellen Programm sind)
+  // Matching zwischen Programm-Übung und data.exercises über uci_code,
+  // sonst über (name + Punktzahl).
+  const exerciseList = (() => {
+    const allExercises = data.exercises || [];
+    const findMatch = (refEx) => {
+      if (!refEx) return null;
+      if (refEx.code) {
+        const byCode = allExercises.find(e => e.uci_code && e.uci_code === refEx.code);
+        if (byCode) return byCode;
+      }
+      const nm = (refEx.name || '').trim().toLowerCase();
+      const pts = Number(refEx.points || 0);
+      return allExercises.find(e =>
+        (e.name || '').trim().toLowerCase() === nm
+        && Number(e.points || 0) === pts
+      ) || null;
+    };
+    const seen = new Set();
+    const rows = [];
+    if (currentProgram) {
+      (currentProgram.exercises || []).forEach(refEx => {
+        const ex = findMatch(refEx);
+        if (!ex || seen.has(ex.id)) return;
+        seen.add(ex.id);
+        const stats = calcExerciseCompetitionStats(ex, programs, competitions);
+        rows.push({ ex, stats, inCurrent: true });
+      });
+    }
+    for (const ex of allExercises) {
+      if (seen.has(ex.id)) continue;
+      const stats = calcExerciseCompetitionStats(ex, programs, competitions);
+      if (stats.wettkaempfe > 0) {
+        seen.add(ex.id);
+        rows.push({ ex, stats, inCurrent: false });
+      }
+    }
+    return rows;
+  })();
+
+  const renderProgramRow = (p) => {
+    const total = (p.exercises || []).reduce((s, ex) => s + Number(ex.points || 0), 0);
+    return (
+      <IOSListRow
+        key={p.id}
+        onClick={() => setEditId(p.id)}
+        trailing={
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(p.id); }}
+              className="p-2 text-[#FF3B30] active:bg-[#D1D1D6]/40 rounded-full">
+              <Trash2 size={16} />
+            </button>
+            <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
+          </div>
+        }>
+        <div className="font-medium text-[15px] text-[#000]">{p.name}</div>
+        <div className="text-[13px] text-[#8E8E93] mt-0.5">
+          {p.discipline || '—'} · {(p.exercises || []).length} Übungen · {total.toFixed(2)} Pkt
+        </div>
+      </IOSListRow>
+    );
+  };
 
   return (
     <div className="space-y-5">
@@ -8535,25 +8681,45 @@ function ProgrammeView({ data, setData }) {
           </button>
         </div>
       ) : (
-        <IOSList>
-          {programs.map(p => {
-            const total = p.exercises.reduce((s, ex) => s + Number(ex.points || 0), 0);
+        <>
+          {currentProgram && (
+            <IOSList header="Aktuelles Programm" footer={lastCompetition ? `Vom Wettkampf am ${lastCompetition.date || '—'}` : null}>
+              {renderProgramRow(currentProgram)}
+            </IOSList>
+          )}
+          {otherPrograms.length > 0 && (
+            <IOSList header={currentProgram ? 'Weitere Programme' : null}>
+              {otherPrograms.map(renderProgramRow)}
+            </IOSList>
+          )}
+        </>
+      )}
+
+      {exerciseList.length > 0 && (
+        <IOSList
+          header="Übungen mit Wettkampfdaten"
+          footer={currentProgram
+            ? 'Erst die Übungen des aktuellen Programms, dann weitere mit Daten aus anderen Wettkämpfen.'
+            : null}>
+          {exerciseList.map(({ ex, stats, inCurrent }) => {
+            const positions = stats.count || 0;
+            const meta = (ex.uci_code ? ('UCI ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : ''));
+            const statsLine = stats.wettkaempfe > 0
+              ? (stats.wettkaempfe + ' Wettk' + (stats.wettkaempfe === 1 ? '' : 'ä') + 'mpf' + (stats.wettkaempfe === 1 ? '' : 'e') + ' · ' + positions + ' Stellungen')
+              : (inCurrent ? 'Noch keine Daten' : '');
             return (
               <IOSListRow
-                key={p.id}
-                onClick={() => setEditId(p.id)}
-                trailing={
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(p.id); }}
-                      className="p-2 text-[#FF3B30] active:bg-[#D1D1D6]/40 rounded-full">
-                      <Trash2 size={16} />
-                    </button>
-                    <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
-                  </div>
-                }>
-                <div className="font-medium text-[15px] text-[#000]">{p.name}</div>
-                <div className="text-[13px] text-[#8E8E93] mt-0.5">
-                  {p.discipline || '—'} · {p.exercises.length} Übungen · {total.toFixed(2)} Pkt
+                key={ex.id}
+                onClick={() => setSelectedExercise(ex)}
+                trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
+                <div className="flex items-center gap-2">
+                  <div className="font-medium text-[15px] text-[#000] truncate">{ex.name}</div>
+                  {inCurrent && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-[#FF9500] shrink-0">aktuell</span>
+                  )}
+                </div>
+                <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">
+                  {meta}{meta && statsLine ? ' · ' : ''}{statsLine}
                 </div>
               </IOSListRow>
             );
