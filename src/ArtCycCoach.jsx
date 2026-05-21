@@ -4511,7 +4511,6 @@ export default function App() {
     { id: 'dashboard', label: t('nav.dashboard'), icon: Home },
     { id: 'training', label: t('nav.training'), icon: Dumbbell },
     { id: 'wettkampf', label: t('nav.wettkampf'), icon: Trophy },
-    { id: 'uebungen', label: t('nav.uebungen'), icon: BarChart3 },
     ...(isCoach ? [{ id: 'sportler', label: t('nav.sportler'), icon: Users }] : [])
   ];
 
