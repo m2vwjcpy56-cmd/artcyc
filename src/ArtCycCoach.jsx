@@ -8517,7 +8517,7 @@ function ProgrammeView({ data, setData }) {
     <div className="space-y-5">
       <header className="flex items-end justify-between flex-wrap gap-3 pt-2 px-1">
         <div>
-          <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('competition.programs')}</h1>
+          <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('nav.uebungen')}</h1>
         </div>
         <button onClick={() => setShowNew(true)}
           className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-sm flex items-center gap-1.5 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
@@ -9104,7 +9104,7 @@ function WettkampfView({ data, setData, dbAthletes }) {
           <button onClick={() => setTab('programme')}
             className={'flex-1 py-1.5 rounded-lg text-[14px] font-medium transition ' +
               (tab === 'programme' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
-            {t('competition.programs')}
+            {t('nav.uebungen')}
           </button>
         </div>
         <ProgrammeView data={data} setData={setData} />
@@ -9245,7 +9245,7 @@ function WettkampfView({ data, setData, dbAthletes }) {
         <button onClick={() => setTab('programme')}
           className={'flex-1 py-1.5 rounded-lg text-[14px] font-medium transition ' +
             (tab === 'programme' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
-          {t('competition.programs')}
+          {t('nav.uebungen')}
         </button>
       </div>
       <header className="flex items-end justify-between flex-wrap gap-3 pt-2 px-1">
