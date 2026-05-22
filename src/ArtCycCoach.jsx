@@ -3702,7 +3702,7 @@ function BottomNav({ items, view, setView }) {
   return (
     <nav
       ref={navRef}
-      className="sm:hidden fixed bottom-0 left-0 right-0 z-30 px-4 select-none"
+      className="sm:hidden fixed bottom-0 left-0 right-0 z-30 px-4 flex justify-center select-none"
       style={{
         paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
         WebkitUserSelect: 'none',
@@ -3715,7 +3715,7 @@ function BottomNav({ items, view, setView }) {
       onTouchEnd={onTouchEnd}
       onTouchCancel={onTouchEnd}>
       <div
-        className="ios-bottom-pill rounded-full flex justify-around items-stretch py-2 px-2"
+        className="ios-bottom-pill rounded-full inline-flex items-stretch py-2 px-2 gap-1"
         style={{
           backdropFilter: 'blur(40px) saturate(180%)',
           WebkitBackdropFilter: 'blur(40px) saturate(180%)'
@@ -3730,7 +3730,7 @@ function BottomNav({ items, view, setView }) {
               data-nav-id={n.id}
               onClick={() => setView(n.id)}
               style={{ WebkitTapHighlightColor: 'transparent', WebkitTouchCallout: 'none' }}
-              className={'flex flex-col items-center justify-center gap-1 flex-1 py-1.5 px-1 rounded-full transition-all duration-150 active:scale-[0.92] select-none ' +
+              className={'flex flex-col items-center justify-center gap-1 py-1.5 px-4 rounded-full transition-all duration-150 active:scale-[0.92] select-none ' +
                 (active ? 'text-[#FF9500]' : 'text-[#8E8E93]')}>
               <Icon size={24} strokeWidth={active ? 2.4 : 1.8} />
               <span className={'text-[10px] tracking-tight leading-none ' + (active ? 'font-semibold' : 'font-medium')}>{n.label}</span>
@@ -8493,6 +8493,9 @@ function ProgrammeView({ data, setData }) {
   const [editingExercise, setEditingExercise] = useState(null);
   const [pendingDeleteExercise, setPendingDeleteExercise] = useState(null);
 
+  // „Alle Programme"-Sheet (iOS-Style Bottom-Sheet)
+  const [showAllProgramsSheet, setShowAllProgramsSheet] = useState(false);
+
   const upsert = (prog) => {
     const list = data.programs || [];
     const exists = list.find(p => p.id === prog.id);
@@ -8682,15 +8685,24 @@ function ProgrammeView({ data, setData }) {
         </div>
       ) : (
         <>
-          {currentProgram && (
-            <IOSList header="Aktuelles Programm" footer={lastCompetition ? `Vom Wettkampf am ${lastCompetition.date || '—'}` : null}>
-              {renderProgramRow(currentProgram)}
-            </IOSList>
-          )}
-          {otherPrograms.length > 0 && (
-            <IOSList header={currentProgram ? 'Weitere Programme' : null}>
-              {otherPrograms.map(renderProgramRow)}
-            </IOSList>
+          {currentProgram ? (
+            <>
+              <IOSList header="Aktuelles Programm" footer={lastCompetition ? `Vom Wettkampf am ${lastCompetition.date || '—'}` : null}>
+                {renderProgramRow(currentProgram)}
+              </IOSList>
+              {otherPrograms.length > 0 && (
+                <div className="px-1 -mt-2">
+                  <button
+                    onClick={() => setShowAllProgramsSheet(true)}
+                    className="text-[14px] text-[#007AFF] font-medium active:opacity-50 inline-flex items-center gap-1">
+                    Alle Programme verwalten ({programs.length})
+                    <ChevronRight size={14} strokeWidth={2.4} />
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <IOSList>{programs.map(renderProgramRow)}</IOSList>
           )}
         </>
       )}
@@ -8725,6 +8737,58 @@ function ProgrammeView({ data, setData }) {
             );
           })}
         </IOSList>
+      )}
+
+      {showAllProgramsSheet && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center"
+          onClick={() => setShowAllProgramsSheet(false)}>
+          <div
+            className="bg-[#F2F2F7] rounded-t-[20px] sm:rounded-[20px] w-full sm:max-w-md max-h-[85vh] flex flex-col"
+            style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 pt-4 pb-3 shrink-0">
+              <h2 className="text-[20px] font-bold tracking-tight">Alle Programme</h2>
+              <button
+                onClick={() => setShowAllProgramsSheet(false)}
+                aria-label="Schließen"
+                className="p-2 -m-2 text-[#8E8E93] active:opacity-50 rounded-full">
+                <X size={22} strokeWidth={2.2} />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-4 pb-3 space-y-3 flex-1">
+              <IOSList>
+                {programs.map(p => {
+                  const total = (p.exercises || []).reduce((s, ex) => s + Number(ex.points || 0), 0);
+                  return (
+                    <IOSListRow
+                      key={p.id}
+                      onClick={() => { setShowAllProgramsSheet(false); setEditId(p.id); }}
+                      trailing={
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button onClick={(e) => { e.stopPropagation(); setShowAllProgramsSheet(false); setConfirmDeleteId(p.id); }}
+                            className="p-2 text-[#FF3B30] active:bg-[#D1D1D6]/40 rounded-full">
+                            <Trash2 size={16} />
+                          </button>
+                          <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
+                        </div>
+                      }>
+                      <div className="font-medium text-[15px] text-[#000]">{p.name}</div>
+                      <div className="text-[13px] text-[#8E8E93] mt-0.5">
+                        {p.discipline || '—'} · {(p.exercises || []).length} Übungen · {total.toFixed(2)} Pkt
+                      </div>
+                    </IOSListRow>
+                  );
+                })}
+              </IOSList>
+              <button
+                onClick={() => { setShowAllProgramsSheet(false); setShowNew(true); }}
+                className="w-full bg-[#FF9500] text-white px-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition">
+                <Plus size={18} strokeWidth={2.5} /> Neues Programm
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {confirmDeleteId && (() => {
