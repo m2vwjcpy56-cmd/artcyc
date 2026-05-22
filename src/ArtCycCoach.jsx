@@ -13,7 +13,7 @@ import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fet
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud, fileToBase64 } from './lib/feedback.js';
 import { parseProgramFile } from './lib/programImport.js';
-import { loadUciExercisesFromDb, getRulesLanguage, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS } from './lib/uciRules.js';
+import { loadUciExercisesFromDb, getRulesLanguage, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram } from './lib/uciRules.js';
 
 // =============================================================
 // UCI 2026 Datenbank: Alle Disziplinen
@@ -8959,10 +8959,27 @@ function ProgrammEditor({ program, onSave, onCancel }) {
   const [name, setName] = useState((program && program.name) || '');
   const [discipline, setDiscipline] = useState((program && program.discipline) || '1er');
   const [exercises, setExercises] = useState((program && program.exercises) || []);
+  // Altersklasse für Reglement-Validierung. Wird mit dem Programm
+  // gespeichert, damit der Validator beim Bearbeiten konsistent prüft.
+  const [ageClass, setAgeClass] = useState((program && program.ageClass) || 'elite');
   // Programm-Import-Status
   const [importStatus, setImportStatus] = useState(null); // null | 'parsing' | 'success' | 'error'
   const [importMsg, setImportMsg] = useState('');
   const fileInputRef = useRef(null);
+
+  // Reglement-Validierung läuft live mit jeder Änderung. Errors blocken
+  // den Speichern-Button; Warnings sind nur Hinweise.
+  const validation = useMemo(
+    () => validateProgram({ discipline, exercises }, { ageClass }),
+    [discipline, exercises, ageClass]
+  );
+  const errorIndexSet = useMemo(() => {
+    const s = new Set();
+    for (const e of validation.errors) {
+      if (typeof e.exerciseIndex === 'number') s.add(e.exerciseIndex);
+    }
+    return s;
+  }, [validation.errors]);
 
   const addEmptyRow = () => {
     setExercises([...exercises, { id: uid(), nr: exercises.length + 1, name: '', code: '', points: 0 }]);
@@ -9017,16 +9034,18 @@ function ProgrammEditor({ program, onSave, onCancel }) {
 
   const save = () => {
     if (!name.trim() || exercises.length === 0) return;
+    if (!validation.valid) return;
     onSave({
       id: (program && program.id) || uid(),
       name: name.trim(),
       discipline,
+      ageClass,
       exercises,
       created: (program && program.created) || new Date().toISOString()
     });
   };
 
-  const canSave = name.trim().length > 0 && exercises.length > 0;
+  const canSave = name.trim().length > 0 && exercises.length > 0 && validation.valid;
 
   return (
     <div className="-mx-3 sm:mx-0">
@@ -9056,6 +9075,16 @@ function ProgrammEditor({ program, onSave, onCancel }) {
             <select value={discipline} onChange={e => setDiscipline(e.target.value)}
               className="flex-1 bg-transparent text-[15px] outline-none appearance-none text-right">
               {DISCIPLINES.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+            </select>
+            <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
+          </div>
+          <div className="px-4 py-3 flex items-center gap-3">
+            <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">Klasse</label>
+            <select value={ageClass} onChange={e => setAgeClass(e.target.value)}
+              className="flex-1 bg-transparent text-[15px] outline-none appearance-none text-right">
+              <option value="elite">Elite</option>
+              <option value="junioren">Junioren</option>
+              <option value="schueler">Schüler</option>
             </select>
             <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
           </div>
@@ -9091,6 +9120,36 @@ function ProgrammEditor({ program, onSave, onCancel }) {
           {t('programImport.subtitle')}
         </p>
 
+        {/* Reglement-Validierung: Fehler blocken Speichern, Warnungen sind Hinweise. */}
+        {validation.errors.length > 0 && (
+          <div className="bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3">
+            <div className="flex items-center gap-2 mb-1.5">
+              <AlertTriangle size={16} className="text-rose-700 shrink-0" />
+              <div className="font-semibold text-[14px] text-rose-900">
+                {validation.errors.length === 1 ? 'Reglement-Fehler' : validation.errors.length + ' Reglement-Fehler'}
+              </div>
+            </div>
+            <ul className="text-[13px] text-rose-800 space-y-0.5 leading-snug pl-1">
+              {validation.errors.map((e, i) => (
+                <li key={i}>· {e.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {validation.warnings.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+            <div className="flex items-center gap-2 mb-1.5">
+              <Info size={16} className="text-amber-700 shrink-0" />
+              <div className="font-semibold text-[14px] text-amber-900">Hinweis</div>
+            </div>
+            <ul className="text-[13px] text-amber-800 space-y-0.5 leading-snug pl-1">
+              {validation.warnings.map((w, i) => (
+                <li key={i}>· {w.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Übungen-Liste */}
         <div className="space-y-2">
           <div className="flex items-center justify-between px-4">
@@ -9110,17 +9169,23 @@ function ProgrammEditor({ program, onSave, onCancel }) {
             </div>
           ) : (
             <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
-              {exercises.map((e, idx) => (
-                <div key={e.id} className={idx < exercises.length - 1 ? 'border-b border-[#C6C6C8]/40' : ''}>
-                  <ProgrammExerciseRow
-                    ex={e}
-                    discipline={discipline}
-                    onUci={(u) => setUci(idx, u)}
-                    onUpdate={(k, v) => updateField(idx, k, v)}
-                    onRemove={() => removeEx(idx)}
-                  />
-                </div>
-              ))}
+              {exercises.map((e, idx) => {
+                const hasError = errorIndexSet.has(idx);
+                return (
+                  <div key={e.id} className={
+                    (idx < exercises.length - 1 ? 'border-b border-[#C6C6C8]/40 ' : '') +
+                    (hasError ? 'bg-rose-50/60' : '')
+                  }>
+                    <ProgrammExerciseRow
+                      ex={e}
+                      discipline={discipline}
+                      onUci={(u) => setUci(idx, u)}
+                      onUpdate={(k, v) => updateField(idx, k, v)}
+                      onRemove={() => removeEx(idx)}
+                    />
+                  </div>
+                );
+              })}
             </div>
           )}
 
