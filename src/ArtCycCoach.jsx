@@ -3226,7 +3226,7 @@ async function applyChatAction(action, data, setData, refreshers) {
       });
       if (error) return '⚠ DB-Fehler: ' + error.message;
       if (refreshers && refreshers.sessions) await refreshers.sessions();
-      return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Serien (' + succ + ' geklappt)' + ropeTag;
+      return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Wiederholungen (' + succ + ' geklappt)' + ropeTag;
     }
     const newSession = {
       id: uid(),
@@ -3239,7 +3239,7 @@ async function applyChatAction(action, data, setData, refreshers) {
       athleteId: null,
     };
     setData({ ...data, sessions: [...(data.sessions || []), newSession] });
-    return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Serien (' + succ + ' geklappt)' + ropeTag;
+    return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Wiederholungen (' + succ + ' geklappt)' + ropeTag;
   }
   if (action.tool === 'propose_update_session') {
     const fields = p.fields || {};
@@ -5379,7 +5379,7 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
 // Trainings-Heatmap — GitHub-Style Aktivitäts-Kalender
 // =============================================================
 // Zeigt die letzten 26 Wochen (≈6 Monate) als 7×26-Grid.
-// Jede Zelle ein Tag, gefärbt nach Anzahl Sessions/Serien.
+// Jede Zelle ein Tag, gefärbt nach Anzahl Sessions/Wiederholungen.
 function TrainingHeatmap({ sessions }) {
   const { t } = useI18n();
   const { weeks, monthLabels, totalDaysActive, totalSeries } = useMemo(() => {
@@ -5435,7 +5435,7 @@ function TrainingHeatmap({ sessions }) {
     return { weeks, monthLabels, totalDaysActive, totalSeries };
   }, [sessions]);
 
-  // Farbskala: 0 / 1-9 / 10-19 / 20-29 / 30+ Serien
+  // Farbskala: 0 / 1-9 / 10-19 / 20-29 / 30+ Wiederholungen
   const colorFor = (entries) => {
     if (entries === 0) return '#F2F2F7';
     if (entries < 10) return '#FED7AA';
@@ -5483,7 +5483,7 @@ function TrainingHeatmap({ sessions }) {
                 opacity={day.future ? 0.3 : 1}
                 stroke={day.future ? '#E5E5EA' : 'none'}
                 strokeWidth={day.future ? 1 : 0}>
-                <title>{day.date}{day.entries > 0 ? ' — ' + day.sessions + ' Session(s), ' + day.entries + ' Serien' : ''}</title>
+                <title>{day.date}{day.entries > 0 ? ' — ' + day.sessions + ' Session(s), ' + day.entries + ' Wiederholungen' : ''}</title>
               </rect>
             ))
           )}
@@ -5564,7 +5564,7 @@ function ExerciseStatsCard({ ex, total, success, fail, third, rate, riskRate, se
             )}
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
-            {sessions} Sessions · {total} Serien
+            {sessions} Sessions · {total} Wiederholungen
           </div>
         </div>
         <div className="text-right shrink-0">
@@ -5689,7 +5689,7 @@ function groupSessionsByDate(sessions) {
   return { today, yesterday, week, months };
 }
 
-// Sessions nach Übung gruppieren — pro Übung: Anzahl Serien, Quote, Trend.
+// Sessions nach Übung gruppieren — pro Übung: Anzahl Wiederholungen, Quote, Trend.
 function groupSessionsByExercise(sessions) {
   const byEx = new Map();
   for (const s of sessions) {
@@ -5857,7 +5857,7 @@ function TrainingView({ data, setData, setView }) {
             )}
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
-            {formatDateShort(s.date)} · {total} Serien
+            {formatDateShort(s.date)} · {total} Wiederholungen
             {fail > 0 && <span className="text-rose-600 ml-1">· {fail}✗</span>}
             {third > 0 && <span className="text-amber-600 ml-1">· {third}△</span>}
           </div>
@@ -5902,7 +5902,7 @@ function TrainingView({ data, setData, setView }) {
           <div className="min-w-0 flex-1">
             <div className="font-medium text-[15px] truncate">{g.exerciseName}</div>
             <div className="text-[12px] text-[#8E8E93] mt-0.5">
-              {g.items.length} Sessions · {g.totalEntries} Serien · zuletzt {formatDateShort(g.lastDate)}
+              {g.items.length} Sessions · {g.totalEntries} Wiederholungen · zuletzt {formatDateShort(g.lastDate)}
             </div>
           </div>
           <div className={'font-semibold text-[17px] ' + rateColor}>{rate}%</div>
@@ -6093,7 +6093,7 @@ function TrainingView({ data, setData, setView }) {
           {trainedExercises.map(({ ex, sessions, total, rate, lastDate }) => {
             const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 60 ? 'text-[#FF9500]' : 'text-[#FF3B30]';
             const meta = (ex.uci_code ? ('UCI ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : ''));
-            const subtitle = (meta ? meta + ' · ' : '') + sessions + ' Sessions · ' + total + ' Serien';
+            const subtitle = (meta ? meta + ' · ' : '') + sessions + ' Sessions · ' + total + ' Wiederholungen';
             return (
               <IOSListRow
                 key={ex.id}
@@ -6305,28 +6305,31 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
             </div>
           )}
 
-          {/* Entries */}
+          {/* Entries — identisches 3-Spalten-Layout wie in Erfassen */}
           <div>
-            <label className="text-sm font-medium block mb-2">Serien · {entries.length}</label>
-            <div className="grid grid-cols-2 gap-2 mb-2">
+            <label className="text-sm font-medium block mb-2">Wiederholungen · {entries.length}</label>
+            <div className={'grid gap-3 mb-3 ' + (use3 ? 'grid-cols-3' : 'grid-cols-2')}>
               <button onClick={() => setEntries([...entries, 'success'])}
-                className="bg-emerald-600 text-white py-3.5 rounded-2xl font-semibold flex flex-col items-center gap-0.5 active:scale-95 transition-transform">
-                <Check size={20} /><span className="text-sm">{statusLabel(exercise, 'success')}</span>
+                className="bg-emerald-600 hover:bg-emerald-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+                <Check size={26} strokeWidth={2.6} />
+                <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'success')}</span>
                 <span className="text-xs opacity-80">{success}</span>
               </button>
+              {use3 && (
+                <button onClick={() => setEntries([...entries, 'third'])}
+                  className="bg-amber-500 hover:bg-amber-600 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+                  <AlertTriangle size={26} strokeWidth={2.4} />
+                  <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'third')}</span>
+                  <span className="text-xs opacity-80">{third}</span>
+                </button>
+              )}
               <button onClick={() => setEntries([...entries, 'fail'])}
-                className="bg-rose-600 text-white py-3.5 rounded-2xl font-semibold flex flex-col items-center gap-0.5 active:scale-95 transition-transform">
-                <X size={20} /><span className="text-sm">{statusLabel(exercise, 'fail')}</span>
+                className="bg-rose-600 hover:bg-rose-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+                <X size={26} strokeWidth={2.6} />
+                <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'fail')}</span>
                 <span className="text-xs opacity-80">{fail}</span>
               </button>
             </div>
-            {use3 && (
-              <button onClick={() => setEntries([...entries, 'third'])}
-                className="w-full bg-amber-500 text-white py-3 rounded-2xl font-semibold flex items-center justify-center gap-2 mb-2 active:scale-95 transition-transform">
-                <AlertTriangle size={18} /><span className="text-sm">{statusLabel(exercise, 'third')}</span>
-                <span className="text-xs opacity-80">· {third}</span>
-              </button>
-            )}
 
             {entries.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-2">
@@ -7594,7 +7597,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
               <Dumbbell size={18} className="text-amber-500" /> {t('nav.training')}
             </h2>
             {trainStats.total > 0 && (
-              <span className="text-xs text-slate-500">{trainStats.sessions} Sess. · {trainStats.total} Serien</span>
+              <span className="text-xs text-slate-500">{trainStats.sessions} Sess. · {trainStats.total} Wiederholungen</span>
             )}
           </div>
 
@@ -8278,12 +8281,12 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
           )}
         </IOSList>
 
-        {/* Standard-Serienanzahl + Ziel-Quote */}
+        {/* Standard-Wiederholungs-Anzahl + Ziel-Quote */}
         <IOSList
           header="Training"
           footer="Dashboard markiert die Übung farblich, wenn deine Quote unter dem Ziel liegt — Trainings-Bedarf auf einen Blick.">
           <div className="px-4 py-3 flex items-center gap-3">
-            <label className="text-[15px] text-[#3C3C43] flex-1">Serien pro Session</label>
+            <label className="text-[15px] text-[#3C3C43] flex-1">Wiederholungen pro Session</label>
             <input type="number" inputMode="numeric" value={series} onChange={e => setSeries(e.target.value)}
               className="w-20 bg-transparent text-[15px] outline-none text-right" />
           </div>
@@ -11024,7 +11027,7 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
                     <div className="min-w-0 flex-1">
                       <div className="font-medium text-[15px] truncate">{localizedExerciseName(ex) || t('nav.uebungen')}</div>
                       <div className="text-[13px] text-slate-500">
-                        {ex.total} Serien · {ex.success} geklappt
+                        {ex.total} Wiederholungen · {ex.success} geklappt
                       </div>
                     </div>
                     <div className={'text-xl font-bold ' + (ex.rate >= 80 ? 'text-emerald-600' : ex.rate >= 60 ? 'text-amber-600' : 'text-rose-600')}>
@@ -12387,7 +12390,7 @@ function ExportTraining({ data }) {
           <div className="flex-1">
             <div className="font-semibold">Trainings-Daten CSV</div>
             <div className="text-xs text-slate-500">
-              {sessions.length} Sessions · {totalSeries} Serien
+              {sessions.length} Sessions · {totalSeries} Wiederholungen
               {ath ? ' · ' + ath.name : ''}
             </div>
           </div>
