@@ -5714,6 +5714,38 @@ function TrainingView({ data, setData, setView }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [filterExId, setFilterExId] = useState(''); // '' = alle Übungen
   const [filterRange, setFilterRange] = useState('all'); // 'all'|'7d'|'30d'|'90d'|'thisMonth'|'thisYear'
+
+  // Übungs-CRUD + Detail-Navigation aus der Übungs-Sektion oben
+  // (analog zu ProgrammeView, damit Klick auf Übung direkt in die
+  // Detail-Ansicht führt — der „Übungen"-Tab ist ja weg).
+  const [selectedExercise, setSelectedExercise] = useState(null);
+  const [editingExercise, setEditingExercise] = useState(null);
+  const [newExercise, setNewExercise] = useState(false);
+  const [pendingDeleteExercise, setPendingDeleteExercise] = useState(null);
+
+  const upsertExercise = (ex) => {
+    const exists = (data.exercises || []).find(e => e.id === ex.id);
+    setData({
+      ...data,
+      exercises: exists
+        ? data.exercises.map(e => e.id === ex.id ? ex : e)
+        : [...(data.exercises || []), ex]
+    });
+  };
+  const toggleArchiveExercise = (id) => {
+    setData({
+      ...data,
+      exercises: (data.exercises || []).map(e => e.id === id ? { ...e, active: !e.active } : e)
+    });
+    if (selectedExercise && selectedExercise.id === id) {
+      setSelectedExercise({ ...selectedExercise, active: !selectedExercise.active });
+    }
+  };
+  const removeExercise = (id) => {
+    setData({ ...data, exercises: (data.exercises || []).filter(e => e.id !== id) });
+    setSelectedExercise(null);
+    setPendingDeleteExercise(null);
+  };
   // Sortier-Modus: nach Datum (default) oder nach Übung
   const [sortMode, setSortMode] = useState(() => {
     try { return localStorage.getItem('artcyc:training-sort') || 'date'; } catch { return 'date'; }
@@ -5918,6 +5950,80 @@ function TrainingView({ data, setData, setView }) {
     return { sessionCount: all.length, days: days.size, exCount: exIds.size, rate, streak };
   })();
 
+  // Übungen mit Trainingsdaten — für die Übungs-Sektion oben.
+  // Zählt Sessions pro Übung + ermittelt Erfolgsquote, damit wir
+  // direkt sinnvoll sortieren + anzeigen können.
+  const trainedExercises = (() => {
+    const byEx = new Map();
+    for (const s of (data.sessions || [])) {
+      if (!s.exerciseId) continue;
+      let agg = byEx.get(s.exerciseId);
+      if (!agg) {
+        agg = { sessions: 0, success: 0, fail: 0, third: 0, lastDate: '' };
+        byEx.set(s.exerciseId, agg);
+      }
+      agg.sessions += 1;
+      for (const e of (s.entries || [])) {
+        if (e === 'success') agg.success += 1;
+        else if (e === 'fail') agg.fail += 1;
+        else if (e === 'third') agg.third += 1;
+      }
+      if ((s.date || '') > agg.lastDate) agg.lastDate = s.date || '';
+    }
+    const rows = [];
+    for (const ex of (data.exercises || [])) {
+      const agg = byEx.get(ex.id);
+      if (!agg) continue;
+      const total = agg.success + agg.fail + agg.third;
+      const rate = total > 0 ? Math.round((agg.success / total) * 100) : 0;
+      rows.push({ ex, sessions: agg.sessions, total, rate, lastDate: agg.lastDate });
+    }
+    rows.sort((a, b) => {
+      // Erst nach Aktualität (zuletzt trainiert oben), dann nach Session-Anzahl
+      if (a.lastDate !== b.lastDate) return (b.lastDate || '').localeCompare(a.lastDate || '');
+      return b.sessions - a.sessions;
+    });
+    return rows;
+  })();
+
+  if (newExercise || editingExercise) {
+    return <ExerciseEditor
+      exercise={editingExercise}
+      onSave={(ex) => {
+        upsertExercise(ex);
+        setNewExercise(false);
+        setEditingExercise(null);
+        if (selectedExercise && selectedExercise.id === ex.id) setSelectedExercise(ex);
+      }}
+      onCancel={() => { setNewExercise(false); setEditingExercise(null); }}
+    />;
+  }
+
+  if (selectedExercise) {
+    const current = (data.exercises || []).find(e => e.id === selectedExercise.id) || selectedExercise;
+    return (
+      <>
+        <ExerciseDetail
+          exercise={current}
+          data={data}
+          setData={setData}
+          onBack={() => setSelectedExercise(null)}
+          onEdit={() => setEditingExercise(current)}
+          onArchive={() => toggleArchiveExercise(current.id)}
+          onDelete={() => setPendingDeleteExercise(current)}
+        />
+        {pendingDeleteExercise && (
+          <DeleteConfirmModal
+            title="Übung löschen?"
+            message={'„' + pendingDeleteExercise.name + '" wirklich löschen? Erfasste Sessions bleiben erhalten.'}
+            onConfirm={() => removeExercise(pendingDeleteExercise.id)}
+            onCancel={() => setPendingDeleteExercise(null)}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <header className="flex items-end justify-between flex-wrap gap-3 pt-2 px-1">
@@ -5925,10 +6031,17 @@ function TrainingView({ data, setData, setView }) {
           <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('training.title')}</h1>
           <p className="text-[#8E8E93] text-[15px] mt-1">{t('training.totalSessions', { n: totalCount })}</p>
         </div>
-        <button onClick={() => setView('erfassen')}
-          className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-[14px] flex items-center gap-1.5 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
-          <Plus size={16} strokeWidth={2.5} /> {t('training.logButton')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setNewExercise(true)}
+            title="Neue Übung"
+            className="bg-white text-[#FF9500] border border-[#FF9500]/30 px-3 py-2 rounded-full font-semibold text-[14px] flex items-center gap-1 shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:scale-95 transition">
+            <Plus size={16} strokeWidth={2.5} /> Übung
+          </button>
+          <button onClick={() => setView('erfassen')}
+            className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-[14px] flex items-center gap-1.5 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
+            <Plus size={16} strokeWidth={2.5} /> {t('training.logButton')}
+          </button>
+        </div>
       </header>
 
       {/* Top-Stats — nur sichtbar wenn Sessions vorhanden */}
@@ -5963,6 +6076,33 @@ function TrainingView({ data, setData, setView }) {
             color="orange"
           />
         </div>
+      )}
+
+      {/* Übungen mit Trainingsdaten — Klick öffnet ExerciseDetail. */}
+      {trainedExercises.length > 0 && (
+        <IOSList
+          header={'Übungen (' + trainedExercises.length + ')'}
+          footer="Sortiert nach zuletzt trainiert. Klick öffnet die Übungs-Detail-Seite.">
+          {trainedExercises.map(({ ex, sessions, total, rate, lastDate }) => {
+            const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 60 ? 'text-[#FF9500]' : 'text-[#FF3B30]';
+            const meta = (ex.uci_code ? ('UCI ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : ''));
+            const subtitle = (meta ? meta + ' · ' : '') + sessions + ' Sessions · ' + total + ' Serien';
+            return (
+              <IOSListRow
+                key={ex.id}
+                onClick={() => setSelectedExercise(ex)}
+                trailing={
+                  <div className="flex items-center gap-2 shrink-0">
+                    {total > 0 && <span className={'font-semibold text-[15px] ' + rateColor}>{rate}%</span>}
+                    <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
+                  </div>
+                }>
+                <div className="font-medium text-[15px] text-[#000] truncate">{ex.name}</div>
+                <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">{subtitle}</div>
+              </IOSListRow>
+            );
+          })}
+        </IOSList>
       )}
 
       {/* Suche */}
