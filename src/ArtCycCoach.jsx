@@ -5184,10 +5184,10 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           color="amber"
         />
         <StatCard
-          icon={Dumbbell}
-          label={t('dashboard.sessions')}
-          value={trainStats.totalSessions}
-          sub={trainStats.lastSessionDate ? t('dashboard.lastTrained', { date: formatDateShort(trainStats.lastSessionDate) }) : '—'}
+          icon={TrendingUp}
+          label="Geringster Abzug"
+          value={compStats.minDed ? compStats.minDed.ded.toFixed(2) : '—'}
+          sub={compStats.minDed ? compStats.minDed.competition.name.slice(0, 24) : '—'}
           color="violet"
         />
         <StatCard
@@ -5198,10 +5198,10 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           color="sky"
         />
         <StatCard
-          icon={TrendingUp}
-          label="Geringster Abzug"
-          value={compStats.minDed ? compStats.minDed.ded.toFixed(2) : '—'}
-          sub={compStats.minDed ? compStats.minDed.competition.name.slice(0, 24) : '—'}
+          icon={Dumbbell}
+          label={t('dashboard.sessions')}
+          value={trainStats.totalSessions}
+          sub={trainStats.lastSessionDate ? t('dashboard.lastTrained', { date: formatDateShort(trainStats.lastSessionDate) }) : '—'}
           color="emerald"
         />
       </div>
