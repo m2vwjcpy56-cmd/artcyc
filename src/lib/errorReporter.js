@@ -38,6 +38,24 @@ const seenFingerprints = new Set();
 let sentInSession = 0;
 let lastSentAt = 0;
 
+// Transiente Fehler, die KEINEN echten Bug darstellen und ignoriert
+// werden sollen. Aktuell:
+//
+//   • „Lock was stolen by another request" — Web-Locks-API-Race zwischen
+//     mehreren Tabs/PWA-Kontexten, die gleichzeitig den Supabase-Auth-
+//     Token refreshen. Tritt naturgemäß bei PWA-Update oder beim Öffnen
+//     in einem zweiten Tab auf, hat keine UX-Konsequenz.
+//
+// Pattern werden case-insensitive geprüft.
+const TRANSIENT_PATTERNS = [
+  /lock was stolen by another request/i,
+];
+
+function isTransient(message) {
+  if (!message) return false;
+  return TRANSIENT_PATTERNS.some(rx => rx.test(message));
+}
+
 function djb2(str) {
   let h = 5381;
   for (let i = 0; i < str.length; i++) h = ((h << 5) + h) ^ str.charCodeAt(i);
@@ -109,6 +127,9 @@ export async function reportError(err, context = '', extra = null) {
 
     const message = (err && err.message) ? String(err.message) : String(err || 'Unknown error');
     const stack   = (err && err.stack) ? String(err.stack) : '';
+    // Transient: Web-Locks-Race etc. — diese Fehler verfälschen die
+    // Crash-Statistik mehr als sie hilfreich sind.
+    if (isTransient(message)) return;
     const fp      = fingerprintOf(message, stack);
     if (seenFingerprints.has(fp)) return;
     seenFingerprints.add(fp);
@@ -133,7 +154,7 @@ export async function reportError(err, context = '', extra = null) {
       stack,
       url: typeof location !== 'undefined' ? sanitizeUrl(location.href) : '',
       user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
-      app_version: 'stufe8',
+      app_version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown',
       context: ctxParts.filter(Boolean).join(' · ').slice(0, 1000),
       lang,
       fingerprint: fp,

@@ -57,7 +57,7 @@ export function submitFeedback({ text, category = 'other', source = 'user', atta
     category,
     source,
     created_at: new Date().toISOString(),
-    app_version: 'stufe8',
+    app_version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown',
     user_agent: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 200) : '',
     url: typeof location !== 'undefined' ? location.href : '',
     attachments: attachmentStubs,
@@ -168,7 +168,7 @@ export function buildFeedbackMailto(entries) {
     lines.push('');
   }
   lines.push('---');
-  lines.push('App-Version: stufe8');
+  lines.push('App-Version: ' + (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown'));
   lines.push('Browser: ' + (typeof navigator !== 'undefined' ? navigator.userAgent : '?'));
   const body = encodeURIComponent(lines.join('\n'));
   return 'mailto:' + FEEDBACK_EMAIL + '?subject=' + subject + '&body=' + body;
