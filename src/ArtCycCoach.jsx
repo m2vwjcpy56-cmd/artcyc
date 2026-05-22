@@ -5076,14 +5076,21 @@ function Dashboard({ data, setView, onOpenFeedback }) {
       const t1 = calcTableResult(program, c.table1, c.t1_schwierigkeit);
       const t2 = calcTableResult(program, c.table2, c.t2_schwierigkeit);
       const final = Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100;
-      return { competition: c, final };
+      // Gesamtabzug pro KG-Mittel — identische Berechnung wie in WettkampfView
+      const ded = Math.round(((t1.abzugGesamt + t2.abzugGesamt) / 2) * 100) / 100;
+      return { competition: c, final, ded };
     }).filter(Boolean);
     const sorted = withResult.slice().sort((a, b) => b.final - a.final);
     const byDate = withResult.slice().sort((a, b) => (b.competition.date || '').localeCompare(a.competition.date || ''));
+    // Geringster Abzug = niedrigster Wert → bestes Performance-Indiz
+    const minDed = withResult.length > 0
+      ? withResult.reduce((a, b) => b.ded < a.ded ? b : a)
+      : null;
     return {
       count: comps.length,
       best: sorted[0] || null,
       last: byDate[0] || null,
+      minDed,
       withResult
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5177,11 +5184,11 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           color="amber"
         />
         <StatCard
-          icon={Target}
-          label={t('dashboard.competitions')}
-          value={compStats.count}
-          sub={compStats.last ? t('dashboard.lastTrained', { date: formatDateShort(compStats.last.competition.date) }) : (season === 'all' ? '—' : seasonRange.label)}
-          color="emerald"
+          icon={Dumbbell}
+          label={t('dashboard.sessions')}
+          value={trainStats.totalSessions}
+          sub={trainStats.lastSessionDate ? t('dashboard.lastTrained', { date: formatDateShort(trainStats.lastSessionDate) }) : '—'}
+          color="violet"
         />
         <StatCard
           icon={Calendar}
@@ -5191,11 +5198,11 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           color="sky"
         />
         <StatCard
-          icon={Dumbbell}
-          label={t('dashboard.sessions')}
-          value={trainStats.totalSessions}
-          sub={trainStats.lastSessionDate ? t('dashboard.lastTrained', { date: formatDateShort(trainStats.lastSessionDate) }) : '—'}
-          color="violet"
+          icon={TrendingUp}
+          label="Geringster Abzug"
+          value={compStats.minDed ? compStats.minDed.ded.toFixed(2) : '—'}
+          sub={compStats.minDed ? compStats.minDed.competition.name.slice(0, 24) : '—'}
+          color="emerald"
         />
       </div>
 
