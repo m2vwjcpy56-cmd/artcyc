@@ -7191,235 +7191,164 @@ function ComingSoon({ viewId }) {
 // =============================================================
 // MAUTE-Spezial-Statistik (3-Kategorie-Visualisierung)
 // =============================================================
-function MauteStatsPanel({ exercise, sessions }) {
-  const [period, setPeriod] = useState('total'); // 'total' | '4w'
+// =============================================================
+// VIEW-MODEL — Trainings-Detail-Ansicht
+// Bündelt ALLE Kennzahlen des Screens an einer Stelle (Tesler:
+// Komplexität in die Aggregation, nicht in die Darstellung).
+// Erfindet keine neuen Metriken — aggregiert nur bestehende
+// Trainings-Logik (success/third/fail je Session).
+// =============================================================
+function buildExerciseScreenModel(exercise, data, ropeFilter = null, period = '6m') {
+  const empty = {
+    successRateCurrent: 0, successRateLast4Weeks: null, successDelta: null,
+    lastSessionDate: null, lastSessionRate: null, lastSessionFraction: null,
+    sessionsCount: 0, totalAttempts: 0, totalSuccess: 0, totalHit: 0, totalDanger: 0,
+    hitRate: 0, dangerRate: 0,
+    successTrendSeries: [], dangerTrendSeries: [], compositionSeries: [],
+    recentSessionsLimited: [], allSessions: [], nextFocusInsight: [],
+  };
+  if (!exercise || !data) return empty;
 
-  const exSessions = useMemo(() => {
-    return (sessions || [])
-      .filter(s => s.exerciseId === exercise.id)
-      .map(s => {
-        const e = s.entries || [];
-        return {
-          date: s.date,
-          success: e.filter(x => x === 'success').length,
-          third: e.filter(x => x === 'third').length,
-          fail: e.filter(x => x === 'fail').length,
-          total: e.length
-        };
-      })
-      .filter(s => s.total > 0)
-      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  }, [exercise.id, sessions]);
+  let raw = (data.sessions || []).filter(s => s.exerciseId === exercise.id);
+  if (ropeFilter !== null) raw = raw.filter(s => s.withRope === ropeFilter);
 
-  if (exSessions.length === 0) return null;
+  const perSession = raw.map(s => {
+    const e = s.entries || [];
+    const total = e.length;
+    const success = e.filter(x => x === 'success').length;
+    const fail = e.filter(x => x === 'fail').length;
+    const third = e.filter(x => x === 'third').length;
+    return { session: s, date: s.date || '', total, success, fail, third,
+      rate: total > 0 ? Math.round((success / total) * 100) : 0 };
+  }).filter(s => s.total > 0);
 
-  // Aggregat pro Monat
-  const byMonth = new Map();
-  for (const s of exSessions) {
-    const m = (s.date || '').slice(0, 7);
-    if (!m) continue;
-    const cur = byMonth.get(m) || { month: m, success: 0, third: 0, fail: 0, total: 0, sessions: 0 };
-    cur.success += s.success; cur.third += s.third; cur.fail += s.fail; cur.total += s.total; cur.sessions += 1;
-    byMonth.set(m, cur);
+  if (perSession.length === 0) return empty;
+
+  const desc = [...perSession].sort((a, b) => b.date.localeCompare(a.date));
+  const asc = [...perSession].sort((a, b) => a.date.localeCompare(b.date));
+
+  const totalAttempts = perSession.reduce((n, s) => n + s.total, 0);
+  const totalSuccess = perSession.reduce((n, s) => n + s.success, 0);
+  const totalHit = perSession.reduce((n, s) => n + s.third, 0);
+  const totalDanger = perSession.reduce((n, s) => n + s.fail, 0);
+  const successRateCurrent = totalAttempts > 0 ? Math.round((totalSuccess / totalAttempts) * 100) : 0;
+  const hitRate = totalAttempts > 0 ? Math.round((totalHit / totalAttempts) * 100) : 0;
+  const dangerRate = totalAttempts > 0 ? Math.round((totalDanger / totalAttempts) * 100) : 0;
+
+  // Richtung: letzte 4 Wochen vs. die 4 Wochen davor.
+  const now = Date.now();
+  const cut4 = new Date(now - 28 * 86400000).toISOString().slice(0, 10);
+  const cut8 = new Date(now - 56 * 86400000).toISOString().slice(0, 10);
+  const agg = (arr) => arr.reduce((a, s) => ({ success: a.success + s.success, total: a.total + s.total }), { success: 0, total: 0 });
+  const w4 = agg(perSession.filter(s => s.date >= cut4));
+  const wPrev = agg(perSession.filter(s => s.date >= cut8 && s.date < cut4));
+  const successRateLast4Weeks = w4.total > 0 ? Math.round((w4.success / w4.total) * 100) : null;
+  const prevRate = wPrev.total > 0 ? Math.round((wPrev.success / wPrev.total) * 100) : null;
+  const successDelta = (successRateLast4Weeks != null && prevRate != null) ? successRateLast4Weeks - prevRate : null;
+
+  // Letzte Session
+  const last = desc[0];
+  const lastSessionDate = last.date || null;
+  const lastSessionRate = last.rate;
+  const lastSessionFraction = last.success + '/' + last.total;
+
+  // ── Trend-Serien je Zeitraum ───────────────────────────────
+  //   '4w'    → wöchentliche Buckets (letzte 4 Wochen)
+  //   '6m'    → monatliche Buckets (letzte 6 Monate)
+  //   'total' → monatliche Buckets (gesamte Historie)
+  const isWeekly = period === '4w';
+  let windowStart = null;
+  if (period === '4w') windowStart = new Date(now - 28 * 86400000).toISOString().slice(0, 10);
+  else if (period === '6m') windowStart = new Date(now - 183 * 86400000).toISOString().slice(0, 10);
+
+  const weekKey = (iso) => {
+    const d = new Date(iso + 'T00:00:00');
+    const dow = (d.getDay() + 6) % 7; // Montag = 0
+    d.setDate(d.getDate() - dow);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const buckets = new Map();
+  const order = [];
+  for (const s of asc) {
+    if (windowStart && s.date < windowStart) continue;
+    const key = isWeekly ? weekKey(s.date) : s.date.slice(0, 7);
+    if (!buckets.has(key)) { buckets.set(key, { key, success: 0, third: 0, fail: 0, total: 0 }); order.push(key); }
+    const b = buckets.get(key);
+    b.success += s.success; b.third += s.third; b.fail += s.fail; b.total += s.total;
   }
-  const months = Array.from(byMonth.values()).sort((a, b) => a.month.localeCompare(b.month));
 
-  // Gesamt-Aggregat
-  const total = exSessions.reduce((acc, s) => ({
-    success: acc.success + s.success,
-    third: acc.third + s.third,
-    fail: acc.fail + s.fail,
-    total: acc.total + s.total
-  }), { success: 0, third: 0, fail: 0, total: 0 });
+  const successTrendSeries = [];
+  const dangerTrendSeries = [];
+  const compositionSeries = [];
+  for (const key of order) {
+    const b = buckets.get(key);
+    const label = isWeekly
+      ? (key.slice(8, 10) + '.' + key.slice(5, 7))   // 'TT.MM'
+      : (key.slice(5, 7) + '.' + key.slice(2, 4));   // 'MM.JJ'
+    successTrendSeries.push({ label, rate: b.total > 0 ? Math.round((b.success / b.total) * 100) : 0, total: b.total });
+    dangerTrendSeries.push({ label, rate: b.total > 0 ? Math.round((b.fail / b.total) * 100) : 0, total: b.total });
+    compositionSeries.push({ label, success: b.success, third: b.third, fail: b.fail, total: b.total });
+  }
 
-  // 4-Wochen-Fenster für Trend-Vergleich
-  const today = new Date();
-  const cutoff4w = new Date(today.getTime() - 28 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-  const window4w = exSessions.filter(s => s.date >= cutoff4w).reduce((acc, s) => ({
-    success: acc.success + s.success,
-    third: acc.third + s.third,
-    fail: acc.fail + s.fail,
-    total: acc.total + s.total
-  }), { success: 0, third: 0, fail: 0, total: 0 });
+  // ── Nächster Fokus — max. 2 Bullets, aus denselben Zahlen ──
+  const focus = [];
+  if (successDelta != null && successDelta <= -8) {
+    focus.push('Quote fällt (' + successDelta + ' % ggü. Vormonat) — diese Übung zurück in den Fokus.');
+  }
+  if (successRateCurrent >= 85) {
+    if (focus.length === 0) focus.push('Stabil auf hohem Niveau — Quote halten, Varianten testen.');
+  } else if (successRateCurrent < 55) {
+    focus.push('Technik priorisieren — Erfolgsquote unter 55 %.');
+  } else if (focus.length === 0) {
+    focus.push('Solide Basis — gezielt an Konstanz arbeiten.');
+  }
+  if (exercise.category_mode === 3 && dangerRate >= 15) {
+    focus.push('Gefährlich bei ' + dangerRate + ' % — Sicherheit vor Schwierigkeit.');
+  } else if (successDelta != null && successDelta >= 8 && focus.length < 2) {
+    focus.push('Aufwärtstrend (+' + successDelta + ' %) — dranbleiben.');
+  }
 
-  // Aktive Auswahl
-  const view = period === '4w' ? window4w : total;
-  const viewLabel = period === '4w' ? 'Letzte 4 Wochen' : 'Gesamt';
-  const otherLabel = period === '4w' ? 'Gesamt' : 'Letzte 4 Wochen';
-  const otherView = period === '4w' ? total : window4w;
-  const pct = (n, base) => (base || total.total) ? Math.round((n / (base || total.total)) * 100) : 0;
-  const gefPctView = view.total > 0 ? Math.round((view.fail / view.total) * 1000) / 10 : 0;
-  const gefPctOther = otherView.total > 0 ? Math.round((otherView.fail / otherView.total) * 1000) / 10 : null;
-  const trendDelta = gefPctOther !== null ? Math.round((gefPctView - gefPctOther) * 10) / 10 : null;
+  return {
+    successRateCurrent, successRateLast4Weeks, successDelta,
+    lastSessionDate, lastSessionRate, lastSessionFraction,
+    sessionsCount: perSession.length, totalAttempts, totalSuccess, totalHit, totalDanger,
+    hitRate, dangerRate,
+    successTrendSeries, dangerTrendSeries, compositionSeries,
+    recentSessionsLimited: desc.slice(0, 5), allSessions: desc,
+    nextFocusInsight: focus.slice(0, 2),
+  };
+}
 
-  // SVG-Maße für Trend-Linie
-  const TW = 320, TH = 120, TP = 12;
-  const trendPoints = months.map((m, i) => {
-    const x = months.length === 1 ? TW / 2 : TP + (i / (months.length - 1)) * (TW - 2 * TP);
-    const successRate = m.total > 0 ? m.success / m.total : 0;
-    const failRate = m.total > 0 ? m.fail / m.total : 0;
-    const ySuccess = TH - TP - successRate * (TH - 2 * TP);
-    const yFail = TH - TP - failRate * (TH - 2 * TP);
-    return { x, ySuccess, yFail, successRate, failRate, month: m.month };
-  });
-  const successPath = trendPoints.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.ySuccess.toFixed(1)).join(' ');
-  const failPath = trendPoints.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.yFail.toFixed(1)).join(' ');
-  const successAreaPath = trendPoints.length > 0
-    ? successPath + ' L' + trendPoints[trendPoints.length - 1].x.toFixed(1) + ',' + (TH - TP).toFixed(1) + ' L' + trendPoints[0].x.toFixed(1) + ',' + (TH - TP).toFixed(1) + ' Z'
-    : '';
-
-  // Stacked-Bars pro Monat
-  const BW = 320, BH = 110, BP = 10;
-  const barWidth = months.length > 0 ? (BW - 2 * BP) / months.length : 0;
-  const maxJumpsPerMonth = Math.max(1, ...months.map(m => m.total));
-
-  const trendArrow = trendDelta === null ? '' : (trendDelta < -0.05 ? '↓' : trendDelta > 0.05 ? '↑' : '·');
-  const trendColor = trendDelta === null ? 'text-[#8E8E93]'
-    : (trendDelta < -0.05 ? 'text-[#34C759]'
-      : trendDelta > 0.05 ? 'text-[#FF3B30]'
-        : 'text-[#8E8E93]');
-
+// Kompaktes Trend-Diagramm: Erfolgslinie (grün) dominant, Gefahren-
+// linie optional als dünne, gestrichelte Sekundärlinie.
+function ExerciseTrendChart({ successSeries, dangerSeries, showDanger }) {
+  const W = 320, H = 116, P = 14;
+  const n = successSeries.length;
+  if (n === 0) return null;
+  const xAt = (i) => n === 1 ? W / 2 : P + (i / (n - 1)) * (W - 2 * P);
+  const yAt = (rate) => H - P - (rate / 100) * (H - 2 * P);
+  const toPath = (series) => series.map((p, i) => (i === 0 ? 'M' : 'L') + xAt(i).toFixed(1) + ',' + yAt(p.rate).toFixed(1)).join(' ');
+  const successPath = toPath(successSeries);
+  const areaPath = n > 0 ? successPath + ' L' + xAt(n - 1).toFixed(1) + ',' + (H - P).toFixed(1) + ' L' + xAt(0).toFixed(1) + ',' + (H - P).toFixed(1) + ' Z' : '';
+  const dangerPath = toPath(dangerSeries);
   return (
-    <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-slate-200/60 dark:border-white/10 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 space-y-5">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="font-semibold flex items-center gap-2 text-[#000] dark:text-white">
-          <Target size={18} className="text-[#FF9500]" /> Sprung-Statistik
-        </h2>
-        <span className="text-xs text-[#8E8E93]">{exSessions.length} Sessions · seit {exSessions[0].date}</span>
-      </div>
-
-      {/* iOS-Segmented-Control: Zeitraum-Switch */}
-      <div className="bg-[#E5E5EA] dark:bg-white/10 rounded-2xl p-1 flex gap-1">
-        <button onClick={() => setPeriod('total')}
-          className={'flex-1 px-3 py-1.5 rounded-xl text-[13px] font-medium transition ' +
-            (period === 'total' ? 'bg-white dark:bg-[#2c2c2e] shadow-sm text-[#000] dark:text-white' : 'text-[#3C3C43] dark:text-[#EBEBF5] active:opacity-60')}>
-          Gesamt
-        </button>
-        <button onClick={() => setPeriod('4w')}
-          className={'flex-1 px-3 py-1.5 rounded-xl text-[13px] font-medium transition ' +
-            (period === '4w' ? 'bg-white dark:bg-[#2c2c2e] shadow-sm text-[#000] dark:text-white' : 'text-[#3C3C43] dark:text-[#EBEBF5] active:opacity-60')}>
-          Letzte 4 Wochen
-        </button>
-      </div>
-
-      {/* Headline: Gefahren-Quote — wichtigste Kennzahl */}
-      <div className="bg-[#FFE5E5] dark:bg-rose-950/30 border border-rose-200/60 dark:border-rose-900/40 rounded-2xl p-4">
-        <div className="flex items-center justify-between mb-2 gap-2">
-          <div className="flex items-center gap-1.5">
-            <AlertTriangle size={14} className="text-rose-600 dark:text-rose-400" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-700 dark:text-rose-300">Gefahren-Quote · {viewLabel}</span>
-          </div>
-          {trendDelta !== null && view.total > 0 && (
-            <span className={'text-[11px] font-semibold ' + trendColor}>
-              {trendArrow} {Math.abs(trendDelta).toFixed(1)}% vs. {otherLabel}
-            </span>
-          )}
-        </div>
-        {view.total > 0 ? (
-          <div className="flex items-baseline gap-2">
-            <div className="text-5xl font-bold text-rose-600 dark:text-rose-300 leading-none">{gefPctView.toFixed(1)}<span className="text-2xl">%</span></div>
-            <div className="text-xs text-rose-700/80 dark:text-rose-300/80">
-              <div className="font-medium">{view.fail} von {view.total}</div>
-              <div className="opacity-75">Trainer am Seil</div>
-            </div>
-          </div>
-        ) : (
-          <div className="text-[14px] text-rose-700/70 dark:text-rose-300/70">Keine Daten in diesem Zeitraum.</div>
-        )}
-      </div>
-
-      {/* 3-Box-Aufteilung — passend zum gewählten Zeitraum */}
-      <div className="grid grid-cols-3 gap-2 text-center text-xs">
-        <div className="bg-emerald-50 dark:bg-emerald-950/40 rounded-xl py-2.5 px-1">
-          <div className="text-emerald-700 dark:text-emerald-400 font-bold text-2xl">{pct(view.success, view.total)}%</div>
-          <div className="text-[#3C3C43] dark:text-[#EBEBF5]">{statusLabel(exercise, 'success')}</div>
-          <div className="text-[10px] text-[#8E8E93] mt-0.5">{view.success}× absolut</div>
-        </div>
-        <div className="bg-amber-50 dark:bg-amber-950/40 rounded-xl py-2.5 px-1">
-          <div className="text-amber-700 dark:text-amber-400 font-bold text-2xl">{pct(view.third, view.total)}%</div>
-          <div className="text-[#3C3C43] dark:text-[#EBEBF5]">{statusLabel(exercise, 'third')}</div>
-          <div className="text-[10px] text-[#8E8E93] mt-0.5">{view.third}× absolut</div>
-        </div>
-        <div className="bg-rose-50 dark:bg-rose-950/40 rounded-xl py-2.5 px-1">
-          <div className="text-rose-700 dark:text-rose-400 font-bold text-2xl">{pct(view.fail, view.total)}%</div>
-          <div className="text-[#3C3C43] dark:text-[#EBEBF5]">{statusLabel(exercise, 'fail')}</div>
-          <div className="text-[10px] text-[#8E8E93] mt-0.5">{view.fail}× absolut</div>
-        </div>
-      </div>
-
-      {/* Trend pro Monat — zwei Linien: Geklappt-% (grün) + Gefahren-% (rot) */}
-      {months.length >= 2 && (
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500 font-medium">
-              Verlauf pro Monat
-            </div>
-            <div className="flex items-center gap-3 text-[10px] text-slate-500">
-              <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-emerald-500" />Geklappt</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-rose-500" />Gefahren</span>
-            </div>
-          </div>
-          <svg viewBox={'0 0 ' + TW + ' ' + TH} className="w-full" preserveAspectRatio="none">
-            {/* Achsen */}
-            {[0, 0.25, 0.5, 0.75, 1].map(r => (
-              <line key={r} x1={TP} y1={TH - TP - r * (TH - 2 * TP)} x2={TW - TP} y2={TH - TP - r * (TH - 2 * TP)}
-                stroke="#E5E5EA" strokeWidth="1" strokeDasharray={r === 0 || r === 1 ? '' : '2 3'} />
-            ))}
-            <path d={successAreaPath} fill="rgba(16, 185, 129, 0.10)" />
-            <path d={successPath} fill="none" stroke="#10B981" strokeWidth="2" />
-            <path d={failPath} fill="none" stroke="#F43F5E" strokeWidth="2" />
-            {trendPoints.map((p, i) => (
-              <g key={i}>
-                <circle cx={p.x} cy={p.ySuccess} r="2.2" fill="#10B981" />
-                <circle cx={p.x} cy={p.yFail} r="2.2" fill="#F43F5E" />
-              </g>
-            ))}
-            {/* Y-Beschriftung */}
-            <text x={TP - 2} y={TP + 4} fontSize="9" fill="#8E8E93" textAnchor="end">100%</text>
-            <text x={TP - 2} y={TH / 2 + 3} fontSize="9" fill="#8E8E93" textAnchor="end">50%</text>
-            <text x={TP - 2} y={TH - TP + 4} fontSize="9" fill="#8E8E93" textAnchor="end">0%</text>
-          </svg>
-          <div className="flex justify-between text-[10px] text-slate-400 mt-1 px-3">
-            <span>{months[0].month}</span>
-            <span>{months[months.length - 1].month}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Stacked-Bars pro Monat: Anteile geklappt / dritter / fail */}
-      <div>
-        <div className="text-[10px] uppercase tracking-wide text-slate-500 font-medium mb-1">
-          Verteilung pro Monat (relativ)
-        </div>
-        <svg viewBox={'0 0 ' + BW + ' ' + BH} className="w-full" preserveAspectRatio="none">
-          {months.map((m, i) => {
-            const x = BP + i * barWidth;
-            const w = Math.max(1, barWidth - 1);
-            const sH = (m.success / m.total) * (BH - 2 * BP);
-            const tH = (m.third / m.total) * (BH - 2 * BP);
-            const fH = (m.fail / m.total) * (BH - 2 * BP);
-            const yStart = BP;
-            return (
-              <g key={i}>
-                <rect x={x} y={yStart} width={w} height={sH} fill="#10B981" />
-                <rect x={x} y={yStart + sH} width={w} height={tH} fill="#F59E0B" />
-                <rect x={x} y={yStart + sH + tH} width={w} height={fH} fill="#F43F5E" />
-                {/* Aktivitäts-Indikator: Größe = total Anzahl Sprünge in dem Monat */}
-                <rect x={x} y={BH - BP + 2} width={w} height={Math.max(1, 4 * (m.total / maxJumpsPerMonth))} fill="#94A3B8" opacity="0.6" />
-              </g>
-            );
-          })}
-        </svg>
-        <div className="flex justify-between text-[10px] text-slate-400 mt-1 px-3">
-          <span>{months[0].month}</span>
-          <span>{months[months.length - 1].month}</span>
-        </div>
-        <div className="flex items-center gap-3 text-[10px] text-slate-500 mt-2 flex-wrap">
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />{statusLabel(exercise, 'success')}</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500" />{statusLabel(exercise, 'third')}</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500" />{statusLabel(exercise, 'fail')}</span>
-          <span className="flex items-center gap-1 ml-auto"><span className="w-2.5 h-2.5 rounded-sm bg-slate-400 opacity-60" />Aktivität</span>
-        </div>
+    <div>
+      <svg viewBox={'0 0 ' + W + ' ' + H} className="w-full" preserveAspectRatio="none">
+        {[0, 0.5, 1].map(r => (
+          <line key={r} x1={P} y1={H - P - r * (H - 2 * P)} x2={W - P} y2={H - P - r * (H - 2 * P)}
+            stroke="#E5E5EA" strokeWidth="1" strokeDasharray={r === 0.5 ? '2 3' : ''} />
+        ))}
+        <path d={areaPath} fill="rgba(52,199,89,0.10)" />
+        {showDanger && <path d={dangerPath} fill="none" stroke="#FF453A" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.75" />}
+        <path d={successPath} fill="none" stroke="#34C759" strokeWidth="2.5" strokeLinejoin="round" />
+        {n <= 14 && successSeries.map((p, i) => <circle key={i} cx={xAt(i)} cy={yAt(p.rate)} r="2.4" fill="#34C759" />)}
+        <text x={P - 3} y={P + 4} fontSize="9" fill="#8E8E93" textAnchor="end">100</text>
+        <text x={P - 3} y={H - P + 3} fontSize="9" fill="#8E8E93" textAnchor="end">0</text>
+      </svg>
+      <div className="flex justify-between text-[10px] text-slate-400 mt-1 px-2 tabular-nums">
+        <span>{successSeries[0].label}</span>
+        {n > 1 && <span>{successSeries[n - 1].label}</span>}
       </div>
     </div>
   );
@@ -7427,21 +7356,30 @@ function MauteStatsPanel({ exercise, sessions }) {
 
 function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, onDelete }) {
   const { t } = useI18n();
+  const [ropeFilter, setRopeFilter] = useState(null);     // null | true | false
+  const [trendPeriod, setTrendPeriod] = useState('6m');   // '4w' | '6m' | 'total'
+  const [showDangerTrend, setShowDangerTrend] = useState(false);
+  const [showComposition, setShowComposition] = useState(false);
+  const [coachOpen, setCoachOpen] = useState(false);
+  const [compOpen, setCompOpen] = useState(false);
+  const [showAllSessions, setShowAllSessions] = useState(false);
   const [importStatus, setImportStatus] = useState(null); // null | 'parsing' | 'preview' | 'error'
   const [importPreview, setImportPreview] = useState(null);
   const [importMsg, setImportMsg] = useState('');
-  // Rope-Filter: null = alle, true = mit Seil, false = ohne Seil
-  const [ropeFilter, setRopeFilter] = useState(null);
 
-  const trainStats = calcExerciseTrainingStats(exercise, data.sessions || [], ropeFilter);
-  // Übersichts-Stats für die Filter-Tabs (Counts pro Variante)
+  const is3 = exercise.category_mode === 3;
+  const vm = buildExerciseScreenModel(exercise, data, ropeFilter, trendPeriod);
+  const hasTraining = vm.totalAttempts > 0;
+
   const ropeStats = exercise.has_rope_variant ? {
+    all: calcExerciseTrainingStats(exercise, data.sessions || [], null),
     withRope: calcExerciseTrainingStats(exercise, data.sessions || [], true),
-    withoutRope: calcExerciseTrainingStats(exercise, data.sessions || [], false)
+    withoutRope: calcExerciseTrainingStats(exercise, data.sessions || [], false),
   } : null;
+
   const compStats = calcExerciseCompetitionStats(exercise, data.programs || [], data.competitions || []);
 
-  // Liste aller Wettkämpfe mit dieser Übung
+  // Liste aller Wettkämpfe mit dieser Übung (für die eingeklappte Sektion)
   const compList = (() => {
     const programMap = new Map((data.programs || []).map(p => [p.id, p]));
     const matches = (ex) => {
@@ -7459,11 +7397,10 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
         const e2 = (comp.table2 || [])[idx] || {};
         result.push({
           competition: comp,
-          exPoints: Number(ex.points || 0),
           k1cross: Number(e1.cross || 0), k1wave: Number(e1.wave || 0), k1bar: Number(e1.bar || 0), k1circle: Number(e1.circle || 0),
           k2cross: Number(e2.cross || 0), k2wave: Number(e2.wave || 0), k2bar: Number(e2.bar || 0), k2circle: Number(e2.circle || 0),
           k1schwPct: Number(e1.schwPct || 0), k2schwPct: Number(e2.schwPct || 0),
-          k1takt: Number(e1.taktischePunkte || 0), k2takt: Number(e2.taktischePunkte || 0)
+          k1takt: Number(e1.taktischePunkte || 0), k2takt: Number(e2.taktischePunkte || 0),
         });
       });
     }
@@ -7471,370 +7408,293 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
     return result;
   })();
 
-  // Sessions-Liste mit Datum + Quote
-  const sessionList = (() => {
-    let exSessions = (data.sessions || []).filter(s => s.exerciseId === exercise.id);
-    if (ropeFilter !== null) {
-      exSessions = exSessions.filter(s => s.withRope === ropeFilter);
-    }
-    exSessions = exSessions.slice();
-    exSessions.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    return exSessions.map(s => {
-      const total = (s.entries || []).length;
-      const success = (s.entries || []).filter(e => e === 'success').length;
-      const fail = (s.entries || []).filter(e => e === 'fail').length;
-      const third = (s.entries || []).filter(e => e === 'third').length;
-      return {
-        session: s, total, success, fail, third,
-        rate: total > 0 ? Math.round((success / total) * 100) : 0
-      };
-    });
+  // Trend-Chip im Hero: Richtung der letzten 4 Wochen.
+  const delta = vm.successDelta;
+  const chip = delta == null ? null : (() => {
+    if (delta > 0) return { cls: 'bg-emerald-50 text-emerald-700', arrow: '↑' };
+    if (delta < 0) return { cls: 'bg-amber-50 text-amber-700', arrow: '↓' };
+    return { cls: 'bg-slate-100 text-slate-500', arrow: '·' };
   })();
 
+  const sessionRate = (r) => r >= 80 ? 'text-emerald-700' : 'text-slate-700';
+  const periodTabs = [['4w', '4 Wochen'], ['6m', '6 Monate'], ['total', 'Gesamt']];
+
+  const sessionRows = (list) => list.map((s, i) => (
+    <div key={i} className="px-4 py-3 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="text-[15px] text-slate-700 tabular-nums">{formatDateShort(s.date)}</span>
+        {exercise.has_rope_variant && s.session.withRope === true && <IOSTag color="orange">Seil</IOSTag>}
+        {exercise.has_rope_variant && s.session.withRope === false && <IOSTag color="blue">ohne</IOSTag>}
+        {is3 && s.fail > 0 && <IOSTag color="red">{s.fail}× {statusLabel(exercise, 'fail').toLowerCase()}</IOSTag>}
+      </div>
+      <div className="flex items-center gap-3 shrink-0">
+        <span className="text-[13px] text-slate-400 tabular-nums">{s.success}/{s.total}</span>
+        <span className={'text-[15px] font-semibold tabular-nums w-11 text-right ' + sessionRate(s.rate)}>{s.rate}%</span>
+      </div>
+    </div>
+  ));
+
   return (
-    <div className="min-h-screen bg-[#F2F2F7] p-4 sm:p-8">
-      <div className="max-w-3xl mx-auto space-y-4">
-        <header className="flex items-start gap-2 pt-2">
-          <button onClick={onBack} className="p-2 -ml-2 text-amber-500 active:opacity-50 shrink-0 mt-0.5">
+    <div className="min-h-screen bg-[#F2F2F7]">
+      <div className="max-w-2xl mx-auto px-4 pt-2 pb-28 space-y-5">
+
+        {/* 01 — TOP BAR (kompakt) */}
+        <header className="flex items-center gap-2 pt-1">
+          <button onClick={onBack} className="p-2 -ml-2 text-[#FF9500] active:opacity-50 shrink-0">
             <ChevronLeft size={28} strokeWidth={2.6} />
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-[28px] font-bold tracking-tight leading-tight">{localizedExerciseName(exercise)}</h1>
-            <div className="flex items-center gap-2 flex-wrap mt-1.5">
-              {exercise.uci_code && (
-                <span className="bg-sky-100 text-sky-700 text-xs font-medium px-2 py-0.5 rounded-full">
-                  UCI {exercise.uci_code} · {exercise.uci_disc}
-                </span>
-              )}
-              {Number(exercise.points) > 0 && (
-                <span className="text-xs text-slate-600 font-medium">{Number(exercise.points).toFixed(1)} Pkt</span>
-              )}
-              {exercise.category_mode === 3 && (
-                <span className="bg-amber-100 text-amber-800 text-xs font-medium px-2 py-0.5 rounded-full">
-                  3-Status: {exercise.third_label}
-                </span>
-              )}
-              {!exercise.active && (
-                <span className="bg-slate-100 text-slate-700 text-xs font-medium px-2 py-0.5 rounded-full">archiviert</span>
-              )}
+            <h1 className="text-[22px] font-bold tracking-tight leading-tight truncate">{localizedExerciseName(exercise)}</h1>
+            <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+              {exercise.uci_code && <IOSTag color="blue">UCI {exercise.uci_code}</IOSTag>}
+              {Number(exercise.points) > 0 && <span className="text-[12px] text-slate-500 font-medium tabular-nums">{Number(exercise.points).toFixed(1)} Pkt</span>}
+              {is3 && <IOSTag color="orange">{exercise.third_label}</IOSTag>}
+              {!exercise.active && <IOSTag color="gray">archiviert</IOSTag>}
             </div>
           </div>
         </header>
 
-        {/* Top-Stats: 2x2 farbige StatCards für Erfolgsquote, Sessions, Versuche, Wettkämpfe */}
-        {trainStats.total > 0 && (
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard
-              icon={Target}
-              label={t('detail.successRate')}
-              value={trainStats.rate + '%'}
-              sub={trainStats.success + ' / ' + trainStats.total}
-              color={trainStats.rate >= 80 ? 'emerald' : trainStats.rate >= 60 ? 'amber' : 'rose'}
-            />
-            <StatCard
-              icon={Dumbbell}
-              label={t('detail.sessions')}
-              value={trainStats.sessions}
-              sub={t('detail.attempts') + ': ' + trainStats.total}
-              color="violet"
-            />
-            {compList.length > 0 && (
-              <StatCard
-                icon={Trophy}
-                label={t('detail.competitions')}
-                value={compList.length}
-                sub={compList[0]?.competition?.date ? formatDateShort(compList[0].competition.date) : t('detail.noData')}
-                color="orange"
-              />
-            )}
-            {sessionList.length > 0 && (
-              <StatCard
-                icon={Calendar}
-                label={t('detail.lastTrained')}
-                value={formatDateShort(sessionList[0].session.date)}
-                sub={sessionList[0].rate + '% · ' + sessionList[0].success + '/' + sessionList[0].total}
-                color="sky"
-              />
-            )}
+        {/* Scope-Filter Seil — nur wenn Variante existiert (Hick: dezent halten) */}
+        {ropeStats && (
+          <div className="bg-[#E5E5EA] rounded-2xl p-1 flex gap-1 text-[13px] font-medium">
+            {[[null, t('training.range.all'), ropeStats.all.sessions],
+              [true, t('log.withRope'), ropeStats.withRope.sessions],
+              [false, 'Ohne Seil', ropeStats.withoutRope.sessions]].map(([val, label, n]) => (
+              <button key={String(val)} onClick={() => setRopeFilter(val)}
+                className={'flex-1 px-2 py-1.5 rounded-xl transition ' +
+                  (ropeFilter === val ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 active:opacity-60')}>
+                {label}<span className="ml-1 opacity-50 tabular-nums">{n}</span>
+              </button>
+            ))}
           </div>
         )}
 
-        {/* KI-Insight — regel-basierter Trainer-Tipp (1 Zeile bei wenig Daten, ausführlich ab ≥ 30 Versuchen) */}
-        {(() => {
-          const insight = generateExerciseInsight(exercise, data.sessions || [], t, data.programs || [], data.competitions || []);
-          if (!insight || !insight.lines || insight.lines.length === 0) return null;
-          return (
-            <div className="bg-gradient-to-br from-[#FF9500]/10 to-[#FF6D00]/10 rounded-2xl p-4 flex gap-3 items-start">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#FF9500] to-[#FF6D00] flex items-center justify-center shrink-0">
-                <Sparkles size={18} className="text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[11px] uppercase tracking-wide text-[#FF9500] font-semibold mb-1.5">
-                  {t('aiInsight.title')}
-                </div>
-                {insight.rich ? (
-                  <ul className="text-[14px] leading-snug space-y-1.5 list-disc pl-4 marker:text-[#FF9500]">
-                    {insight.lines.map((line, i) => (
-                      <li key={i}>{line}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="text-[14px] leading-snug space-y-1">
-                    {insight.lines.map((line, i) => (
-                      <div key={i}>{line}</div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Training-Statistik */}
-        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold flex items-center gap-2">
-              <Dumbbell size={18} className="text-amber-500" /> {t('nav.training')}
-            </h2>
-            {trainStats.total > 0 && (
-              <span className="text-xs text-slate-500">{trainStats.sessions} Sess. · {trainStats.total} Wiederholungen</span>
-            )}
+        {!hasTraining ? (
+          /* Leerer Zustand — keine Trainingsdaten */
+          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-6 text-center">
+            <div className="text-[15px] text-slate-400">Noch keine Trainingsdaten erfasst.</div>
           </div>
-
-          {/* Rope-Filter-Tabs (nur wenn Übung Seil-Variante hat) */}
-          {ropeStats && (
-            <div className="flex gap-1 p-1 bg-slate-100 rounded-full text-xs font-medium">
-              <button onClick={() => setRopeFilter(null)}
-                className={'flex-1 py-1.5 rounded-full transition ' +
-                  (ropeFilter === null ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500')}>
-                {t('training.range.all')}
-                <span className="ml-1 opacity-60">{ropeStats.withRope.sessions + ropeStats.withoutRope.sessions}</span>
-              </button>
-              <button onClick={() => setRopeFilter(true)}
-                className={'flex-1 py-1.5 rounded-full transition ' +
-                  (ropeFilter === true ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500')}>
-                {t('log.withRope')}
-                <span className="ml-1 opacity-60">{ropeStats.withRope.sessions}</span>
-              </button>
-              <button onClick={() => setRopeFilter(false)}
-                className={'flex-1 py-1.5 rounded-full transition ' +
-                  (ropeFilter === false ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-500')}>
-                Ohne Seil
-                <span className="ml-1 opacity-60">{ropeStats.withoutRope.sessions}</span>
-              </button>
-            </div>
-          )}
-          {trainStats.total > 0 ? (
-            <>
-              <div className="flex items-baseline gap-3">
-                <div className={'text-4xl font-bold ' + (trainStats.rate >= 80 ? 'text-emerald-600' : trainStats.rate >= 60 ? 'text-amber-600' : 'text-rose-600')}>
-                  {trainStats.rate}%
-                </div>
-                <div className="text-sm text-slate-600">{statusLabel(exercise, 'success').toLowerCase()} insgesamt</div>
-              </div>
-              <div className={'grid gap-2 text-center text-xs ' + (exercise.category_mode === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
-                <div className="bg-emerald-50 rounded-lg py-2">
-                  <div className="text-emerald-700 font-bold text-base">{trainStats.success}</div>
-                  <div className="text-slate-600">{statusLabel(exercise, 'success')}</div>
-                </div>
-                {exercise.category_mode === 3 && (
-                  <div className="bg-amber-50 rounded-lg py-2">
-                    <div className="text-amber-700 font-bold text-base">{trainStats.third}</div>
-                    <div className="text-slate-600">{statusLabel(exercise, 'third')}</div>
-                  </div>
+        ) : (
+          <>
+            {/* 02 — HERO: Erfolgsquote (einzige dominante Fläche) */}
+            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[12px] font-semibold uppercase tracking-wider text-emerald-600">Erfolgsquote</span>
+                {chip && (
+                  <span className={'text-[12px] font-semibold px-2 py-1 rounded-full tabular-nums ' + chip.cls}>
+                    {chip.arrow} {Math.abs(delta)} % · 4 Wochen
+                  </span>
                 )}
-                <div className="bg-rose-50 rounded-lg py-2">
-                  <div className="text-rose-700 font-bold text-base">{trainStats.fail}</div>
-                  <div className="text-slate-600">{statusLabel(exercise, 'fail')}</div>
-                </div>
               </div>
-              <div className="pt-3 border-t border-slate-100">
-                <div className="text-[10px] uppercase tracking-wide text-slate-500 font-medium mb-2">Letzte Sessions</div>
-                <div className="space-y-1.5">
-                  {sessionList.slice(0, 10).map((s, i) => (
-                    <div key={i} className="py-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-slate-700 shrink-0">{s.session.date}</span>
-                          {exercise.has_rope_variant && s.session.withRope === true && (
-                            <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">Seil</span>
-                          )}
-                          {exercise.has_rope_variant && s.session.withRope === false && (
-                            <span className="text-[10px] font-medium text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded-full shrink-0">ohne</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-slate-500">{s.success}/{s.total}</span>
-                          <span className={'text-sm font-bold w-10 text-right ' + (s.rate >= 80 ? 'text-emerald-600' : s.rate >= 60 ? 'text-amber-600' : 'text-rose-600')}>
-                            {s.rate}%
-                          </span>
-                        </div>
-                      </div>
-                      {s.session.notes && (
-                        <div className="text-xs text-slate-500 italic mt-0.5 pl-1 border-l-2 border-amber-200 pl-2">
-                          {s.session.notes}
-                        </div>
+              <div className="mt-1 flex items-end gap-1">
+                <span className="text-[64px] leading-[0.9] font-bold text-emerald-600 tabular-nums">{vm.successRateCurrent}</span>
+                <span className="text-[30px] font-bold text-emerald-600 mb-1">%</span>
+              </div>
+              <div className="mt-1.5 text-[15px] text-slate-500 tabular-nums">{vm.totalSuccess} von {vm.totalAttempts} Versuchen</div>
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[13px]">
+                <span className="text-slate-500">Zuletzt {formatDateShort(vm.lastSessionDate)}</span>
+                <span className="font-medium text-slate-700 tabular-nums">{vm.lastSessionRate} % · {vm.lastSessionFraction}</span>
+              </div>
+            </div>
+
+            {/* 03 — QUICK INSIGHT ROW (3 gleich große Karten) */}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: 'Letzte Session', value: vm.lastSessionRate + ' %', sub: vm.lastSessionFraction },
+                { label: '4 Wochen', value: (vm.successRateLast4Weeks == null ? '—' : vm.successRateLast4Weeks + ' %'), sub: 'Erfolgsquote' },
+                { label: 'Sessions', value: String(vm.sessionsCount), sub: vm.totalAttempts + ' Versuche' },
+              ].map((c, i) => (
+                <div key={i} className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3 text-center">
+                  <div className="text-[11px] text-slate-500 font-medium leading-tight">{c.label}</div>
+                  <div className="text-[22px] font-bold text-slate-900 tabular-nums mt-1 leading-none">{c.value}</div>
+                  <div className="text-[11px] text-slate-400 tabular-nums mt-1 truncate">{c.sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* 04 — BREAKDOWN CLUSTER (Geklappt stark, Getroffen mittel, Gefährlich dezent) */}
+            <div className={'grid gap-2 ' + (is3 ? 'grid-cols-3' : 'grid-cols-2')}>
+              <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 text-center">
+                <div className="text-[12px] font-medium text-emerald-700">{statusLabel(exercise, 'success')}</div>
+                <div className="text-[26px] font-bold text-emerald-700 tabular-nums leading-none mt-1">{vm.totalSuccess}</div>
+                <div className="text-[11px] text-emerald-600/70 tabular-nums mt-0.5">{vm.successRateCurrent} %</div>
+              </div>
+              {is3 && (
+                <div className="bg-amber-50 border border-amber-100 rounded-2xl p-3 text-center">
+                  <div className="text-[12px] font-medium text-amber-700">{statusLabel(exercise, 'third')}</div>
+                  <div className="text-[26px] font-bold text-amber-700 tabular-nums leading-none mt-1">{vm.totalHit}</div>
+                  <div className="text-[11px] text-amber-600/70 tabular-nums mt-0.5">{vm.hitRate} %</div>
+                </div>
+              )}
+              <div className="bg-white border border-slate-200/60 rounded-2xl p-3 text-center">
+                <div className="text-[12px] font-medium text-slate-500">{statusLabel(exercise, 'fail')}</div>
+                <div className="text-[26px] font-bold text-slate-900 tabular-nums leading-none mt-1">{vm.totalDanger}</div>
+                <div className="text-[11px] text-rose-600 tabular-nums mt-0.5">{vm.dangerRate} %</div>
+              </div>
+            </div>
+
+            {/* 05 — TREND-MODUL */}
+            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Trend</h2>
+                {is3 && (
+                  <button onClick={() => setShowDangerTrend(v => !v)}
+                    className={'text-[12px] font-medium px-2.5 py-1 rounded-full transition active:opacity-60 ' +
+                      (showDangerTrend ? 'bg-rose-50 text-rose-600' : 'bg-slate-100 text-slate-500')}>
+                    Gefährlich {showDangerTrend ? 'an' : 'aus'}
+                  </button>
+                )}
+              </div>
+              <div className="bg-[#E5E5EA] rounded-2xl p-1 flex gap-1 text-[13px] font-medium">
+                {periodTabs.map(([val, label]) => (
+                  <button key={val} onClick={() => setTrendPeriod(val)}
+                    className={'flex-1 px-2 py-1.5 rounded-xl transition ' +
+                      (trendPeriod === val ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 active:opacity-60')}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {vm.successTrendSeries.length >= 2 ? (
+                <>
+                  <ExerciseTrendChart successSeries={vm.successTrendSeries} dangerSeries={vm.dangerTrendSeries} showDanger={showDangerTrend && is3} />
+                  <div className="flex items-center gap-4 text-[11px] text-slate-500">
+                    <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 rounded bg-emerald-500" />{statusLabel(exercise, 'success')}</span>
+                    {showDangerTrend && is3 && <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 rounded bg-rose-500" />{statusLabel(exercise, 'fail')}</span>}
+                  </div>
+                </>
+              ) : (
+                <div className="text-[13px] text-slate-400 py-4 text-center">Zu wenig Datenpunkte für diesen Zeitraum.</div>
+              )}
+
+              {/* Stacked-Verteilung — standardmäßig eingeklappt */}
+              <button onClick={() => setShowComposition(v => !v)}
+                className="w-full text-[13px] font-medium text-[#007AFF] active:opacity-60 pt-1 flex items-center justify-center gap-1">
+                {showComposition ? 'Verteilung ausblenden' : 'Verteilung anzeigen'}
+                <ChevronRight size={15} strokeWidth={2.4} className={'transition-transform ' + (showComposition ? 'rotate-90' : '')} />
+              </button>
+              {showComposition && vm.compositionSeries.length > 0 && (
+                <div>
+                  <svg viewBox="0 0 320 110" className="w-full" preserveAspectRatio="none">
+                    {(() => {
+                      const BW = 320, BH = 110, BP = 10;
+                      const bw = (BW - 2 * BP) / vm.compositionSeries.length;
+                      return vm.compositionSeries.map((m, i) => {
+                        const x = BP + i * bw;
+                        const w = Math.max(1, bw - 2);
+                        const inner = BH - 2 * BP;
+                        const sH = m.total > 0 ? (m.success / m.total) * inner : 0;
+                        const tH = m.total > 0 ? (m.third / m.total) * inner : 0;
+                        const fH = m.total > 0 ? (m.fail / m.total) * inner : 0;
+                        return (
+                          <g key={i}>
+                            <rect x={x} y={BP} width={w} height={sH} fill="#34C759" />
+                            <rect x={x} y={BP + sH} width={w} height={tH} fill="#FF9F0A" />
+                            <rect x={x} y={BP + sH + tH} width={w} height={fH} fill="#FF453A" />
+                          </g>
+                        );
+                      });
+                    })()}
+                  </svg>
+                  <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-2 flex-wrap">
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />{statusLabel(exercise, 'success')}</span>
+                    {is3 && <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500" />{statusLabel(exercise, 'third')}</span>}
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500" />{statusLabel(exercise, 'fail')}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 06 — NÄCHSTER FOKUS (KI-Coach eingeklappt) */}
+            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 space-y-3">
+                <h2 className="text-[15px] font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[#FF9500]" /> Nächster Fokus</h2>
+                {vm.nextFocusInsight.length > 0 && (
+                  <ul className="text-[14px] leading-snug space-y-1.5 list-disc pl-4 marker:text-[#FF9500]">
+                    {vm.nextFocusInsight.map((line, i) => <li key={i}>{line}</li>)}
+                  </ul>
+                )}
+                {(() => {
+                  const insight = generateExerciseInsight(exercise, data.sessions || [], t, data.programs || [], data.competitions || []);
+                  if (!insight || !insight.lines || insight.lines.length === 0) return null;
+                  return (
+                    <>
+                      <button onClick={() => setCoachOpen(v => !v)}
+                        className="w-full text-[13px] font-medium text-[#007AFF] active:opacity-60 flex items-center justify-center gap-1">
+                        {coachOpen ? 'KI-Coach ausblenden' : 'KI-Coach anzeigen'}
+                        <ChevronRight size={15} strokeWidth={2.4} className={'transition-transform ' + (coachOpen ? 'rotate-90' : '')} />
+                      </button>
+                      {coachOpen && (
+                        <ul className="text-[14px] leading-snug space-y-1.5 list-disc pl-4 marker:text-slate-400 pt-1 border-t border-slate-100">
+                          {insight.lines.map((line, i) => <li key={i}>{line}</li>)}
+                        </ul>
                       )}
+                    </>
+                  );
+                })()}
+            </div>
+
+            {/* 07 — LETZTE SESSIONS (5) + CTA */}
+            <IOSList header="Letzte Sessions">
+              {sessionRows(showAllSessions ? vm.allSessions : vm.recentSessionsLimited)}
+            </IOSList>
+            {vm.allSessions.length > 5 && (
+              <button onClick={() => setShowAllSessions(v => !v)}
+                className="w-full text-[15px] font-medium text-[#007AFF] active:opacity-60 py-1">
+                {showAllSessions ? 'Weniger anzeigen' : 'Alle Sessions anzeigen (' + vm.allSessions.length + ')'}
+              </button>
+            )}
+          </>
+        )}
+
+        {/* Wettkampf — sekundär, eingeklappt, nur bei Daten */}
+        {compStats.wettkaempfe > 0 && (
+          <div className="space-y-2">
+            <button onClick={() => setCompOpen(v => !v)}
+              className="w-full bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-4 py-3.5 flex items-center justify-between active:bg-[#D1D1D6]/30 transition">
+              <span className="text-[15px] font-semibold flex items-center gap-2"><Trophy size={16} className="text-[#FF9500]" /> Wettkampf
+                <span className="text-[13px] font-normal text-slate-400 tabular-nums">{compStats.wettkaempfe}×</span>
+              </span>
+              <ChevronRight size={18} strokeWidth={2.4} className={'text-[#C7C7CC] transition-transform ' + (compOpen ? 'rotate-90' : '')} />
+            </button>
+            {compOpen && (
+              <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 space-y-3">
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  {[['x', compStats.cross, false], ['~', compStats.wave, false], ['|', compStats.bar, false], ['○', compStats.circle, true]].map(([sym, n, danger], i) => (
+                    <div key={i} className={'rounded-xl py-2.5 ' + (danger ? 'bg-rose-50 border border-rose-100' : 'bg-slate-100')}>
+                      <div className={'text-[11px] font-bold leading-none ' + (danger ? 'text-rose-600' : 'text-slate-500')}>{sym}</div>
+                      <div className={'font-bold text-[17px] leading-tight mt-1 tabular-nums ' + (danger ? 'text-rose-700' : 'text-slate-900')}>Ø {(n / compStats.wettkaempfe).toFixed(1)}</div>
+                      <div className={'text-[10px] leading-tight tabular-nums ' + (danger ? 'text-rose-400' : 'text-slate-400')}>{n} ges.</div>
                     </div>
                   ))}
                 </div>
-                {sessionList.length > 10 && (
-                  <div className="text-xs text-slate-400 mt-2">+{sessionList.length - 10} ältere Sessions</div>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="text-sm text-slate-400 italic">Noch keine Trainingsdaten erfasst.</div>
-          )}
-        </div>
-
-        {/* Wettkampf-Statistik */}
-        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold flex items-center gap-2">
-              <Trophy size={18} className="text-amber-500" /> Wettkampf
-            </h2>
-            {compStats.wettkaempfe > 0 && (
-              <span className="text-xs text-slate-500">{compStats.wettkaempfe}× absolviert</span>
-            )}
-          </div>
-          {compStats.wettkaempfe > 0 ? (
-            <>
-              {/* Symbol-Verteilung — Ø pro Wettkampf, kompakt mit dezenten
-                  Farben (Dashboard-Stil, dark-mode-fest) */}
-              <div className="grid grid-cols-4 gap-2 text-center">
-                <div className="bg-slate-100 dark:bg-slate-900/50 rounded-xl py-2.5">
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-bold leading-none">x</div>
-                  <div className="font-bold text-[17px] text-slate-900 dark:text-slate-100 leading-tight mt-1 tabular-nums">Ø {(compStats.cross / compStats.wettkaempfe).toFixed(1)}</div>
-                  <div className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">{compStats.cross} ges.</div>
-                </div>
-                <div className="bg-slate-100 dark:bg-slate-900/50 rounded-xl py-2.5">
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-bold leading-none">~</div>
-                  <div className="font-bold text-[17px] text-slate-900 dark:text-slate-100 leading-tight mt-1 tabular-nums">Ø {(compStats.wave / compStats.wettkaempfe).toFixed(1)}</div>
-                  <div className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">{compStats.wave} ges.</div>
-                </div>
-                <div className="bg-slate-100 dark:bg-slate-900/50 rounded-xl py-2.5">
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-bold leading-none">|</div>
-                  <div className="font-bold text-[17px] text-slate-900 dark:text-slate-100 leading-tight mt-1 tabular-nums">Ø {(compStats.bar / compStats.wettkaempfe).toFixed(1)}</div>
-                  <div className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">{compStats.bar} ges.</div>
-                </div>
-                <div className="bg-rose-50 dark:bg-rose-950/30 rounded-xl py-2.5 border border-rose-100 dark:border-rose-900/40">
-                  <div className="text-[11px] text-rose-600 dark:text-rose-400 font-bold leading-none">○</div>
-                  <div className="font-bold text-[17px] text-rose-700 dark:text-rose-300 leading-tight mt-1 tabular-nums">Ø {(compStats.circle / compStats.wettkaempfe).toFixed(1)}</div>
-                  <div className="text-[10px] text-rose-400 dark:text-rose-500 leading-tight">{compStats.circle} ges.</div>
-                </div>
-              </div>
-
-              {/* Ø Punktabzug pro Wettkampf — inklusive Schwierigkeits-Effekt
-                  (Punkte × Σ%/100). Im Dashboard-Stil mit dark-mode. */}
-              {(() => {
-                const dedSymbols = compStats.cross * 0.2 + compStats.wave * 0.5 + compStats.bar * 1.0 + compStats.circle * 2.0;
-                const dedSchw    = (Number(exercise.points || 0) * compStats.schwPctSum) / 100;
-                const totalDed = dedSymbols + dedSchw;
-                const avgDed = compStats.count > 0 ? totalDed / compStats.count : 0;
-                return (
-                  <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40 rounded-2xl py-3 px-4 flex items-baseline justify-between">
-                    <div>
-                      <div className="text-[12px] text-amber-900 dark:text-amber-200 font-medium">Ø Punktabzug pro Wettkampf</div>
-                      {dedSchw > 0 && (
-                        <div className="text-[10px] text-amber-700/70 dark:text-amber-400/70">inkl. Schwierigkeits-Abwertung</div>
-                      )}
-                    </div>
-                    <div className="font-bold text-[22px] text-amber-700 dark:text-amber-300 tabular-nums">−{avgDed.toFixed(2)}</div>
-                  </div>
-                );
-              })()}
-
-              {/* Schwierigkeits-Abwertung — Histogramm pro %-Stufe, sortiert
-                  absteigend. Zeigt sofort, wie oft welche Stufe gefallen ist. */}
-              {compStats.schwPctNonZero > 0 && (() => {
-                const entries = Object.entries(compStats.schwPctHist)
-                  .map(([pct, n]) => ({ pct: Number(pct), n }))
-                  .sort((a, b) => b.pct - a.pct);
-                const maxN = Math.max(...entries.map(e => e.n));
-                const sharePct = Math.round((compStats.schwPctNonZero / compStats.count) * 100);
-                return (
-                  <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900/40 rounded-2xl py-3 px-4 space-y-2">
-                    <div className="flex items-baseline justify-between">
-                      <div className="text-[12px] text-violet-900 dark:text-violet-200 font-medium">Schwierigkeits-Abwertung</div>
-                      <div className="text-[10px] text-violet-700/70 dark:text-violet-400/70">in {sharePct}% der Stellungen</div>
-                    </div>
-                    <div className="space-y-1">
-                      {entries.map(({ pct, n }) => (
-                        <div key={pct} className="flex items-center gap-2 text-[12px]">
-                          <span className="text-violet-900 dark:text-violet-200 font-medium tabular-nums w-12 shrink-0">−{pct}%</span>
-                          <div className="flex-1 bg-violet-100 dark:bg-violet-900/40 rounded-full h-2 overflow-hidden">
-                            <div className="h-full bg-violet-500 dark:bg-violet-400 rounded-full"
-                              style={{ width: ((n / maxN) * 100) + '%' }} />
-                          </div>
-                          <span className="text-violet-900 dark:text-violet-200 tabular-nums w-8 text-right shrink-0">{n}×</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Taktische Aufwertung — Original-Punkte zum Vergleich, plus
-                  Häufigkeit pro taktisch gewertetem Wert (z.B. 3,7 Pkt × 2). */}
-              {compStats.taktCount > 0 && (() => {
-                const entries = Object.entries(compStats.taktHist)
-                  .map(([pts, n]) => ({ pts: Number(pts), n }))
-                  .sort((a, b) => b.pts - a.pts);
-                const maxN = Math.max(...entries.map(e => e.n));
-                const sharePct = Math.round((compStats.taktCount / compStats.count) * 100);
-                const origPts = Number(exercise.points || 0);
-                return (
-                  <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/40 rounded-2xl py-3 px-4 space-y-2">
-                    <div className="flex items-baseline justify-between">
+                {(() => {
+                  const dedSymbols = compStats.cross * 0.2 + compStats.wave * 0.5 + compStats.bar * 1.0 + compStats.circle * 2.0;
+                  const dedSchw = (Number(exercise.points || 0) * compStats.schwPctSum) / 100;
+                  const avgDed = compStats.count > 0 ? (dedSymbols + dedSchw) / compStats.count : 0;
+                  return (
+                    <div className="bg-amber-50 border border-amber-100 rounded-2xl py-3 px-4 flex items-baseline justify-between">
                       <div>
-                        <div className="text-[12px] text-sky-900 dark:text-sky-200 font-medium">Taktische Aufwertung</div>
-                        {origPts > 0 && (
-                          <div className="text-[10px] text-sky-700/70 dark:text-sky-400/70">Original {origPts.toFixed(1)} Pkt</div>
-                        )}
+                        <div className="text-[12px] text-amber-900 font-medium">Ø Punktabzug pro Wettkampf</div>
+                        {dedSchw > 0 && <div className="text-[10px] text-amber-700/70">inkl. Schwierigkeits-Abwertung</div>}
                       </div>
-                      <div className="text-[10px] text-sky-700/70 dark:text-sky-400/70">in {sharePct}% der Stellungen</div>
+                      <div className="font-bold text-[22px] text-amber-700 tabular-nums">−{avgDed.toFixed(2)}</div>
                     </div>
-                    <div className="space-y-1">
-                      {entries.map(({ pts, n }) => (
-                        <div key={pts} className="flex items-center gap-2 text-[12px]">
-                          <span className="text-sky-900 dark:text-sky-200 font-medium tabular-nums w-14 shrink-0">{pts.toFixed(1)} Pkt</span>
-                          <div className="flex-1 bg-sky-100 dark:bg-sky-900/40 rounded-full h-2 overflow-hidden">
-                            <div className="h-full bg-sky-500 dark:bg-sky-400 rounded-full"
-                              style={{ width: ((n / maxN) * 100) + '%' }} />
-                          </div>
-                          <span className="text-sky-900 dark:text-sky-200 tabular-nums w-8 text-right shrink-0">{n}×</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-              <div className="pt-3 border-t border-slate-100">
-                <div className="text-[10px] uppercase tracking-wide text-slate-500 font-medium mb-2">Pro Wettkampf</div>
-                <div className="space-y-2">
+                  );
+                })()}
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium">Pro Wettkampf</div>
                   {compList.map((c, i) => {
-                    const xSum = c.k1cross + c.k2cross;
-                    const wSum = c.k1wave + c.k2wave;
-                    const bSum = c.k1bar + c.k2bar;
-                    const cSum = c.k1circle + c.k2circle;
+                    const xSum = c.k1cross + c.k2cross, wSum = c.k1wave + c.k2wave, bSum = c.k1bar + c.k2bar, cSum = c.k1circle + c.k2circle;
                     const totalSymbols = xSum + wSum + bSum + cSum;
-                    // Schw% und Taktik aggregiert über beide KGs: max statt sum,
-                    // weil in beiden KGs derselbe %-Wert üblich ist (eine Stellung
-                    // ist taktisch oder nicht — die zwei KG bewerten denselben Ablauf).
-                    const schwPct = Math.max(c.k1schwPct, c.k2schwPct);
-                    const taktPts = Math.max(c.k1takt, c.k2takt);
+                    const schwPct = Math.max(c.k1schwPct, c.k2schwPct), taktPts = Math.max(c.k1takt, c.k2takt);
                     const hasMod = schwPct > 0 || taktPts > 0;
                     return (
                       <div key={i} className="flex items-start justify-between gap-2 text-sm py-1">
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{c.competition.name}</div>
-                          <div className="text-xs text-slate-500">{c.competition.date}</div>
+                          <div className="text-xs text-slate-500 tabular-nums">{c.competition.date}</div>
                         </div>
                         <div className="flex flex-wrap gap-1 text-xs justify-end shrink-0 max-w-[55%]">
-                          {totalSymbols === 0 && !hasMod ? (
-                            <span className="text-emerald-700 font-medium">✓ sauber</span>
-                          ) : (
+                          {totalSymbols === 0 && !hasMod ? <span className="text-emerald-700 font-medium">✓ sauber</span> : (
                             <>
                               {xSum > 0 && <span className="bg-slate-100 px-1.5 py-0.5 rounded"><strong>x</strong>×{xSum}</span>}
                               {wSum > 0 && <span className="bg-slate-100 px-1.5 py-0.5 rounded"><strong>~</strong>×{wSum}</span>}
@@ -7850,135 +7710,77 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                   })}
                 </div>
               </div>
-            </>
-          ) : (
-            <div className="text-sm text-slate-400 italic">Noch keine Wettkampfdaten erfasst.</div>
-          )}
-        </div>
-
-        {/* Maute-Spezial-Statistik bei 3-Status-Übungen */}
-        {exercise.category_mode === 3 && (
-          <MauteStatsPanel exercise={exercise} sessions={data.sessions || []} />
-        )}
-
-        {/* XLSX-Import bei 3-Status-Übungen */}
-        {exercise.category_mode === 3 && setData && (
-          <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4 space-y-3">
-            <div className="flex items-start gap-2">
-              <FileSpreadsheet size={18} className="text-violet-700 shrink-0 mt-0.5" />
-              <div className="text-sm text-violet-900">
-                <strong>Statistik-Daten importieren</strong>
-                <p className="text-xs mt-0.5 opacity-90">
-                  Maute-Sprung-XLSX (Spalten: Datum, Geklappt, Getroffen, Gefährlich) hochladen.
-                </p>
-              </div>
-            </div>
-            {importStatus === 'parsing' && (
-              <div className="bg-white rounded-xl p-3 text-sm">⏳ {importMsg}</div>
-            )}
-            {importStatus === 'error' && (
-              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-900">
-                ✗ {importMsg}
-              </div>
-            )}
-            {importStatus === 'preview' && importPreview && (
-              <div className="bg-white rounded-xl p-3 space-y-2">
-                <div className="text-sm">
-                  ✓ <strong>{importPreview.sessions.length} Sessions</strong> erkannt
-                  ({importPreview.sessions[0]?.date} – {importPreview.sessions[importPreview.sessions.length - 1]?.date}).
-                </div>
-                <div className="text-xs text-slate-600">
-                  Mapping: <strong>Geklappt</strong>=geklappt,{' '}
-                  <strong>Getroffen</strong>={exercise.third_label || 'mittel'},{' '}
-                  <strong>Gefährlich</strong>=nicht
-                </div>
-                <div className="flex gap-2 pt-1 flex-wrap">
-                  <button
-                    onClick={() => {
-                      const existing = (data.sessions || []).filter(s => s.exerciseId !== exercise.id);
-                      const newSessions = importPreview.sessions.map((s, idx) => ({
-                        id: 'imp_' + exercise.id + '_' + idx + '_' + Date.now(),
-                        exerciseId: exercise.id,
-                        athleteId: null,
-                        date: s.date,
-                        entries: s.entries
-                      }));
-                      setData({ ...data, sessions: [...existing, ...newSessions] });
-                      setImportStatus(null);
-                      setImportPreview(null);
-                    }}
-                    className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium">
-                    Ersetzen ({importPreview.sessions.length})
-                  </button>
-                  <button
-                    onClick={() => {
-                      const newSessions = importPreview.sessions.map((s, idx) => ({
-                        id: 'imp_' + exercise.id + '_' + idx + '_' + Date.now(),
-                        exerciseId: exercise.id,
-                        athleteId: null,
-                        date: s.date,
-                        entries: s.entries
-                      }));
-                      setData({ ...data, sessions: [...(data.sessions || []), ...newSessions] });
-                      setImportStatus(null);
-                      setImportPreview(null);
-                    }}
-                    className="bg-white border border-slate-300 px-3 py-1.5 rounded-lg text-sm font-medium">
-                    Hinzufügen
-                  </button>
-                  <button
-                    onClick={() => { setImportStatus(null); setImportPreview(null); }}
-                    className="bg-white border border-slate-300 px-3 py-1.5 rounded-lg text-sm font-medium">
-                    Verwerfen
-                  </button>
-                </div>
-              </div>
-            )}
-            {!importStatus && (
-              <label className="bg-white border border-violet-300 hover:bg-violet-50 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
-                <FileSpreadsheet size={14} /> XLSX-Datei auswählen
-                <input
-                  type="file"
-                  accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                  onChange={async (e) => {
-                    const file = e.target.files && e.target.files[0];
-                    if (!file) return;
-                    setImportStatus('parsing');
-                    setImportMsg('Lese XLSX…');
-                    try {
-                      const result = await parseMauteXlsx(file);
-                      if (result.sessions.length === 0) {
-                        setImportStatus('error');
-                        setImportMsg('Keine Sessions erkannt — Spalten "Datum/Geklappt/Getroffen/Gefährlich" prüfen.');
-                        return;
-                      }
-                      setImportPreview(result);
-                      setImportStatus('preview');
-                    } catch (err) {
-                      setImportStatus('error');
-                      setImportMsg('Fehler: ' + (err.message || 'Datei konnte nicht gelesen werden'));
-                    } finally {
-                      e.target.value = '';
-                    }
-                  }}
-                  className="hidden" />
-              </label>
             )}
           </div>
         )}
 
-        {/* Aktionen */}
-        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3 space-y-2">
-          <button onClick={onEdit} className="w-full bg-slate-900 text-white px-4 py-3 rounded-xl font-medium flex items-center justify-center gap-2">
-            <Edit2 size={16} /> Bearbeiten
-          </button>
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={onArchive} className="bg-white border border-slate-300 px-4 py-2.5 rounded-xl font-medium text-sm flex items-center justify-center gap-2">
-              <Archive size={14} /> {exercise.active ? 'Archivieren' : 'Aktivieren'}
+        {/* 08 — ADMIN-ZONE (Footer, klar getrennt vom Analyse-Stream) */}
+        <div className="pt-3 space-y-2">
+          <div className="text-[12px] uppercase tracking-wide text-slate-400 px-4 font-medium">Verwalten</div>
+
+          {/* XLSX-Import (nur 3-Status) */}
+          {is3 && setData && (
+            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <FileSpreadsheet size={18} className="text-violet-600 shrink-0 mt-0.5" />
+                <div className="text-[13px] text-slate-700">
+                  <strong>Statistik-Daten importieren</strong>
+                  <p className="text-[12px] mt-0.5 text-slate-500">Maute-XLSX (Spalten: Datum, Geklappt, Getroffen, Gefährlich).</p>
+                </div>
+              </div>
+              {importStatus === 'parsing' && <div className="bg-slate-50 rounded-xl p-3 text-sm">⏳ {importMsg}</div>}
+              {importStatus === 'error' && <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-900">✗ {importMsg}</div>}
+              {importStatus === 'preview' && importPreview && (
+                <div className="bg-slate-50 rounded-xl p-3 space-y-2">
+                  <div className="text-sm">✓ <strong>{importPreview.sessions.length} Sessions</strong> erkannt ({importPreview.sessions[0]?.date} – {importPreview.sessions[importPreview.sessions.length - 1]?.date}).</div>
+                  <div className="flex gap-2 pt-1 flex-wrap">
+                    <button onClick={() => {
+                      const existing = (data.sessions || []).filter(s => s.exerciseId !== exercise.id);
+                      const newSessions = importPreview.sessions.map((s, idx) => ({ id: 'imp_' + exercise.id + '_' + idx + '_' + Date.now(), exerciseId: exercise.id, athleteId: null, date: s.date, entries: s.entries }));
+                      setData({ ...data, sessions: [...existing, ...newSessions] });
+                      setImportStatus(null); setImportPreview(null);
+                    }} className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium">Ersetzen ({importPreview.sessions.length})</button>
+                    <button onClick={() => {
+                      const newSessions = importPreview.sessions.map((s, idx) => ({ id: 'imp_' + exercise.id + '_' + idx + '_' + Date.now(), exerciseId: exercise.id, athleteId: null, date: s.date, entries: s.entries }));
+                      setData({ ...data, sessions: [...(data.sessions || []), ...newSessions] });
+                      setImportStatus(null); setImportPreview(null);
+                    }} className="bg-white border border-slate-300 px-3 py-1.5 rounded-lg text-sm font-medium">Hinzufügen</button>
+                    <button onClick={() => { setImportStatus(null); setImportPreview(null); }} className="bg-white border border-slate-300 px-3 py-1.5 rounded-lg text-sm font-medium">Verwerfen</button>
+                  </div>
+                </div>
+              )}
+              {!importStatus && (
+                <label className="bg-slate-50 border border-slate-200 active:opacity-60 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
+                  <FileSpreadsheet size={14} /> XLSX-Datei auswählen
+                  <input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    onChange={async (e) => {
+                      const file = e.target.files && e.target.files[0];
+                      if (!file) return;
+                      setImportStatus('parsing'); setImportMsg('Lese XLSX…');
+                      try {
+                        const result = await parseMauteXlsx(file);
+                        if (result.sessions.length === 0) { setImportStatus('error'); setImportMsg('Keine Sessions erkannt — Spalten "Datum/Geklappt/Getroffen/Gefährlich" prüfen.'); return; }
+                        setImportPreview(result); setImportStatus('preview');
+                      } catch (err) { setImportStatus('error'); setImportMsg('Fehler: ' + (err.message || 'Datei konnte nicht gelesen werden')); }
+                      finally { e.target.value = ''; }
+                    }} className="hidden" />
+                </label>
+              )}
+            </div>
+          )}
+
+          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3 space-y-2">
+            <button onClick={onEdit} className="w-full bg-slate-900 text-white px-4 py-3 rounded-xl font-medium flex items-center justify-center gap-2 active:opacity-80">
+              <Edit2 size={16} /> Bearbeiten
             </button>
-            <button onClick={onDelete} className="bg-white border border-rose-200 text-rose-600 px-4 py-2.5 rounded-xl font-medium text-sm flex items-center justify-center gap-2">
-              <Trash2 size={14} /> Löschen
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={onArchive} className="bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-xl font-medium text-sm flex items-center justify-center gap-2 active:opacity-60">
+                <Archive size={14} /> {exercise.active ? 'Archivieren' : 'Aktivieren'}
+              </button>
+              <button onClick={onDelete} className="bg-slate-50 border border-rose-200 text-rose-600 px-4 py-2.5 rounded-xl font-medium text-sm flex items-center justify-center gap-2 active:opacity-60">
+                <Trash2 size={14} /> Löschen
+              </button>
+            </div>
           </div>
         </div>
       </div>
