@@ -7335,14 +7335,20 @@ function ExerciseTrendChart({ successSeries, dangerSeries, showDanger }) {
   return (
     <div>
       <svg viewBox={'0 0 ' + W + ' ' + H} className="w-full" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="successFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(48,209,88,0.30)" />
+            <stop offset="100%" stopColor="rgba(48,209,88,0)" />
+          </linearGradient>
+        </defs>
         {[0, 0.5, 1].map(r => (
           <line key={r} x1={P} y1={H - P - r * (H - 2 * P)} x2={W - P} y2={H - P - r * (H - 2 * P)}
-            stroke="#E5E5EA" strokeWidth="1" strokeDasharray={r === 0.5 ? '2 3' : ''} />
+            stroke="#8E8E93" strokeOpacity="0.18" strokeWidth="1" strokeDasharray={r === 0.5 ? '3 4' : ''} />
         ))}
-        <path d={areaPath} fill="rgba(52,199,89,0.10)" />
+        <path d={areaPath} fill="url(#successFill)" />
         {showDanger && <path d={dangerPath} fill="none" stroke="#FF453A" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.75" />}
-        <path d={successPath} fill="none" stroke="#34C759" strokeWidth="2.5" strokeLinejoin="round" />
-        {n <= 14 && successSeries.map((p, i) => <circle key={i} cx={xAt(i)} cy={yAt(p.rate)} r="2.4" fill="#34C759" />)}
+        <path d={successPath} fill="none" stroke="#30D158" strokeWidth="2.75" strokeLinejoin="round" strokeLinecap="round" />
+        {n <= 14 && successSeries.map((p, i) => <circle key={i} cx={xAt(i)} cy={yAt(p.rate)} r="2.6" fill="#30D158" />)}
         <text x={P - 3} y={P + 4} fontSize="9" fill="#8E8E93" textAnchor="end">100</text>
         <text x={P - 3} y={H - P + 3} fontSize="9" fill="#8E8E93" textAnchor="end">0</text>
       </svg>
@@ -7456,13 +7462,13 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
 
         {/* Scope-Filter Seil — nur wenn Variante existiert (Hick: dezent halten) */}
         {ropeStats && (
-          <div className="bg-[#E5E5EA] rounded-2xl p-1 flex gap-1 text-[13px] font-medium">
+          <div className="bg-[#E5E5EA] rounded-[13px] p-1 flex gap-1 text-[13px] font-medium">
             {[[null, t('training.range.all'), ropeStats.all.sessions],
               [true, t('log.withRope'), ropeStats.withRope.sessions],
               [false, 'Ohne Seil', ropeStats.withoutRope.sessions]].map(([val, label, n]) => (
               <button key={String(val)} onClick={() => setRopeFilter(val)}
-                className={'flex-1 px-2 py-1.5 rounded-xl transition ' +
-                  (ropeFilter === val ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 active:opacity-60')}>
+                className={'flex-1 px-2 py-1.5 rounded-[10px] transition ' +
+                  (ropeFilter === val ? 'ios-seg-active' : 'text-slate-500 active:opacity-60')}>
                 {label}<span className="ml-1 opacity-50 tabular-nums">{n}</span>
               </button>
             ))}
@@ -7471,13 +7477,13 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
 
         {!hasTraining ? (
           /* Leerer Zustand — keine Trainingsdaten */
-          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-6 text-center">
+          <div className="card-surface rounded-[22px] p-6 text-center">
             <div className="text-[15px] text-slate-400">Noch keine Trainingsdaten erfasst.</div>
           </div>
         ) : (
           <>
             {/* 02 — HERO: Erfolgsquote (einzige dominante Fläche) */}
-            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
+            <div className="card-surface rounded-[22px] p-5">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[12px] font-semibold uppercase tracking-wider text-emerald-600">Erfolgsquote</span>
                 {chip && (
@@ -7487,8 +7493,8 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                 )}
               </div>
               <div className="mt-1 flex items-end gap-1">
-                <span className="text-[64px] leading-[0.9] font-bold text-emerald-600 tabular-nums">{vm.successRateCurrent}</span>
-                <span className="text-[30px] font-bold text-emerald-600 mb-1">%</span>
+                <span className="text-[72px] leading-[0.82] font-bold tracking-tight text-emerald-600 tabular-nums">{vm.successRateCurrent}</span>
+                <span className="text-[32px] font-bold text-emerald-600 mb-1.5">%</span>
               </div>
               <div className="mt-1.5 text-[15px] text-slate-500 tabular-nums">{vm.totalSuccess} von {vm.totalAttempts} Versuchen</div>
               <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[13px]">
@@ -7504,7 +7510,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                 { label: '4 Wochen', value: (vm.successRateLast4Weeks == null ? '—' : vm.successRateLast4Weeks + ' %'), sub: 'Erfolgsquote' },
                 { label: 'Sessions', value: String(vm.sessionsCount), sub: vm.totalAttempts + ' Versuche' },
               ].map((c, i) => (
-                <div key={i} className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3 text-center">
+                <div key={i} className="card-surface rounded-[22px] p-3 text-center">
                   <div className="text-[11px] text-slate-500 font-medium leading-tight">{c.label}</div>
                   <div className="text-[22px] font-bold text-slate-900 tabular-nums mt-1 leading-none">{c.value}</div>
                   <div className="text-[11px] text-slate-400 tabular-nums mt-1 truncate">{c.sub}</div>
@@ -7514,19 +7520,19 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
 
             {/* 04 — BREAKDOWN CLUSTER (Geklappt stark, Getroffen mittel, Gefährlich dezent) */}
             <div className={'grid gap-2 ' + (is3 ? 'grid-cols-3' : 'grid-cols-2')}>
-              <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 text-center">
+              <div className="bg-emerald-50 border border-emerald-100 rounded-[20px] p-3 text-center">
                 <div className="text-[12px] font-medium text-emerald-700">{statusLabel(exercise, 'success')}</div>
                 <div className="text-[26px] font-bold text-emerald-700 tabular-nums leading-none mt-1">{vm.totalSuccess}</div>
                 <div className="text-[11px] text-emerald-600/70 tabular-nums mt-0.5">{vm.successRateCurrent} %</div>
               </div>
               {is3 && (
-                <div className="bg-amber-50 border border-amber-100 rounded-2xl p-3 text-center">
+                <div className="bg-amber-50 border border-amber-100 rounded-[20px] p-3 text-center">
                   <div className="text-[12px] font-medium text-amber-700">{statusLabel(exercise, 'third')}</div>
                   <div className="text-[26px] font-bold text-amber-700 tabular-nums leading-none mt-1">{vm.totalHit}</div>
                   <div className="text-[11px] text-amber-600/70 tabular-nums mt-0.5">{vm.hitRate} %</div>
                 </div>
               )}
-              <div className="bg-white border border-slate-200/60 rounded-2xl p-3 text-center">
+              <div className="card-surface rounded-[20px] p-3 text-center">
                 <div className="text-[12px] font-medium text-slate-500">{statusLabel(exercise, 'fail')}</div>
                 <div className="text-[26px] font-bold text-slate-900 tabular-nums leading-none mt-1">{vm.totalDanger}</div>
                 <div className="text-[11px] text-rose-600 tabular-nums mt-0.5">{vm.dangerRate} %</div>
@@ -7534,7 +7540,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
             </div>
 
             {/* 05 — TREND-MODUL */}
-            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 space-y-3">
+            <div className="card-surface rounded-[22px] p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Trend</h2>
                 {is3 && (
@@ -7545,11 +7551,11 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                   </button>
                 )}
               </div>
-              <div className="bg-[#E5E5EA] rounded-2xl p-1 flex gap-1 text-[13px] font-medium">
+              <div className="bg-[#E5E5EA] rounded-[13px] p-1 flex gap-1 text-[13px] font-medium">
                 {periodTabs.map(([val, label]) => (
                   <button key={val} onClick={() => setTrendPeriod(val)}
-                    className={'flex-1 px-2 py-1.5 rounded-xl transition ' +
-                      (trendPeriod === val ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 active:opacity-60')}>
+                    className={'flex-1 px-2 py-1.5 rounded-[10px] transition ' +
+                      (trendPeriod === val ? 'ios-seg-active' : 'text-slate-500 active:opacity-60')}>
                     {label}
                   </button>
                 ))}
@@ -7605,7 +7611,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
             </div>
 
             {/* 06 — NÄCHSTER FOKUS (KI-Coach eingeklappt) */}
-            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 space-y-3">
+            <div className="card-surface rounded-[22px] p-4 space-y-3">
                 <h2 className="text-[15px] font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[#FF9500]" /> Nächster Fokus</h2>
                 {vm.nextFocusInsight.length > 0 && (
                   <ul className="text-[14px] leading-snug space-y-1.5 list-disc pl-4 marker:text-[#FF9500]">
@@ -7649,14 +7655,14 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
         {compStats.wettkaempfe > 0 && (
           <div className="space-y-2">
             <button onClick={() => setCompOpen(v => !v)}
-              className="w-full bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-4 py-3.5 flex items-center justify-between active:bg-[#D1D1D6]/30 transition">
+              className="w-full card-surface rounded-[22px] px-4 py-3.5 flex items-center justify-between active:bg-[#D1D1D6]/30 transition">
               <span className="text-[15px] font-semibold flex items-center gap-2"><Trophy size={16} className="text-[#FF9500]" /> Wettkampf
                 <span className="text-[13px] font-normal text-slate-400 tabular-nums">{compStats.wettkaempfe}×</span>
               </span>
               <ChevronRight size={18} strokeWidth={2.4} className={'text-[#C7C7CC] transition-transform ' + (compOpen ? 'rotate-90' : '')} />
             </button>
             {compOpen && (
-              <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 space-y-3">
+              <div className="card-surface rounded-[22px] p-4 space-y-3">
                 <div className="grid grid-cols-4 gap-2 text-center">
                   {[['x', compStats.cross, false], ['~', compStats.wave, false], ['|', compStats.bar, false], ['○', compStats.circle, true]].map(([sym, n, danger], i) => (
                     <div key={i} className={'rounded-xl py-2.5 ' + (danger ? 'bg-rose-50 border border-rose-100' : 'bg-slate-100')}>
@@ -7720,7 +7726,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
 
           {/* XLSX-Import (nur 3-Status) */}
           {is3 && setData && (
-            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 space-y-3">
+            <div className="card-surface rounded-[22px] p-4 space-y-3">
               <div className="flex items-start gap-2">
                 <FileSpreadsheet size={18} className="text-violet-600 shrink-0 mt-0.5" />
                 <div className="text-[13px] text-slate-700">
@@ -7769,7 +7775,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
             </div>
           )}
 
-          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3 space-y-2">
+          <div className="card-surface rounded-[22px] p-3 space-y-2">
             <button onClick={onEdit} className="w-full bg-slate-900 text-white px-4 py-3 rounded-xl font-medium flex items-center justify-center gap-2 active:opacity-80">
               <Edit2 size={16} /> Bearbeiten
             </button>

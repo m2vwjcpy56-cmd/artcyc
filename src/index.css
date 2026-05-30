@@ -46,10 +46,10 @@ html[data-theme="dark"] .ios-bottom-pill {
    - Bei "System" → folgt prefers-color-scheme via matchMedia
    ============================================================= */
 html[data-theme="dark"] { color-scheme: dark; }
-html[data-theme="dark"] body { background: #000; color: #fff; }
+html[data-theme="dark"] body { background: #0B0B0D; color: #fff; }
 
 /* ---------- App-Background / Cards ---------- */
-html[data-theme="dark"] .bg-\[\#F2F2F7\]                  { background-color: #000 !important; }
+html[data-theme="dark"] .bg-\[\#F2F2F7\]                  { background-color: #0B0B0D !important; }
 html[data-theme="dark"] .bg-\[\#F2F2F7\]\/40              { background-color: rgba(0,0,0,0.40) !important; }
 html[data-theme="dark"] .bg-\[\#F2F2F7\]\/80              { background-color: rgba(0,0,0,0.78) !important; }
 html[data-theme="dark"] .bg-\[\#F2F2F7\]\/95              { background-color: rgba(0,0,0,0.92) !important; }
@@ -93,19 +93,19 @@ html[data-theme="dark"] .border-slate-300                 { border-color: rgba(2
 
 /* ---------- Akzent-Backgrounds (Pastell → glow) ---------- */
 html[data-theme="dark"] .bg-amber-50,
-html[data-theme="dark"] .bg-amber-50\/80                  { background-color: rgba(255,159,10,0.14) !important; }
-html[data-theme="dark"] .bg-amber-100                     { background-color: rgba(255,159,10,0.22) !important; }
+html[data-theme="dark"] .bg-amber-50\/80                  { background-color: rgba(255,159,10,0.18) !important; }
+html[data-theme="dark"] .bg-amber-100                     { background-color: rgba(255,159,10,0.26) !important; }
 html[data-theme="dark"] .bg-emerald-50,
-html[data-theme="dark"] .bg-emerald-50\/80                { background-color: rgba(48,209,88,0.14) !important; }
-html[data-theme="dark"] .bg-emerald-100                   { background-color: rgba(48,209,88,0.22) !important; }
+html[data-theme="dark"] .bg-emerald-50\/80                { background-color: rgba(48,209,88,0.18) !important; }
+html[data-theme="dark"] .bg-emerald-100                   { background-color: rgba(48,209,88,0.28) !important; }
 html[data-theme="dark"] .bg-rose-50,
-html[data-theme="dark"] .bg-rose-50\/80                   { background-color: rgba(255,69,58,0.14) !important; }
-html[data-theme="dark"] .bg-rose-100                      { background-color: rgba(255,69,58,0.22) !important; }
+html[data-theme="dark"] .bg-rose-50\/80                   { background-color: rgba(255,69,58,0.18) !important; }
+html[data-theme="dark"] .bg-rose-100                      { background-color: rgba(255,69,58,0.26) !important; }
 html[data-theme="dark"] .bg-sky-50,
-html[data-theme="dark"] .bg-sky-50\/80                    { background-color: rgba(10,132,255,0.14) !important; }
+html[data-theme="dark"] .bg-sky-50\/80                    { background-color: rgba(10,132,255,0.18) !important; }
 html[data-theme="dark"] .bg-sky-100                       { background-color: rgba(10,132,255,0.22) !important; }
 html[data-theme="dark"] .bg-violet-50,
-html[data-theme="dark"] .bg-violet-50\/80                 { background-color: rgba(191,90,242,0.14) !important; }
+html[data-theme="dark"] .bg-violet-50\/80                 { background-color: rgba(191,90,242,0.18) !important; }
 html[data-theme="dark"] .bg-violet-100,
 html[data-theme="dark"] .bg-purple-100                    { background-color: rgba(191,90,242,0.22) !important; }
 
@@ -124,6 +124,26 @@ html[data-theme="dark"] .ios-seg-active {
   color: #fff !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
 }
+
+/* Premium-Card-Material — weiche Tiefe statt flacher Block.
+   Light: weiße Karte, feine Hairline, sanfter Schatten.
+   Dark:  leichter Surface-Gradient, Hairline + Inset-Highlight,
+          weicher Tiefenschatten — hebt Cards vom Tief-Schwarz ab,
+          ohne harte Umrisse. */
+.card-surface {
+  background: #fff;
+  border: 0.5px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+html[data-theme="dark"] .card-surface {
+  background: linear-gradient(180deg, #202023 0%, #161618 100%);
+  border: 0.5px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 10px 30px rgba(0, 0, 0, 0.40);
+}
+
+/* Brand-Orange & iOS-Blau im Dark brillanter (systemnäher) */
+html[data-theme="dark"] .text-\[\#FF9500\] { color: #FF9F0A !important; }
+html[data-theme="dark"] .text-\[\#007AFF\] { color: #0A84FF !important; }
 
 /* Akzent-Borders */
 html[data-theme="dark"] .border-amber-100,
