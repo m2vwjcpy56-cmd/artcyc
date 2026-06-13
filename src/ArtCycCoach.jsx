@@ -21,21 +21,23 @@ import { loadUciExercisesFromDb, getRulesLanguage, fetchActiveNotices, dismissNo
 // <input type="checkbox" switch> (iOS 17.4+) löst beim Klick die System-Haptik
 // aus. Android/Chrome nutzt navigator.vibrate mit Muster je Typ.
 // =============================================================
-let _hapticSwitch = null;
-function getHapticSwitch() {
-  if (typeof document === 'undefined') return null;
-  if (_hapticSwitch && document.body && document.body.contains(_hapticSwitch)) return _hapticSwitch;
+let _hapticEl = null; // { label, input }
+function getHapticEl() {
+  if (typeof document === 'undefined' || !document.body) return null;
+  if (_hapticEl && document.body.contains(_hapticEl.label)) return _hapticEl;
   try {
     const label = document.createElement('label');
     label.setAttribute('aria-hidden', 'true');
-    label.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1;';
+    // Muss für die Engine „gerendert" sein (kein display:none / pointer-events:none),
+    // aber unsichtbar & abseits. Klick auf das Label toggelt den Switch → iOS-Haptik.
+    label.style.cssText = 'position:fixed;top:-40px;left:-40px;width:16px;height:16px;opacity:0;';
     const input = document.createElement('input');
     input.type = 'checkbox';
-    input.setAttribute('switch', '');          // iOS-spezifisch → Haptik beim Toggle
+    input.setAttribute('switch', '');          // iOS 17.4+ → System-Haptik beim Toggle
     label.appendChild(input);
     document.body.appendChild(label);
-    _hapticSwitch = input;
-    return input;
+    _hapticEl = { label, input };
+    return _hapticEl;
   } catch { return null; }
 }
 // type: 'light' | 'select' | 'success' | 'warning' | 'error'
@@ -43,10 +45,10 @@ function haptic(type = 'light') {
   try {
     if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
       const patterns = { light: 10, select: 8, success: 18, warning: [10, 40, 12], error: [22, 45, 22] };
-      navigator.vibrate(patterns[type] || 10);
+      navigator.vibrate(patterns[type] || 10);  // Android/Chrome
     }
-    const sw = getHapticSwitch();
-    if (sw) sw.click(); // Toggle innerhalb der User-Geste → iOS-System-Haptik
+    const h = getHapticEl();
+    if (h) h.label.click();  // iOS: Label-Klick innerhalb der User-Geste → System-Haptik
   } catch { /* Haptik ist optional */ }
 }
 // Kombiniert Haptik + kurze „Pop"-Animation des gedrückten Elements (WAAPI,
@@ -4117,6 +4119,9 @@ export default function App() {
   useEffect(() => {
     if (session) getCurrentProfile().then(p => { if (p) setProfile(p); }).catch(() => {});
   }, [session?.user?.id]);
+
+  // Haptik-Element vorab erzeugen, damit schon der erste Tap auslösen kann.
+  useEffect(() => { getHapticEl(); }, []);
 
   // Zuletzt bekannte Coach-Rolle merken (überlebt Reload + kurze Lade-Aussetzer),
   // damit der Sportler-Tab nicht grundlos verschwindet. Synchron beim ersten
