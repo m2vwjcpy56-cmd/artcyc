@@ -4111,10 +4111,26 @@ export default function App() {
     return () => { cancelled = true; subscription.unsubscribe(); };
   }, []);
 
-  // Profil laden bei Login
+  // Profil laden bei Login. Wichtig: ein bereits geladenes Profil NICHT mit
+  // null überschreiben (z. B. bei kurzem Abruf-Aussetzer) — sonst verschwinden
+  // Coach-Funktionen wie der Sportler-Tab grundlos. Logout leert separat (oben).
   useEffect(() => {
-    if (session) getCurrentProfile().then(setProfile);
+    if (session) getCurrentProfile().then(p => { if (p) setProfile(p); }).catch(() => {});
   }, [session?.user?.id]);
+
+  // Zuletzt bekannte Coach-Rolle merken (überlebt Reload + kurze Lade-Aussetzer),
+  // damit der Sportler-Tab nicht grundlos verschwindet. Synchron beim ersten
+  // Render aus localStorage initialisieren (Ref-Update würde kein Re-Render auslösen).
+  const coachHintRef = useRef(null);
+  if (coachHintRef.current === null) {
+    try { coachHintRef.current = localStorage.getItem('artcyc:coachHint') === '1'; } catch { coachHintRef.current = false; }
+  }
+  useEffect(() => {
+    if (!profile) return;
+    const coach = profile.role === 'coach' || profile.role === 'admin';
+    coachHintRef.current = coach;
+    try { localStorage.setItem('artcyc:coachHint', coach ? '1' : '0'); } catch { /* egal */ }
+  }, [profile]);
 
   // Athletes aus Supabase laden (Phase 9a — DB-basiert statt JSONB-Blob)
   const [dbAthletes, setDbAthletes] = useState([]);
@@ -4590,7 +4606,12 @@ export default function App() {
   }
 
   // Navigation
-  const isCoach = profile?.role === 'coach' || profile?.role === 'admin';
+  // Coach-Rolle: ist das Profil geladen, zählt es allein; bei kurzem Lade-
+  // Aussetzer (profile == null) auf die zuletzt gemerkte Rolle zurückfallen,
+  // damit der Sportler-Tab nicht grundlos verschwindet (Persistenz s. oben).
+  const isCoach = profile
+    ? (profile.role === 'coach' || profile.role === 'admin')
+    : coachHintRef.current;
   // Export ist jetzt eine Sektion innerhalb der Einstellungen, nicht mehr im Nav.
   const nav = [
     { id: 'dashboard', label: t('nav.dashboard'), icon: Home },
