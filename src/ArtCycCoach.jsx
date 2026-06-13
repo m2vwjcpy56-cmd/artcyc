@@ -8946,10 +8946,14 @@ function ProgrammeView({ data, setData }) {
       {confirmDeleteId && (() => {
         const p = (data.programs || []).find(x => x.id === confirmDeleteId);
         if (!p) return null;
+        const linked = (data.competitions || []).filter(c => c.program_id === p.id).length;
         return (
           <DeleteConfirmModal
             title="Programm löschen?"
-            message={'„' + p.name + '" wirklich löschen? Bestehende Wettkämpfe mit diesem Programm bleiben erhalten, können aber nicht mehr ausgewertet werden.'}
+            message={'„' + p.name + '" wirklich löschen?'
+              + (linked > 0
+                ? ' ' + linked + ' Wettkampf' + (linked === 1 ? '' : 'e') + ' nutzen dieses Programm. Die Endergebnisse bleiben gespeichert; die Übungs-Einzelwerte werden über den im Wettkampf gesicherten Programm-Schnappschuss weiter angezeigt.'
+                : '')}
             onConfirm={() => {
               const id = confirmDeleteId;
               setConfirmDeleteId(null);
@@ -9416,7 +9420,10 @@ function BulkImportModal({ data, athletes, onApply, onClose }) {
           kg1_schwierigkeit: p.kg1_schwierigkeit, kg2_schwierigkeit: p.kg2_schwierigkeit,
           kg1_gesamt: p.kg1_gesamtabzug, kg2_gesamt: p.kg2_gesamtabzug,
           kg1_ausgefahren: p.kg1_ausgefahren, kg2_ausgefahren: p.kg2_ausgefahren,
-          endergebnis: p.endergebnis
+          endergebnis: p.endergebnis,
+          // Daten-Sicherheit: Programm-Schnappschuss mitsichern (überlebt DB-Sync + Löschen)
+          program_snapshot: progExercises,
+          program_name: (newProgs[newProgs.length - 1] || {}).name || null
         },
         created: new Date().toISOString()
       });
@@ -9648,11 +9655,18 @@ function WettkampfView({ data, setData, dbAthletes }) {
 
   // Wettkämpfe mit berechnetem Endergebnis + Gesamtabzug pro KG-Mittel annotieren
   const enriched = competitions.map(c => {
-    const program = programs.find(p => p.id === c.program_id);
+    const ref = c.pdf_ref || null;
+    // Daten-Sicherheit: Programm fehlt? Snapshot aus pdf_ref nutzen, sonst Endergebnis aus pdf_ref.
+    const snapEx = c.program_snapshot || (ref && ref.program_snapshot) || null;
+    const program = programs.find(p => p.id === c.program_id)
+      || (snapEx && snapEx.length ? { name: 'Gespeichertes Programm', exercises: snapEx } : null);
     const t1 = program ? calcTableResult(program, c.table1, c.t1_schwierigkeit) : null;
     const t2 = program ? calcTableResult(program, c.table2, c.t2_schwierigkeit) : null;
-    const final = (t1 && t2) ? Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100 : null;
-    const ded = (t1 && t2) ? Math.round(((t1.abzugGesamt + t2.abzugGesamt) / 2) * 100) / 100 : null;
+    const final = (t1 && t2) ? Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100
+      : (ref && ref.endergebnis != null ? Number(ref.endergebnis) : null);
+    const ded = (t1 && t2) ? Math.round(((t1.abzugGesamt + t2.abzugGesamt) / 2) * 100) / 100
+      : (ref && ref.kg1_gesamt != null && ref.kg2_gesamt != null
+        ? Math.round(((Number(ref.kg1_gesamt) + Number(ref.kg2_gesamt)) / 2) * 100) / 100 : null);
     return { c, final, ded };
   });
   const sorted = [...enriched].sort((a, b) => (b.c.date || '').localeCompare(a.c.date || ''));
@@ -10349,7 +10363,16 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
         table1, table2,
         t1_schwierigkeit: Number(t1S) || 0,
         t2_schwierigkeit: Number(t2S) || 0,
-        pdf_ref: pdfRef,
+        // Daten-Sicherheit: Programm-Schnappschuss in pdf_ref (jsonb-Spalte, wird
+        // mitsynct) ablegen, damit die Auswertung erhalten bleibt, falls das
+        // Programm später gelöscht wird.
+        pdf_ref: {
+          ...(pdfRef || {}),
+          program_snapshot: (program && program.exercises) ? program.exercises
+            : ((pdfRef && pdfRef.program_snapshot) || null),
+          program_name: program ? program.name
+            : ((pdfRef && pdfRef.program_name) || null),
+        },
         created: (competition && competition.created) || new Date().toISOString()
       },
       newProgram: pendingNewProgram,
@@ -12428,9 +12451,21 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
 
   if (!competition) return null;
 
-  const t1 = program ? calcTableResult(program, competition.table1, competition.t1_schwierigkeit) : null;
-  const t2 = program ? calcTableResult(program, competition.table2, competition.t2_schwierigkeit) : null;
-  const finalScore = (t1 && t2) ? Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100 : null;
+  const ref = competition.pdf_ref || null;
+  // Daten-Sicherheit: fehlt das (evtl. gelöschte) Programm, auf den im Wettkampf
+  // gespeicherten Programm-Snapshot zurückfallen — so bleibt die Auswertung erhalten.
+  // Snapshot liegt in pdf_ref (jsonb), älterer Stand evtl. top-level.
+  const snapEx = competition.program_snapshot || (ref && ref.program_snapshot) || null;
+  const snapName = competition.program_name || (ref && ref.program_name) || null;
+  const effProgram = program || (snapEx && snapEx.length
+    ? { name: snapName || 'Gespeichertes Programm', exercises: snapEx }
+    : null);
+
+  const t1 = effProgram ? calcTableResult(effProgram, competition.table1, competition.t1_schwierigkeit) : null;
+  const t2 = effProgram ? calcTableResult(effProgram, competition.table2, competition.t2_schwierigkeit) : null;
+  const finalScore = (t1 && t2)
+    ? Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100
+    : (ref && ref.endergebnis != null ? Number(ref.endergebnis) : null);
 
   const entries = activeTable === 1 ? (competition.table1 || []) : (competition.table2 || []);
   const result = activeTable === 1 ? t1 : t2;
@@ -12476,10 +12511,10 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
               <div className="font-medium truncate">{competition.host}</div>
             </div>
           )}
-          {program && (
+          {effProgram && (
             <div>
               <div className="text-xs text-slate-500">{t('detail.program')}</div>
-              <div className="font-medium truncate">{program.name}</div>
+              <div className="font-medium truncate">{effProgram.name}</div>
             </div>
           )}
         </div>
@@ -12521,14 +12556,35 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
         </div>
       )}
 
-      {!program && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-900 text-sm">
-          ⚠️ Programm zu diesem Wettkampf nicht mehr vorhanden — Detail-Werte können nicht angezeigt werden.
-        </div>
+      {/* Programm fehlt: Endergebnis trotzdem aus dem PDF-Import wiederherstellen */}
+      {!effProgram && (
+        ref && finalScore != null ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <StatCard icon={Trophy} label={t('detail.finalScore')} value={finalScore.toFixed(2)}
+                sub="aus PDF-Import gesichert" color="orange" size="large" />
+              {ref.kg1_ausgefahren != null && (
+                <StatCard icon={BarChart3} label={t('detail.kg1Score')} value={Number(ref.kg1_ausgefahren).toFixed(2)}
+                  sub={ref.kg1_gesamt != null ? 'Abzug -' + Number(ref.kg1_gesamt).toFixed(2) : ''} color="sky" />
+              )}
+              {ref.kg2_ausgefahren != null && (
+                <StatCard icon={BarChart3} label={t('detail.kg2Score')} value={Number(ref.kg2_ausgefahren).toFixed(2)}
+                  sub={ref.kg2_gesamt != null ? 'Abzug -' + Number(ref.kg2_gesamt).toFixed(2) : ''} color="emerald" />
+              )}
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-900 text-sm">
+              ⚠️ Programm-Details zu diesem Wettkampf fehlen — dein <strong>Endergebnis bleibt gesichert</strong> und wird oben angezeigt. Die Übungs-Einzelwerte erscheinen wieder, sobald das Programm vorhanden ist (z. B. PDF erneut importieren).
+            </div>
+          </div>
+        ) : (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-900 text-sm">
+            ⚠️ Programm zu diesem Wettkampf nicht mehr vorhanden — und kein gesichertes Endergebnis hinterlegt. Detail-Werte können nicht angezeigt werden.
+          </div>
+        )
       )}
 
       {/* Tab-Umschaltung Kampfgericht 1 / 2 */}
-      {program && (
+      {effProgram && (
         <>
           <div className="flex gap-2">
             <button onClick={() => setActiveTable(1)}
@@ -12547,7 +12603,7 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
           <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4">
             <h3 className="font-semibold mb-3">Übungen</h3>
             <div className="space-y-1.5">
-              {program.exercises.map((ex, idx) => {
+              {effProgram.exercises.map((ex, idx) => {
                 const e = entries[idx] || {};
                 const exec = calcExerciseDeduction(e);
                 const schw = calcExerciseSchwierigkeit(e, ex);
