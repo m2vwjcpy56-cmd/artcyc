@@ -5322,7 +5322,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
         <button onClick={() => setView('erfassen')}
           className="bg-[#FF9500] text-white p-5 rounded-2xl text-left active:scale-[0.98] transition-transform shadow-[0_2px_8px_rgba(255,149,0,0.25)]">
           <div className="flex items-center gap-2 mb-1.5 font-semibold text-[16px]">
-            <Plus size={20} strokeWidth={2.5} /> <span>{t('dashboard.logSession')}</span>
+            <Plus size={20} strokeWidth={2.5} /> <span>{t('common.new')}</span>
           </div>
         </button>
         <button onClick={() => setView('uebungen')}
@@ -5360,7 +5360,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
             <p className="text-[14px] text-[#8E8E93] mb-4">{t('dashboard.noTrainingHint')}</p>
             <button onClick={() => setView('erfassen')}
               className="bg-[#FF9500] text-white px-5 py-2.5 rounded-full text-[14px] font-medium active:scale-95 transition-transform">
-              {t('dashboard.logSession')}
+              {t('common.new')}
             </button>
           </div>
         ) : (
@@ -6157,7 +6157,7 @@ function TrainingView({ data, setData, setView }) {
           </button>
           <button onClick={() => setView('erfassen')}
             className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-[14px] flex items-center gap-1.5 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
-            <Plus size={16} strokeWidth={2.5} /> {t('training.logButton')}
+            <Plus size={16} strokeWidth={2.5} /> {t('common.new')}
           </button>
         </div>
       </header>
@@ -8537,7 +8537,7 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
         <div className="max-w-2xl mx-auto space-y-5">
           <header className="flex items-center gap-3">
             <button onClick={onDone} className="p-2 -m-2 text-slate-500"><ChevronLeft size={22} /></button>
-            <h1 className="text-2xl font-bold">Serie protokollieren</h1>
+            <h1 className="text-2xl font-bold">{t('log.title')}</h1>
           </header>
           <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center">
             <Dumbbell size={32} className="mx-auto text-slate-300 mb-3" />
