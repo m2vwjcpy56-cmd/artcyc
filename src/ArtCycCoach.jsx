@@ -8124,7 +8124,6 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
   const [name, setName] = useState((exercise && exercise.name) || '');
   const [statusMode, setStatusMode] = useState((exercise && exercise.category_mode) || 2);
   const [thirdLabel, setThirdLabel] = useState((exercise && exercise.third_label) || 'Gefährlich');
-  const [series, setSeries] = useState((exercise && exercise.default_series) || 10);
   const [targetRate, setTargetRate] = useState(
     exercise && typeof exercise.target_rate === 'number' ? String(exercise.target_rate) : ''
   );
@@ -8148,7 +8147,7 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
       active: exercise ? exercise.active : true,
       category_mode: Number(statusMode),
       third_label: Number(statusMode) === 3 ? (thirdLabel.trim() || 'Dritte') : null,
-      default_series: Number(series) || 10,
+      default_series: (exercise && exercise.default_series) || 10,
       target_rate: targetRate.trim() === '' ? null : Math.max(0, Math.min(100, Number(targetRate) || 0)),
       has_rope_variant: hasRopeVariant
     });
@@ -8241,11 +8240,6 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
         <IOSList
           header="Training"
           footer="Dashboard markiert die Übung farblich, wenn deine Quote unter dem Ziel liegt — Trainings-Bedarf auf einen Blick.">
-          <div className="px-4 py-3 flex items-center gap-3">
-            <label className="text-[15px] text-[#3C3C43] flex-1">Wiederholungen pro Session</label>
-            <input type="number" inputMode="numeric" value={series} onChange={e => setSeries(e.target.value)}
-              className="w-20 bg-transparent text-[15px] outline-none text-right" />
-          </div>
           <div className="px-4 py-3 flex items-center gap-3">
             <label className="text-[15px] text-[#3C3C43] flex-1 flex items-center gap-2">
               <Target size={14} className="text-[#8E8E93]" /> Ziel-Quote <span className="text-[12px] text-[#8E8E93]">(optional)</span>
@@ -8674,7 +8668,7 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold">{t('log.series')}</h2>
             <span className="bg-sky-100 text-sky-700 text-xs font-medium px-2 py-0.5 rounded-full">
-              {entries.length} / {(exercise && exercise.default_series) || '∞'}
+              {entries.length}
             </span>
           </div>
 
