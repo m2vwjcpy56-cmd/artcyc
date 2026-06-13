@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Trophy, Dumbbell, Plus, ChevronLeft, ChevronRight, ChevronsUpDown, Save, Check, X, Edit2, Trash2,
+  Trophy, Dumbbell, Plus, ChevronLeft, ChevronRight, Save, Check, X, Edit2, Trash2,
   Search, Info, Archive, AlertTriangle, ListChecks,
   Home, BarChart3, Users, Download, Sparkles, FileText, Lock,
   Settings as SettingsIcon, LogOut, Shield, User, RotateCcw,
@@ -8199,11 +8199,10 @@ function UciPicker({ discipline, onSelect, selectedCode }) {
 // =============================================================
 // SERIE PROTOKOLLIEREN (Erfassen)
 // =============================================================
-// Suchbarer Übungs-Picker — ersetzt das native <select>, damit man bei
-// vielen Übungen nicht lange scrollen muss. Volltext-Suche über Name +
-// UCI-Code/Disziplin, gruppiert nach „Bereits trainiert" / „Übrige Übungen".
-function ExercisePickerField({ exerciseSort, value, onChange, t, initialOpen = false }) {
-  const [open, setOpen] = useState(initialOpen);
+// Reglement-Suche — durchsucht das KOMPLETTE UCI-Reglement (alle Disziplinen),
+// gruppiert nach Disziplin. Auswahl legt die Übung an (oder wählt eine bereits
+// vorhandene) und übernimmt sie. Vollbild-Overlay mit Safe-Area-Header.
+function ReglementSearchModal({ open, onClose, onPick, existingByCode, t }) {
   const [q, setQ] = useState('');
   const inputRef = useRef(null);
 
@@ -8212,86 +8211,70 @@ function ExercisePickerField({ exerciseSort, value, onChange, t, initialOpen = f
       const id = setTimeout(() => { if (inputRef.current) inputRef.current.focus(); }, 60);
       return () => clearTimeout(id);
     }
+    if (!open) setQ('');
   }, [open]);
-
-  const selected = [...exerciseSort.trained, ...exerciseSort.untrained].find(e => e.id === value);
 
   const norm = (s) => (s == null ? '' : String(s)).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const needle = norm(q.trim());
-  const match = (e) => !needle
-    || norm(localizedExerciseName(e)).includes(needle)
-    || norm(e.uci_code).includes(needle)
-    || norm(e.uci_disc).includes(needle);
-  const trained = exerciseSort.trained.filter(match);
-  const untrained = exerciseSort.untrained.filter(match);
-  const empty = trained.length === 0 && untrained.length === 0;
+  const db = getUciDb();
+  const filtered = needle
+    ? db.filter(e => norm(e.n).includes(needle) || norm(e.c).includes(needle))
+    : db;
+  const order = ['1er', '2er', '4er', '6er'];
+  const groups = order
+    .map(d => ({ d, items: filtered.filter(e => e.d === d) }))
+    .filter(g => g.items.length > 0);
 
-  const pick = (id) => { onChange(id); setOpen(false); setQ(''); };
-  const close = () => { setOpen(false); setQ(''); };
-
-  const row = (e) => (
-    <IOSListRow key={e.id} onClick={() => pick(e.id)}
-      trailing={e.id === value
-        ? <Check size={18} className="text-[#FF9500] shrink-0" strokeWidth={2.6} />
-        : <span className="w-[18px] shrink-0" />}>
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="text-[15px] truncate">{localizedExerciseName(e)}</span>
-        {e.uci_code && <IOSTag color="blue">UCI {e.uci_code}</IOSTag>}
-      </div>
-    </IOSListRow>
-  );
+  if (!open) return null;
 
   return (
-    <>
-      {/* Trigger — sieht aus wie das alte Auswahlfeld, öffnet die Suche */}
-      <button type="button" onClick={() => setOpen(true)}
-        className="w-full px-3 py-2.5 border border-slate-300 rounded-xl bg-white text-left flex items-center justify-between gap-2 active:opacity-60">
-        <span className={'truncate text-[15px] ' + (selected ? '' : 'text-slate-400')}>
-          {selected ? localizedExerciseName(selected) : t('log.exercise')}
-        </span>
-        <ChevronsUpDown size={16} className="text-slate-400 shrink-0" />
-      </button>
-
-      {open && (
-        <div className="fixed inset-0 z-[70] flex flex-col bg-[#F2F2F7]">
-          {/* Such-Header */}
-          <div className="ios-header-bg backdrop-blur-xl border-b border-slate-200/60 px-4 pb-2.5"
-            style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 flex items-center gap-2 bg-slate-100 rounded-xl px-3 py-2">
-                <Search size={16} className="text-slate-400 shrink-0" />
-                <input ref={inputRef} value={q} onChange={ev => setQ(ev.target.value)}
-                  placeholder={t('common.search') + ' …'} inputMode="search" autoCapitalize="none" autoCorrect="off"
-                  className="flex-1 bg-transparent outline-none text-[15px] placeholder:text-slate-400" />
-                {q && <button type="button" onClick={() => setQ('')} className="text-slate-400 active:opacity-60"><X size={16} /></button>}
-              </div>
-              <button type="button" onClick={close}
-                className="text-[#007AFF] text-[15px] font-medium px-1 active:opacity-60">
-                {t('common.cancel')}
-              </button>
-            </div>
+    <div className="fixed inset-0 z-[70] flex flex-col bg-[#F2F2F7]">
+      {/* Such-Header — unter Safe-Area/Statusleiste */}
+      <div className="ios-header-bg backdrop-blur-xl border-b border-slate-200/60 px-4 pb-2.5"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.75rem)' }}>
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex items-center gap-2 bg-slate-100 rounded-xl px-3 py-2">
+            <Search size={16} className="text-slate-400 shrink-0" />
+            <input ref={inputRef} value={q} onChange={ev => setQ(ev.target.value)}
+              placeholder={t('common.search') + ' …'} inputMode="search" autoCapitalize="none" autoCorrect="off"
+              className="flex-1 bg-transparent outline-none text-[15px] placeholder:text-slate-400" />
+            {q && <button type="button" onClick={() => setQ('')} className="text-slate-400 active:opacity-60"><X size={16} /></button>}
           </div>
-
-          {/* Gefilterte, gruppierte Liste */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 pb-12">
-            {empty ? (
-              <div className="text-center text-slate-400 text-[15px] pt-10">Keine Übung gefunden.</div>
-            ) : (
-              <>
-                {trained.length > 0 && (
-                  <IOSList header={t('log.exerciseTrained')}>{trained.map(row)}</IOSList>
-                )}
-                {untrained.length > 0 && (
-                  <IOSList header={exerciseSort.trained.length > 0 ? t('log.exerciseUntrained') : t('log.exerciseAll')}>
-                    {untrained.map(row)}
-                  </IOSList>
-                )}
-              </>
-            )}
-          </div>
+          <button type="button" onClick={onClose}
+            className="text-[#007AFF] text-[15px] font-medium px-1 active:opacity-60">
+            {t('common.cancel')}
+          </button>
         </div>
-      )}
-    </>
+        <div className="text-[12px] text-slate-400 mt-1.5 px-0.5 tabular-nums">{filtered.length} Übungen im Reglement</div>
+      </div>
+
+      {/* Gruppierte Liste — alle Reglement-Übungen */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 3rem)' }}>
+        {groups.length === 0 ? (
+          <div className="text-center text-slate-400 text-[15px] pt-10">Keine Übung gefunden.</div>
+        ) : groups.map(g => (
+          <IOSList key={g.d} header={'Disziplin ' + g.d + ' · ' + g.items.length}>
+            {g.items.map(e => {
+              const exists = existingByCode.get(e.c);
+              return (
+                <IOSListRow key={e.c} onClick={() => onPick(e)}
+                  trailing={exists
+                    ? <Check size={18} className="text-[#34C759] shrink-0" strokeWidth={2.6} />
+                    : <Plus size={18} className="text-[#FF9500] shrink-0" strokeWidth={2.6} />}>
+                  <div className="min-w-0">
+                    <div className="text-[15px] truncate">{e.n}</div>
+                    <div className="text-[12px] text-slate-400 tabular-nums mt-0.5">
+                      UCI {e.c} · {e.p} Pkt{exists ? ' · bereits in deiner Liste' : ''}
+                    </div>
+                  </div>
+                </IOSListRow>
+              );
+            })}
+          </IOSList>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -8325,10 +8308,41 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
   const [entries, setEntries] = useState([]);
   const [notes, setNotes] = useState('');
   const [withRope, setWithRope] = useState(true); // default Mit Seil, häufiger Fall
+  const [addOpen, setAddOpen] = useState(false);   // Reglement-Suche offen?
 
   useEffect(() => { setEntries([]); setNotes(''); setWithRope(true); }, [exerciseId]);
 
   const exercise = data.exercises.find(e => e.id === exerciseId);
+
+  // Bereits angelegte Übungen nach UCI-Code, um Duplikate beim Hinzufügen
+  // aus dem Reglement zu vermeiden.
+  const existingByCode = useMemo(() => {
+    const m = new Map();
+    for (const e of (data.exercises || [])) if (e.uci_code) m.set(e.uci_code, e);
+    return m;
+  }, [data.exercises]);
+
+  // Übung aus dem Reglement übernehmen: bereits vorhanden → nur auswählen,
+  // sonst neu anlegen (gleiche Defaults wie die übrigen Auto-Anlagen) + auswählen.
+  const handleAddExercise = (uciEntry) => {
+    const existing = existingByCode.get(uciEntry.c);
+    if (existing) { setExerciseId(existing.id); setAddOpen(false); return; }
+    const newEx = {
+      id: uid(),
+      name: uciEntry.n,
+      uci_code: uciEntry.c,
+      uci_disc: uciEntry.d,
+      points: Number(uciEntry.p || 0),
+      active: true,
+      category_mode: 2,
+      third_label: null,
+      default_series: 10,
+      created: new Date().toISOString(),
+    };
+    setData({ ...data, exercises: [...(data.exercises || []), newEx] });
+    setExerciseId(newEx.id);
+    setAddOpen(false);
+  };
 
   if (activeExercises.length === 0) {
     return (
@@ -8341,12 +8355,14 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
           <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center">
             <Dumbbell size={32} className="mx-auto text-slate-300 mb-3" />
             <h3 className="font-semibold mb-1">Keine aktiven Übungen</h3>
-            <p className="text-sm text-slate-500 mb-4">Lege zuerst eine Übung an.</p>
-            <button onClick={onDone} className="bg-white border border-slate-300 px-5 py-2 rounded-xl font-medium">
-              Zurück
+            <p className="text-sm text-slate-500 mb-4">Füge eine Übung aus dem Reglement hinzu.</p>
+            <button onClick={() => setAddOpen(true)}
+              className="bg-[#FF9500] text-white px-5 py-2.5 rounded-xl font-medium inline-flex items-center gap-1.5 active:opacity-60">
+              <Plus size={16} strokeWidth={2.6} /> Übung hinzufügen
             </button>
           </div>
         </div>
+        <ReglementSearchModal open={addOpen} onClose={() => setAddOpen(false)} onPick={handleAddExercise} existingByCode={existingByCode} t={t} />
       </div>
     );
   }
@@ -8389,7 +8405,28 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
           {/* Übung zuerst — wichtigste Auswahl, beeinflusst alle anderen Felder */}
           <div>
             <label className="text-sm font-medium block mb-1.5">{t('log.exercise')}</label>
-            <ExercisePickerField exerciseSort={exerciseSort} value={exerciseId} onChange={setExerciseId} t={t} />
+            <select value={exerciseId} onChange={e => setExerciseId(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
+              {exerciseSort.trained.length > 0 && (
+                <optgroup label={t('log.exerciseTrained')}>
+                  {exerciseSort.trained.map(e => (
+                    <option key={e.id} value={e.id}>{localizedExerciseName(e)}</option>
+                  ))}
+                </optgroup>
+              )}
+              {exerciseSort.untrained.length > 0 && (
+                <optgroup label={exerciseSort.trained.length > 0 ? t('log.exerciseUntrained') : t('log.exerciseAll')}>
+                  {exerciseSort.untrained.map(e => (
+                    <option key={e.id} value={e.id}>{localizedExerciseName(e)}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            <button type="button" onClick={() => setAddOpen(true)}
+              className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-slate-300 text-[#007AFF] text-[15px] font-medium active:opacity-60">
+              <Plus size={16} strokeWidth={2.6} /> Übung hinzufügen
+            </button>
+            <ReglementSearchModal open={addOpen} onClose={() => setAddOpen(false)} onPick={handleAddExercise} existingByCode={existingByCode} t={t} />
           </div>
 
           {/* Mit/Ohne-Seil direkt unter der Übung — Variante gehört zur Übung */}
