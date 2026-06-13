@@ -130,7 +130,7 @@ const dict = {
     'training.range.thisYear': 'Dieses Jahr',
     'training.allExercises': 'Alle Übungen ({n})',
     'training.empty': 'Noch keine Sessions',
-    'training.emptyHint': 'Tippe oben auf „Wiederholung protokollieren" um loszulegen.',
+    'training.emptyHint': 'Tippe oben auf „Neu" um loszulegen.',
     'training.noMatches': 'Keine Treffer für deinen Filter.',
 
     // Erfassen / Session anlegen
