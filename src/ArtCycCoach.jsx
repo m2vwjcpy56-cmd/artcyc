@@ -4253,7 +4253,8 @@ export default function App() {
     entries: s.entries || [],
     notes: s.notes || '',
     exerciseName: s.exercise_name || '',
-    withRope: typeof s.with_rope === 'boolean' ? s.with_rope : null
+    withRope: typeof s.with_rope === 'boolean' ? s.with_rope : null,
+    created: s.created_at || null   // Zeitstempel für Sortierung + Uhrzeit-Anzeige
   }), []);
   const dbCompetitionToBlob = useCallback((c) => ({
     id: c.id,
@@ -5926,7 +5927,14 @@ function TrainingView({ data, setData, setView }) {
         return name.includes(q) || notes.includes(q) || date.includes(q) || dateShort.includes(q);
       })
       .slice()
-      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      // Neueste zuerst: primär nach Datum, dann nach Uhrzeit (created), zuletzt
+      // nach Erfassungs-Index — so haben auch gleichtägige Sessions eine
+      // stabile, sinnvolle Reihenfolge (zuletzt erfasste oben).
+      .sort((a, b) =>
+        (b.date || '').localeCompare(a.date || '') ||
+        (b.created || '').localeCompare(a.created || '') ||
+        (b._origIdx - a._origIdx)
+      );
   }, [indexedAll, query, filterExId, rangeFrom]);
 
   const groups = useMemo(() => groupSessionsByDate(filtered), [filtered]);
@@ -5968,9 +5976,7 @@ function TrainingView({ data, setData, setView }) {
             )}
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
-            {formatDateShort(s.date)} · {total} Wiederholungen
-            {fail > 0 && <span className="text-rose-600 ml-1">· {fail}✗</span>}
-            {third > 0 && <span className="text-amber-600 ml-1">· {third}△</span>}
+            {formatDateShort(s.date)}{s.created ? ' · ' + new Date(s.created).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr' : ''} · {total} Wiederholungen
           </div>
           {s.notes && (
             <div className="text-xs text-slate-500 italic mt-1 line-clamp-1 border-l-2 border-amber-200 pl-2">
@@ -8574,7 +8580,8 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
         exerciseName: exercise.name,
         entries,
         notes: notes.trim() || null,
-        withRope: exercise.has_rope_variant ? withRope : null
+        withRope: exercise.has_rope_variant ? withRope : null,
+        created: new Date().toISOString()   // Uhrzeit für Reihenfolge + Anzeige
       }]
     });
     onDone();
