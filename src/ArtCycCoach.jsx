@@ -8253,13 +8253,32 @@ function ReglementSearchModal({ open, onClose, onPick, existingByCode, t }) {
   const norm = (s) => (s == null ? '' : String(s)).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const needle = norm(q.trim());
   const db = getUciDb();
+  // Relevanz: exakter Name ganz oben, dann \u201ebeginnt mit", dann Wort-Anfang,
+  // dann Teilstring (fr\u00fcher im Namen = besser), zuletzt reine Code-Treffer.
+  const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const relevance = (e) => {
+    const name = norm(e.n), code = norm(e.c);
+    if (name === needle) return 1000;
+    if (code === needle) return 990;
+    if (name.startsWith(needle)) return 900;
+    if (new RegExp('(^|\\s)' + escRe(needle)).test(name)) return 800;
+    const idx = name.indexOf(needle);
+    if (idx >= 0) return 600 - Math.min(idx, 500);
+    return 0; // nur Code-Teiltreffer
+  };
   const filtered = needle
     ? db.filter(e => norm(e.n).includes(needle) || norm(e.c).includes(needle))
+        .map(e => ({ e, s: relevance(e) }))
+        .sort((a, b) => b.s - a.s || a.e.n.length - b.e.n.length || a.e.c.localeCompare(b.e.c))
+        .map(x => x.e)
     : db;
   const order = ['1er', '2er', '4er', '6er'];
-  const groups = order
+  let groups = order
     .map(d => ({ d, items: filtered.filter(e => e.d === d) }))
     .filter(g => g.items.length > 0);
+  // Bei aktiver Suche: Disziplin-Gruppe mit dem besten Treffer nach oben
+  // (items sind bereits relevanz-sortiert \u2192 items[0] ist der beste je Gruppe).
+  if (needle) groups = [...groups].sort((a, b) => relevance(b.items[0]) - relevance(a.items[0]));
 
   if (!open) return null;
 
