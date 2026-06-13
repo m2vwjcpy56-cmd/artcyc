@@ -51,16 +51,21 @@ function haptic(type = 'light') {
     if (h) h.label.click();  // iOS: Label-Klick innerhalb der User-Geste → System-Haptik
   } catch { /* Haptik ist optional */ }
 }
-// Kombiniert Haptik + kurze „Pop"-Animation des gedrückten Elements (WAAPI,
-// re-triggerbar, ohne State). ev = React-Event, el = ev.currentTarget.
+// Kombiniert Haptik (best effort) + spürbare „Pop"-Animation des gedrückten
+// Elements: Überschwung + kurzer Helligkeits-Blitz (WAAPI, re-triggerbar, ohne
+// State). Da iOS-Web-Haptik unzuverlässig ist, trägt v. a. die Optik das Feedback.
 function pressFeedback(ev, type = 'light') {
   haptic(type);
   const el = ev && ev.currentTarget;
   if (el && typeof el.animate === 'function') {
     try {
       el.animate(
-        [{ transform: 'scale(0.94)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }],
-        { duration: 230, easing: 'cubic-bezier(.2,.8,.3,1)' }
+        [
+          { transform: 'scale(0.90)', filter: 'brightness(1.28)', offset: 0 },
+          { transform: 'scale(1.07)', filter: 'brightness(1.12)', offset: 0.45 },
+          { transform: 'scale(1)', filter: 'brightness(1)', offset: 1 }
+        ],
+        { duration: 280, easing: 'cubic-bezier(.2,.85,.3,1)' }
       );
     } catch { /* Animation ist optional */ }
   }
