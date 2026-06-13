@@ -5322,7 +5322,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
         <button onClick={() => setView('erfassen')}
           className="bg-[#FF9500] text-white p-5 rounded-2xl text-left active:scale-[0.98] transition-transform shadow-[0_2px_8px_rgba(255,149,0,0.25)]">
           <div className="flex items-center gap-2 mb-1.5 font-semibold text-[16px]">
-            <Plus size={20} strokeWidth={2.5} /> <span>{t('common.new')}</span>
+            <Plus size={20} strokeWidth={2.5} /> <span>{t('dashboard.logSession')}</span>
           </div>
         </button>
         <button onClick={() => setView('uebungen')}
@@ -5360,7 +5360,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
             <p className="text-[14px] text-[#8E8E93] mb-4">{t('dashboard.noTrainingHint')}</p>
             <button onClick={() => setView('erfassen')}
               className="bg-[#FF9500] text-white px-5 py-2.5 rounded-full text-[14px] font-medium active:scale-95 transition-transform">
-              {t('common.new')}
+              {t('dashboard.logSession')}
             </button>
           </div>
         ) : (
