@@ -16,6 +16,55 @@ import { parseProgramFile } from './lib/programImport.js';
 import { loadUciExercisesFromDb, getRulesLanguage, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram } from './lib/uciRules.js';
 
 // =============================================================
+// Haptisches Feedback + Tap-Animation
+// iOS Safari unterstützt navigator.vibrate NICHT. Trick: ein verstecktes
+// <input type="checkbox" switch> (iOS 17.4+) löst beim Klick die System-Haptik
+// aus. Android/Chrome nutzt navigator.vibrate mit Muster je Typ.
+// =============================================================
+let _hapticSwitch = null;
+function getHapticSwitch() {
+  if (typeof document === 'undefined') return null;
+  if (_hapticSwitch && document.body && document.body.contains(_hapticSwitch)) return _hapticSwitch;
+  try {
+    const label = document.createElement('label');
+    label.setAttribute('aria-hidden', 'true');
+    label.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1;';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.setAttribute('switch', '');          // iOS-spezifisch → Haptik beim Toggle
+    label.appendChild(input);
+    document.body.appendChild(label);
+    _hapticSwitch = input;
+    return input;
+  } catch { return null; }
+}
+// type: 'light' | 'select' | 'success' | 'warning' | 'error'
+function haptic(type = 'light') {
+  try {
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      const patterns = { light: 10, select: 8, success: 18, warning: [10, 40, 12], error: [22, 45, 22] };
+      navigator.vibrate(patterns[type] || 10);
+    }
+    const sw = getHapticSwitch();
+    if (sw) sw.click(); // Toggle innerhalb der User-Geste → iOS-System-Haptik
+  } catch { /* Haptik ist optional */ }
+}
+// Kombiniert Haptik + kurze „Pop"-Animation des gedrückten Elements (WAAPI,
+// re-triggerbar, ohne State). ev = React-Event, el = ev.currentTarget.
+function pressFeedback(ev, type = 'light') {
+  haptic(type);
+  const el = ev && ev.currentTarget;
+  if (el && typeof el.animate === 'function') {
+    try {
+      el.animate(
+        [{ transform: 'scale(0.94)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }],
+        { duration: 230, easing: 'cubic-bezier(.2,.8,.3,1)' }
+      );
+    } catch { /* Animation ist optional */ }
+  }
+}
+
+// =============================================================
 // UCI 2026 Datenbank: Alle Disziplinen
 // d = Disziplin: '1er', '2er', '4er', '6er'
 // =============================================================
@@ -6345,21 +6394,21 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
           <div>
             <label className="text-sm font-medium block mb-2">Wiederholungen · {entries.length}</label>
             <div className={'grid gap-3 mb-3 ' + (use3 ? 'grid-cols-3' : 'grid-cols-2')}>
-              <button onClick={() => setEntries([...entries, 'success'])}
+              <button onClick={(ev) => { pressFeedback(ev, 'success'); setEntries(prev => [...prev, 'success']); }}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
                 <Check size={26} strokeWidth={2.6} />
                 <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'success')}</span>
                 <span className="text-xs opacity-80">{success}</span>
               </button>
               {use3 && (
-                <button onClick={() => setEntries([...entries, 'third'])}
+                <button onClick={(ev) => { pressFeedback(ev, 'warning'); setEntries(prev => [...prev, 'third']); }}
                   className="bg-amber-500 hover:bg-amber-600 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
                   <AlertTriangle size={26} strokeWidth={2.4} />
                   <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'third')}</span>
                   <span className="text-xs opacity-80">{third}</span>
                 </button>
               )}
-              <button onClick={() => setEntries([...entries, 'fail'])}
+              <button onClick={(ev) => { pressFeedback(ev, 'error'); setEntries(prev => [...prev, 'fail']); }}
                 className="bg-rose-600 hover:bg-rose-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
                 <X size={26} strokeWidth={2.6} />
                 <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'fail')}</span>
@@ -8379,19 +8428,50 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
     return { trained, untrained, count };
   }, [activeExercises, data.sessions]);
 
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  // Default-Übung: die häufigst-trainierte, sonst erste der Liste
+  // Entwurf: laufende Erfassung wird in localStorage gesichert, damit beim
+  // Tab-Wechsel / App-Update / erneutem Öffnen nichts verloren geht.
+  const DRAFT_KEY = 'artcyc:erfassenDraft';
+  const [bootDraft] = useState(() => {
+    try {
+      const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+      // Nur gültig, wenn die Übung noch existiert und aktiv ist (sonst Default).
+      if (d && d.exerciseId && (data.exercises || []).some(e => e.id === d.exerciseId && e.active)) return d;
+    } catch { /* kein/ungültiger Entwurf */ }
+    return null;
+  });
+
+  const [date, setDate] = useState(bootDraft?.date || new Date().toISOString().slice(0, 10));
+  // Default-Übung: die häufigst-trainierte, sonst erste der Liste (oder aus Entwurf)
   const [exerciseId, setExerciseId] = useState(
+    bootDraft?.exerciseId ||
     (exerciseSort.trained[0] && exerciseSort.trained[0].id) ||
     (activeExercises[0] && activeExercises[0].id) || ''
   );
-  const [athleteId, setAthleteId] = useState((athletes[0] && athletes[0].id) || '');
-  const [entries, setEntries] = useState([]);
-  const [notes, setNotes] = useState('');
-  const [withRope, setWithRope] = useState(true); // default Mit Seil, häufiger Fall
+  const [athleteId, setAthleteId] = useState(bootDraft?.athleteId ?? ((athletes[0] && athletes[0].id) || ''));
+  const [entries, setEntries] = useState(bootDraft?.entries || []);
+  const [notes, setNotes] = useState(bootDraft?.notes || '');
+  const [withRope, setWithRope] = useState(typeof bootDraft?.withRope === 'boolean' ? bootDraft.withRope : true);
   const [addOpen, setAddOpen] = useState(false);   // Reglement-Suche offen?
+  const [draftRestored, setDraftRestored] = useState(!!bootDraft); // Hinweis-Banner
 
-  useEffect(() => { setEntries([]); setNotes(''); setWithRope(true); }, [exerciseId]);
+  // Beim aktiven Wechsel der Übung Felder zurücksetzen — aber NICHT beim ersten
+  // Render (sonst würde ein wiederhergestellter Entwurf sofort gelöscht).
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) { didMountRef.current = true; return; }
+    setEntries([]); setNotes(''); setWithRope(true);
+  }, [exerciseId]);
+
+  // Entwurf laufend sichern (oder löschen, wenn kein Fortschritt vorhanden).
+  const savedRef = useRef(false);
+  useEffect(() => {
+    if (savedRef.current) return;
+    const hasProgress = entries.length > 0 || (notes && notes.trim());
+    try {
+      if (hasProgress) localStorage.setItem(DRAFT_KEY, JSON.stringify({ date, exerciseId, athleteId, entries, notes, withRope }));
+      else localStorage.removeItem(DRAFT_KEY);
+    } catch { /* localStorage evtl. blockiert */ }
+  }, [date, exerciseId, athleteId, entries, notes, withRope]);
 
   const exercise = data.exercises.find(e => e.id === exerciseId);
 
@@ -8456,6 +8536,8 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
 
   const save = () => {
     if (entries.length === 0 || !exercise) return;
+    savedRef.current = true;
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* egal */ }
     setData({
       ...data,
       sessions: [...data.sessions, {
@@ -8558,22 +8640,33 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
             </span>
           </div>
 
+          {draftRestored && entries.length > 0 && (
+            <div className="mb-3 flex items-center justify-between gap-2 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2 text-[13px] text-sky-900">
+              <span className="flex items-center gap-1.5"><RotateCcw size={14} className="shrink-0" /> Entwurf wiederhergestellt</span>
+              <button type="button"
+                onClick={(ev) => { pressFeedback(ev, 'light'); setEntries([]); setNotes(''); setDraftRestored(false); try { localStorage.removeItem(DRAFT_KEY); } catch { /* egal */ } }}
+                className="font-medium text-sky-700 active:opacity-60 shrink-0">
+                Verwerfen
+              </button>
+            </div>
+          )}
+
           <div className={'grid gap-3 mb-3 ' + (use3 ? 'grid-cols-3' : 'grid-cols-2')}>
-            <button onClick={() => setEntries([...entries, 'success'])}
+            <button onClick={(ev) => { pressFeedback(ev, 'success'); setEntries(prev => [...prev, 'success']); }}
               className="bg-emerald-600 hover:bg-emerald-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
               <Check size={26} strokeWidth={2.6} />
               <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'success')}</span>
               <span className="text-xs opacity-80">{success}</span>
             </button>
             {use3 && (
-              <button onClick={() => setEntries([...entries, 'third'])}
+              <button onClick={(ev) => { pressFeedback(ev, 'warning'); setEntries(prev => [...prev, 'third']); }}
                 className="bg-amber-500 hover:bg-amber-600 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
                 <AlertTriangle size={26} strokeWidth={2.4} />
                 <span className="text-[13px] leading-tight text-center px-1">{thirdLabel}</span>
                 <span className="text-xs opacity-80">{third}</span>
               </button>
             )}
-            <button onClick={() => setEntries([...entries, 'fail'])}
+            <button onClick={(ev) => { pressFeedback(ev, 'error'); setEntries(prev => [...prev, 'fail']); }}
               className="bg-rose-600 hover:bg-rose-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
               <X size={26} strokeWidth={2.6} />
               <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'fail')}</span>
