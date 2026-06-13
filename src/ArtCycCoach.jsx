@@ -7563,20 +7563,20 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
             <div className={'grid gap-2 ' + (is3 ? 'grid-cols-3' : 'grid-cols-2')}>
               <div className="bg-emerald-50 border border-emerald-100 rounded-[20px] p-3 text-center">
                 <div className="text-[12px] font-medium text-emerald-700">{statusLabel(exercise, 'success')}</div>
-                <div className="text-[26px] font-bold text-emerald-700 tabular-nums leading-none mt-1">{vm.totalSuccess}</div>
-                <div className="text-[11px] text-emerald-600/70 tabular-nums mt-0.5">{vm.successRateCurrent} %</div>
+                <div className="text-[26px] font-bold text-emerald-700 tabular-nums leading-none mt-1">{vm.successRateCurrent} %</div>
+                <div className="text-[11px] text-emerald-600/70 tabular-nums mt-0.5">{vm.totalSuccess}</div>
               </div>
               {is3 && (
                 <div className="bg-amber-50 border border-amber-100 rounded-[20px] p-3 text-center">
                   <div className="text-[12px] font-medium text-amber-700">{statusLabel(exercise, 'third')}</div>
-                  <div className="text-[26px] font-bold text-amber-700 tabular-nums leading-none mt-1">{vm.totalHit}</div>
-                  <div className="text-[11px] text-amber-600/70 tabular-nums mt-0.5">{vm.hitRate} %</div>
+                  <div className="text-[26px] font-bold text-amber-700 tabular-nums leading-none mt-1">{vm.hitRate} %</div>
+                  <div className="text-[11px] text-amber-600/70 tabular-nums mt-0.5">{vm.totalHit}</div>
                 </div>
               )}
-              <div className="card-surface rounded-[20px] p-3 text-center">
-                <div className="text-[12px] font-medium text-slate-500">{statusLabel(exercise, 'fail')}</div>
-                <div className="text-[26px] font-bold text-slate-900 tabular-nums leading-none mt-1">{vm.totalDanger}</div>
-                <div className="text-[11px] text-rose-600 tabular-nums mt-0.5">{vm.dangerRate} %</div>
+              <div className="bg-rose-50 border border-rose-100 rounded-[20px] p-3 text-center">
+                <div className="text-[12px] font-medium text-rose-700">{statusLabel(exercise, 'fail')}</div>
+                <div className="text-[26px] font-bold text-rose-700 tabular-nums leading-none mt-1">{vm.dangerRate} %</div>
+                <div className="text-[11px] text-rose-600/70 tabular-nums mt-0.5">{vm.totalDanger}</div>
               </div>
             </div>
             </>
