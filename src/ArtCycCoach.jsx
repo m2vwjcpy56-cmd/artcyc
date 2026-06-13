@@ -7363,45 +7363,6 @@ function buildExerciseScreenModel(exercise, data, ropeFilter = null, period = '6
   };
 }
 
-// Kompaktes Trend-Diagramm: Erfolgslinie (grün) dominant, Gefahren-
-// linie optional als dünne, gestrichelte Sekundärlinie.
-function ExerciseTrendChart({ successSeries, dangerSeries, showDanger }) {
-  const W = 320, H = 116, P = 14;
-  const n = successSeries.length;
-  if (n === 0) return null;
-  const xAt = (i) => n === 1 ? W / 2 : P + (i / (n - 1)) * (W - 2 * P);
-  const yAt = (rate) => H - P - (rate / 100) * (H - 2 * P);
-  const toPath = (series) => series.map((p, i) => (i === 0 ? 'M' : 'L') + xAt(i).toFixed(1) + ',' + yAt(p.rate).toFixed(1)).join(' ');
-  const successPath = toPath(successSeries);
-  const areaPath = n > 0 ? successPath + ' L' + xAt(n - 1).toFixed(1) + ',' + (H - P).toFixed(1) + ' L' + xAt(0).toFixed(1) + ',' + (H - P).toFixed(1) + ' Z' : '';
-  const dangerPath = toPath(dangerSeries);
-  return (
-    <div>
-      <svg viewBox={'0 0 ' + W + ' ' + H} className="w-full" preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="successFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgba(48,209,88,0.30)" />
-            <stop offset="100%" stopColor="rgba(48,209,88,0)" />
-          </linearGradient>
-        </defs>
-        {[0, 0.5, 1].map(r => (
-          <line key={r} x1={P} y1={H - P - r * (H - 2 * P)} x2={W - P} y2={H - P - r * (H - 2 * P)}
-            stroke="#8E8E93" strokeOpacity="0.18" strokeWidth="1" strokeDasharray={r === 0.5 ? '3 4' : ''} />
-        ))}
-        <path d={areaPath} fill="url(#successFill)" />
-        {showDanger && <path d={dangerPath} fill="none" stroke="#FF453A" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.75" />}
-        <path d={successPath} fill="none" stroke="#30D158" strokeWidth="2.75" strokeLinejoin="round" strokeLinecap="round" />
-        {n <= 14 && successSeries.map((p, i) => <circle key={i} cx={xAt(i)} cy={yAt(p.rate)} r="2.6" fill="#30D158" />)}
-        <text x={P - 3} y={P + 4} fontSize="9" fill="#8E8E93" textAnchor="end">100</text>
-        <text x={P - 3} y={H - P + 3} fontSize="9" fill="#8E8E93" textAnchor="end">0</text>
-      </svg>
-      <div className="flex justify-between text-[10px] text-slate-400 mt-1 px-2 tabular-nums">
-        <span>{successSeries[0].label}</span>
-        {n > 1 && <span>{successSeries[n - 1].label}</span>}
-      </div>
-    </div>
-  );
-}
 
 function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, onDelete }) {
   const { t } = useI18n();
@@ -7475,6 +7436,17 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
   const sessionRate = (r) => r >= 80 ? 'text-emerald-700' : 'text-slate-700';
   const periodTabs = [['4w', '4 Wochen'], ['3m', '3 Monate'], ['6m', '6 Monate'], ['total', 'Gesamt']];
   const periodLabel = (periodTabs.find(p => p[0] === trendPeriod) || ['', 'Gesamt'])[1];
+
+  // Trend als ZAHLEN statt Diagramm: pro Bucket (Woche/Monat) Quote, Versuche,
+  // Gefährlich-% und Veränderung ggü. dem vorigen Bucket. Neueste zuerst.
+  const trendRows = vm.successTrendSeries.map((s, i) => ({
+    label: s.label,
+    rate: s.rate,
+    total: s.total,
+    danger: (vm.dangerTrendSeries[i] || {}).rate || 0,
+    delta: i > 0 ? s.rate - vm.successTrendSeries[i - 1].rate : null,
+  })).reverse();
+  const rateColor = (r) => r >= 80 ? 'text-emerald-600' : r >= 55 ? 'text-slate-800' : 'text-rose-600';
 
   const sessionRows = (list) => list.map((s, i) => (
     <div key={i} className="px-4 py-3 flex items-center justify-between gap-3">
@@ -7623,16 +7595,43 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                 )}
               </div>
               <div className="text-[12px] text-slate-400">Zeitraum: {periodLabel} · oben umschaltbar</div>
-              {vm.successTrendSeries.length >= 2 ? (
-                <>
-                  <ExerciseTrendChart successSeries={vm.successTrendSeries} dangerSeries={vm.dangerTrendSeries} showDanger={showDangerTrend && is3} />
-                  <div className="flex items-center gap-4 text-[11px] text-slate-500">
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 rounded bg-emerald-500" />{statusLabel(exercise, 'success')}</span>
-                    {showDangerTrend && is3 && <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 rounded bg-rose-500" />{statusLabel(exercise, 'fail')}</span>}
+              {trendRows.length >= 1 ? (
+                <div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium px-1 pb-1">
+                    <span>{trendPeriod === '4w' ? 'Woche' : 'Monat'}</span>
+                    <span>Quote{showDangerTrend && is3 ? ' · Gefährlich' : ''}</span>
                   </div>
-                </>
+                  {trendRows.map((r, i) => {
+                    const dCls = r.delta == null || r.delta === 0 ? 'text-slate-300'
+                      : r.delta > 0 ? 'text-emerald-600' : 'text-rose-500';
+                    const dArr = r.delta == null || r.delta === 0 ? '·' : r.delta > 0 ? '↑' : '↓';
+                    return (
+                      <div key={i} className="px-1 py-2 border-b border-slate-100 last:border-0">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[15px] font-medium tabular-nums">{r.label}</div>
+                            <div className="text-[12px] text-slate-400 tabular-nums">
+                              {r.total} {r.total === 1 ? 'Versuch' : 'Versuche'}
+                              {showDangerTrend && is3 ? ' · ' + r.danger + ' % ' + statusLabel(exercise, 'fail').toLowerCase() : ''}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2.5 shrink-0">
+                            <span className={'text-[12px] font-semibold tabular-nums w-9 text-right ' + dCls}>
+                              {dArr}{r.delta == null || r.delta === 0 ? '' : Math.abs(r.delta)}
+                            </span>
+                            <span className={'text-[19px] font-bold tabular-nums w-[52px] text-right ' + rateColor(r.rate)}>{r.rate} %</span>
+                          </div>
+                        </div>
+                        {/* dünner Quoten-Balken — nur dezente Orientierung, keine Hauptaussage */}
+                        <div className="mt-1.5 h-1 rounded-full bg-slate-100 overflow-hidden">
+                          <div className="h-full rounded-full bg-emerald-500" style={{ width: r.rate + '%' }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
-                <div className="text-[13px] text-slate-400 py-4 text-center">Zu wenig Datenpunkte für diesen Zeitraum.</div>
+                <div className="text-[13px] text-slate-400 py-4 text-center">Zu wenig Daten für diesen Zeitraum.</div>
               )}
 
               {/* Stacked-Verteilung — standardmäßig eingeklappt */}
