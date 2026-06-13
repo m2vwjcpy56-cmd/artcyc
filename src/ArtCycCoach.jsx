@@ -7263,16 +7263,25 @@ function buildExerciseScreenModel(exercise, data, ropeFilter = null, period = '6
   const desc = [...perSession].sort((a, b) => b.date.localeCompare(a.date));
   const asc = [...perSession].sort((a, b) => a.date.localeCompare(b.date));
 
-  const totalAttempts = perSession.reduce((n, s) => n + s.total, 0);
-  const totalSuccess = perSession.reduce((n, s) => n + s.success, 0);
-  const totalHit = perSession.reduce((n, s) => n + s.third, 0);
-  const totalDanger = perSession.reduce((n, s) => n + s.fail, 0);
+  const now = Date.now();
+  // Zeitfenster der gewählten Periode — steuert ALLE Kernzahlen (nicht nur den Trend).
+  // So fließen bei Übungen mit sehr vielen Serien die ältesten nicht mehr in die Quote ein.
+  const PERIOD_DAYS = { '4w': 28, '3m': 91, '6m': 183 };
+  const windowStart = PERIOD_DAYS[period]
+    ? new Date(now - PERIOD_DAYS[period] * 86400000).toISOString().slice(0, 10)
+    : null;
+  const windowed = windowStart ? perSession.filter(s => s.date >= windowStart) : perSession;
+  const periodHasData = windowed.length > 0;
+
+  const totalAttempts = windowed.reduce((n, s) => n + s.total, 0);
+  const totalSuccess = windowed.reduce((n, s) => n + s.success, 0);
+  const totalHit = windowed.reduce((n, s) => n + s.third, 0);
+  const totalDanger = windowed.reduce((n, s) => n + s.fail, 0);
   const successRateCurrent = totalAttempts > 0 ? Math.round((totalSuccess / totalAttempts) * 100) : 0;
   const hitRate = totalAttempts > 0 ? Math.round((totalHit / totalAttempts) * 100) : 0;
   const dangerRate = totalAttempts > 0 ? Math.round((totalDanger / totalAttempts) * 100) : 0;
 
-  // Richtung: letzte 4 Wochen vs. die 4 Wochen davor.
-  const now = Date.now();
+  // Richtung: letzte 4 Wochen vs. die 4 Wochen davor (fix, unabhängig von der Periode).
   const cut4 = new Date(now - 28 * 86400000).toISOString().slice(0, 10);
   const cut8 = new Date(now - 56 * 86400000).toISOString().slice(0, 10);
   const agg = (arr) => arr.reduce((a, s) => ({ success: a.success + s.success, total: a.total + s.total }), { success: 0, total: 0 });
@@ -7289,13 +7298,11 @@ function buildExerciseScreenModel(exercise, data, ropeFilter = null, period = '6
   const lastSessionFraction = last.success + '/' + last.total;
 
   // ── Trend-Serien je Zeitraum ───────────────────────────────
-  //   '4w'    → wöchentliche Buckets (letzte 4 Wochen)
-  //   '6m'    → monatliche Buckets (letzte 6 Monate)
-  //   'total' → monatliche Buckets (gesamte Historie)
+  //   '4w'        → wöchentliche Buckets (letzte 4 Wochen)
+  //   '3m'/'6m'   → monatliche Buckets (letzte 3/6 Monate)
+  //   'total'     → monatliche Buckets (gesamte Historie)
+  // windowStart ist oben bereits definiert (steuert auch die Kernzahlen).
   const isWeekly = period === '4w';
-  let windowStart = null;
-  if (period === '4w') windowStart = new Date(now - 28 * 86400000).toISOString().slice(0, 10);
-  else if (period === '6m') windowStart = new Date(now - 183 * 86400000).toISOString().slice(0, 10);
 
   const weekKey = (iso) => {
     const d = new Date(iso + 'T00:00:00');
@@ -7348,7 +7355,7 @@ function buildExerciseScreenModel(exercise, data, ropeFilter = null, period = '6
   return {
     successRateCurrent, successRateLast4Weeks, successDelta,
     lastSessionDate, lastSessionRate, lastSessionFraction,
-    sessionsCount: perSession.length, totalAttempts, totalSuccess, totalHit, totalDanger,
+    sessionsCount: windowed.length, periodHasData, totalAttempts, totalSuccess, totalHit, totalDanger,
     hitRate, dangerRate,
     successTrendSeries, dangerTrendSeries, compositionSeries,
     recentSessionsLimited: desc.slice(0, 5), allSessions: desc,
@@ -7399,7 +7406,14 @@ function ExerciseTrendChart({ successSeries, dangerSeries, showDanger }) {
 function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, onDelete }) {
   const { t } = useI18n();
   const [ropeFilter, setRopeFilter] = useState(null);     // null | true | false
-  const [trendPeriod, setTrendPeriod] = useState('6m');   // '4w' | '6m' | 'total'
+  // Zeitraum für ALLE Statistiken dieser Seite. Auswahl wird global gespeichert.
+  const [trendPeriod, setTrendPeriod] = useState(() => {
+    try { return localStorage.getItem('artcyc:exDetailPeriod') || '6m'; } catch { return '6m'; }
+  });   // '4w' | '3m' | '6m' | 'total'
+  const changePeriod = (val) => {
+    setTrendPeriod(val);
+    try { localStorage.setItem('artcyc:exDetailPeriod', val); } catch { /* localStorage evtl. blockiert */ }
+  };
   const [showDangerTrend, setShowDangerTrend] = useState(false);
   const [showComposition, setShowComposition] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
@@ -7459,7 +7473,8 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
   })();
 
   const sessionRate = (r) => r >= 80 ? 'text-emerald-700' : 'text-slate-700';
-  const periodTabs = [['4w', '4 Wochen'], ['6m', '6 Monate'], ['total', 'Gesamt']];
+  const periodTabs = [['4w', '4 Wochen'], ['3m', '3 Monate'], ['6m', '6 Monate'], ['total', 'Gesamt']];
+  const periodLabel = (periodTabs.find(p => p[0] === trendPeriod) || ['', 'Gesamt'])[1];
 
   const sessionRows = (list) => list.map((s, i) => (
     <div key={i} className="px-4 py-3 flex items-center justify-between gap-3">
@@ -7518,6 +7533,24 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
           </div>
         ) : (
           <>
+            {/* ZEITRAUM — steuert alle Statistiken unten; Auswahl wird gespeichert */}
+            <div className="bg-[#E5E5EA] rounded-[13px] p-1 flex gap-1 text-[13px] font-medium">
+              {periodTabs.map(([val, label]) => (
+                <button key={val} onClick={() => changePeriod(val)}
+                  className={'flex-1 px-2 py-1.5 rounded-[10px] transition ' +
+                    (trendPeriod === val ? 'ios-seg-active' : 'text-slate-500 active:opacity-60')}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {!vm.periodHasData ? (
+              <div className="card-surface rounded-[22px] p-6 text-center">
+                <div className="text-[15px] text-slate-400">Keine Trainingsdaten in den letzten {periodLabel}.</div>
+                <div className="text-[13px] text-slate-400 mt-1">Wähle oben einen größeren Zeitraum.</div>
+              </div>
+            ) : (
+            <>
             {/* 02 — HERO: Erfolgsquote (einzige dominante Fläche) */}
             <div className="card-surface rounded-[22px] p-5">
               <div className="flex items-center justify-between gap-3">
@@ -7532,7 +7565,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                 <span className="text-[72px] leading-[0.82] font-bold tracking-tight text-emerald-600 tabular-nums">{vm.successRateCurrent}</span>
                 <span className="text-[32px] font-bold text-emerald-600 mb-1.5">%</span>
               </div>
-              <div className="mt-1.5 text-[15px] text-slate-500 tabular-nums">{vm.totalSuccess} von {vm.totalAttempts} Versuchen</div>
+              <div className="mt-1.5 text-[15px] text-slate-500 tabular-nums">{vm.totalSuccess} von {vm.totalAttempts} Versuchen · {periodLabel}</div>
               <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[13px]">
                 <span className="text-slate-500">Zuletzt {formatDateShort(vm.lastSessionDate)}</span>
                 <span className="font-medium text-slate-700 tabular-nums">{vm.lastSessionRate} % · {vm.lastSessionFraction}</span>
@@ -7574,6 +7607,8 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                 <div className="text-[11px] text-rose-600 tabular-nums mt-0.5">{vm.dangerRate} %</div>
               </div>
             </div>
+            </>
+            )}
 
             {/* 05 — TREND-MODUL */}
             <div className="card-surface rounded-[22px] p-4 space-y-3">
@@ -7587,15 +7622,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                   </button>
                 )}
               </div>
-              <div className="bg-[#E5E5EA] rounded-[13px] p-1 flex gap-1 text-[13px] font-medium">
-                {periodTabs.map(([val, label]) => (
-                  <button key={val} onClick={() => setTrendPeriod(val)}
-                    className={'flex-1 px-2 py-1.5 rounded-[10px] transition ' +
-                      (trendPeriod === val ? 'ios-seg-active' : 'text-slate-500 active:opacity-60')}>
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <div className="text-[12px] text-slate-400">Zeitraum: {periodLabel} · oben umschaltbar</div>
               {vm.successTrendSeries.length >= 2 ? (
                 <>
                   <ExerciseTrendChart successSeries={vm.successTrendSeries} dangerSeries={vm.dangerTrendSeries} showDanger={showDangerTrend && is3} />
