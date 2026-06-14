@@ -42,7 +42,8 @@ const ACCENT = {
   emerald: { bg: 'bg-emerald-50', border: 'border-emerald-100', fg: 'text-emerald-600' },
   rose:    { bg: 'bg-rose-50',    border: 'border-rose-100',    fg: 'text-rose-600' },
 };
-export function MetricCard({ label, value, sub, accent, icon: Icon }) {
+export function MetricCard({ label, value, sub, accent, icon: Icon, subLines = 1 }) {
+  const subCls = subLines === 2 ? 'line-clamp-2 leading-tight' : 'truncate';
   const A = accent && ACCENT[accent];
   if (A) {
     return (
@@ -52,7 +53,7 @@ export function MetricCard({ label, value, sub, accent, icon: Icon }) {
           <span className="text-[11px] font-semibold leading-tight truncate">{label}</span>
         </div>
         <div className="text-[24px] font-bold text-slate-900 tabular-nums mt-1.5 leading-none">{value}</div>
-        {sub != null && <div className="text-[11px] text-slate-400 tabular-nums mt-1 truncate">{sub}</div>}
+        {sub != null && <div className={`text-[11px] text-slate-400 mt-1 ${subCls}`}>{sub}</div>}
       </div>
     );
   }
@@ -60,7 +61,7 @@ export function MetricCard({ label, value, sub, accent, icon: Icon }) {
     <div className="card-surface rounded-[20px] p-3 text-center">
       <div className="text-[11px] text-slate-500 font-medium leading-tight">{label}</div>
       <div className="text-[21px] font-bold text-slate-900 tabular-nums mt-1 leading-none">{value}</div>
-      {sub != null && <div className="text-[11px] text-slate-400 tabular-nums mt-1 truncate">{sub}</div>}
+      {sub != null && <div className={`text-[11px] text-slate-400 mt-1 ${subCls}`}>{sub}</div>}
     </div>
   );
 }
