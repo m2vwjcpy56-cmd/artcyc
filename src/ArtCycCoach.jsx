@@ -8261,12 +8261,13 @@ function ExerciseDetailV2({ exercise, data, onBack, onEdit, onArchive, onDelete 
 
   // Datenpräsenz je Modus — für Filter-Badges + saubere Empty-States.
   const allStats = calcExerciseTrainingStats(exercise, data.sessions || [], null);
+  const hasAnyData = allStats.sessions > 0;
+  // Badge-Counts respektieren den gewählten Zeitraum (period), nicht die Gesamthistorie.
   const modeCounts = {
-    all: allStats.sessions,
-    rope: calcExerciseTrainingStats(exercise, data.sessions || [], true).sessions,
-    noRope: calcExerciseTrainingStats(exercise, data.sessions || [], false).sessions,
+    all: (mode === 'all' ? vm : buildExerciseScreenModel(exercise, data, null, period)).sessionsCount,
+    rope: (mode === 'rope' ? vm : buildExerciseScreenModel(exercise, data, true, period)).sessionsCount,
+    noRope: (mode === 'noRope' ? vm : buildExerciseScreenModel(exercise, data, false, period)).sessionsCount,
   };
-  const hasAnyData = modeCounts.all > 0;
 
   const periodTabs = [['4w', '4 Wochen'], ['3m', '3 Monate'], ['6m', '6 Monate'], ['total', 'Gesamt']];
   const periodLabel = (periodTabs.find(p => p[0] === period) || ['', 'Gesamt'])[1];
