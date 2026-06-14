@@ -11699,11 +11699,53 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     setImportMsg('OCR-Bibliothek laden …');
     try {
       const Tesseract = await loadTesseract();
+
+      // OCR-Qualität bewerten: viele Zahlen + bekannte Wertungsbogen-Begriffe = richtige Ausrichtung.
+      const scoreText = (txt) => {
+        if (!txt) return 0;
+        let s = (txt.match(/\d/g) || []).length;
+        for (const kw of ['Wertung', 'Ausführung', 'Schwierigkeit', 'Starter', 'Verein', 'Disziplin', 'Gesamt', 'Ergebnis', 'Pkte']) {
+          if (new RegExp(kw, 'i').test(txt)) s += 25;
+        }
+        return s;
+      };
+      const loadImg = (file) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = URL.createObjectURL(file); });
+      const rotateCanvas = (img, deg) => {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        const c = document.createElement('canvas');
+        if (deg === 90 || deg === 270) { c.width = h; c.height = w; } else { c.width = w; c.height = h; }
+        const ctx = c.getContext('2d');
+        ctx.translate(c.width / 2, c.height / 2);
+        ctx.rotate(deg * Math.PI / 180);
+        ctx.drawImage(img, -w / 2, -h / 2);
+        return c;
+      };
+
       let fullText = '';
       for (let i = 0; i < list.length; i++) {
-        setImportMsg('Texterkennung Seite ' + (i + 1) + '/' + list.length + ' …');
-        const { data } = await Tesseract.recognize(list[i], 'deu');
-        fullText += '\n' + ((data && data.text) || '');
+        const file = list[i];
+        // Nur Bilder bekommen Auto-Ausrichtung; PDFs/anderes direkt durchreichen.
+        if (!/^image\//.test(file.type)) {
+          setImportMsg('Texterkennung Seite ' + (i + 1) + '/' + list.length + ' …');
+          const { data } = await Tesseract.recognize(file, 'deu');
+          fullText += '\n' + ((data && data.text) || '');
+          continue;
+        }
+        const img = await loadImg(file);
+        // Reihenfolge nach Wahrscheinlichkeit: Hochformat-Foto eines Querbogens → erst 90/270.
+        const portrait = img.naturalHeight > img.naturalWidth;
+        const order = portrait ? [90, 270, 0, 180] : [0, 180, 90, 270];
+        let best = { score: -1, text: '' };
+        for (const deg of order) {
+          setImportMsg('Texterkennung Seite ' + (i + 1) + '/' + list.length + ' (Ausrichtung ' + deg + '°) …');
+          const canvas = rotateCanvas(img, deg);
+          const { data } = await Tesseract.recognize(canvas, 'deu');
+          const txt = (data && data.text) || '';
+          const sc = scoreText(txt);
+          if (sc > best.score) best = { score: sc, text: txt, deg };
+          if (sc >= 120) break; // eindeutig richtig erkannt → restliche Rotationen sparen
+        }
+        fullText += '\n' + best.text;
       }
       setImportMsg('Analysiere Wertungsbericht …');
       const parsed = parseWertungsbericht(fullText);
