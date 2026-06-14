@@ -5206,6 +5206,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
   const [dashShowHit, setDashShowHit] = useState(false);
   const [dashShowDanger, setDashShowDanger] = useState(false);
   const [dashNeglectOpen, setDashNeglectOpen] = useState(false);
+  const [dashFocusExId, setDashFocusExId] = useState(null); // „Übung im Fokus" (Default: zuletzt trainiert)
   const seasonRange = useMemo(() => {
     const today = new Date();
     if (season === 'all') return { from: null, to: null, label: 'Alle Zeit' };
@@ -5391,6 +5392,21 @@ function Dashboard({ data, setView, onOpenFeedback }) {
         if (diff === 1) streak++; else break;
       }
     }
+    // „Übung im Fokus": konkrete Übung statt Gesamt-Aggregat. Default = zuletzt trainiert.
+    const lastByEx = new Map();
+    for (const s of (data.sessions || [])) {
+      if (s.exerciseId && s.date && (s.entries || []).length) {
+        const p = lastByEx.get(s.exerciseId);
+        if (!p || s.date > p) lastByEx.set(s.exerciseId, s.date);
+      }
+    }
+    const focusList = (data.exercises || []).filter(e => lastByEx.has(e.id))
+      .map(e => ({ ex: e, last: lastByEx.get(e.id) }))
+      .sort((a, b) => b.last.localeCompare(a.last));
+    const focusEx = (dashFocusExId && (focusList.find(f => f.ex.id === dashFocusExId) || {}).ex) || (focusList[0] && focusList[0].ex) || null;
+    const focusVm = focusEx ? buildExerciseScreenModel(focusEx, data, null, '6m') : null;
+    const focusComp = focusVm ? (focusVm.compositionSeries || []).filter(b => b.total > 0) : [];
+    const focusIs3 = focusEx ? focusEx.category_mode === 3 : false;
     return (
       <div className="space-y-6 pb-4">
         <header className="pt-2 px-1">
@@ -5408,8 +5424,8 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub={compStats.best ? compStats.best.competition.name.slice(0, 16) : '—'} />
         </div>
 
-        {/* TRENDS — Training + Wettkampf, beide sichtbar */}
-        {(compStats.count >= 2 || overall.comp.length >= 2) && (
+        {/* TRENDS — Wettkampf-Verlauf + „Übung im Fokus" (eine konkrete Übung) */}
+        {(compStats.count >= 2 || focusEx) && (
           <section className="space-y-3">
             <div className="px-1 text-[12px] uppercase tracking-wide text-slate-400 font-medium">Trends</div>
             {compStats.count >= 2 && (
@@ -5418,18 +5434,28 @@ function Dashboard({ data, setView, onOpenFeedback }) {
                 <CompetitionTrendChart competitions={(data.competitions || []).filter(c => season === 'all' ? true : inRange(c.date))} programs={data.programs || []} best={compStats.best} onTapWettkampf={() => setView('wettkampf')} />
               </div>
             )}
-            {overall.comp.length >= 2 && (
+            {focusEx && (
               <div className="card-surface rounded-[22px] p-4 space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Trainings-Trend</h2>
-                  <span className="text-[12px] text-slate-400 tabular-nums">Erfolgsquote · {seasonRange.label}</span>
+                  <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Übung im Fokus</h2>
+                  <span className="text-[12px] text-slate-400 tabular-nums shrink-0">{focusVm.successRateCurrent} % · 6 Mon.</span>
                 </div>
-                <TrendChart comp={overall.comp} is3 showHit={dashShowHit} showDanger={dashShowDanger} />
-                <div className="flex items-center gap-2 flex-wrap">
-                  <StatusLegendToggle active fixed color={STATUS.success} label="Geklappt" />
-                  <StatusLegendToggle active={dashShowHit} onClick={() => setDashShowHit(v => !v)} color={STATUS.hit} label="Getroffen" />
-                  <StatusLegendToggle active={dashShowDanger} onClick={() => setDashShowDanger(v => !v)} color={STATUS.danger} label="Gefährlich" />
-                </div>
+                <select value={focusEx.id} onChange={e => setDashFocusExId(e.target.value)}
+                  className="w-full px-2.5 py-2 border border-slate-300 rounded-xl text-[14px] font-medium bg-white outline-none">
+                  {focusList.map(({ ex }) => <option key={ex.id} value={ex.id}>{localizedExerciseName(ex)}</option>)}
+                </select>
+                {focusComp.length >= 2 ? (
+                  <>
+                    <TrendChart comp={focusComp} is3={focusIs3} showHit={focusIs3} showDanger />
+                    <div className="flex items-center gap-3 text-[11px] text-slate-500 flex-wrap">
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: STATUS.success }} />{statusLabel(focusEx, 'success')}</span>
+                      {focusIs3 && <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: STATUS.hit }} />{statusLabel(focusEx, 'third')}</span>}
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: STATUS.danger }} />{statusLabel(focusEx, 'fail')}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-[13px] text-slate-400 py-4 text-center">Zu wenig Trainingsdaten dieser Übung für einen Trend.</div>
+                )}
               </div>
             )}
           </section>
