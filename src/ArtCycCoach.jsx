@@ -4682,6 +4682,7 @@ export default function App() {
   if (view === 'dashboard') viewEl = <Dashboard data={effectiveData} setView={setView} onOpenFeedback={openFeedback} />;
   else if (view === 'training') viewEl = <TrainingView data={effectiveData} setData={save} setView={setView} />;
   else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
+  else if (view === 'trainingsplan') viewEl = <TrainingsplanView data={effectiveData} setData={save} onBack={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} />;
   else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} dbAthleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={openFeedback} />;
@@ -6257,6 +6258,14 @@ function TrainingView({ data, setData, setView }) {
         </div>
       </header>
 
+      {/* Trainingsplan-Zugang */}
+      <button onClick={() => setView('trainingsplan')}
+        className="w-full card-surface rounded-2xl px-4 py-3 flex items-center gap-3 active:bg-[#D1D1D6]/30 transition">
+        <ListChecks size={18} className="text-[#FF9500] shrink-0" />
+        <span className="flex-1 text-left text-[15px] font-medium">Trainingsplan</span>
+        <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
+      </button>
+
       {/* Top-Stats — nur sichtbar wenn Sessions vorhanden */}
       {totalCount > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -6694,6 +6703,211 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
       {err && <div className="px-4 py-2 text-[12px] text-[#FF3B30]">✗ {err}</div>}
       {info && !err && <div className="px-4 py-2 text-[12px] text-[#34C759]">✓ {info}</div>}
     </IOSList>
+    </div>
+  );
+}
+
+// =============================================================
+// TRAININGSPLAN (Idee: Theresa)
+// Plan = feste Liste von Einträgen (Übungen/Blöcke) mit Anzahl. Markierte
+// Einträge sind „protokollierbar": Geklappt/Nicht wird als echte Session auf
+// die verknüpfte Übung geschrieben (Datum heute) → fließt in alle Statistiken.
+// Nicht alle Einträge sind protokollierbar (z. B. „letzter Block").
+// =============================================================
+function TrainingsplanView({ data, setData, onBack }) {
+  const { t } = useI18n();
+  const plans = data.trainingPlans || [];
+  const activeExercises = (data.exercises || []).filter(e => e.active);
+  const today = new Date().toISOString().slice(0, 10);
+  const athleteId = data._viewingAthleteId || null;
+
+  const [selectedId, setSelectedId] = useState(plans[0]?.id || null);
+  const [editing, setEditing] = useState(false);
+  const plan = plans.find(p => p.id === selectedId) || null;
+
+  const writePlans = (next) => setData({ ...data, trainingPlans: next });
+  const upsertPlan = (p) => writePlans(plans.some(x => x.id === p.id) ? plans.map(x => x.id === p.id ? p : x) : [...plans, p]);
+  const patchPlan = (patch) => { if (plan) upsertPlan({ ...plan, ...patch }); };
+  const createPlan = () => {
+    const p = { id: uid(), name: 'Neuer Plan', items: [] };
+    writePlans([...plans, p]); setSelectedId(p.id); setEditing(true);
+  };
+  const deletePlan = (id) => { writePlans(plans.filter(p => p.id !== id)); setSelectedId(null); setEditing(false); };
+
+  const addItem = () => patchPlan({ items: [...(plan.items || []), { id: uid(), label: '', reps: null, loggable: false, exerciseId: null }] });
+  const patchItem = (id, patch) => patchPlan({ items: plan.items.map(it => it.id === id ? { ...it, ...patch } : it) });
+  const removeItem = (id) => patchPlan({ items: plan.items.filter(it => it.id !== id) });
+  const toggleLoggable = (it) => {
+    if (it.loggable) { patchItem(it.id, { loggable: false }); return; }
+    const match = activeExercises.find(e => (e.name || '').trim().toLowerCase() === (it.label || '').trim().toLowerCase());
+    patchItem(it.id, { loggable: true, exerciseId: it.exerciseId || (match ? match.id : (activeExercises[0]?.id || null)) });
+  };
+
+  // Logging in echte Sessions: heutige Session der Übung (egal welcher Herkunft)
+  const todayEntries = (exId) => (data.sessions || [])
+    .filter(s => s.exerciseId === exId && s.date === today).flatMap(s => s.entries || []);
+  const logEntry = (exId, kind) => {
+    const sessions = data.sessions || [];
+    const idx = sessions.findIndex(s => s.exerciseId === exId && s.date === today);
+    let next;
+    if (idx >= 0) {
+      next = sessions.map((s, i) => i === idx ? { ...s, entries: [...(s.entries || []), kind] } : s);
+    } else {
+      const ex = activeExercises.find(e => e.id === exId);
+      next = [...sessions, {
+        id: uid(), date: today, athleteId, exerciseId: exId,
+        exerciseName: ex?.name || '', entries: [kind], notes: null,
+        withRope: ex?.has_rope_variant ? true : null, created: new Date().toISOString()
+      }];
+    }
+    setData({ ...data, sessions: next });
+  };
+  const undoEntry = (exId) => {
+    const sessions = data.sessions || [];
+    const idx = sessions.findIndex(s => s.exerciseId === exId && s.date === today);
+    if (idx < 0) return;
+    const entries = (sessions[idx].entries || []).slice(0, -1);
+    const next = entries.length === 0
+      ? sessions.filter((_, i) => i !== idx)
+      : sessions.map((s, i) => i === idx ? { ...s, entries } : s);
+    setData({ ...data, sessions: next });
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F2F2F7] p-4 sm:p-8">
+      <div className="max-w-2xl mx-auto space-y-5">
+        <header className="flex items-center gap-1 -ml-1">
+          <button onClick={plan ? () => { setSelectedId(null); setEditing(false); } : onBack}
+            className="text-[17px] text-[#007AFF] flex items-center active:opacity-60">
+            <ChevronLeft size={22} strokeWidth={2.6} className="text-[#FF9500]" /> {plan ? 'Pläne' : t('common.back')}
+          </button>
+          <h1 className="text-[28px] font-bold tracking-tight ml-2 truncate">{plan ? plan.name : 'Trainingsplan'}</h1>
+        </header>
+
+        {!plan ? (
+          <>
+            {plans.length === 0 ? (
+              <div className="card-surface rounded-[22px] p-6 text-center text-[15px] text-slate-400">
+                Noch kein Trainingsplan. Lege einen an mit den Übungen, die du immer machst — und protokolliere geeignete direkt mit.
+              </div>
+            ) : (
+              <IOSList header="Deine Pläne">
+                {plans.map(p => (
+                  <IOSListRow key={p.id} onClick={() => { setSelectedId(p.id); setEditing(false); }}
+                    trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}>
+                    <div className="min-w-0">
+                      <div className="text-[15px] font-medium truncate">{p.name}</div>
+                      <div className="text-[12px] text-slate-400">{(p.items || []).length} Einträge</div>
+                    </div>
+                  </IOSListRow>
+                ))}
+              </IOSList>
+            )}
+            <button onClick={createPlan}
+              className="w-full bg-[#FF9500] text-white py-3 rounded-full font-semibold active:scale-95 transition flex items-center justify-center gap-1.5">
+              <Plus size={18} strokeWidth={2.5} /> Neuer Plan
+            </button>
+          </>
+        ) : editing ? (
+          <>
+            <input value={plan.name} onChange={e => patchPlan({ name: e.target.value })}
+              placeholder="Plan-Name"
+              className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-[15px] font-medium bg-white outline-none focus:ring-2 focus:ring-amber-500" />
+            <div className="space-y-2">
+              {(plan.items || []).map((it, i) => (
+                <div key={it.id} className="card-surface rounded-2xl p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[12px] text-slate-400 w-5 shrink-0">{i + 1}.</span>
+                    <input value={it.label} onChange={e => patchItem(it.id, { label: e.target.value })}
+                      placeholder="z. B. Aufwärmen / Maute Sprung / Teil 3-4"
+                      className="flex-1 min-w-0 px-2 py-1.5 border border-slate-300 rounded-lg text-[15px] bg-white outline-none" />
+                    <button onClick={() => removeItem(it.id)} className="p-1.5 text-rose-500 active:opacity-60 shrink-0"><Trash2 size={16} /></button>
+                  </div>
+                  <div className="flex items-center gap-2 pl-7 flex-wrap">
+                    <span className="text-[13px] text-slate-500">Anzahl</span>
+                    <input type="number" inputMode="numeric" value={it.reps ?? ''}
+                      onChange={e => patchItem(it.id, { reps: e.target.value === '' ? null : Number(e.target.value) })}
+                      className="w-16 px-2 py-1 border border-slate-300 rounded-lg text-[15px] text-right bg-white outline-none" />
+                    <span className="flex-1" />
+                    <span className="text-[13px] text-slate-500">protokollieren</span>
+                    <IOSToggle checked={!!it.loggable} onChange={() => toggleLoggable(it)} />
+                  </div>
+                  {it.loggable && (
+                    <div className="pl-7">
+                      <select value={it.exerciseId || ''} onChange={e => patchItem(it.id, { exerciseId: e.target.value || null })}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-[14px] bg-white outline-none">
+                        <option value="">— Übung verknüpfen —</option>
+                        {activeExercises.map(e => <option key={e.id} value={e.id}>{localizedExerciseName(e)}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button onClick={addItem}
+              className="w-full border border-dashed border-slate-300 text-[#007AFF] py-2.5 rounded-xl font-medium flex items-center justify-center gap-1.5 active:opacity-60">
+              <Plus size={16} strokeWidth={2.6} /> Eintrag hinzufügen
+            </button>
+            <div className="flex gap-2">
+              <button onClick={() => setEditing(false)} className="flex-1 bg-[#FF9500] text-white py-3 rounded-full font-semibold active:scale-95 transition">Fertig</button>
+              <button onClick={() => { if (confirm('Plan „' + plan.name + '" löschen?')) deletePlan(plan.id); }}
+                className="px-4 py-3 rounded-full text-rose-600 font-medium border border-rose-200 bg-rose-50 active:bg-rose-100"><Trash2 size={16} /></button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex justify-end -mt-2">
+              <button onClick={() => setEditing(true)} className="text-[15px] text-[#007AFF] font-medium active:opacity-60 flex items-center gap-1"><Edit2 size={15} /> Bearbeiten</button>
+            </div>
+            {(plan.items || []).length === 0 ? (
+              <div className="card-surface rounded-[22px] p-6 text-center text-[15px] text-slate-400">Noch keine Einträge. Tippe „Bearbeiten".</div>
+            ) : (
+              <div className="space-y-2">
+                {plan.items.map((it, i) => {
+                  const ex = it.loggable && it.exerciseId ? activeExercises.find(e => e.id === it.exerciseId) : null;
+                  const entries = ex ? todayEntries(ex.id) : [];
+                  const succ = entries.filter(e => e === 'success').length;
+                  const fail = entries.filter(e => e === 'fail').length;
+                  return (
+                    <div key={it.id} className="card-surface rounded-2xl p-3.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-[15px] font-medium truncate">{it.label || ('Eintrag ' + (i + 1))}</div>
+                          {it.reps != null && <div className="text-[12px] text-slate-400 tabular-nums">Anzahl: {it.reps}</div>}
+                        </div>
+                        {it.loggable && ex && (
+                          <div className="text-[12px] tabular-nums shrink-0">
+                            <span className="text-slate-400">{entries.length}{it.reps ? '/' + it.reps : ''}</span>
+                            {entries.length > 0 && <> · <span className="text-emerald-600">{succ}✓</span> <span className="text-rose-500">{fail}✗</span></>}
+                          </div>
+                        )}
+                      </div>
+                      {it.loggable && ex && (
+                        <div className="flex items-center gap-2 mt-2.5">
+                          <button onClick={(ev) => { pressFeedback(ev, 'success'); logEntry(ex.id, 'success'); }}
+                            className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
+                            <Check size={18} strokeWidth={2.6} /> Geklappt
+                          </button>
+                          <button onClick={(ev) => { pressFeedback(ev, 'error'); logEntry(ex.id, 'fail'); }}
+                            className="flex-1 bg-rose-600 text-white py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
+                            <X size={18} strokeWidth={2.6} /> Nicht
+                          </button>
+                          <button onClick={() => undoEntry(ex.id)} disabled={entries.length === 0}
+                            className="px-3 py-2.5 rounded-xl text-slate-500 border border-slate-200 disabled:opacity-40 active:opacity-60"><RotateCcw size={16} /></button>
+                        </div>
+                      )}
+                      {it.loggable && !ex && (
+                        <div className="text-[12px] text-amber-600 mt-1.5">Keine Übung verknüpft — unter „Bearbeiten" zuordnen.</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="text-[12px] text-slate-400 px-1">„Geklappt/Nicht" wird direkt als Training für die verknüpfte Übung gespeichert (Datum heute) und fließt in die Statistiken.</div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
