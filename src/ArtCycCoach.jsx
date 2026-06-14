@@ -8242,9 +8242,13 @@ function buildExerciseScreenModel(exercise, data, ropeFilter = null, period = '6
 // Admin klar im Footer. Nutzt dasselbe buildExerciseScreenModel — keine
 // neuen Metriken. Wird nur angezeigt, wenn der Vorschau-Schalter an ist.
 // =============================================================
-function ExerciseDetailV2({ exercise, data, onBack, onEdit, onArchive, onDelete }) {
+function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, onDelete }) {
   const { t } = useI18n();
   const is3 = exercise.category_mode === 3;
+  const [compOpen, setCompOpen] = useState(false);
+  const [importStatus, setImportStatus] = useState(null);
+  const [importMsg, setImportMsg] = useState('');
+  const [importPreview, setImportPreview] = useState(null);
   const [period, setPeriod] = useState(() => { try { return localStorage.getItem('artcyc:exDetailPeriod') || '6m'; } catch { return '6m'; } });
   const changePeriod = (v) => { setPeriod(v); try { localStorage.setItem('artcyc:exDetailPeriod', v); } catch { /* ignore */ } };
   const [mode, setMode] = useState('all'); // all | rope | noRope — steuert den GESAMTEN Screen
@@ -8260,6 +8264,36 @@ function ExerciseDetailV2({ exercise, data, onBack, onEdit, onArchive, onDelete 
   // KPIs, Trend-Serien, Breakdown und letzte Sessions kommen aus EINEM vm.
   const ropeFilter = mode === 'rope' ? true : mode === 'noRope' ? false : null;
   const vm = buildExerciseScreenModel(exercise, data, ropeFilter, period);
+
+  // Wettkampf-Statistik (sekundäre Disclosure, im System)
+  const compStats = calcExerciseCompetitionStats(exercise, data.programs || [], data.competitions || []);
+  const compList = (() => {
+    const programMap = new Map((data.programs || []).map(p => [p.id, p]));
+    const matches = (ex) => {
+      if (exercise.uci_code && ex.code) return exercise.uci_code === ex.code;
+      return (ex.name || '').trim().toLowerCase() === (exercise.name || '').trim().toLowerCase()
+        && Number(ex.points || 0) === Number(exercise.points || 0);
+    };
+    const result = [];
+    for (const comp of data.competitions || []) {
+      const program = programMap.get(comp.program_id);
+      if (!program || !program.exercises) continue;
+      program.exercises.forEach((ex, idx) => {
+        if (!matches(ex)) return;
+        const e1 = (comp.table1 || [])[idx] || {};
+        const e2 = (comp.table2 || [])[idx] || {};
+        result.push({
+          competition: comp,
+          k1cross: Number(e1.cross || 0), k1wave: Number(e1.wave || 0), k1bar: Number(e1.bar || 0), k1circle: Number(e1.circle || 0),
+          k2cross: Number(e2.cross || 0), k2wave: Number(e2.wave || 0), k2bar: Number(e2.bar || 0), k2circle: Number(e2.circle || 0),
+          k1schwPct: Number(e1.schwPct || 0), k2schwPct: Number(e2.schwPct || 0),
+          k1takt: Number(e1.taktischePunkte || 0), k2takt: Number(e2.taktischePunkte || 0),
+        });
+      });
+    }
+    result.sort((a, b) => (b.competition.date || '').localeCompare(a.competition.date || ''));
+    return result;
+  })();
 
   // Verbindliche Status-Farbsemantik (app-weit identisch zu KPI-Karten/Labels).
   const STATUS = { success: '#34C759', hit: '#FF9F0A', danger: '#FF453A' };
@@ -8411,9 +8445,130 @@ function ExerciseDetailV2({ exercise, data, onBack, onEdit, onArchive, onDelete 
           </>)}
         </>)}
 
+        {/* WETTKAMPF — sekundär, als Disclosure im System (keine alte Insel) */}
+        {compStats.wettkaempfe > 0 && (
+          <div className="card-surface rounded-[22px] p-4 space-y-3">
+            <button onClick={() => setCompOpen(v => !v)} className="w-full flex items-center justify-between gap-2">
+              <h2 className="text-[15px] font-semibold flex items-center gap-2">
+                <Trophy size={16} className="text-[#FF9500]" /> Wettkampf
+                <span className="text-[13px] font-normal text-slate-400 tabular-nums">{compStats.wettkaempfe}×</span>
+              </h2>
+              <ChevronRight size={18} strokeWidth={2.4} className={'text-[#C7C7CC] transition-transform ' + (compOpen ? 'rotate-90' : '')} />
+            </button>
+            {compOpen && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  {[['x', compStats.cross, false], ['~', compStats.wave, false], ['|', compStats.bar, false], ['○', compStats.circle, true]].map(([sym, n, danger], i) => (
+                    <div key={i} className={'rounded-xl py-2.5 ' + (danger ? 'bg-rose-50 border border-rose-100' : 'bg-slate-100')}>
+                      <div className={'text-[11px] font-bold leading-none ' + (danger ? 'text-rose-600' : 'text-slate-500')}>{sym}</div>
+                      <div className={'font-bold text-[17px] leading-tight mt-1 tabular-nums ' + (danger ? 'text-rose-700' : 'text-slate-900')}>Ø {(n / compStats.wettkaempfe).toFixed(1)}</div>
+                      <div className={'text-[10px] leading-tight tabular-nums ' + (danger ? 'text-rose-400' : 'text-slate-400')}>{n} ges.</div>
+                    </div>
+                  ))}
+                </div>
+                {(() => {
+                  const dedSymbols = compStats.cross * 0.2 + compStats.wave * 0.5 + compStats.bar * 1.0 + compStats.circle * 2.0;
+                  const dedSchw = (Number(exercise.points || 0) * compStats.schwPctSum) / 100;
+                  const avgDed = compStats.count > 0 ? (dedSymbols + dedSchw) / compStats.count : 0;
+                  return (
+                    <div className="bg-amber-50 border border-amber-100 rounded-2xl py-3 px-4 flex items-baseline justify-between">
+                      <div>
+                        <div className="text-[12px] text-amber-900 font-medium">Ø Punktabzug pro Wettkampf</div>
+                        {dedSchw > 0 && <div className="text-[10px] text-amber-700/70">inkl. Schwierigkeits-Abwertung</div>}
+                      </div>
+                      <div className="font-bold text-[22px] text-amber-700 tabular-nums">−{avgDed.toFixed(2)}</div>
+                    </div>
+                  );
+                })()}
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium">Pro Wettkampf</div>
+                  {compList.map((c, i) => {
+                    const xSum = c.k1cross + c.k2cross, wSum = c.k1wave + c.k2wave, bSum = c.k1bar + c.k2bar, cSum = c.k1circle + c.k2circle;
+                    const totalSymbols = xSum + wSum + bSum + cSum;
+                    const schwPct = Math.max(c.k1schwPct, c.k2schwPct), taktPts = Math.max(c.k1takt, c.k2takt);
+                    const hasMod = schwPct > 0 || taktPts > 0;
+                    return (
+                      <div key={i} className="flex items-start justify-between gap-2 text-sm py-1">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{c.competition.name}</div>
+                          <div className="text-xs text-slate-500 tabular-nums">{c.competition.date}</div>
+                        </div>
+                        <div className="flex flex-wrap gap-1 text-xs justify-end shrink-0 max-w-[55%]">
+                          {totalSymbols === 0 && !hasMod ? <span className="text-emerald-700 font-medium">✓ sauber</span> : (
+                            <>
+                              {xSum > 0 && <span className="bg-slate-100 px-1.5 py-0.5 rounded"><strong>x</strong>×{xSum}</span>}
+                              {wSum > 0 && <span className="bg-slate-100 px-1.5 py-0.5 rounded"><strong>~</strong>×{wSum}</span>}
+                              {bSum > 0 && <span className="bg-slate-100 px-1.5 py-0.5 rounded"><strong>|</strong>×{bSum}</span>}
+                              {cSum > 0 && <span className="bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded"><strong>○</strong>×{cSum}</span>}
+                              {schwPct > 0 && <span className="bg-violet-100 text-violet-800 px-1.5 py-0.5 rounded">Schw −{schwPct}%</span>}
+                              {taktPts > 0 && <span className="bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded">Takt {taktPts.toFixed(1)}</span>}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 08 — ADMIN (Footer, klar getrennt) */}
         <div className="pt-2 space-y-2">
           <div className="text-[12px] uppercase tracking-wide text-slate-400 px-4 font-medium">Verwalten</div>
+
+          {/* XLSX-Import — sekundär/utility (nur 3-Status) */}
+          {is3 && setData && (
+            <div className="card-surface rounded-[22px] p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <FileSpreadsheet size={18} className="text-violet-600 shrink-0 mt-0.5" />
+                <div className="text-[13px] text-slate-700">
+                  <strong>Statistik-Daten importieren</strong>
+                  <p className="text-[12px] mt-0.5 text-slate-500">Maute-XLSX (Spalten: Datum, Geklappt, Getroffen, Gefährlich).</p>
+                </div>
+              </div>
+              {importStatus === 'parsing' && <div className="bg-slate-50 rounded-xl p-3 text-sm">⏳ {importMsg}</div>}
+              {importStatus === 'error' && <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm text-rose-900">✗ {importMsg}</div>}
+              {importStatus === 'preview' && importPreview && (
+                <div className="bg-slate-50 rounded-xl p-3 space-y-2">
+                  <div className="text-sm">✓ <strong>{importPreview.sessions.length} Sessions</strong> erkannt ({importPreview.sessions[0]?.date} – {importPreview.sessions[importPreview.sessions.length - 1]?.date}).</div>
+                  <div className="flex gap-2 pt-1 flex-wrap">
+                    <button onClick={() => {
+                      const existing = (data.sessions || []).filter(s => s.exerciseId !== exercise.id);
+                      const newSessions = importPreview.sessions.map((s, idx) => ({ id: 'imp_' + exercise.id + '_' + idx + '_' + Date.now(), exerciseId: exercise.id, athleteId: data._viewingAthleteId || null, date: s.date, entries: s.entries }));
+                      setData({ ...data, sessions: [...existing, ...newSessions] });
+                      setImportStatus(null); setImportPreview(null);
+                    }} className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium">Ersetzen ({importPreview.sessions.length})</button>
+                    <button onClick={() => {
+                      const newSessions = importPreview.sessions.map((s, idx) => ({ id: 'imp_' + exercise.id + '_' + idx + '_' + Date.now(), exerciseId: exercise.id, athleteId: data._viewingAthleteId || null, date: s.date, entries: s.entries }));
+                      setData({ ...data, sessions: [...(data.sessions || []), ...newSessions] });
+                      setImportStatus(null); setImportPreview(null);
+                    }} className="bg-white border border-slate-300 px-3 py-1.5 rounded-lg text-sm font-medium">Hinzufügen</button>
+                    <button onClick={() => { setImportStatus(null); setImportPreview(null); }} className="bg-white border border-slate-300 px-3 py-1.5 rounded-lg text-sm font-medium">Verwerfen</button>
+                  </div>
+                </div>
+              )}
+              {!importStatus && (
+                <label className="bg-slate-50 border border-slate-200 active:opacity-60 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
+                  <FileSpreadsheet size={14} /> XLSX-Datei auswählen
+                  <input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    onChange={async (e) => {
+                      const file = e.target.files && e.target.files[0];
+                      if (!file) return;
+                      setImportStatus('parsing'); setImportMsg('Lese XLSX…');
+                      try {
+                        const result = await parseMauteXlsx(file);
+                        if (result.sessions.length === 0) { setImportStatus('error'); setImportMsg('Keine Sessions erkannt — Spalten Datum/Geklappt/Getroffen/Gefährlich prüfen.'); return; }
+                        setImportPreview(result); setImportStatus('preview');
+                      } catch (err) { setImportStatus('error'); setImportMsg('Fehler: ' + (err.message || 'Datei konnte nicht gelesen werden')); }
+                      finally { e.target.value = ''; }
+                    }} className="hidden" />
+                </label>
+              )}
+            </div>
+          )}
+
           <IOSList>
             {onEdit && <IOSListRow onClick={onEdit} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Edit2 size={17} className="text-[#007AFF]" /> Bearbeiten</span></IOSListRow>}
             {onArchive && <IOSListRow onClick={onArchive} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Lock size={17} className="text-[#FF9500]" /> {exercise.active ? 'Archivieren' : 'Reaktivieren'}</span></IOSListRow>}
@@ -8428,7 +8583,7 @@ function ExerciseDetailV2({ exercise, data, onBack, onEdit, onArchive, onDelete 
 
 function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, onDelete }) {
   if ((() => { try { return localStorage.getItem('artcyc:exDetailPreview') !== '0'; } catch { return false; } })()) {
-    return <ExerciseDetailV2 exercise={exercise} data={data} onBack={onBack} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />;
+    return <ExerciseDetailV2 exercise={exercise} data={data} setData={setData} onBack={onBack} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />;
   }
   const { t } = useI18n();
   const [ropeFilter, setRopeFilter] = useState(null);     // null | true | false
