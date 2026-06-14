@@ -6881,7 +6881,12 @@ function TrainingsplanView({ data, setData, onBack }) {
                     <div key={it.id} className="card-surface rounded-2xl p-3.5">
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="text-[15px] font-medium truncate">{it.label || ('Eintrag ' + (i + 1))}</div>
+                          <div className="text-[15px] font-medium truncate">{(it.label || '').trim() || (ex ? localizedExerciseName(ex) : 'Eintrag ' + (i + 1))}</div>
+                          {ex && (it.label || '').trim() && (
+                            <div className="text-[13px] text-slate-500 truncate flex items-center gap-1">
+                              <Dumbbell size={12} className="text-[#FF9500] shrink-0" /> {localizedExerciseName(ex)}
+                            </div>
+                          )}
                           {it.reps != null && <div className="text-[12px] text-slate-400 tabular-nums">Anzahl: {it.reps}</div>}
                         </div>
                         {it.loggable && ex && (
