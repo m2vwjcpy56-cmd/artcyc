@@ -31,8 +31,31 @@ export function SegmentedControl({ value, onChange, options, compact = false }) 
   );
 }
 
-// Gleichrangige Metrik-Kachel (Quick Insights). eyebrow / metric / support.
-export function MetricCard({ label, value, sub }) {
+// Gleichrangige Metrik-Kachel. Ohne accent: ruhige, zentrierte Kachel
+// (Quick Insights). Mit accent: getönte Identitäts-Karte (subtiler Tint +
+// farbiger Rahmen/Icon/Label), Zahl bleibt weiß/maximal lesbar. App-weit
+// gleiche Bedeutung → gleicher accent.
+const ACCENT = {
+  sky:     { bg: 'bg-sky-50',     border: 'border-sky-100',     fg: 'text-sky-600' },
+  violet:  { bg: 'bg-violet-50',  border: 'border-violet-100',  fg: 'text-violet-600' },
+  amber:   { bg: 'bg-amber-50',   border: 'border-amber-100',   fg: 'text-amber-600' },
+  emerald: { bg: 'bg-emerald-50', border: 'border-emerald-100', fg: 'text-emerald-600' },
+  rose:    { bg: 'bg-rose-50',    border: 'border-rose-100',    fg: 'text-rose-600' },
+};
+export function MetricCard({ label, value, sub, accent, icon: Icon }) {
+  const A = accent && ACCENT[accent];
+  if (A) {
+    return (
+      <div className={`rounded-[20px] p-3.5 border ${A.bg} ${A.border}`}>
+        <div className={`flex items-center gap-1.5 ${A.fg}`}>
+          {Icon && <Icon size={14} strokeWidth={2.4} className="shrink-0" />}
+          <span className="text-[11px] font-semibold leading-tight truncate">{label}</span>
+        </div>
+        <div className="text-[24px] font-bold text-slate-900 tabular-nums mt-1.5 leading-none">{value}</div>
+        {sub != null && <div className="text-[11px] text-slate-400 tabular-nums mt-1 truncate">{sub}</div>}
+      </div>
+    );
+  }
   return (
     <div className="card-surface rounded-[20px] p-3 text-center">
       <div className="text-[11px] text-slate-500 font-medium leading-tight">{label}</div>
