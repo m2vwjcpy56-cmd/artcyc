@@ -5401,11 +5401,11 @@ function Dashboard({ data, setView, onOpenFeedback }) {
 
         {/* OVERVIEW — Cockpit: mehrere starke Infos (Training + Wettkampf gemeinsam) */}
         <div className="grid grid-cols-2 gap-3">
-          <MetricCard label="Sessions" value={String(trainStats.totalSessions)} sub={trainStats.distinctDays + ' Trainingstage'} />
-          <MetricCard label="Aktuelle Serie" value={streak > 0 ? streak + (streak === 1 ? ' Tag' : ' Tage') : '—'} sub={streak > 0 ? 'in Folge' : 'keine aktive Serie'} />
+          <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(trainStats.totalSessions)} sub={trainStats.distinctDays + ' Trainingstage'} />
+          <MetricCard accent="emerald" icon={Activity} label="Aktuelle Serie" value={streak > 0 ? streak + (streak === 1 ? ' Tag' : ' Tage') : '—'} sub={streak > 0 ? 'in Folge' : 'keine aktive Serie'} />
           {/* Wettkampf-Paar bewusst nebeneinander (gleiche Bedeutung) */}
-          <MetricCard label="Letzter Wettkampf" value={compStats.last ? compStats.last.final.toFixed(2) : '—'} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : (compStats.count + ' gesamt')} />
-          <MetricCard label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub={compStats.best ? compStats.best.competition.name.slice(0, 16) : '—'} />
+          <MetricCard accent="violet" icon={Calendar} label="Letzter Wettkampf" value={compStats.last ? compStats.last.final.toFixed(2) : '—'} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : (compStats.count + ' gesamt')} />
+          <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub={compStats.best ? compStats.best.competition.name.slice(0, 16) : '—'} />
         </div>
 
         {/* TRENDS — Training + Wettkampf, beide sichtbar */}
