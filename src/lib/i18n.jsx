@@ -140,7 +140,7 @@ const dict = {
     'log.athleteNone': '— Kein Sportler —',
     'log.exercise': 'Übung',
     'log.exerciseTrained': '◆ Bereits trainiert',
-    'log.exerciseUntrained': '◇ Übrige Übungen',
+    'log.exerciseUntrained': '◇ Weitere Übungen',
     'log.exerciseAll': 'Alle Übungen',
     'log.variant': 'Variante',
     'log.withRope': 'Mit Seil',
