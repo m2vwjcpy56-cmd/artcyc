@@ -4722,14 +4722,6 @@ export default function App() {
               {availableAthletes.length > 1 && <ChevronRight size={12} strokeWidth={2.6} className="rotate-90 opacity-60 shrink-0" />}
             </button>
           )}
-          {/* KI-Coach — eckige Pille mit Sparkles + voller 'KI-Coach'-Label
-              (im geöffneten Sheet erscheint dann der volle Name 'ArtCyc Coach') */}
-          <button onClick={() => setChatOpen(true)}
-            className="bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white rounded-xl px-2.5 py-1.5 text-[12px] font-semibold flex items-center gap-1 shadow-[0_2px_6px_rgba(255,149,0,0.25)] active:scale-95 transition"
-            aria-label="ArtCyc Coach öffnen">
-            <Sparkles size={14} strokeWidth={2.4} />
-            <span>KI-Coach</span>
-          </button>
           <button onClick={() => setView('einstellungen')}
             className={'w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90 ' +
               (view === 'einstellungen' ? 'text-[#FF9500]' : 'text-[#3C3C43]')}
@@ -4820,6 +4812,17 @@ export default function App() {
           </div>
         )}
       </SwipeableMain>
+
+      {/* KI-Coach — Floating-Button (mobil), da aus dem Header genommen.
+          Sitzt rechts oberhalb der Bottom-Nav. */}
+      {!chatOpen && (
+        <button onClick={() => setChatOpen(true)}
+          className="sm:hidden fixed right-4 z-30 w-12 h-12 rounded-full bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white flex items-center justify-center shadow-[0_6px_20px_rgba(255,149,0,0.45)] active:scale-95 transition"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 5.5rem)' }}
+          aria-label="ArtCyc KI-Coach öffnen">
+          <Sparkles size={22} strokeWidth={2.2} />
+        </button>
+      )}
 
       {/* Mobile Bottom-Nav — iOS 26 Liquid Glass Pill mit Finger-Drag */}
       <BottomNav
