@@ -6752,34 +6752,56 @@ function TrainingsplanView({ data, setData, onBack }) {
     patchItem(it.id, { loggable: true, exerciseId: it.exerciseId || (match ? match.id : (activeExercises[0]?.id || null)) });
   };
 
-  // Logging in echte Sessions: heutige Session der Übung (egal welcher Herkunft)
-  const todayEntries = (exId) => (data.sessions || [])
+  // --- Protokollieren: optimistisch + gebündeltes Speichern ---
+  // Jeder Tap würde sonst durch den langsamen, asynchronen Store laufen → Taps
+  // überholen sich/gehen verloren, die Anzeige hakt. Daher: sofort lokal
+  // anzeigen (optimistic) und gebündelt (debounced) in echte Sessions schreiben.
+  const dataRef = useRef(data); dataRef.current = data;
+  const optimisticRef = useRef({}); // exId -> entries[]
+  const flushTimer = useRef(null);
+  const [, setTick] = useState(0);
+  const rerender = () => setTick(t => t + 1);
+  const [celebrate, setCelebrate] = useState(null); // itemId mit „Anzahl erreicht"
+
+  const todayEntries = (exId) => (dataRef.current.sessions || [])
     .filter(s => s.exerciseId === exId && s.date === today).flatMap(s => s.entries || []);
-  const logEntry = (exId, kind) => {
-    const sessions = data.sessions || [];
-    const idx = sessions.findIndex(s => s.exerciseId === exId && s.date === today);
-    let next;
-    if (idx >= 0) {
-      next = sessions.map((s, i) => i === idx ? { ...s, entries: [...(s.entries || []), kind] } : s);
-    } else {
-      const ex = activeExercises.find(e => e.id === exId);
-      next = [...sessions, {
-        id: uid(), date: today, athleteId, exerciseId: exId,
-        exerciseName: ex?.name || '', entries: [kind], notes: null,
-        withRope: ex?.has_rope_variant ? true : null, created: new Date().toISOString()
-      }];
+  const getEntries = (exId) => exId in optimisticRef.current ? optimisticRef.current[exId] : todayEntries(exId);
+
+  const flushAll = () => {
+    let sessions = (dataRef.current.sessions || []).slice();
+    let changed = false;
+    for (const exId of Object.keys(optimisticRef.current)) {
+      const entries = optimisticRef.current[exId];
+      const idx = sessions.findIndex(s => s.exerciseId === exId && s.date === today);
+      if (entries.length === 0) {
+        if (idx >= 0) { sessions = sessions.filter((_, i) => i !== idx); changed = true; }
+      } else if (idx >= 0) {
+        sessions = sessions.map((s, i) => i === idx ? { ...s, entries } : s); changed = true;
+      } else {
+        const ex = activeExercises.find(e => e.id === exId);
+        sessions = [...sessions, { id: uid(), date: today, athleteId, exerciseId: exId, exerciseName: ex?.name || '', entries, notes: null, withRope: ex?.has_rope_variant ? true : null, created: new Date().toISOString() }];
+        changed = true;
+      }
     }
-    setData({ ...data, sessions: next });
+    if (changed) setData({ ...dataRef.current, sessions });
+  };
+  const scheduleFlush = () => { clearTimeout(flushTimer.current); flushTimer.current = setTimeout(flushAll, 500); };
+  useEffect(() => () => { clearTimeout(flushTimer.current); flushAll(); }, []); // beim Verlassen sofort sichern
+
+  const logEntry = (it, exId, kind) => {
+    optimisticRef.current[exId] = [...getEntries(exId), kind];
+    rerender(); scheduleFlush();
+    const reps = Number(it.reps || 0);
+    if (reps > 0 && optimisticRef.current[exId].length >= reps) {
+      setCelebrate(it.id);
+      setTimeout(() => setCelebrate(c => c === it.id ? null : c), 1800);
+    }
   };
   const undoEntry = (exId) => {
-    const sessions = data.sessions || [];
-    const idx = sessions.findIndex(s => s.exerciseId === exId && s.date === today);
-    if (idx < 0) return;
-    const entries = (sessions[idx].entries || []).slice(0, -1);
-    const next = entries.length === 0
-      ? sessions.filter((_, i) => i !== idx)
-      : sessions.map((s, i) => i === idx ? { ...s, entries } : s);
-    setData({ ...data, sessions: next });
+    const cur = getEntries(exId);
+    if (cur.length === 0) return;
+    optimisticRef.current[exId] = cur.slice(0, -1);
+    rerender(); scheduleFlush();
   };
 
   // Abhaken (nicht-verknüpfte Einträge): „erledigt heute" pro Eintrag, ohne in
@@ -6893,9 +6915,11 @@ function TrainingsplanView({ data, setData, onBack }) {
               <div className="space-y-2">
                 {plan.items.map((it, i) => {
                   const ex = it.loggable && it.exerciseId ? activeExercises.find(e => e.id === it.exerciseId) : null;
-                  const entries = ex ? todayEntries(ex.id) : [];
+                  const entries = ex ? getEntries(ex.id) : [];
                   const succ = entries.filter(e => e === 'success').length;
                   const fail = entries.filter(e => e === 'fail').length;
+                  const reps = Number(it.reps || 0);
+                  const complete = ex && reps > 0 && entries.length >= reps;
                   return (
                     <div key={it.id} className="card-surface rounded-2xl p-3.5">
                       <div className="flex items-center justify-between gap-2">
@@ -6917,16 +6941,21 @@ function TrainingsplanView({ data, setData, onBack }) {
                       </div>
                       {it.loggable && ex && (
                         <div className="flex items-center gap-2 mt-2.5">
-                          <button onClick={(ev) => { pressFeedback(ev, 'success'); logEntry(ex.id, 'success'); }}
+                          <button onClick={(ev) => { pressFeedback(ev, 'success'); logEntry(it, ex.id, 'success'); }}
                             className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
                             <Check size={18} strokeWidth={2.6} /> Geklappt
                           </button>
-                          <button onClick={(ev) => { pressFeedback(ev, 'error'); logEntry(ex.id, 'fail'); }}
+                          <button onClick={(ev) => { pressFeedback(ev, 'error'); logEntry(it, ex.id, 'fail'); }}
                             className="flex-1 bg-rose-600 text-white py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
                             <X size={18} strokeWidth={2.6} /> Nicht
                           </button>
                           <button onClick={() => undoEntry(ex.id)} disabled={entries.length === 0}
                             className="px-3 py-2.5 rounded-xl text-slate-500 border border-slate-200 disabled:opacity-40 active:opacity-60"><RotateCcw size={16} /></button>
+                        </div>
+                      )}
+                      {complete && (
+                        <div className={'mt-2 text-[13px] font-semibold text-emerald-600 flex items-center gap-1 ' + (celebrate === it.id ? 'animate-pulse' : '')}>
+                          <Check size={14} strokeWidth={3} /> {celebrate === it.id ? 'Geschafft! 🎉' : 'Anzahl erreicht'} ({entries.length}/{it.reps})
                         </div>
                       )}
                       {it.loggable && !ex && (
