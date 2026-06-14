@@ -4710,7 +4710,18 @@ export default function App() {
           WebkitBackdropFilter: 'blur(20px) saturate(180%)'
         }}>
         <Brand size="sm" />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {/* Daten-Switcher — klein in der Utility-Zone (statt eigener Zeile) */}
+          {selectedAthlete && (availableAthletes.length > 1 || !isOwnAthlete) && (
+            <button onClick={() => availableAthletes.length > 1 && setShowAthletePicker(true)} disabled={availableAthletes.length <= 1}
+              className={'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[12px] font-medium max-w-[34vw] active:opacity-70 ' +
+                (isOwnAthlete ? 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200')}
+              aria-label="Datenquelle wechseln">
+              {isOwnAthlete ? <User size={13} strokeWidth={2.4} className="shrink-0" /> : <Crown size={13} strokeWidth={2.4} className="shrink-0" />}
+              <span className="truncate">{selectedAthlete.name}</span>
+              {availableAthletes.length > 1 && <ChevronRight size={12} strokeWidth={2.6} className="rotate-90 opacity-60 shrink-0" />}
+            </button>
+          )}
           {/* KI-Coach — eckige Pille mit Sparkles + voller 'KI-Coach'-Label
               (im geöffneten Sheet erscheint dann der volle Name 'ArtCyc Coach') */}
           <button onClick={() => setChatOpen(true)}
@@ -4738,6 +4749,17 @@ export default function App() {
           </button>
         </div>
 
+        {/* Daten-Switcher — kompakt in der Sidebar */}
+        {selectedAthlete && (availableAthletes.length > 1 || !isOwnAthlete) && (
+          <button onClick={() => availableAthletes.length > 1 && setShowAthletePicker(true)} disabled={availableAthletes.length <= 1}
+            className={'mx-2 mb-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[12px] font-medium self-start active:opacity-70 ' +
+              (isOwnAthlete ? 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200')}>
+            {isOwnAthlete ? <User size={13} strokeWidth={2.4} /> : <Crown size={13} strokeWidth={2.4} />}
+            <span className="truncate max-w-[150px]">{isOwnAthlete ? selectedAthlete.name : 'Trainer: ' + selectedAthlete.name}</span>
+            {availableAthletes.length > 1 && <ChevronRight size={12} strokeWidth={2.6} className="rotate-90 opacity-60" />}
+          </button>
+        )}
+
         {nav.map(n => {
           const Icon = n.icon;
           const active = view === n.id;
@@ -4764,28 +4786,6 @@ export default function App() {
         setView={setView}
         visibleNav={nav.filter(n => !n.soon).slice(0, 5)}>
         <div className="max-w-5xl mx-auto p-4 sm:p-8">
-          {/* Athleten-Banner — zeigt immer den aktiven Sportler, mit Picker
-              wenn mehrere wählbar sind. Bei nicht-eigenem orange (Trainer-Sicht),
-              bei eigenem dezent grau. */}
-          {/* Context-Switcher (Datenquelle) — bewusst klein/sekundär als Pille,
-              damit der Screen-Inhalt früher beginnt. Funktion unverändert. */}
-          {selectedAthlete && (availableAthletes.length > 1 || !isOwnAthlete) && (
-            <button
-              onClick={() => availableAthletes.length > 1 && setShowAthletePicker(true)}
-              disabled={availableAthletes.length <= 1}
-              className={'mb-3 -mt-0.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium active:opacity-70 max-w-full ' +
-                (isOwnAthlete
-                  ? 'bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400'
-                  : 'bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200')}>
-              {isOwnAthlete
-                ? <User size={13} strokeWidth={2.4} className="shrink-0" />
-                : <Crown size={13} strokeWidth={2.4} className="shrink-0" />}
-              <span className="truncate">{isOwnAthlete ? selectedAthlete.name : 'Trainer: ' + selectedAthlete.name}</span>
-              {availableAthletes.length > 1 && (
-                <ChevronRight size={13} strokeWidth={2.6} className="rotate-90 opacity-60 shrink-0" />
-              )}
-            </button>
-          )}
           {viewEl}
         </div>
 
@@ -5422,9 +5422,16 @@ function Dashboard({ data, setView, onOpenFeedback }) {
     const focusIs3 = focusEx ? focusEx.category_mode === 3 : false;
     return (
       <div className="space-y-6 pb-4">
-        <header className="pt-2 px-1">
-          <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('dashboard.title')}</h1>
-          <p className="text-[#8E8E93] text-[15px] mt-1">{t('dashboard.subtitle')}</p>
+        <header className="flex items-start justify-between gap-3 pt-2 px-1">
+          <div className="min-w-0">
+            <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('dashboard.title')}</h1>
+            <p className="text-[#8E8E93] text-[15px] mt-1">{t('dashboard.subtitle')}</p>
+          </div>
+          {/* Quick-Action: kompakt nahe dem Kontext; volle Erfassung bleibt im Training */}
+          <button onClick={() => setView('erfassen')}
+            className="shrink-0 mt-1 px-3 py-1.5 rounded-full bg-[#FF9500] text-white text-[13px] font-semibold flex items-center gap-1 active:scale-95 transition shadow-[0_2px_8px_rgba(255,149,0,0.25)]">
+            <Plus size={14} strokeWidth={2.6} /> Erfassen
+          </button>
         </header>
         {seasonPills}
 
@@ -5520,11 +5527,6 @@ function Dashboard({ data, setView, onOpenFeedback }) {
             )}
           </div>
         )}
-
-        {/* PRIMÄRE AKTION — bewusst ans Ende, nicht in den KPI-Flow */}
-        <button onClick={() => setView('erfassen')} className="w-full bg-[#FF9500] text-white py-3 rounded-full font-semibold active:scale-95 transition flex items-center justify-center gap-1.5">
-          <Plus size={18} strokeWidth={2.5} /> {t('dashboard.logSession')}
-        </button>
 
         {onOpenFeedback && (
           <button onClick={onOpenFeedback} className="w-full card-surface rounded-[22px] p-4 flex items-center gap-3 active:scale-[0.98] transition text-left">
