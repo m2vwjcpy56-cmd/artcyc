@@ -9034,6 +9034,9 @@ function UebungenView({ data, setData, onBack }) {
               [stats-zeile sekundär — kompakt]
             Trainings-Rate wird als farbige Badge rechts gezeigt, damit
             man auf einen Blick sieht welche Übung sicher sitzt. */}
+        {sortedExercises.length === 0 ? (
+          <EmptyState title="Noch keine Übungen" hint="Lege über Neu deine erste Übung an." />
+        ) : (
         <IOSList footer="Tippe auf eine Übung um Statistik (Training + Wettkampf) zu sehen.">
           {sortedExercises.map(ex => {
             const compStats = calcExerciseCompetitionStats(ex, data.programs || [], data.competitions || []);
@@ -9088,6 +9091,7 @@ function UebungenView({ data, setData, onBack }) {
             );
           })}
         </IOSList>
+        )}
       </div>
     </div>
   );
@@ -9930,15 +9934,7 @@ function ProgrammeView({ data, setData }) {
       </header>
 
       {programs.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-8 text-center">
-          <ListChecks size={32} className="mx-auto text-slate-300 mb-3" />
-          <h3 className="font-semibold mb-1">Noch keine Programme</h3>
-          <p className="text-sm text-slate-500 mb-4">Lege dein erstes Wettkampf-Programm an.</p>
-          <button onClick={() => setShowNew(true)}
-            className="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-medium">
-            Programm anlegen
-          </button>
-        </div>
+        <EmptyState title="Noch keine Programme" hint="Lege über Neu dein erstes Wettkampf-Programm an." />
       ) : (
         <>
           {currentProgram ? (
@@ -13099,15 +13095,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
       )}
 
       {(managedAthletes.length === 0 && !myAthlete) && (
-        <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-8 text-center">
-          <Users size={32} className="mx-auto text-slate-300 mb-3" />
-          <h3 className="font-semibold mb-1">{t('athletes.empty')}</h3>
-          <p className="text-sm text-slate-500 mb-4">{t('athletes.emptyHint')}</p>
-          <button onClick={() => setShowNew(true)}
-            className="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-medium">
-            {t('athletes.createAthlete')}
-          </button>
-        </div>
+        <EmptyState title={t('athletes.empty')} hint={t('athletes.emptyHint')} />
       )}
 
       <AthleteEditor
