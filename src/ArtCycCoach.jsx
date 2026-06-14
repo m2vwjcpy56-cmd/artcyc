@@ -6792,9 +6792,11 @@ function TrainingsplanView({ data, setData, onBack }) {
     optimisticRef.current[exId] = [...getEntries(exId), kind];
     rerender(); scheduleFlush();
     const reps = Number(it.reps || 0);
-    if (reps > 0 && optimisticRef.current[exId].length >= reps) {
-      setCelebrate(it.id);
-      setTimeout(() => setCelebrate(c => c === it.id ? null : c), 1800);
+    if (reps > 0 && optimisticRef.current[exId].length === reps) {
+      const ex = activeExercises.find(e => e.id === exId);
+      const title = (it.label || '').trim() || (ex ? localizedExerciseName(ex) : 'Übung');
+      setCelebrate({ id: it.id, title, reps });
+      setTimeout(() => setCelebrate(c => (c && c.id === it.id) ? null : c), 1700);
     }
   };
   const undoEntry = (exId) => {
@@ -6921,7 +6923,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                   const reps = Number(it.reps || 0);
                   const complete = ex && reps > 0 && entries.length >= reps;
                   return (
-                    <div key={it.id} className="card-surface rounded-2xl p-3.5">
+                    <div key={it.id} className={'card-surface rounded-2xl p-3.5 ' + (celebrate && celebrate.id === it.id ? 'acc-ring' : '')}>
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
                           <div className="text-[15px] font-medium truncate">{(it.label || '').trim() || (ex ? localizedExerciseName(ex) : 'Eintrag ' + (i + 1))}</div>
@@ -6954,8 +6956,8 @@ function TrainingsplanView({ data, setData, onBack }) {
                         </div>
                       )}
                       {complete && (
-                        <div className={'mt-2 text-[13px] font-semibold text-emerald-600 flex items-center gap-1 ' + (celebrate === it.id ? 'animate-pulse' : '')}>
-                          <Check size={14} strokeWidth={3} /> {celebrate === it.id ? 'Geschafft! 🎉' : 'Anzahl erreicht'} ({entries.length}/{it.reps})
+                        <div className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#FF9500]">
+                          <Trophy size={13} strokeWidth={2.6} /> Anzahl erreicht ({entries.length}/{it.reps})
                         </div>
                       )}
                       {it.loggable && !ex && (
@@ -6979,6 +6981,18 @@ function TrainingsplanView({ data, setData, onBack }) {
           </>
         )}
       </div>
+
+      {/* Celebration-Overlay — edler Pop in Brand-Orange */}
+      {celebrate && (
+        <div className="fixed inset-x-0 bottom-28 z-50 flex justify-center px-6 pointer-events-none">
+          <div className="acc-celebrate flex items-center gap-2.5 px-5 py-3 rounded-full text-white shadow-[0_10px_34px_rgba(255,149,0,0.5)]"
+            style={{ background: 'linear-gradient(135deg,#FFB23E 0%,#FF9500 45%,#FF6A00 100%)' }}>
+            <Trophy size={20} strokeWidth={2.4} />
+            <span className="text-[15px] font-semibold truncate max-w-[60vw]">{celebrate.title} geschafft! · {celebrate.reps}×</span>
+            <Sparkles size={16} className="acc-spark" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

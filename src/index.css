@@ -234,3 +234,28 @@ html[data-theme="dark"] select.border-slate-300 {
 .focus\:ring-amber-500:focus {
   --tw-ring-color: rgba(255, 149, 0, 0.45) !important;
 }
+
+/* =============================================================
+   Trainingsplan — Celebration (Anzahl erreicht)
+   Edler, markenkonformer Pop statt Standard-Text.
+   ============================================================= */
+@keyframes acc-pop {
+  0%   { transform: scale(0.6) translateY(10px); opacity: 0; }
+  45%  { transform: scale(1.06) translateY(0);   opacity: 1; }
+  70%  { transform: scale(0.97); }
+  100% { transform: scale(1);    opacity: 1; }
+}
+.acc-celebrate { animation: acc-pop 0.46s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+@keyframes acc-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 149, 0, 0.45); }
+  100% { box-shadow: 0 0 0 16px rgba(255, 149, 0, 0); }
+}
+.acc-ring { animation: acc-ring 0.85s ease-out 1; }
+
+@keyframes acc-spark {
+  0%   { transform: scale(0) rotate(0deg);   opacity: 0; }
+  35%  { opacity: 1; }
+  100% { transform: scale(1.25) rotate(22deg); opacity: 0; }
+}
+.acc-spark { animation: acc-spark 0.9s ease-out 1 both; }
