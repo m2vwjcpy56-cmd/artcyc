@@ -2314,18 +2314,48 @@ const WERTUNGSBERICHT_COLS = {
   'K1': 747.4, 'K2': 772.9, 'K3': 798.5
 };
 
-function classifyColumn(xMid, maxDist = 12) {
+function classifyColumn(xMid, cols, maxDist = 12) {
   let best = null, bestD = 999;
-  for (const [name, cx] of Object.entries(WERTUNGSBERICHT_COLS)) {
+  for (const [name, cx] of Object.entries(cols)) {
     const d = Math.abs(xMid - cx);
     if (d < bestD) { best = name; bestD = d; }
   }
   return bestD < maxDist ? best : null;
 }
 
+// Spalten adaptiv aus der Kopfzeile ableiten (robust gegen Skalierung/
+// Verschiebung und kleine Formular-Änderungen). Die Kopfzeile enthält die
+// Spaltentitel als Text (Pkte, T1-3, %1-3, X1-3, W1-3, S1-3, K1-3); wir nehmen
+// deren Mitten als Anker. Fällt auf die festen WERTUNGSBERICHT_COLS zurück,
+// wenn keine vollständige Kopfzeile gefunden wird (= bisheriges Verhalten).
+// Gegen PDF 113/109/146 + 2 ältere verifiziert: identische Ergebnisse.
+function detectWertungsColumns(items) {
+  const pkte = items.find(i => i.text === 'Pkte');
+  if (!pkte) return null;
+  const headerY = pkte.y;
+  const labelRe = /^(Pkte|T[123]|%[123]|X[123]|W[123]|S[123]|K[123])$/;
+  const cols = {};
+  for (const it of items) {
+    if (Math.abs(it.y - headerY) > 5) continue;
+    const m = it.text.match(labelRe);
+    if (!m) continue;
+    let name = m[1];
+    if (name[0] === '%') name = 'p' + name.slice(1); // %1 → p1
+    cols[name] = it.x + (it.width || 0) / 2;
+  }
+  if (!['Pkte', 'X1', 'K3'].every(n => n in cols)) return null;
+  return cols;
+}
+
 // Parse pro-Übung-Werte aus PDF-Items.
 // Gibt zurück: Array von { y, pkte, kg1: {x,w,s,k,p,t}, kg2: {...} }
 function parseWertungsbogenRows(items) {
+  // Spalten adaptiv aus der Kopfzeile bestimmen; sonst feste Werte (Fallback =
+  // bisheriges Verhalten). Bei adaptiv etwas engere Anker-Toleranz, damit keine
+  // Footer-Zahlen fälschlich als Übungszeile erkannt werden.
+  const cols = detectWertungsColumns(items) || WERTUNGSBERICHT_COLS;
+  const anchorX = cols.Pkte;
+  const anchorTol = cols === WERTUNGSBERICHT_COLS ? 12 : 8;
   // Schritt 1: Items in Zeilen clustern (Items mit ähnlichem y gehören zur selben Zeile)
   const sorted = items.slice().sort((a, b) => a.y - b.y);
   const lines = []; // { y, items[] }
@@ -2343,7 +2373,7 @@ function parseWertungsbogenRows(items) {
   for (const line of lines) {
     const anchor = line.items.find(it => {
       const xMid = it.x + (it.width || 0) / 2;
-      if (Math.abs(xMid - 339.3) >= 12) return false;
+      if (Math.abs(xMid - anchorX) >= anchorTol) return false;
       if (!/^\d+,\d+$/.test(it.text)) return false;
       // Sanity-Check: realistische Übungspunkte sind 0,5 bis 20 — alles darüber stammt aus dem Footer
       const val = parseFloat(it.text.replace(',', '.'));
@@ -2380,7 +2410,7 @@ function parseWertungsbogenRows(items) {
 
       // Daten-Spalten — Klassifikation per xMid
       const xMid = it.x + (it.width || 0) / 2;
-      const col = classifyColumn(xMid, 15); // großzügige Toleranz
+      const col = classifyColumn(xMid, cols, 15); // großzügige Toleranz
       if (!col || col === 'Pkte') continue;
       const num = parseFloat(it.text.replace(',', '.'));
       if (isNaN(num)) continue;
