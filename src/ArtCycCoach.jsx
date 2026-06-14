@@ -5379,6 +5379,18 @@ function Dashboard({ data, setView, onOpenFeedback }) {
   );
 
   if (previewV2) {
+    // Aktuelle Trainings-Serie: aufeinanderfolgende Tage bis heute/gestern.
+    const sessionDays = [...new Set((data.sessions || []).filter(s => s.date && (s.entries || []).length).map(s => s.date.slice(0, 10)))].sort().reverse();
+    const _today = new Date().toISOString().slice(0, 10);
+    const _yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    let streak = 0;
+    if (sessionDays[0] === _today || sessionDays[0] === _yest) {
+      streak = 1;
+      for (let i = 1; i < sessionDays.length; i++) {
+        const diff = Math.round((new Date(sessionDays[i - 1]) - new Date(sessionDays[i])) / 86400000);
+        if (diff === 1) streak++; else break;
+      }
+    }
     return (
       <div className="space-y-6 pb-4">
         <header className="pt-2 px-1">
@@ -5390,9 +5402,10 @@ function Dashboard({ data, setView, onOpenFeedback }) {
         {/* OVERVIEW — Cockpit: mehrere starke Infos (Training + Wettkampf gemeinsam) */}
         <div className="grid grid-cols-2 gap-3">
           <MetricCard label="Sessions" value={String(trainStats.totalSessions)} sub={trainStats.distinctDays + ' Trainingstage'} />
+          <MetricCard label="Aktuelle Serie" value={streak > 0 ? streak + (streak === 1 ? ' Tag' : ' Tage') : '—'} sub={streak > 0 ? 'in Folge' : 'keine aktive Serie'} />
+          {/* Wettkampf-Paar bewusst nebeneinander (gleiche Bedeutung) */}
           <MetricCard label="Letzter Wettkampf" value={compStats.last ? compStats.last.final.toFixed(2) : '—'} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : (compStats.count + ' gesamt')} />
           <MetricCard label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub={compStats.best ? compStats.best.competition.name.slice(0, 16) : '—'} />
-          <MetricCard label="Erfolgsquote" value={overall.totalAttempts > 0 ? overall.rate + ' %' : '—'} sub={overall.delta != null ? ((overall.delta > 0 ? '↑ ' : overall.delta < 0 ? '↓ ' : '· ') + Math.abs(overall.delta) + ' % · 4 Wo') : 'gesamt'} />
         </div>
 
         {/* TRENDS — Training + Wettkampf, beide sichtbar */}
