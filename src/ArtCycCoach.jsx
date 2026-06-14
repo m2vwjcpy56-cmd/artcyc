@@ -7045,6 +7045,10 @@ function deriveExerciseNames(programs) {
 
 function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, dbAthleteCoaches, refreshAthletes, theme, setTheme, langPref, setLangPref, rulesLangPref, setRulesLangPref, setView, onOpenFeedback }) {
   const { t } = useI18n();
+  const [previewExDetail, setPreviewExDetail] = useState(() => { try { return localStorage.getItem('artcyc:exDetailPreview') === '1'; } catch { return false; } });
+  const togglePreviewExDetail = () => {
+    setPreviewExDetail(v => { const n = !v; try { localStorage.setItem('artcyc:exDetailPreview', n ? '1' : '0'); } catch { /* ignore */ } return n; });
+  };
   const roleLabel = profile?.role === 'admin' ? t('role.admin') : profile?.role === 'coach' ? t('role.coach') : t('role.athlete');
   const syncLabel = cloudStatus === 'syncing' ? t('settings.cloudSyncing') : cloudStatus === 'error' ? t('settings.cloudSyncError') : t('settings.cloudSynced');
   const syncTagColor = cloudStatus === 'syncing' ? 'orange' : cloudStatus === 'error' ? 'red' : 'green';
@@ -7278,6 +7282,16 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
       </IOSList>
 
       <BackupSettings data={data} setData={setData} />
+
+      {/* Vorschau (Beta) — opt-in, ändert nichts für andere */}
+      <IOSList header="Vorschau (Beta)" footer="Neues Übungs-Detail-Design zum Ausprobieren. Standard bleibt unverändert; nur für dich auf diesem Gerät. Öffne danach eine Übung.">
+        <IOSListRow trailing={<IOSToggle checked={previewExDetail} onChange={togglePreviewExDetail} />}>
+          <span className="flex items-center gap-3">
+            <Sparkles size={18} className="text-[#FF9500]" />
+            <span className="text-[15px] font-medium">Neues Übungs-Design</span>
+          </span>
+        </IOSListRow>
+      </IOSList>
 
       {/* App-Cache + Diagnose */}
       <IOSList header="Diagnose" footer={'Falls Sportler-Daten nicht angezeigt werden, hilft meistens „Cache leeren + neu laden". Die Diagnose-Info zeigt, welche Verknüpfungen die App lokal kennt.'}>
@@ -7892,7 +7906,250 @@ function buildExerciseScreenModel(exercise, data, ropeFilter = null, period = '6
 }
 
 
+// =============================================================
+// VORSCHAU — ExerciseDetail V2 (neues Konzept, opt-in)
+// Ruhiger, scan-effizient: eine dominante KPI (Ring), 3 gleichrangige
+// Quick-Insights, dezenter Breakdown (Gefährlich zurückhaltend), 1 Trend-
+// Chart default, progressive disclosure für Coach/Verteilung/Historie,
+// Admin klar im Footer. Nutzt dasselbe buildExerciseScreenModel — keine
+// neuen Metriken. Wird nur angezeigt, wenn der Vorschau-Schalter an ist.
+// =============================================================
+function ExerciseDetailV2({ exercise, data, onBack, onEdit, onArchive, onDelete }) {
+  const { t } = useI18n();
+  const is3 = exercise.category_mode === 3;
+  const [period, setPeriod] = useState(() => { try { return localStorage.getItem('artcyc:exDetailPeriod') || '6m'; } catch { return '6m'; } });
+  const changePeriod = (v) => { setPeriod(v); try { localStorage.setItem('artcyc:exDetailPeriod', v); } catch { /* ignore */ } };
+  const [showDanger, setShowDanger] = useState(false);
+  const [showComp, setShowComp] = useState(false);
+  const [coachOpen, setCoachOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+
+  const vm = buildExerciseScreenModel(exercise, data, null, period);
+  const hasTraining = vm.totalAttempts > 0;
+  const periodTabs = [['4w', '4 Wochen'], ['3m', '3 Monate'], ['6m', '6 Monate'], ['total', 'Gesamt']];
+  const periodLabel = (periodTabs.find(p => p[0] === period) || ['', 'Gesamt'])[1];
+
+  const rate = vm.successRateCurrent || 0;
+  const delta = vm.successDelta;
+  const R = 56, C = 2 * Math.PI * R;
+  const ringOffset = C * (1 - rate / 100);
+
+  const trendPts = vm.successTrendSeries.filter(s => s.total > 0);
+  const dangerPts = (vm.dangerTrendSeries || []).filter((s, i) => vm.successTrendSeries[i] && vm.successTrendSeries[i].total > 0);
+  const focus = (vm.nextFocusInsight || []).slice(0, 2);
+
+  // Mini-Chart (Quote-Linie). 0..100 → SVG. Eine Aussage, ruhig.
+  const Chart = ({ pts, danger }) => {
+    if (pts.length < 2) return <div className="text-[13px] text-slate-400 py-6 text-center">Zu wenig Daten für diesen Zeitraum.</div>;
+    const W = 320, H = 96, P = 6;
+    const xs = (i) => P + (i * (W - 2 * P)) / (pts.length - 1);
+    const ys = (v) => H - P - ((v || 0) / 100) * (H - 2 * P);
+    const line = (arr, key) => arr.map((s, i) => `${i === 0 ? 'M' : 'L'}${xs(i).toFixed(1)},${ys(s[key]).toFixed(1)}`).join(' ');
+    const area = `${line(pts, 'rate')} L${xs(pts.length - 1).toFixed(1)},${H - P} L${xs(0).toFixed(1)},${H - P} Z`;
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
+        <defs><linearGradient id="v2grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#34C759" stopOpacity="0.22" /><stop offset="100%" stopColor="#34C759" stopOpacity="0" />
+        </linearGradient></defs>
+        <line x1={P} y1={ys(80)} x2={W - P} y2={ys(80)} stroke="currentColor" strokeOpacity="0.12" strokeDasharray="3 4" className="text-slate-400" />
+        <path d={area} fill="url(#v2grad)" />
+        <path d={line(pts, 'rate')} fill="none" stroke="#34C759" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        {danger && is3 && <path d={line(dangerPts, 'rate')} fill="none" stroke="#FF453A" strokeWidth="1.6" strokeOpacity="0.7" strokeDasharray="2 3" />}
+        {pts.map((s, i) => <circle key={i} cx={xs(i)} cy={ys(s.rate)} r="2.4" fill="#34C759" />)}
+      </svg>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F2F2F7]">
+      <div className="max-w-2xl mx-auto px-4 pt-2 pb-28 space-y-6">
+
+        {/* 01 — TOP BAR */}
+        <header className="flex items-center gap-2 pt-1">
+          <button onClick={onBack} className="p-2 -ml-2 text-[#FF9500] active:opacity-50 shrink-0"><ChevronLeft size={28} strokeWidth={2.6} /></button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-[22px] font-bold tracking-tight leading-tight truncate">{localizedExerciseName(exercise)}</h1>
+            <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+              {exercise.uci_code && <IOSTag color="blue">UCI {exercise.uci_code}</IOSTag>}
+              {Number(exercise.points) > 0 && <span className="text-[12px] text-slate-500 font-medium tabular-nums">{Number(exercise.points).toFixed(1)} Pkt</span>}
+              {!exercise.active && <IOSTag color="gray">archiviert</IOSTag>}
+            </div>
+          </div>
+        </header>
+
+        {!hasTraining ? (
+          <div className="card-surface rounded-[22px] p-8 text-center text-[15px] text-slate-400">Noch keine Trainingsdaten erfasst.</div>
+        ) : (<>
+          {/* Zeitraum (scope für alles) */}
+          <div className="bg-[#E5E5EA] rounded-[13px] p-1 flex gap-1 text-[13px] font-medium">
+            {periodTabs.map(([val, label]) => (
+              <button key={val} onClick={() => changePeriod(val)}
+                className={'flex-1 px-2 py-1.5 rounded-[10px] transition ' + (period === val ? 'ios-seg-active' : 'text-slate-500 active:opacity-60')}>{label}</button>
+            ))}
+          </div>
+
+          {!vm.periodHasData ? (
+            <div className="card-surface rounded-[22px] p-8 text-center">
+              <div className="text-[15px] text-slate-400">Keine Daten in den letzten {periodLabel}.</div>
+            </div>
+          ) : (<>
+            {/* 02 — HERO: eine dominante KPI mit Ring */}
+            <div className="card-surface rounded-[26px] p-6 flex items-center gap-6">
+              <div className="relative shrink-0" style={{ width: 140, height: 140 }}>
+                <svg viewBox="0 0 140 140" className="w-full h-full -rotate-90">
+                  <circle cx="70" cy="70" r={R} fill="none" stroke="currentColor" strokeOpacity="0.10" strokeWidth="11" className="text-slate-400" />
+                  <circle cx="70" cy="70" r={R} fill="none" stroke="#34C759" strokeWidth="11" strokeLinecap="round"
+                    strokeDasharray={C} strokeDashoffset={ringOffset} style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-[40px] leading-none font-bold tracking-tight text-slate-900 tabular-nums">{rate}</span>
+                  <span className="text-[13px] font-semibold text-slate-400 -mt-0.5">%</span>
+                </div>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] font-semibold uppercase tracking-wider text-emerald-600">Erfolgsquote</div>
+                <div className="text-[15px] text-slate-500 tabular-nums mt-1">{vm.totalSuccess} / {vm.totalAttempts} Versuche</div>
+                {delta != null && (
+                  <div className={'inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-1 rounded-full tabular-nums mt-2 ' +
+                    (delta > 0 ? 'bg-emerald-50 text-emerald-700' : delta < 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500')}>
+                    {delta > 0 ? '↑' : delta < 0 ? '↓' : '·'} {Math.abs(delta)} % · 4 Wochen
+                  </div>
+                )}
+                <div className="mt-3 pt-3 border-t border-slate-100 text-[13px] flex items-center justify-between gap-2">
+                  <span className="text-slate-500 truncate">Zuletzt {formatDateShort(vm.lastSessionDate)}</span>
+                  <span className="font-medium text-slate-700 tabular-nums shrink-0">{vm.lastSessionRate} % · {vm.lastSessionFraction}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 03 — QUICK INSIGHTS (3 gleichrangig) */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'Letzte Session', value: vm.lastSessionRate + ' %', sub: vm.lastSessionFraction },
+                { label: '4 Wochen', value: vm.successRateLast4Weeks == null ? '—' : vm.successRateLast4Weeks + ' %', sub: 'Erfolg' },
+                { label: 'Sessions', value: String(vm.sessionsCount), sub: vm.totalAttempts + ' Vers.' },
+              ].map((c, i) => (
+                <div key={i} className="card-surface rounded-[20px] p-3 text-center">
+                  <div className="text-[11px] text-slate-500 font-medium leading-tight">{c.label}</div>
+                  <div className="text-[21px] font-bold text-slate-900 tabular-nums mt-1 leading-none">{c.value}</div>
+                  <div className="text-[11px] text-slate-400 tabular-nums mt-1 truncate">{c.sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* 04 — BREAKDOWN (Geklappt stark · Getroffen mittel · Gefährlich dezent) */}
+            <div className={'grid gap-3 ' + (is3 ? 'grid-cols-3' : 'grid-cols-2')}>
+              <div className="bg-emerald-50 border border-emerald-100 rounded-[20px] p-3.5 text-center">
+                <div className="text-[12px] font-medium text-emerald-700">{statusLabel(exercise, 'success')}</div>
+                <div className="text-[27px] font-bold text-emerald-700 tabular-nums leading-none mt-1">{vm.successRateCurrent} %</div>
+                <div className="text-[11px] text-emerald-600/70 tabular-nums mt-0.5">{vm.totalSuccess}×</div>
+              </div>
+              {is3 && (
+                <div className="bg-amber-50 border border-amber-100 rounded-[20px] p-3.5 text-center">
+                  <div className="text-[12px] font-medium text-amber-700">{statusLabel(exercise, 'third')}</div>
+                  <div className="text-[27px] font-bold text-amber-700 tabular-nums leading-none mt-1">{vm.hitRate} %</div>
+                  <div className="text-[11px] text-amber-600/70 tabular-nums mt-0.5">{vm.totalHit}×</div>
+                </div>
+              )}
+              <div className="card-surface rounded-[20px] p-3.5 text-center">
+                <div className="text-[12px] font-medium text-slate-500">{statusLabel(exercise, 'fail')}</div>
+                <div className="text-[27px] font-bold text-rose-600 tabular-nums leading-none mt-1">{vm.dangerRate} %</div>
+                <div className="text-[11px] text-slate-400 tabular-nums mt-0.5">{vm.totalDanger}×</div>
+              </div>
+            </div>
+
+            {/* 05 — TREND (1 Chart default) */}
+            <div className="card-surface rounded-[22px] p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Trend</h2>
+                {is3 && (
+                  <button onClick={() => setShowDanger(v => !v)}
+                    className={'text-[12px] font-medium px-2.5 py-1 rounded-full transition active:opacity-60 ' + (showDanger ? 'bg-rose-50 text-rose-600' : 'bg-slate-100 text-slate-500')}>
+                    Gefährlich {showDanger ? 'an' : 'aus'}
+                  </button>
+                )}
+              </div>
+              <Chart pts={trendPts} danger={showDanger} />
+              <button onClick={() => setShowComp(v => !v)}
+                className="w-full text-[13px] font-medium text-[#007AFF] active:opacity-60 pt-1 flex items-center justify-center gap-1">
+                {showComp ? 'Verteilung ausblenden' : 'Verteilung anzeigen'}
+                <ChevronRight size={15} strokeWidth={2.4} className={'transition-transform ' + (showComp ? 'rotate-90' : '')} />
+              </button>
+              {showComp && vm.compositionSeries.length > 0 && (
+                <svg viewBox="0 0 320 90" className="w-full" preserveAspectRatio="none">
+                  {(() => { const BW = 320, BH = 90, BP = 8; const bw = (BW - 2 * BP) / vm.compositionSeries.length; const inner = BH - 2 * BP;
+                    return vm.compositionSeries.map((m, i) => { const x = BP + i * bw, w = Math.max(1, bw - 2);
+                      const sH = m.total ? (m.success / m.total) * inner : 0, tH = m.total ? (m.third / m.total) * inner : 0, fH = m.total ? (m.fail / m.total) * inner : 0;
+                      return (<g key={i}><rect x={x} y={BP} width={w} height={sH} fill="#34C759" /><rect x={x} y={BP + sH} width={w} height={tH} fill="#FF9F0A" /><rect x={x} y={BP + sH + tH} width={w} height={fH} fill="#FF453A" /></g>); });
+                  })()}
+                </svg>
+              )}
+            </div>
+
+            {/* 06 — NÄCHSTER FOKUS */}
+            <div className="card-surface rounded-[22px] p-4 space-y-3">
+              <h2 className="text-[15px] font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[#FF9500]" /> Nächster Fokus</h2>
+              {focus.length > 0 && (
+                <ul className="text-[14px] leading-snug space-y-1.5 list-disc pl-4 marker:text-[#FF9500]">
+                  {focus.map((line, i) => <li key={i}>{line}</li>)}
+                </ul>
+              )}
+              {(() => {
+                const insight = generateExerciseInsight(exercise, data.sessions || [], t, data.programs || [], data.competitions || []);
+                if (!insight || !insight.lines || insight.lines.length === 0) return null;
+                return (<>
+                  <button onClick={() => setCoachOpen(v => !v)} className="w-full text-[13px] font-medium text-[#007AFF] active:opacity-60 flex items-center justify-center gap-1">
+                    {coachOpen ? 'KI-Coach ausblenden' : 'KI-Coach anzeigen'}
+                    <ChevronRight size={15} strokeWidth={2.4} className={'transition-transform ' + (coachOpen ? 'rotate-90' : '')} />
+                  </button>
+                  {coachOpen && <ul className="text-[14px] leading-snug space-y-1.5 list-disc pl-4 marker:text-slate-400 pt-1 border-t border-slate-100">{insight.lines.map((line, i) => <li key={i}>{line}</li>)}</ul>}
+                </>);
+              })()}
+            </div>
+
+            {/* 07 — LETZTE SESSIONS */}
+            <IOSList header="Letzte Sessions">
+              {(showAll ? vm.allSessions : vm.recentSessionsLimited).map((s, i) => (
+                <div key={i} className="px-4 py-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[15px] text-slate-700 tabular-nums">{formatDateShort(s.date)}</span>
+                    {exercise.has_rope_variant && s.session.withRope === true && <IOSTag color="orange">Seil</IOSTag>}
+                    {is3 && s.fail > 0 && <IOSTag color="red">{s.fail}× {statusLabel(exercise, 'fail').toLowerCase()}</IOSTag>}
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-[13px] text-slate-400 tabular-nums">{s.success}/{s.total}</span>
+                    <span className={'text-[15px] font-semibold tabular-nums w-11 text-right ' + (s.rate >= 80 ? 'text-emerald-700' : 'text-slate-700')}>{s.rate}%</span>
+                  </div>
+                </div>
+              ))}
+            </IOSList>
+            {vm.allSessions.length > 5 && (
+              <button onClick={() => setShowAll(v => !v)} className="w-full text-[15px] font-medium text-[#007AFF] active:opacity-60 py-1">
+                {showAll ? 'Weniger anzeigen' : 'Alle Sessions anzeigen (' + vm.allSessions.length + ')'}
+              </button>
+            )}
+          </>)}
+        </>)}
+
+        {/* 08 — ADMIN (Footer, klar getrennt) */}
+        <div className="pt-2 space-y-2">
+          <div className="text-[12px] uppercase tracking-wide text-slate-400 px-4 font-medium">Verwalten</div>
+          <IOSList>
+            {onEdit && <IOSListRow onClick={onEdit} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Edit2 size={17} className="text-[#007AFF]" /> Bearbeiten</span></IOSListRow>}
+            {onArchive && <IOSListRow onClick={onArchive} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Lock size={17} className="text-[#FF9500]" /> {exercise.active ? 'Archivieren' : 'Reaktivieren'}</span></IOSListRow>}
+            {onDelete && <IOSListRow onClick={onDelete}><span className="flex items-center gap-3 text-[#FF3B30]"><Trash2 size={17} /> Löschen</span></IOSListRow>}
+          </IOSList>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, onDelete }) {
+  if ((() => { try { return localStorage.getItem('artcyc:exDetailPreview') === '1'; } catch { return false; } })()) {
+    return <ExerciseDetailV2 exercise={exercise} data={data} onBack={onBack} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />;
+  }
   const { t } = useI18n();
   const [ropeFilter, setRopeFilter] = useState(null);     // null | true | false
   // Zeitraum für ALLE Statistiken dieser Seite. Auswahl wird global gespeichert.
