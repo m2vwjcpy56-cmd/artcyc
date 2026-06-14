@@ -5392,17 +5392,15 @@ function Dashboard({ data, setView, onOpenFeedback }) {
         if (diff === 1) streak++; else break;
       }
     }
-    // „Übung im Fokus": konkrete Übung statt Gesamt-Aggregat. Default = zuletzt trainiert.
-    const lastByEx = new Map();
+    // „Übung im Fokus": Default = datenreichste Übung (meiste Wiederholungen),
+    // damit immer eine sinnvolle Übung mit Trend vorausgewählt ist. Frei änderbar.
+    const cntByEx = new Map();
     for (const s of (data.sessions || [])) {
-      if (s.exerciseId && s.date && (s.entries || []).length) {
-        const p = lastByEx.get(s.exerciseId);
-        if (!p || s.date > p) lastByEx.set(s.exerciseId, s.date);
-      }
+      if (s.exerciseId && (s.entries || []).length) cntByEx.set(s.exerciseId, (cntByEx.get(s.exerciseId) || 0) + s.entries.length);
     }
-    const focusList = (data.exercises || []).filter(e => lastByEx.has(e.id))
-      .map(e => ({ ex: e, last: lastByEx.get(e.id) }))
-      .sort((a, b) => b.last.localeCompare(a.last));
+    const focusList = (data.exercises || []).filter(e => (cntByEx.get(e.id) || 0) > 0)
+      .map(e => ({ ex: e, n: cntByEx.get(e.id) }))
+      .sort((a, b) => b.n - a.n);
     const focusEx = (dashFocusExId && (focusList.find(f => f.ex.id === dashFocusExId) || {}).ex) || (focusList[0] && focusList[0].ex) || null;
     const focusVm = focusEx ? buildExerciseScreenModel(focusEx, data, null, '6m') : null;
     const focusComp = focusVm ? (focusVm.compositionSeries || []).filter(b => b.total > 0) : [];
@@ -5442,7 +5440,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
                 </div>
                 <select value={focusEx.id} onChange={e => setDashFocusExId(e.target.value)}
                   className="w-full px-2.5 py-2 border border-slate-300 rounded-xl text-[14px] font-medium bg-white outline-none">
-                  {focusList.map(({ ex }) => <option key={ex.id} value={ex.id}>{localizedExerciseName(ex)}</option>)}
+                  {focusList.map(({ ex, n }) => <option key={ex.id} value={ex.id}>{localizedExerciseName(ex)} · {n}×</option>)}
                 </select>
                 {focusComp.length >= 2 ? (
                   <>
