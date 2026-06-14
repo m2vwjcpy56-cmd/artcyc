@@ -5198,6 +5198,24 @@ function SetupScreen({ onStart }) {
 // =============================================================
 // DASHBOARD
 // =============================================================
+// Aktuelle Trainings-Serie in WOCHEN: aufeinanderfolgende Kalenderwochen
+// (Mo–So) mit mind. einer Session, endend in dieser oder letzter Woche
+// (laufende Woche darf noch leer sein, ohne die Serie zu brechen).
+function trainingWeekStreak(sessions) {
+  const wk = (iso) => { const d = new Date(iso + 'T00:00:00'); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow); return d.toISOString().slice(0, 10); };
+  const set = new Set((sessions || []).filter(s => s.date && (s.entries || []).length).map(s => wk(s.date)));
+  if (set.size === 0) return 0;
+  const curMon = wk(new Date().toISOString().slice(0, 10));
+  const cursor = new Date(curMon + 'T00:00:00');
+  if (!set.has(curMon)) cursor.setDate(cursor.getDate() - 7);
+  let n = 0;
+  for (let i = 0; i < 520; i++) {
+    const k = cursor.toISOString().slice(0, 10);
+    if (set.has(k)) { n++; cursor.setDate(cursor.getDate() - 7); } else break;
+  }
+  return n;
+}
+
 function Dashboard({ data, setView, onOpenFeedback }) {
   const { t } = useI18n();
   // Saison-Filter
@@ -5381,17 +5399,8 @@ function Dashboard({ data, setView, onOpenFeedback }) {
 
   if (previewV2) {
     // Aktuelle Trainings-Serie: aufeinanderfolgende Tage bis heute/gestern.
-    const sessionDays = [...new Set((data.sessions || []).filter(s => s.date && (s.entries || []).length).map(s => s.date.slice(0, 10)))].sort().reverse();
-    const _today = new Date().toISOString().slice(0, 10);
-    const _yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-    let streak = 0;
-    if (sessionDays[0] === _today || sessionDays[0] === _yest) {
-      streak = 1;
-      for (let i = 1; i < sessionDays.length; i++) {
-        const diff = Math.round((new Date(sessionDays[i - 1]) - new Date(sessionDays[i])) / 86400000);
-        if (diff === 1) streak++; else break;
-      }
-    }
+    // Aktuelle Serie in Wochen (aufeinanderfolgende Trainingswochen).
+    const streak = trainingWeekStreak(data.sessions);
     // „Übung im Fokus": Default = datenreichste Übung (meiste Wiederholungen),
     // damit immer eine sinnvolle Übung mit Trend vorausgewählt ist. Frei änderbar.
     const cntByEx = new Map();
@@ -5416,7 +5425,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
         {/* OVERVIEW — Cockpit: mehrere starke Infos (Training + Wettkampf gemeinsam) */}
         <div className="grid grid-cols-2 gap-3">
           <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(trainStats.totalSessions)} sub={trainStats.distinctDays + ' Trainingstage'} />
-          <MetricCard accent="emerald" icon={Activity} label="Aktuelle Serie" value={streak > 0 ? streak + (streak === 1 ? ' Tag' : ' Tage') : '—'} sub={streak > 0 ? 'in Folge' : 'keine aktive Serie'} />
+          <MetricCard accent="emerald" icon={Activity} label="Aktuelle Serie" value={streak > 0 ? streak + (streak === 1 ? ' Woche' : ' Wochen') : '—'} sub={streak > 0 ? 'in Folge' : 'keine aktive Serie'} />
           {/* Wettkampf-Paar bewusst nebeneinander (gleiche Bedeutung) */}
           <MetricCard accent="violet" icon={Calendar} label="Letzter Wettkampf" value={compStats.last ? compStats.last.final.toFixed(2) : '—'} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : (compStats.count + ' gesamt')} />
           <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub={compStats.best ? compStats.best.competition.name.slice(0, 16) : '—'} />
@@ -5440,7 +5449,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
                 </div>
                 <select value={focusEx.id} onChange={e => setDashFocusExId(e.target.value)}
                   className="w-full px-2.5 py-2 border border-slate-300 rounded-xl text-[14px] font-medium bg-white outline-none">
-                  {focusList.map(({ ex, n }) => <option key={ex.id} value={ex.id}>{localizedExerciseName(ex)} · {n}×</option>)}
+                  {focusList.map(({ ex }) => <option key={ex.id} value={ex.id}>{localizedExerciseName(ex)}</option>)}
                 </select>
                 {focusComp.length >= 2 ? (
                   <>
@@ -6435,6 +6444,7 @@ function TrainingView({ data, setData, setView }) {
 
   const previewV2 = (() => { try { return localStorage.getItem('artcyc:exDetailPreview') === '1'; } catch { return false; } })();
   if (previewV2) {
+    const weekStreak = trainingWeekStreak(data.sessions);
     const histList = filtered.length === 0
       ? <div className="text-[14px] text-[#8E8E93] text-center py-4">{t('training.noMatches')}</div>
       : sortMode === 'exercise'
@@ -6467,7 +6477,7 @@ function TrainingView({ data, setData, setView }) {
         {totalCount > 0 && (
           <div className="grid grid-cols-2 gap-3">
             <MetricCard accent="violet" icon={TrendingUp} label="Erfolgsquote" value={trainTopStats.rate + ' %'} sub="über alle Sessions" />
-            <MetricCard accent="emerald" icon={Activity} label="Aktuelle Serie" value={trainTopStats.streak > 0 ? trainTopStats.streak + (trainTopStats.streak === 1 ? ' Tag' : ' Tage') : '—'} sub={trainTopStats.streak > 0 ? 'in Folge' : 'keine aktive Serie'} />
+            <MetricCard accent="emerald" icon={Activity} label="Aktuelle Serie" value={weekStreak > 0 ? weekStreak + (weekStreak === 1 ? ' Woche' : ' Wochen') : '—'} sub={weekStreak > 0 ? 'in Folge' : 'keine aktive Serie'} />
             <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(trainTopStats.sessionCount)} sub={trainTopStats.exCount + ' Übungen'} />
             <MetricCard accent="amber" icon={Calendar} label="Trainingstage" value={String(trainTopStats.days)} sub="aktive Tage" />
           </div>
@@ -8229,8 +8239,8 @@ function ExerciseDetailV2({ exercise, data, onBack, onEdit, onArchive, onDelete 
   const [mode, setMode] = useState('all'); // all | rope | noRope — steuert den GESAMTEN Screen
   const [kpiVariant, setKpiVariant] = useState(() => { try { return localStorage.getItem('artcyc:exDetailKpi') || 'number'; } catch { return 'number'; } });
   const changeKpi = (v) => { setKpiVariant(v); try { localStorage.setItem('artcyc:exDetailKpi', v); } catch { /* ignore */ } };
-  const [showHit, setShowHit] = useState(false);
-  const [showDanger, setShowDanger] = useState(false);
+  const [showHit, setShowHit] = useState(true);
+  const [showDanger, setShowDanger] = useState(true);
   const [showComp, setShowComp] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
