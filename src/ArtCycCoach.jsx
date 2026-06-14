@@ -4767,22 +4767,22 @@ export default function App() {
           {/* Athleten-Banner — zeigt immer den aktiven Sportler, mit Picker
               wenn mehrere wählbar sind. Bei nicht-eigenem orange (Trainer-Sicht),
               bei eigenem dezent grau. */}
+          {/* Context-Switcher (Datenquelle) — bewusst klein/sekundär als Pille,
+              damit der Screen-Inhalt früher beginnt. Funktion unverändert. */}
           {selectedAthlete && (availableAthletes.length > 1 || !isOwnAthlete) && (
             <button
               onClick={() => availableAthletes.length > 1 && setShowAthletePicker(true)}
               disabled={availableAthletes.length <= 1}
-              className={'w-full mb-4 -mt-1 rounded-2xl px-4 py-2.5 flex items-center gap-2 text-[13px] font-medium shadow-[0_1px_3px_rgba(0,0,0,0.05)] active:opacity-80 ' +
+              className={'mb-3 -mt-0.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium active:opacity-70 max-w-full ' +
                 (isOwnAthlete
-                  ? 'bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300'
+                  ? 'bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400'
                   : 'bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200')}>
               {isOwnAthlete
-                ? <User size={14} strokeWidth={2.4} className="shrink-0" />
-                : <Crown size={14} strokeWidth={2.4} className="shrink-0" />}
-              <span className="flex-1 text-left truncate">
-                {isOwnAthlete ? 'Eigene Daten' : 'Du bearbeitest'}: <strong>{selectedAthlete.name}</strong>
-              </span>
+                ? <User size={13} strokeWidth={2.4} className="shrink-0" />
+                : <Crown size={13} strokeWidth={2.4} className="shrink-0" />}
+              <span className="truncate">{isOwnAthlete ? selectedAthlete.name : 'Trainer: ' + selectedAthlete.name}</span>
               {availableAthletes.length > 1 && (
-                <span className="text-[11px] opacity-70 shrink-0">wechseln ▾</span>
+                <ChevronRight size={13} strokeWidth={2.6} className="rotate-90 opacity-60 shrink-0" />
               )}
             </button>
           )}
