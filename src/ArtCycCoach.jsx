@@ -9803,8 +9803,11 @@ function WettkampfView({ data, setData, dbAthletes }) {
           ? compsList.map(x => x.id === c.id ? c : x)
           : [...compsList, c];
 
+        // Upsert nach ID: repariertes Programm (gleiche ID) ersetzen, neues anhängen.
         const newProgramsList = payload.newProgram
-          ? [...(data.programs || []), payload.newProgram]
+          ? ((data.programs || []).some(p => p.id === payload.newProgram.id)
+              ? (data.programs || []).map(p => p.id === payload.newProgram.id ? payload.newProgram : p)
+              : [...(data.programs || []), payload.newProgram])
           : (data.programs || []);
 
         const newExercisesList = payload.newExercises && payload.newExercises.length > 0
@@ -10263,6 +10266,22 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     let activeProgram = pendingNewProgram || programs.find(p => p.id === programId);
     let createdNewProgram = null;
 
+    // Namen/Code einer PDF-Zeile auflösen: Zeilen-Name → UCI per Code → UCI per
+    // eindeutige Punkte+Disziplin. Für Anlegen UND Reparatur wiederverwendet.
+    const resolveRowName = (r, disc) => {
+      let name = r.name || null;
+      let code = r.code || null;
+      if (!name && code) { const hit = activeUciByCode.get(code); if (hit && hit.n) name = hit.n; }
+      if (!name && !code) {
+        const pts = Number(r.points || 0);
+        if (pts > 0 && disc) {
+          const cands = activeUciDb.filter(u => Math.abs(u.p - pts) < 0.001 && u.d === disc);
+          if (cands.length === 1) { name = cands[0].n; code = cands[0].c; }
+        }
+      }
+      return { name, code };
+    };
+
     // Wenn das PDF detaillierte Übungs-Zeilen liefert, ist es die Source-of-Truth
     // für die Programm-Übungen + ihre Punkte. Wir matchen NICHT auf Disziplin-Basis,
     // weil das zu falschen Aufgestellt-Werten führt wenn fremde Programme zufällig
@@ -10280,10 +10299,35 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
       };
       const exactExisting = (programs || []).find(matchesExactly);
 
+      // Reparatur-Match: bestehendes Programm, dessen Übungen ALLE Platzhalter
+      // ("Übung N") sind und dessen Punktfolge zum PDF passt → Namen/Codes aus
+      // dem PDF in place ergänzen (kein Duplikat; alle Wettkämpfe mit diesem
+      // Programm werden dadurch korrekt).
+      const placeholderBroken = !exactExisting && (programs || []).find(p =>
+        p.exercises && p.exercises.length === parsed.exerciseRows.length &&
+        p.exercises.every((e, idx) =>
+          /^Übung\s*\d+$/.test((e.name || '').trim()) &&
+          Math.abs(Number(e.points || 0) - Number(parsed.exerciseRows[idx].points || 0)) < 0.01
+        )
+      );
+
       if (exactExisting) {
         // 100% Match → bestehendes Programm wiederverwenden
         activeProgram = exactExisting;
         if (exactExisting.id !== programId) setProgramId(exactExisting.id);
+      } else if (placeholderBroken) {
+        const repaired = {
+          ...placeholderBroken,
+          exercises: placeholderBroken.exercises.map((e, idx) => {
+            const r = parsed.exerciseRows[idx];
+            const { name, code } = resolveRowName(r, placeholderBroken.discipline);
+            return { ...e, name: name || e.name, code: code || e.code || null, points: Number(r.points || 0) };
+          }),
+        };
+        setPendingNewProgram(repaired);
+        setProgramId(repaired.id);
+        activeProgram = repaired;
+        createdNewProgram = repaired;
       } else {
         // Frisches Programm aus PDF bauen (auch wenn Disziplin zu einem alten passt)
         const disc = parsed.disziplin
