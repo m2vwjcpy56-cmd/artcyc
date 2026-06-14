@@ -6723,20 +6723,29 @@ function TrainingsplanView({ data, setData, onBack }) {
 
   const [selectedId, setSelectedId] = useState(plans[0]?.id || null);
   const [editing, setEditing] = useState(false);
+  // Lokaler Entwurf beim Bearbeiten — NICHT pro Tastendruck in den globalen
+  // (asynchronen) Store schreiben, sonst überholen sich Eingaben (verwürfelte
+  // Buchstaben). Persistenz erst bei „Fertig".
+  const [draft, setDraft] = useState(null);
   const plan = plans.find(p => p.id === selectedId) || null;
 
   const writePlans = (next) => setData({ ...data, trainingPlans: next });
   const upsertPlan = (p) => writePlans(plans.some(x => x.id === p.id) ? plans.map(x => x.id === p.id ? p : x) : [...plans, p]);
-  const patchPlan = (patch) => { if (plan) upsertPlan({ ...plan, ...patch }); };
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+
   const createPlan = () => {
     const p = { id: uid(), name: 'Neuer Plan', items: [] };
-    writePlans([...plans, p]); setSelectedId(p.id); setEditing(true);
+    setSelectedId(p.id); setDraft(clone(p)); setEditing(true);
   };
-  const deletePlan = (id) => { writePlans(plans.filter(p => p.id !== id)); setSelectedId(null); setEditing(false); };
+  const startEdit = () => { if (plan) { setDraft(clone(plan)); setEditing(true); } };
+  const finishEdit = () => { if (draft) upsertPlan(draft); setEditing(false); setDraft(null); };
+  const deletePlan = (id) => { writePlans(plans.filter(p => p.id !== id)); setSelectedId(null); setEditing(false); setDraft(null); };
 
-  const addItem = () => patchPlan({ items: [...(plan.items || []), { id: uid(), label: '', reps: null, loggable: false, exerciseId: null }] });
-  const patchItem = (id, patch) => patchPlan({ items: plan.items.map(it => it.id === id ? { ...it, ...patch } : it) });
-  const removeItem = (id) => patchPlan({ items: plan.items.filter(it => it.id !== id) });
+  // Entwurf rein lokal bearbeiten (sofort, korrekt)
+  const patchDraft = (patch) => setDraft(d => ({ ...d, ...patch }));
+  const addItem = () => setDraft(d => ({ ...d, items: [...(d.items || []), { id: uid(), label: '', reps: null, loggable: false, exerciseId: null }] }));
+  const patchItem = (id, patch) => setDraft(d => ({ ...d, items: d.items.map(it => it.id === id ? { ...it, ...patch } : it) }));
+  const removeItem = (id) => setDraft(d => ({ ...d, items: d.items.filter(it => it.id !== id) }));
   const toggleLoggable = (it) => {
     if (it.loggable) { patchItem(it.id, { loggable: false }); return; }
     const match = activeExercises.find(e => (e.name || '').trim().toLowerCase() === (it.label || '').trim().toLowerCase());
@@ -6777,14 +6786,14 @@ function TrainingsplanView({ data, setData, onBack }) {
     <div className="min-h-screen bg-[#F2F2F7] p-4 sm:p-8">
       <div className="max-w-2xl mx-auto space-y-5">
         <header className="flex items-center gap-1 -ml-1">
-          <button onClick={plan ? () => { setSelectedId(null); setEditing(false); } : onBack}
+          <button onClick={editing ? finishEdit : (selectedId ? () => setSelectedId(null) : onBack)}
             className="text-[17px] text-[#007AFF] flex items-center active:opacity-60">
-            <ChevronLeft size={22} strokeWidth={2.6} className="text-[#FF9500]" /> {plan ? 'Pläne' : t('common.back')}
+            <ChevronLeft size={22} strokeWidth={2.6} className="text-[#FF9500]" /> {editing ? 'Fertig' : (selectedId ? 'Pläne' : t('common.back'))}
           </button>
-          <h1 className="text-[28px] font-bold tracking-tight ml-2 truncate">{plan ? plan.name : 'Trainingsplan'}</h1>
+          <h1 className="text-[28px] font-bold tracking-tight ml-2 truncate">{editing && draft ? draft.name : (plan ? plan.name : 'Trainingsplan')}</h1>
         </header>
 
-        {!plan ? (
+        {(!plan && !editing) ? (
           <>
             {plans.length === 0 ? (
               <div className="card-surface rounded-[22px] p-6 text-center text-[15px] text-slate-400">
@@ -6808,13 +6817,13 @@ function TrainingsplanView({ data, setData, onBack }) {
               <Plus size={18} strokeWidth={2.5} /> Neuer Plan
             </button>
           </>
-        ) : editing ? (
+        ) : (editing && draft) ? (
           <>
-            <input value={plan.name} onChange={e => patchPlan({ name: e.target.value })}
+            <input value={draft.name} onChange={e => patchDraft({ name: e.target.value })}
               placeholder="Plan-Name"
               className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-[15px] font-medium bg-white outline-none focus:ring-2 focus:ring-amber-500" />
             <div className="space-y-2">
-              {(plan.items || []).map((it, i) => (
+              {(draft.items || []).map((it, i) => (
                 <div key={it.id} className="card-surface rounded-2xl p-3 space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="text-[12px] text-slate-400 w-5 shrink-0">{i + 1}.</span>
@@ -6849,15 +6858,15 @@ function TrainingsplanView({ data, setData, onBack }) {
               <Plus size={16} strokeWidth={2.6} /> Eintrag hinzufügen
             </button>
             <div className="flex gap-2">
-              <button onClick={() => setEditing(false)} className="flex-1 bg-[#FF9500] text-white py-3 rounded-full font-semibold active:scale-95 transition">Fertig</button>
-              <button onClick={() => { if (confirm('Plan „' + plan.name + '" löschen?')) deletePlan(plan.id); }}
+              <button onClick={finishEdit} className="flex-1 bg-[#FF9500] text-white py-3 rounded-full font-semibold active:scale-95 transition">Fertig</button>
+              <button onClick={() => { if (confirm('Plan „' + draft.name + '" löschen?')) deletePlan(draft.id); }}
                 className="px-4 py-3 rounded-full text-rose-600 font-medium border border-rose-200 bg-rose-50 active:bg-rose-100"><Trash2 size={16} /></button>
             </div>
           </>
         ) : (
           <>
             <div className="flex justify-end -mt-2">
-              <button onClick={() => setEditing(true)} className="text-[15px] text-[#007AFF] font-medium active:opacity-60 flex items-center gap-1"><Edit2 size={15} /> Bearbeiten</button>
+              <button onClick={startEdit} className="text-[15px] text-[#007AFF] font-medium active:opacity-60 flex items-center gap-1"><Edit2 size={15} /> Bearbeiten</button>
             </div>
             {(plan.items || []).length === 0 ? (
               <div className="card-surface rounded-[22px] p-6 text-center text-[15px] text-slate-400">Noch keine Einträge. Tippe „Bearbeiten".</div>
