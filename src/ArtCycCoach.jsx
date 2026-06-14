@@ -6849,24 +6849,26 @@ function TrainingsplanView({ data, setData, onBack }) {
                       className="flex-1 min-w-0 px-2 py-1.5 border border-slate-300 rounded-lg text-[15px] bg-white outline-none" />
                     <button onClick={() => removeItem(it.id)} className="p-1.5 text-rose-500 active:opacity-60 shrink-0"><Trash2 size={16} /></button>
                   </div>
-                  <div className="flex items-center gap-2 pl-7 flex-wrap">
-                    <span className="text-[13px] text-slate-500">Anzahl</span>
-                    <input type="number" inputMode="numeric" value={it.reps ?? ''}
-                      onChange={e => patchItem(it.id, { reps: e.target.value === '' ? null : Number(e.target.value) })}
-                      className="w-16 px-2 py-1 border border-slate-300 rounded-lg text-[15px] text-right bg-white outline-none" />
-                    <span className="flex-1" />
-                    <span className="text-[13px] text-slate-500">Übung verknüpfen</span>
-                    <IOSToggle checked={!!it.loggable} onChange={() => toggleLoggable(it)} />
-                  </div>
-                  {it.loggable && (
-                    <div className="pl-7">
+                  <div className="pl-7 space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[13px] text-slate-500">Anzahl</span>
+                      <input type="number" inputMode="numeric" value={it.reps ?? ''}
+                        onChange={e => patchItem(it.id, { reps: e.target.value === '' ? null : Number(e.target.value) })}
+                        placeholder="—"
+                        className="w-20 px-2 py-1.5 border border-slate-300 rounded-lg text-[15px] text-right bg-white outline-none" />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[13px] text-slate-500">Übung verknüpfen</span>
+                      <IOSToggle checked={!!it.loggable} onChange={() => toggleLoggable(it)} />
+                    </div>
+                    {it.loggable && (
                       <select value={it.exerciseId || ''} onChange={e => patchItem(it.id, { exerciseId: e.target.value || null })}
                         className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-[14px] bg-white outline-none">
                         <option value="">— Übung aus Reglement wählen —</option>
                         {activeExercises.map(e => <option key={e.id} value={e.id}>{localizedExerciseName(e)}</option>)}
                       </select>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
