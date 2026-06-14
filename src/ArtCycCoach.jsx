@@ -5202,16 +5202,22 @@ function SetupScreen({ onStart }) {
 // (Mo–So) mit mind. einer Session, endend in dieser oder letzter Woche
 // (laufende Woche darf noch leer sein, ohne die Serie zu brechen).
 function trainingWeekStreak(sessions) {
-  const wk = (iso) => { const d = new Date(iso + 'T00:00:00'); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow); return d.toISOString().slice(0, 10); };
+  // Durchgängig UTC rechnen (sonst verschiebt toISOString den Wochen-Key doppelt).
+  const wk = (iso) => {
+    const d = new Date(iso + 'T00:00:00Z');
+    const dow = (d.getUTCDay() + 6) % 7; // Montag = 0
+    d.setUTCDate(d.getUTCDate() - dow);
+    return d.toISOString().slice(0, 10);
+  };
   const set = new Set((sessions || []).filter(s => s.date && (s.entries || []).length).map(s => wk(s.date)));
   if (set.size === 0) return 0;
   const curMon = wk(new Date().toISOString().slice(0, 10));
-  const cursor = new Date(curMon + 'T00:00:00');
-  if (!set.has(curMon)) cursor.setDate(cursor.getDate() - 7);
+  const cursor = new Date(curMon + 'T00:00:00Z');
+  if (!set.has(curMon)) cursor.setUTCDate(cursor.getUTCDate() - 7); // laufende Woche darf leer sein
   let n = 0;
   for (let i = 0; i < 520; i++) {
     const k = cursor.toISOString().slice(0, 10);
-    if (set.has(k)) { n++; cursor.setDate(cursor.getDate() - 7); } else break;
+    if (set.has(k)) { n++; cursor.setUTCDate(cursor.getUTCDate() - 7); } else break;
   }
   return n;
 }
