@@ -6660,6 +6660,52 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
   );
 }
 
+// Übungsnamen herleiten: Platzhalter-Namen ("Übung N") aus den EIGENEN benannten
+// Programmen ableiten. Sportler fahren meist dieselbe Kür → identische Punktfolge
+// = gleiche Übungen. Strategie: (1) exakter Punktfolgen-Match Position-für-Position,
+// (2) sonst eindeutiger Punktwert→Name über alle benannten Übungen.
+function deriveExerciseNames(programs) {
+  const isPlaceholder = (n) => !n || /^Übung\s*\d+$/.test(String(n).trim());
+  const named = (programs || []).filter(p => p.exercises && p.exercises.length);
+  // (1) Punktfolge benannter Programme → Übungsliste
+  const seqMap = new Map();
+  for (const p of named) {
+    if (!p.exercises.every(e => !isPlaceholder(e.name))) continue;
+    const key = p.exercises.map(e => Number(e.points || 0).toFixed(1)).join('|');
+    if (!seqMap.has(key)) seqMap.set(key, p.exercises);
+  }
+  // (2) Punktwert → eindeutiger Name+Code (über alle benannten Übungen)
+  const byPoints = new Map();
+  for (const p of named) for (const e of p.exercises) {
+    if (isPlaceholder(e.name)) continue;
+    const k = Number(e.points || 0).toFixed(1);
+    if (!byPoints.has(k)) byPoints.set(k, new Map());
+    byPoints.get(k).set(e.name + '||' + (e.code || ''), { name: e.name, code: e.code || null });
+  }
+  let fixed = 0;
+  const out = (programs || []).map(p => {
+    if (!p.exercises || !p.exercises.some(e => isPlaceholder(e.name))) return p;
+    const ref = seqMap.get(p.exercises.map(e => Number(e.points || 0).toFixed(1)).join('|'));
+    const exercises = p.exercises.map((e, i) => {
+      if (!isPlaceholder(e.name)) return e;
+      // (1) gleiche Punktfolge → exakte Position übernehmen
+      if (ref && ref[i] && !isPlaceholder(ref[i].name)
+          && Math.abs(Number(ref[i].points || 0) - Number(e.points || 0)) < 0.01) {
+        fixed++; return { ...e, name: ref[i].name, code: e.code || ref[i].code || null };
+      }
+      // (2) eindeutiger Punktwert
+      const cand = byPoints.get(Number(e.points || 0).toFixed(1));
+      if (cand && cand.size === 1) {
+        const v = [...cand.values()][0]; fixed++;
+        return { ...e, name: v.name, code: e.code || v.code || null };
+      }
+      return e;
+    });
+    return { ...p, exercises };
+  });
+  return { programs: out, fixed };
+}
+
 function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, dbAthleteCoaches, refreshAthletes, theme, setTheme, langPref, setLangPref, rulesLangPref, setRulesLangPref, setView, onOpenFeedback }) {
   const { t } = useI18n();
   const roleLabel = profile?.role === 'admin' ? t('role.admin') : profile?.role === 'coach' ? t('role.coach') : t('role.athlete');
@@ -6917,6 +6963,19 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
           <span className="flex items-center gap-3">
             <RefreshCw size={18} className="text-[#FF9500]" />
             <span className="text-[15px] font-medium">App-Cache leeren + neu laden</span>
+          </span>
+        </IOSListRow>
+        <IOSListRow
+          onClick={() => {
+            const { programs: fixedProgs, fixed } = deriveExerciseNames(data.programs || []);
+            if (fixed === 0) { alert('Keine herleitbaren Namen gefunden.\n\nTipp: Importiere zuerst bei EINEM Wettkampf das Wertungsbogen-PDF mit Namen — danach lassen sich gleiche Programme (identische Punktfolge) automatisch ergänzen.'); return; }
+            setData({ ...data, programs: fixedProgs });
+            alert(fixed + ' Übungsname(n) aus passenden Programmen ergänzt.');
+          }}
+          trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
+          <span className="flex items-center gap-3">
+            <Sparkles size={18} className="text-[#FF9500]" />
+            <span className="text-[15px] font-medium">Übungsnamen herleiten</span>
           </span>
         </IOSListRow>
         <div className="px-4 py-3 text-[11px] font-mono text-[#8E8E93] leading-relaxed space-y-0.5 break-all">
