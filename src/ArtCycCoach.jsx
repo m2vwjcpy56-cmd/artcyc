@@ -6782,6 +6782,23 @@ function TrainingsplanView({ data, setData, onBack }) {
     setData({ ...data, sessions: next });
   };
 
+  // Abhaken (nicht-verknüpfte Einträge): „erledigt heute" pro Eintrag, ohne in
+  // die Übungs-Statistik zu schreiben. Persistiert als Datumsliste im Eintrag.
+  const isDoneToday = (it) => (it.doneDates || []).includes(today);
+  const toggleDone = (itemId) => {
+    const p = plans.find(x => x.id === selectedId);
+    if (!p) return;
+    upsertPlan({
+      ...p,
+      items: p.items.map(it => it.id !== itemId ? it : {
+        ...it,
+        doneDates: (it.doneDates || []).includes(today)
+          ? (it.doneDates || []).filter(d => d !== today)
+          : [...(it.doneDates || []), today]
+      })
+    });
+  };
+
   return (
     <div className="min-h-screen bg-[#F2F2F7] p-4 sm:p-8">
       <div className="max-w-2xl mx-auto space-y-5">
@@ -6838,14 +6855,14 @@ function TrainingsplanView({ data, setData, onBack }) {
                       onChange={e => patchItem(it.id, { reps: e.target.value === '' ? null : Number(e.target.value) })}
                       className="w-16 px-2 py-1 border border-slate-300 rounded-lg text-[15px] text-right bg-white outline-none" />
                     <span className="flex-1" />
-                    <span className="text-[13px] text-slate-500">protokollieren</span>
+                    <span className="text-[13px] text-slate-500">Übung verknüpfen</span>
                     <IOSToggle checked={!!it.loggable} onChange={() => toggleLoggable(it)} />
                   </div>
                   {it.loggable && (
                     <div className="pl-7">
                       <select value={it.exerciseId || ''} onChange={e => patchItem(it.id, { exerciseId: e.target.value || null })}
                         className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-[14px] bg-white outline-none">
-                        <option value="">— Übung verknüpfen —</option>
+                        <option value="">— Übung aus Reglement wählen —</option>
                         {activeExercises.map(e => <option key={e.id} value={e.id}>{localizedExerciseName(e)}</option>)}
                       </select>
                     </div>
@@ -6912,6 +6929,15 @@ function TrainingsplanView({ data, setData, onBack }) {
                       )}
                       {it.loggable && !ex && (
                         <div className="text-[12px] text-amber-600 mt-1.5">Keine Übung verknüpft — unter „Bearbeiten" zuordnen.</div>
+                      )}
+                      {!it.loggable && (
+                        <button onClick={(ev) => { pressFeedback(ev, 'success'); toggleDone(it.id); }}
+                          className={'mt-2.5 w-full py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition ' +
+                            (isDoneToday(it)
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/10')}>
+                          <Check size={18} strokeWidth={2.6} /> {isDoneToday(it) ? 'Erledigt' : 'Abhaken'}
+                        </button>
                       )}
                     </div>
                   );
