@@ -12,6 +12,7 @@ import {
 import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
+import { STATUS } from './ui/tokens.js';
 import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud, fileToBase64 } from './lib/feedback.js';
 import { parseProgramFile } from './lib/programImport.js';
 import { loadUciExercisesFromDb, getRulesLanguage, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram } from './lib/uciRules.js';
@@ -5201,6 +5202,11 @@ function Dashboard({ data, setView, onOpenFeedback }) {
   const { t } = useI18n();
   // Saison-Filter
   const [season, setSeason] = useState('all'); // 'all' | '2026' | '2025' | '90d' | '30d'
+  // DashboardV2 (Vorschau): Trend-Toggles + Disclosure-Zustände
+  const [dashShowHit, setDashShowHit] = useState(false);
+  const [dashShowDanger, setDashShowDanger] = useState(false);
+  const [dashCompOpen, setDashCompOpen] = useState(false);
+  const [dashNeglectOpen, setDashNeglectOpen] = useState(false);
   const seasonRange = useMemo(() => {
     const today = new Date();
     if (season === 'all') return { from: null, to: null, label: 'Alle Zeit' };
@@ -5332,6 +5338,153 @@ function Dashboard({ data, setView, onOpenFeedback }) {
     }
     return list.sort((a, b) => b.days - a.days);
   }, [data.exercises, data.sessions]);
+
+  // Gesamt-Trainingserfolg der Saison (für DashboardV2-Hero/Trend) + 4-Wochen-Delta.
+  const overall = useMemo(() => {
+    const sessions = (data.sessions || []).filter(s => season === 'all' ? true : inRange(s.date));
+    let success = 0, third = 0, fail = 0, total = 0;
+    const monthly = new Map();
+    for (const s of sessions) {
+      const entries = s.entries || [];
+      if (entries.length && s.date) {
+        const k = s.date.slice(0, 7);
+        const b = monthly.get(k) || { label: k.slice(5, 7) + '.' + k.slice(2, 4), success: 0, third: 0, fail: 0, total: 0 };
+        for (const e of entries) { b.total++; total++; if (e === 'success') { b.success++; success++; } else if (e === 'third') { b.third++; third++; } else if (e === 'fail') { b.fail++; fail++; } }
+        monthly.set(k, b);
+      }
+    }
+    const comp = [...monthly.keys()].sort().map(k => monthly.get(k));
+    const all = data.sessions || [];
+    const now = Date.now();
+    const cut4 = new Date(now - 28 * 86400000).toISOString().slice(0, 10);
+    const cut8 = new Date(now - 56 * 86400000).toISOString().slice(0, 10);
+    const agg = (f) => { let s = 0, tt = 0; for (const x of all) { if (!f(x.date || '')) continue; for (const e of (x.entries || [])) { tt++; if (e === 'success') s++; } } return { s, t: tt }; };
+    const a = agg(d => d >= cut4), b = agg(d => d >= cut8 && d < cut4);
+    const r4 = a.t > 0 ? Math.round(a.s / a.t * 100) : null, rp = b.t > 0 ? Math.round(b.s / b.t * 100) : null;
+    const delta = (r4 != null && rp != null) ? r4 - rp : null;
+    return { rate: total > 0 ? Math.round(success / total * 100) : 0, totalSuccess: success, totalHit: third, totalDanger: fail, totalAttempts: total, comp, delta };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.sessions, season]);
+
+  const previewV2 = (() => { try { return localStorage.getItem('artcyc:exDetailPreview') === '1'; } catch { return false; } })();
+  const seasonPills = (
+    <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1" data-no-swipe="true">
+      {[{ id: 'all', label: 'Alle Zeit' }, ...availableYears.map(y => ({ id: y, label: y })), { id: '90d', label: '90 Tage' }, { id: '30d', label: '30 Tage' }].map(s => (
+        <button key={s.id} onClick={() => setSeason(s.id)}
+          className={'px-3.5 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition active:scale-95 ' +
+            (season === s.id ? 'bg-[#FF9500] text-white shadow-[0_1px_3px_rgba(255,149,0,0.35)]' : 'bg-white text-[#3C3C43] shadow-[0_1px_2px_rgba(0,0,0,0.04)]')}>
+          {s.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (previewV2) {
+    return (
+      <div className="space-y-6 pb-4">
+        <header className="pt-2 px-1">
+          <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('dashboard.title')}</h1>
+          <p className="text-[#8E8E93] text-[15px] mt-1">{t('dashboard.subtitle')}</p>
+        </header>
+        {seasonPills}
+
+        {/* HERO — dominantes Objekt: Saison-Erfolg (Trainings-Erfolgsquote) */}
+        {overall.totalAttempts > 0 ? (
+          <HeroKPI value={overall.rate} delta={overall.delta} eyebrow="Saison-Erfolg"
+            totalLine={`${overall.totalSuccess} / ${overall.totalAttempts} Versuche · ${seasonRange.label}`}
+            footerLeft={trainStats.lastSessionDate ? `Zuletzt ${formatDateShort(trainStats.lastSessionDate)}` : '—'}
+            footerRight={`${trainStats.distinctDays} Trainingstage`} />
+        ) : (
+          <EmptyState title="Noch keine Trainingsdaten in diesem Zeitraum." hint="Erfasse eine Session oder wähle einen größeren Zeitraum." />
+        )}
+
+        {/* TREND — darunter, nicht konkurrierend; gleiche Status-Semantik */}
+        {overall.comp.length >= 2 && (
+          <div className="card-surface rounded-[22px] p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Trend</h2>
+              <span className="text-[12px] text-slate-400 tabular-nums">Erfolgsquote · {seasonRange.label}</span>
+            </div>
+            <TrendChart comp={overall.comp} is3 showHit={dashShowHit} showDanger={dashShowDanger} />
+            <div className="flex items-center gap-2 flex-wrap">
+              <StatusLegendToggle active fixed color={STATUS.success} label="Geklappt" />
+              <StatusLegendToggle active={dashShowHit} onClick={() => setDashShowHit(v => !v)} color={STATUS.hit} label="Getroffen" />
+              <StatusLegendToggle active={dashShowDanger} onClick={() => setDashShowDanger(v => !v)} color={STATUS.danger} label="Gefährlich" />
+            </div>
+          </div>
+        )}
+
+        {/* QUICK INSIGHTS — 3 gleichrangig */}
+        <div className="grid grid-cols-3 gap-3">
+          <MetricCard label="Sessions" value={String(trainStats.totalSessions)} sub={trainStats.distinctDays + ' Tage'} />
+          <MetricCard label="Wettkämpfe" value={String(compStats.count)} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : '—'} />
+          <MetricCard label="Bestes" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub={compStats.best ? compStats.best.competition.name.slice(0, 14) : '—'} />
+        </div>
+
+        {/* WETTKAMPF-VERLAUF — sekundär, Disclosure (kein zweiter konkurrierender Trend) */}
+        {compStats.count >= 2 && (
+          <div className="card-surface rounded-[22px] p-4 space-y-2">
+            <DisclosureToggle open={dashCompOpen} onToggle={() => setDashCompOpen(v => !v)} labelOpen="Wettkampf-Verlauf ausblenden" labelClosed="Wettkampf-Verlauf anzeigen" />
+            {dashCompOpen && (
+              <CompetitionTrendChart competitions={(data.competitions || []).filter(c => season === 'all' ? true : inRange(c.date))} programs={data.programs || []} best={compStats.best} onTapWettkampf={() => setView('wettkampf')} />
+            )}
+          </div>
+        )}
+
+        {/* LANGE NICHT TRAINIERT — sekundär, nur als Disclosure */}
+        {neglected.length > 0 && (
+          <div className="card-surface rounded-[22px] p-4 space-y-2">
+            <DisclosureToggle open={dashNeglectOpen} onToggle={() => setDashNeglectOpen(v => !v)} labelOpen="Lange nicht trainiert ausblenden" labelClosed={`Lange nicht trainiert (${neglected.length})`} />
+            {dashNeglectOpen && (
+              <div className="-mx-1">
+                {neglected.slice(0, 6).map(({ ex, days }) => (
+                  <button key={ex.id} onClick={() => setView('erfassen')} className="w-full text-left px-3 py-2.5 flex items-center justify-between gap-3 border-b border-slate-100 last:border-0 active:opacity-60">
+                    <span className="text-[15px] font-medium truncate">{localizedExerciseName(ex)}</span>
+                    <span className="text-[13px] text-[#FF9500] font-semibold tabular-nums shrink-0">seit {days} Tagen</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PRO ÜBUNG — ruhige Liste statt dichter Karten */}
+        {perExercise.length > 0 && (
+          <section className="space-y-2">
+            <div className="px-4 text-[12px] uppercase tracking-wide text-slate-400 font-medium">Pro Übung</div>
+            <div className="card-surface rounded-[22px] overflow-hidden">
+              {perExercise.map((r, i) => (
+                <button key={r.ex.id} onClick={() => setView('uebungen')} className={'w-full text-left px-4 py-3 flex items-center justify-between gap-3 active:bg-slate-50 ' + (i > 0 ? 'border-t border-slate-100' : '')}>
+                  <span className="text-[15px] font-medium truncate">{localizedExerciseName(r.ex)}</span>
+                  <span className="flex items-center gap-3 shrink-0">
+                    <span className="text-[12px] text-slate-400 tabular-nums">{r.sessions}×</span>
+                    <span className={'text-[15px] font-semibold tabular-nums w-11 text-right ' + (r.rate >= 80 ? 'text-emerald-600' : r.rate >= 55 ? 'text-slate-700' : 'text-rose-600')}>{r.rate}%</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* PRIMÄRE AKTION — bewusst ans Ende, nicht in den KPI-Flow */}
+        <button onClick={() => setView('erfassen')} className="w-full bg-[#FF9500] text-white py-3 rounded-full font-semibold active:scale-95 transition flex items-center justify-center gap-1.5">
+          <Plus size={18} strokeWidth={2.5} /> {t('dashboard.logSession')}
+        </button>
+
+        {onOpenFeedback && (
+          <button onClick={onOpenFeedback} className="w-full card-surface rounded-[22px] p-4 flex items-center gap-3 active:scale-[0.98] transition text-left">
+            <div className="w-11 h-11 rounded-full bg-[#007AFF]/15 flex items-center justify-center shrink-0"><MessageCircle size={20} className="text-[#007AFF]" /></div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[15px] font-semibold text-[#007AFF]">{t('feedback.title')}</div>
+              <div className="text-[13px] text-slate-500 leading-snug">{t('feedback.subtitle')}</div>
+            </div>
+            <ChevronRight size={18} strokeWidth={2.4} className="text-[#007AFF]/60 shrink-0" />
+          </button>
+        )}
+        <div className="h-2" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
