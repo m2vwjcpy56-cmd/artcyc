@@ -5310,6 +5310,27 @@ function Dashboard({ data, setView, onOpenFeedback }) {
     }).filter(r => r.total > 0);
   }, [data]);
 
+  // Vernachlässigte Übungen: aktive Übungen, die früher trainiert wurden, aber
+  // seit >= 14 Tagen nicht mehr. Unabhängig vom Saison-Filter (aktueller Stand).
+  const neglected = useMemo(() => {
+    const THRESHOLD = 14;
+    const now = Date.now();
+    const lastByEx = new Map();
+    for (const s of (data.sessions || [])) {
+      if (!s.exerciseId || !s.date) continue;
+      const prev = lastByEx.get(s.exerciseId);
+      if (!prev || s.date > prev) lastByEx.set(s.exerciseId, s.date);
+    }
+    const list = [];
+    for (const ex of data.exercises.filter(e => e.active)) {
+      const last = lastByEx.get(ex.id);
+      if (!last) continue; // nie trainiert → nicht „vernachlässigt"
+      const days = Math.floor((now - new Date(last).getTime()) / 86400000);
+      if (days >= THRESHOLD) list.push({ ex, days });
+    }
+    return list.sort((a, b) => b.days - a.days);
+  }, [data.exercises, data.sessions]);
+
   return (
     <div className="space-y-6">
       <header className="pt-2 px-1">
@@ -5385,6 +5406,23 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           <div className="text-[13px] text-[#8E8E93]">{t('dashboard.uciExercises', { n: getUciDb().length })}</div>
         </button>
       </div>
+
+      {/* Lange nicht trainiert — Erinnerung (Idee: Theresa) */}
+      {neglected.length > 0 && (
+        <section className="space-y-2">
+          <div className="px-4 text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">Lange nicht trainiert</div>
+          <div className="bg-white dark:bg-white/5 rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
+            {neglected.slice(0, 5).map(({ ex, days }) => (
+              <button key={ex.id} onClick={() => setView('erfassen')}
+                className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-white/10 last:border-0 active:bg-slate-50 dark:active:bg-white/10 transition">
+                <span className="text-[15px] font-medium truncate">{localizedExerciseName(ex)}</span>
+                <span className="text-[13px] text-[#FF9500] font-semibold tabular-nums shrink-0">seit {days} Tagen</span>
+              </button>
+            ))}
+          </div>
+          <div className="px-4 text-[12px] text-[#8E8E93]">Diese Übungen waren länger nicht dran — Zeit, sie wieder einzubauen. 💪</div>
+        </section>
+      )}
 
       {/* Wettkampf-Verlauf */}
       {compStats.count >= 2 && (
