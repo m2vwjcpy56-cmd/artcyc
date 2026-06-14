@@ -4422,7 +4422,7 @@ export default function App() {
         || (dbAthleteCoaches || []).some(ac => ac.athlete_id === a.id && ac.coach_id === session?.user?.id);
       if (isManaged) { list.push(a); seen.add(a.id); }
     });
-    if (profile?.role === 'admin') {
+    if (profile?.role === 'admin' || isAppOwner(session)) {
       dbAthletes.forEach(a => { if (!seen.has(a.id)) { list.push(a); seen.add(a.id); } });
     }
     return list;
@@ -10632,30 +10632,16 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           </div>
 
           {!importPreview && (
-            <div className="grid grid-cols-2 gap-2">
-              <label className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
+            <div className="space-y-2">
+              <label className="w-full bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
                 <FileText size={14} /> {t('pdfImport.choosePdf')}
                 <input type="file" accept="application/pdf"
                   onChange={e => handlePdfImport(e.target.files && e.target.files[0])}
                   className="hidden" />
               </label>
-              <button onClick={() => setShowPasteArea(!showPasteArea)}
-                className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center">
-                <Edit2 size={14} /> {showPasteArea ? t('pdfImport.closePaste') : t('pdfImport.pasteText')}
-              </button>
-            </div>
-          )}
-
-          {showPasteArea && !importPreview && (
-            <div className="space-y-2">
-              <textarea value={pasteText} onChange={e => setPasteText(e.target.value)}
-                placeholder={t('pdfImport.pastePlaceholder')}
-                rows={4}
-                className="w-full text-xs px-3 py-2 bg-white dark:bg-white/10 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 font-mono" />
-              <button onClick={handlePasteImport} disabled={!pasteText.trim()}
-                className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50">
-                {t('pdfImport.evaluateText')}
-              </button>
+              <p className="text-[11px] text-violet-900/70 dark:text-violet-200/70 leading-snug px-0.5">
+                📄 Kein digitales PDF? Mit der <strong>Dateien</strong>-App „Dokumente scannen" → als PDF sichern → hier auswählen. Gescannte PDFs enthalten durchsuchbaren Text und werden erkannt.
+              </p>
             </div>
           )}
 
