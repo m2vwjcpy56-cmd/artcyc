@@ -5444,7 +5444,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           <MetricCard accent="emerald" icon={Activity} label="Aktuelle Serie" value={streak > 0 ? streak + (streak === 1 ? ' Woche' : ' Wochen') : '—'} sub={streak > 0 ? 'in Folge' : 'keine aktive Serie'} />
           {/* Wettkampf-Paar bewusst nebeneinander (gleiche Bedeutung) */}
           <MetricCard accent="violet" icon={Calendar} label="Letzter Wettkampf" value={compStats.last ? compStats.last.final.toFixed(2) : '—'} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : (compStats.count + ' gesamt')} />
-          <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub={compStats.best ? compStats.best.competition.name.slice(0, 16) : '—'} />
+          <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub={compStats.best ? compStats.best.competition.name : '—'} subLines={2} />
         </div>
 
         {/* TRENDS — Wettkampf-Verlauf + „Übung im Fokus" (eine konkrete Übung) */}
@@ -10835,8 +10835,8 @@ function WettkampfView({ data, setData, dbAthletes }) {
         ) : (<>
           {/* OVERVIEW — getönte Karten */}
           <div className="grid grid-cols-2 gap-3">
-            <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={stats.best ? stats.best.final.toFixed(2) : '—'} sub={stats.best ? stats.best.c.name.slice(0, 16) : '—'} />
-            <MetricCard accent="violet" icon={TrendingUp} label="Geringster Abzug" value={stats.minDed ? stats.minDed.ded.toFixed(2) : '—'} sub={stats.minDed ? stats.minDed.c.name.slice(0, 16) : '—'} />
+            <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={stats.best ? stats.best.final.toFixed(2) : '—'} sub={stats.best ? stats.best.c.name : '—'} subLines={2} />
+            <MetricCard accent="violet" icon={TrendingUp} label="Geringster Abzug" value={stats.minDed ? stats.minDed.ded.toFixed(2) : '—'} sub={stats.minDed ? stats.minDed.c.name : '—'} subLines={2} />
             <MetricCard accent="sky" icon={Target} label="Wettkämpfe" value={String(competitions.length)} sub={stats.last ? formatDateShort(stats.last.c.date) : '—'} />
             <MetricCard accent="emerald" icon={Calendar} label={String(currentYear)} value={String(thisYearCount)} sub={thisYearCount === 1 ? 'Wettkampf' : 'Wettkämpfe'} />
           </div>
