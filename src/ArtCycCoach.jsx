@@ -7,7 +7,7 @@ import {
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
-  Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX
+  Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera
 } from 'lucide-react';
 import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
@@ -2189,6 +2189,22 @@ const uid = () => {
 // =============================================================
 // PDF-Loading Helper (klassisches Script-Tag von cdnjs)
 // =============================================================
+// OCR-Loading Helper (Tesseract.js via CDN, analog zu pdf.js).
+// Wird nur bei Bedarf (Scan-Funktion) geladen.
+let _tesseractPromise = null;
+function loadTesseract() {
+  if (typeof window === 'undefined') return Promise.reject(new Error('Kein Browser'));
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (_tesseractPromise) return _tesseractPromise;
+  _tesseractPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+    s.onload = () => window.Tesseract ? resolve(window.Tesseract) : reject(new Error('OCR konnte nicht initialisiert werden'));
+    s.onerror = () => { _tesseractPromise = null; reject(new Error('OCR-Bibliothek konnte nicht geladen werden')); };
+    document.head.appendChild(s);
+  });
+  return _tesseractPromise;
+}
 let _pdfJsPromise = null;
 function loadPdfJs() {
   if (typeof window === 'undefined') return Promise.reject(new Error('Kein Browser'));
@@ -10453,6 +10469,35 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     }
   };
 
+  // Scan via Kamera → OCR (Tesseract) → Text-Parser. Liefert v. a. Stammdaten +
+  // Endergebnis; pro-Übung-Werte (positions-basiert) bleiben manuell. Beta.
+  const handleScanImport = async (files) => {
+    const list = Array.from(files || []);
+    if (list.length === 0) return;
+    setImportStatus('parsing');
+    setImportMsg('OCR-Bibliothek laden …');
+    try {
+      const Tesseract = await loadTesseract();
+      let fullText = '';
+      for (let i = 0; i < list.length; i++) {
+        setImportMsg('Texterkennung Seite ' + (i + 1) + '/' + list.length + ' …');
+        const { data } = await Tesseract.recognize(list[i], 'deu');
+        fullText += '\n' + ((data && data.text) || '');
+      }
+      setImportMsg('Analysiere Wertungsbericht …');
+      const parsed = parseWertungsbericht(fullText);
+      if (parsed.errors && parsed.errors.length > 0) {
+        throw new Error(parsed.errors.join(', '));
+      }
+      setImportPreview(parsed);
+      setImportStatus('success');
+      setImportMsg('Scan erkannt — bitte Werte prüfen');
+    } catch (err) {
+      setImportStatus('error');
+      setImportMsg('Scan fehlgeschlagen: ' + (err.message || 'unbekannt') + '. Tipp: in der Dateien-App scannen → als PDF sichern → „PDF auswählen".');
+    }
+  };
+
   const handlePasteImport = () => {
     if (!pasteText.trim()) return;
     try {
@@ -10633,14 +10678,22 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
 
           {!importPreview && (
             <div className="space-y-2">
-              <label className="w-full bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
-                <FileText size={14} /> {t('pdfImport.choosePdf')}
-                <input type="file" accept="application/pdf"
-                  onChange={e => handlePdfImport(e.target.files && e.target.files[0])}
-                  className="hidden" />
-              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
+                  <FileText size={14} /> {t('pdfImport.choosePdf')}
+                  <input type="file" accept="application/pdf"
+                    onChange={e => handlePdfImport(e.target.files && e.target.files[0])}
+                    className="hidden" />
+                </label>
+                <label className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
+                  <Camera size={14} /> Scannen
+                  <input type="file" accept="image/*" capture="environment"
+                    onChange={e => handleScanImport(e.target.files)}
+                    className="hidden" />
+                </label>
+              </div>
               <p className="text-[11px] text-violet-900/70 dark:text-violet-200/70 leading-snug px-0.5">
-                📄 Kein digitales PDF? Mit der <strong>Dateien</strong>-App „Dokumente scannen" → als PDF sichern → hier auswählen. Gescannte PDFs enthalten durchsuchbaren Text und werden erkannt.
+                📄 <strong>PDF auswählen</strong> = genauestes Ergebnis (auch ein in der Dateien-App gescanntes PDF). 📷 <strong>Scannen</strong> fotografiert den Bogen und liest ihn per Texterkennung — Stammdaten/Endergebnis werden gefüllt, einzelne Abzüge bitte prüfen <em>(Beta)</em>.
               </p>
             </div>
           )}
