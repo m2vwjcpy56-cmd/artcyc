@@ -7919,46 +7919,75 @@ function ExerciseDetailV2({ exercise, data, onBack, onEdit, onArchive, onDelete 
   const is3 = exercise.category_mode === 3;
   const [period, setPeriod] = useState(() => { try { return localStorage.getItem('artcyc:exDetailPeriod') || '6m'; } catch { return '6m'; } });
   const changePeriod = (v) => { setPeriod(v); try { localStorage.setItem('artcyc:exDetailPeriod', v); } catch { /* ignore */ } };
+  const [mode, setMode] = useState('all'); // all | rope | noRope — steuert den GESAMTEN Screen
+  const [kpiVariant, setKpiVariant] = useState(() => { try { return localStorage.getItem('artcyc:exDetailKpi') || 'number'; } catch { return 'number'; } });
+  const changeKpi = (v) => { setKpiVariant(v); try { localStorage.setItem('artcyc:exDetailKpi', v); } catch { /* ignore */ } };
+  const [showHit, setShowHit] = useState(false);
   const [showDanger, setShowDanger] = useState(false);
   const [showComp, setShowComp] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
-  const vm = buildExerciseScreenModel(exercise, data, null, period);
-  const hasTraining = vm.totalAttempts > 0;
+  // STATE CONTRACT — selectedMode (all|rope|noRope) leitet ALLE Werte ab:
+  // KPIs, Trend-Serien, Breakdown und letzte Sessions kommen aus EINEM vm.
+  const ropeFilter = mode === 'rope' ? true : mode === 'noRope' ? false : null;
+  const vm = buildExerciseScreenModel(exercise, data, ropeFilter, period);
+
+  // Verbindliche Status-Farbsemantik (app-weit identisch zu KPI-Karten/Labels).
+  const STATUS = { success: '#34C759', hit: '#FF9F0A', danger: '#FF453A' };
+
+  // Datenpräsenz je Modus — für Filter-Badges + saubere Empty-States.
+  const allStats = calcExerciseTrainingStats(exercise, data.sessions || [], null);
+  const modeCounts = {
+    all: allStats.sessions,
+    rope: calcExerciseTrainingStats(exercise, data.sessions || [], true).sessions,
+    noRope: calcExerciseTrainingStats(exercise, data.sessions || [], false).sessions,
+  };
+  const hasAnyData = modeCounts.all > 0;
+
   const periodTabs = [['4w', '4 Wochen'], ['3m', '3 Monate'], ['6m', '6 Monate'], ['total', 'Gesamt']];
   const periodLabel = (periodTabs.find(p => p[0] === period) || ['', 'Gesamt'])[1];
+  const modeLabel = mode === 'rope' ? ' (mit Seil)' : mode === 'noRope' ? ' (ohne Seil)' : '';
 
   const rate = vm.successRateCurrent || 0;
   const delta = vm.successDelta;
   const R = 56, C = 2 * Math.PI * R;
   const ringOffset = C * (1 - rate / 100);
-
-  const trendPts = vm.successTrendSeries.filter(s => s.total > 0);
-  const dangerPts = (vm.dangerTrendSeries || []).filter((s, i) => vm.successTrendSeries[i] && vm.successTrendSeries[i].total > 0);
   const focus = (vm.nextFocusInsight || []).slice(0, 2);
 
-  // Mini-Chart (Quote-Linie). 0..100 → SVG. Eine Aussage, ruhig.
-  const Chart = ({ pts, danger }) => {
-    if (pts.length < 2) return <div className="text-[13px] text-slate-400 py-6 text-center">Zu wenig Daten für diesen Zeitraum.</div>;
-    const W = 320, H = 96, P = 6;
-    const xs = (i) => P + (i * (W - 2 * P)) / (pts.length - 1);
-    const ys = (v) => H - P - ((v || 0) / 100) * (H - 2 * P);
-    const line = (arr, key) => arr.map((s, i) => `${i === 0 ? 'M' : 'L'}${xs(i).toFixed(1)},${ys(s[key]).toFixed(1)}`).join(' ');
-    const area = `${line(pts, 'rate')} L${xs(pts.length - 1).toFixed(1)},${H - P} L${xs(0).toFixed(1)},${H - P} Z`;
+  // Trend: drei konsistente Status-Linien aus compositionSeries (Quote je Bucket).
+  // Geklappt = grüne Primärlinie; Getroffen/Gefährlich sekundär zuschaltbar.
+  const comp = (vm.compositionSeries || []).filter(b => b.total > 0);
+  const Chart = () => {
+    if (comp.length < 2) return <div className="text-[13px] text-slate-400 py-6 text-center">Zu wenig Daten für diesen Zeitraum.</div>;
+    const W = 320, H = 110, P = 8;
+    const xs = (i) => P + (i * (W - 2 * P)) / (comp.length - 1);
+    const ys = (v) => H - P - (v / 100) * (H - 2 * P);
+    const r = (b, key) => b.total > 0 ? (b[key] / b.total) * 100 : 0;
+    const line = (key) => comp.map((b, i) => `${i ? 'L' : 'M'}${xs(i).toFixed(1)},${ys(r(b, key)).toFixed(1)}`).join(' ');
+    const area = `${line('success')} L${xs(comp.length - 1).toFixed(1)},${H - P} L${xs(0).toFixed(1)},${H - P} Z`;
     return (
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
         <defs><linearGradient id="v2grad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#34C759" stopOpacity="0.22" /><stop offset="100%" stopColor="#34C759" stopOpacity="0" />
+          <stop offset="0%" stopColor={STATUS.success} stopOpacity="0.20" /><stop offset="100%" stopColor={STATUS.success} stopOpacity="0" />
         </linearGradient></defs>
-        <line x1={P} y1={ys(80)} x2={W - P} y2={ys(80)} stroke="currentColor" strokeOpacity="0.12" strokeDasharray="3 4" className="text-slate-400" />
+        <line x1={P} y1={ys(80)} x2={W - P} y2={ys(80)} stroke="currentColor" strokeOpacity="0.14" strokeDasharray="3 4" className="text-slate-400" />
         <path d={area} fill="url(#v2grad)" />
-        <path d={line(pts, 'rate')} fill="none" stroke="#34C759" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        {danger && is3 && <path d={line(dangerPts, 'rate')} fill="none" stroke="#FF453A" strokeWidth="1.6" strokeOpacity="0.7" strokeDasharray="2 3" />}
-        {pts.map((s, i) => <circle key={i} cx={xs(i)} cy={ys(s.rate)} r="2.4" fill="#34C759" />)}
+        {showHit && is3 && <path d={line('third')} fill="none" stroke={STATUS.hit} strokeWidth="1.8" strokeOpacity="0.9" strokeLinecap="round" strokeLinejoin="round" />}
+        {showDanger && <path d={line('fail')} fill="none" stroke={STATUS.danger} strokeWidth="1.8" strokeOpacity="0.9" strokeDasharray="2 3" strokeLinecap="round" strokeLinejoin="round" />}
+        <path d={line('success')} fill="none" stroke={STATUS.success} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+        {comp.map((b, i) => <circle key={i} cx={xs(i)} cy={ys(r(b, 'success'))} r="2.4" fill={STATUS.success} />)}
       </svg>
     );
   };
+  const LegendToggle = ({ active, onClick, color, label, fixed }) => (
+    <button onClick={fixed ? undefined : onClick} disabled={fixed}
+      className={'inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1 rounded-full transition ' +
+        (active ? 'bg-slate-100 text-slate-700' : 'bg-slate-100/50 text-slate-400 active:opacity-60')}>
+      <span className="w-2.5 h-2.5 rounded-full" style={{ background: color, opacity: active ? 1 : 0.35 }} />
+      {label}
+    </button>
+  );
 
   return (
     <div className="min-h-screen bg-[#F2F2F7]">
@@ -7977,7 +8006,7 @@ function ExerciseDetailV2({ exercise, data, onBack, onEdit, onArchive, onDelete 
           </div>
         </header>
 
-        {!hasTraining ? (
+        {!hasAnyData ? (
           <div className="card-surface rounded-[22px] p-8 text-center text-[15px] text-slate-400">Noch keine Trainingsdaten erfasst.</div>
         ) : (<>
           {/* Zeitraum (scope für alles) */}
@@ -7988,38 +8017,82 @@ function ExerciseDetailV2({ exercise, data, onBack, onEdit, onArchive, onDelete 
             ))}
           </div>
 
+          {/* Modus-Filter — steuert den GESAMTEN Screen (nur bei Seil-Variante) */}
+          {exercise.has_rope_variant && (
+            <div className="bg-[#E5E5EA] rounded-[13px] p-1 flex gap-1 text-[13px] font-medium">
+              {[['all', t('training.range.all')], ['rope', t('log.withRope')], ['noRope', 'Ohne Seil']].map(([val, label]) => (
+                <button key={val} onClick={() => setMode(val)}
+                  className={'flex-1 px-2 py-1.5 rounded-[10px] transition ' + (mode === val ? 'ios-seg-active' : 'text-slate-500 active:opacity-60')}>
+                  {label}<span className="ml-1 opacity-50 tabular-nums">{modeCounts[val]}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {!vm.periodHasData ? (
             <div className="card-surface rounded-[22px] p-8 text-center">
-              <div className="text-[15px] text-slate-400">Keine Daten in den letzten {periodLabel}.</div>
+              <div className="text-[15px] text-slate-400">Keine Daten{modeLabel} in den letzten {periodLabel}.</div>
+              <div className="text-[13px] text-slate-400 mt-1">Zeitraum{exercise.has_rope_variant ? ' oder Modus' : ''} oben anpassen.</div>
             </div>
           ) : (<>
-            {/* 02 — HERO: eine dominante KPI mit Ring */}
-            <div className="card-surface rounded-[26px] p-6 flex items-center gap-6">
-              <div className="relative shrink-0" style={{ width: 140, height: 140 }}>
-                <svg viewBox="0 0 140 140" className="w-full h-full -rotate-90">
-                  <circle cx="70" cy="70" r={R} fill="none" stroke="currentColor" strokeOpacity="0.10" strokeWidth="11" className="text-slate-400" />
-                  <circle cx="70" cy="70" r={R} fill="none" stroke="#34C759" strokeWidth="11" strokeLinecap="round"
-                    strokeDasharray={C} strokeDashoffset={ringOffset} style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-[40px] leading-none font-bold tracking-tight text-slate-900 tabular-nums">{rate}</span>
-                  <span className="text-[13px] font-semibold text-slate-400 -mt-0.5">%</span>
-                </div>
-              </div>
-              <div className="min-w-0 flex-1">
+            {/* 02 — HERO: eine dominante KPI (A/B: Zahl oder Ring; Zahl bleibt primär) */}
+            <div className="card-surface rounded-[26px] p-6">
+              <div className="flex items-center justify-between gap-2">
                 <div className="text-[12px] font-semibold uppercase tracking-wider text-emerald-600">Erfolgsquote</div>
-                <div className="text-[15px] text-slate-500 tabular-nums mt-1">{vm.totalSuccess} / {vm.totalAttempts} Versuche</div>
-                {delta != null && (
-                  <div className={'inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-1 rounded-full tabular-nums mt-2 ' +
-                    (delta > 0 ? 'bg-emerald-50 text-emerald-700' : delta < 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500')}>
-                    {delta > 0 ? '↑' : delta < 0 ? '↓' : '·'} {Math.abs(delta)} % · 4 Wochen
-                  </div>
-                )}
-                <div className="mt-3 pt-3 border-t border-slate-100 text-[13px] flex items-center justify-between gap-2">
-                  <span className="text-slate-500 truncate">Zuletzt {formatDateShort(vm.lastSessionDate)}</span>
-                  <span className="font-medium text-slate-700 tabular-nums shrink-0">{vm.lastSessionRate} % · {vm.lastSessionFraction}</span>
+                <div className="flex gap-0.5 bg-[#E5E5EA] rounded-full p-0.5 text-[11px] font-medium">
+                  {[['number', 'Zahl'], ['ring', 'Ring']].map(([v, l]) => (
+                    <button key={v} onClick={() => changeKpi(v)}
+                      className={'px-2.5 py-1 rounded-full transition ' + (kpiVariant === v ? 'ios-seg-active' : 'text-slate-500 active:opacity-60')}>{l}</button>
+                  ))}
                 </div>
               </div>
+
+              {kpiVariant === 'ring' ? (
+                <div className="flex items-center gap-6 mt-3">
+                  <div className="relative shrink-0" style={{ width: 128, height: 128 }}>
+                    <svg viewBox="0 0 128 128" className="w-full h-full -rotate-90">
+                      <circle cx="64" cy="64" r={R} fill="none" stroke="currentColor" strokeOpacity="0.10" strokeWidth="8" className="text-slate-400" />
+                      <circle cx="64" cy="64" r={R} fill="none" stroke={STATUS.success} strokeOpacity="0.85" strokeWidth="8" strokeLinecap="round"
+                        strokeDasharray={C} strokeDashoffset={ringOffset} style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-[42px] leading-none font-bold tracking-tight text-slate-900 tabular-nums">{rate}</span>
+                      <span className="text-[12px] font-semibold text-slate-400">%</span>
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[15px] text-slate-500 tabular-nums">{vm.totalSuccess} / {vm.totalAttempts} Versuche</div>
+                    {delta != null && (
+                      <div className={'inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-1 rounded-full tabular-nums mt-2 ' +
+                        (delta > 0 ? 'bg-emerald-50 text-emerald-700' : delta < 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500')}>
+                        {delta > 0 ? '↑' : delta < 0 ? '↓' : '·'} {Math.abs(delta)} % · 4 Wochen
+                      </div>
+                    )}
+                    <div className="mt-3 pt-3 border-t border-slate-100 text-[13px] flex items-center justify-between gap-2">
+                      <span className="text-slate-500 truncate">Zuletzt {formatDateShort(vm.lastSessionDate)}</span>
+                      <span className="font-medium text-slate-700 tabular-nums shrink-0">{vm.lastSessionRate} %</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-end gap-1 mt-1">
+                    <span className="text-[72px] leading-[0.82] font-bold tracking-tight text-slate-900 tabular-nums">{rate}</span>
+                    <span className="text-[30px] font-bold text-slate-400 mb-1.5">%</span>
+                    {delta != null && (
+                      <span className={'ml-auto inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-1 rounded-full tabular-nums mb-2 ' +
+                        (delta > 0 ? 'bg-emerald-50 text-emerald-700' : delta < 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500')}>
+                        {delta > 0 ? '↑' : delta < 0 ? '↓' : '·'} {Math.abs(delta)} %
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1.5 text-[15px] text-slate-500 tabular-nums">{vm.totalSuccess} / {vm.totalAttempts} Versuche · {periodLabel}</div>
+                  <div className="mt-3 pt-3 border-t border-slate-100 text-[13px] flex items-center justify-between gap-2">
+                    <span className="text-slate-500 truncate">Zuletzt {formatDateShort(vm.lastSessionDate)}</span>
+                    <span className="font-medium text-slate-700 tabular-nums shrink-0">{vm.lastSessionRate} % · {vm.lastSessionFraction}</span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* 03 — QUICK INSIGHTS (3 gleichrangig) */}
@@ -8058,31 +8131,38 @@ function ExerciseDetailV2({ exercise, data, onBack, onEdit, onArchive, onDelete 
               </div>
             </div>
 
-            {/* 05 — TREND (1 Chart default) */}
+            {/* 05 — TREND — Status-Semantik: Geklappt grün (primär), Getroffen amber, Gefährlich rot (sekundär, zuschaltbar) */}
             <div className="card-surface rounded-[22px] p-4 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Trend</h2>
-                {is3 && (
-                  <button onClick={() => setShowDanger(v => !v)}
-                    className={'text-[12px] font-medium px-2.5 py-1 rounded-full transition active:opacity-60 ' + (showDanger ? 'bg-rose-50 text-rose-600' : 'bg-slate-100 text-slate-500')}>
-                    Gefährlich {showDanger ? 'an' : 'aus'}
-                  </button>
-                )}
+                <span className="text-[12px] text-slate-400 tabular-nums">{periodLabel}{modeLabel}</span>
               </div>
-              <Chart pts={trendPts} danger={showDanger} />
+              <Chart />
+              <div className="flex items-center gap-2 flex-wrap">
+                <LegendToggle active fixed color={STATUS.success} label={statusLabel(exercise, 'success')} />
+                {is3 && <LegendToggle active={showHit} onClick={() => setShowHit(v => !v)} color={STATUS.hit} label={statusLabel(exercise, 'third')} />}
+                <LegendToggle active={showDanger} onClick={() => setShowDanger(v => !v)} color={STATUS.danger} label={statusLabel(exercise, 'fail')} />
+              </div>
               <button onClick={() => setShowComp(v => !v)}
                 className="w-full text-[13px] font-medium text-[#007AFF] active:opacity-60 pt-1 flex items-center justify-center gap-1">
                 {showComp ? 'Verteilung ausblenden' : 'Verteilung anzeigen'}
                 <ChevronRight size={15} strokeWidth={2.4} className={'transition-transform ' + (showComp ? 'rotate-90' : '')} />
               </button>
-              {showComp && vm.compositionSeries.length > 0 && (
-                <svg viewBox="0 0 320 90" className="w-full" preserveAspectRatio="none">
-                  {(() => { const BW = 320, BH = 90, BP = 8; const bw = (BW - 2 * BP) / vm.compositionSeries.length; const inner = BH - 2 * BP;
-                    return vm.compositionSeries.map((m, i) => { const x = BP + i * bw, w = Math.max(1, bw - 2);
-                      const sH = m.total ? (m.success / m.total) * inner : 0, tH = m.total ? (m.third / m.total) * inner : 0, fH = m.total ? (m.fail / m.total) * inner : 0;
-                      return (<g key={i}><rect x={x} y={BP} width={w} height={sH} fill="#34C759" /><rect x={x} y={BP + sH} width={w} height={tH} fill="#FF9F0A" /><rect x={x} y={BP + sH + tH} width={w} height={fH} fill="#FF453A" /></g>); });
-                  })()}
-                </svg>
+              {showComp && comp.length > 0 && (
+                <div className="space-y-2">
+                  <svg viewBox="0 0 320 90" className="w-full" preserveAspectRatio="none">
+                    {(() => { const BW = 320, BH = 90, BP = 8; const bw = (BW - 2 * BP) / comp.length; const inner = BH - 2 * BP;
+                      return comp.map((m, i) => { const x = BP + i * bw, w = Math.max(1, bw - 2);
+                        const sH = m.total ? (m.success / m.total) * inner : 0, tH = m.total ? (m.third / m.total) * inner : 0, fH = m.total ? (m.fail / m.total) * inner : 0;
+                        return (<g key={i}><rect x={x} y={BP} width={w} height={sH} fill={STATUS.success} /><rect x={x} y={BP + sH} width={w} height={tH} fill={STATUS.hit} /><rect x={x} y={BP + sH + tH} width={w} height={fH} fill={STATUS.danger} /></g>); });
+                    })()}
+                  </svg>
+                  <div className="flex items-center gap-3 text-[11px] text-slate-500 flex-wrap">
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: STATUS.success }} />{statusLabel(exercise, 'success')}</span>
+                    {is3 && <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: STATUS.hit }} />{statusLabel(exercise, 'third')}</span>}
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: STATUS.danger }} />{statusLabel(exercise, 'fail')}</span>
+                  </div>
+                </div>
               )}
             </div>
 
