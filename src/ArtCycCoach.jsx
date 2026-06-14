@@ -10781,6 +10781,69 @@ function WettkampfView({ data, setData, dbAthletes }) {
   }, {});
   const years = Object.keys(byYear).sort((a, b) => b.localeCompare(a));
 
+  const previewV2 = (() => { try { return localStorage.getItem('artcyc:exDetailPreview') === '1'; } catch { return false; } })();
+  if (previewV2) {
+    const compRow = ({ c, final }) => {
+      const athlete = athletes.find(a => a.id === c.athlete_id);
+      return (
+        <IOSListRow key={c.id} onClick={() => setViewId(c.id)}
+          trailing={<div className="flex items-center gap-2 shrink-0">{final !== null && <div className="text-right"><div className="text-[14px] font-bold text-[#FF9500] leading-none tabular-nums">{final.toFixed(2)}</div><div className="text-[10px] text-[#8E8E93] uppercase tracking-wide font-medium mt-0.5">Pkt</div></div>}<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" /></div>}>
+          <div className="font-medium text-[15px] truncate">{c.name}</div>
+          <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">{formatDateShort(c.date)}{c.location ? ' · ' + c.location : ''}{athlete ? ' · ' + athlete.name : ''}</div>
+        </IOSListRow>
+      );
+    };
+    return (
+      <div className="space-y-5 pb-2">
+        <SegmentedControl value={tab} onChange={setTab} options={[['wettkaempfe', t('competition.competitions')], ['programme', t('competition.programs')]]} />
+        <header className="flex items-end justify-between gap-3 pt-1 px-1">
+          <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('competition.title')}</h1>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={() => setShowBulkImport(true)} title="Mehrere PDFs importieren"
+              className="w-9 h-9 rounded-full card-surface text-slate-600 dark:text-slate-300 flex items-center justify-center active:scale-95 transition"><FileText size={16} strokeWidth={2.2} /></button>
+            <button onClick={() => setShowNew(true)}
+              className="px-3.5 py-2 rounded-full bg-[#FF9500] text-white text-[14px] font-semibold flex items-center gap-1 active:scale-95 transition"><Plus size={15} strokeWidth={2.6} /> {t('common.new')}</button>
+          </div>
+        </header>
+
+        {showBulkImport && (
+          <BulkImportModal data={data} athletes={athletes} onClose={() => setShowBulkImport(false)}
+            onApply={({ newComps, newProgs, newExes }) => {
+              setData({ ...data, programs: [...(data.programs || []), ...newProgs], exercises: [...(data.exercises || []), ...newExes], competitions: [...(data.competitions || []), ...newComps] });
+              setShowBulkImport(false);
+            }} />
+        )}
+
+        {competitions.length === 0 ? (
+          <EmptyState title="Noch keine Wettkämpfe" hint="Erfasse deinen ersten Wertungsbogen über Neu." />
+        ) : (<>
+          {/* OVERVIEW — getönte Karten */}
+          <div className="grid grid-cols-2 gap-3">
+            <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={stats.best ? stats.best.final.toFixed(2) : '—'} sub={stats.best ? stats.best.c.name.slice(0, 16) : '—'} />
+            <MetricCard accent="violet" icon={TrendingUp} label="Geringster Abzug" value={stats.minDed ? stats.minDed.ded.toFixed(2) : '—'} sub={stats.minDed ? stats.minDed.c.name.slice(0, 16) : '—'} />
+            <MetricCard accent="sky" icon={Target} label="Wettkämpfe" value={String(competitions.length)} sub={stats.last ? formatDateShort(stats.last.c.date) : '—'} />
+            <MetricCard accent="emerald" icon={Calendar} label={String(currentYear)} value={String(thisYearCount)} sub={thisYearCount === 1 ? 'Wettkampf' : 'Wettkämpfe'} />
+          </div>
+
+          {/* VERLAUF */}
+          {withFinal.length >= 2 && (
+            <div className="card-surface rounded-[22px] p-4 space-y-2">
+              <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Verlauf</h2>
+              <CompetitionTrendChart competitions={competitions} programs={programs} best={stats.best ? { competition: stats.best.c, final: stats.best.final } : null} onTapWettkampf={() => { }} />
+            </div>
+          )}
+
+          {/* LISTEN pro Jahr */}
+          {years.map(year => (
+            <IOSList key={year} header={year === '—' ? 'Ohne Datum' : year}>
+              {byYear[year].map(compRow)}
+            </IOSList>
+          ))}
+        </>)}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <div className="bg-[#E5E5EA] rounded-xl p-1 flex gap-1">
