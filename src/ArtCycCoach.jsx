@@ -5205,7 +5205,6 @@ function Dashboard({ data, setView, onOpenFeedback }) {
   // DashboardV2 (Vorschau): Trend-Toggles + Disclosure-Zustände
   const [dashShowHit, setDashShowHit] = useState(false);
   const [dashShowDanger, setDashShowDanger] = useState(false);
-  const [dashCompOpen, setDashCompOpen] = useState(false);
   const [dashNeglectOpen, setDashNeglectOpen] = useState(false);
   const seasonRange = useMemo(() => {
     const today = new Date();
@@ -5388,50 +5387,72 @@ function Dashboard({ data, setView, onOpenFeedback }) {
         </header>
         {seasonPills}
 
-        {/* HERO — dominantes Objekt: Saison-Erfolg (Trainings-Erfolgsquote) */}
-        {overall.totalAttempts > 0 ? (
-          <HeroKPI value={overall.rate} delta={overall.delta} eyebrow="Saison-Erfolg"
-            totalLine={`${overall.totalSuccess} / ${overall.totalAttempts} Versuche · ${seasonRange.label}`}
-            footerLeft={trainStats.lastSessionDate ? `Zuletzt ${formatDateShort(trainStats.lastSessionDate)}` : '—'}
-            footerRight={`${trainStats.distinctDays} Trainingstage`} />
-        ) : (
-          <EmptyState title="Noch keine Trainingsdaten in diesem Zeitraum." hint="Erfasse eine Session oder wähle einen größeren Zeitraum." />
-        )}
-
-        {/* TREND — darunter, nicht konkurrierend; gleiche Status-Semantik */}
-        {overall.comp.length >= 2 && (
-          <div className="card-surface rounded-[22px] p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Trend</h2>
-              <span className="text-[12px] text-slate-400 tabular-nums">Erfolgsquote · {seasonRange.label}</span>
-            </div>
-            <TrendChart comp={overall.comp} is3 showHit={dashShowHit} showDanger={dashShowDanger} />
-            <div className="flex items-center gap-2 flex-wrap">
-              <StatusLegendToggle active fixed color={STATUS.success} label="Geklappt" />
-              <StatusLegendToggle active={dashShowHit} onClick={() => setDashShowHit(v => !v)} color={STATUS.hit} label="Getroffen" />
-              <StatusLegendToggle active={dashShowDanger} onClick={() => setDashShowDanger(v => !v)} color={STATUS.danger} label="Gefährlich" />
-            </div>
-          </div>
-        )}
-
-        {/* QUICK INSIGHTS — 3 gleichrangig */}
-        <div className="grid grid-cols-3 gap-3">
-          <MetricCard label="Sessions" value={String(trainStats.totalSessions)} sub={trainStats.distinctDays + ' Tage'} />
-          <MetricCard label="Wettkämpfe" value={String(compStats.count)} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : '—'} />
-          <MetricCard label="Bestes" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub={compStats.best ? compStats.best.competition.name.slice(0, 14) : '—'} />
+        {/* OVERVIEW — Cockpit: mehrere starke Infos (Training + Wettkampf gemeinsam) */}
+        <div className="grid grid-cols-2 gap-3">
+          <MetricCard label="Sessions" value={String(trainStats.totalSessions)} sub={trainStats.distinctDays + ' Trainingstage'} />
+          <MetricCard label="Letzter Wettkampf" value={compStats.last ? compStats.last.final.toFixed(2) : '—'} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : (compStats.count + ' gesamt')} />
+          <MetricCard label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub={compStats.best ? compStats.best.competition.name.slice(0, 16) : '—'} />
+          <MetricCard label="Erfolgsquote" value={overall.totalAttempts > 0 ? overall.rate + ' %' : '—'} sub={overall.delta != null ? ((overall.delta > 0 ? '↑ ' : overall.delta < 0 ? '↓ ' : '· ') + Math.abs(overall.delta) + ' % · 4 Wo') : 'gesamt'} />
         </div>
 
-        {/* WETTKAMPF-VERLAUF — sekundär, Disclosure (kein zweiter konkurrierender Trend) */}
-        {compStats.count >= 2 && (
-          <div className="card-surface rounded-[22px] p-4 space-y-2">
-            <DisclosureToggle open={dashCompOpen} onToggle={() => setDashCompOpen(v => !v)} labelOpen="Wettkampf-Verlauf ausblenden" labelClosed="Wettkampf-Verlauf anzeigen" />
-            {dashCompOpen && (
-              <CompetitionTrendChart competitions={(data.competitions || []).filter(c => season === 'all' ? true : inRange(c.date))} programs={data.programs || []} best={compStats.best} onTapWettkampf={() => setView('wettkampf')} />
+        {/* TRENDS — Training + Wettkampf, beide sichtbar */}
+        {(compStats.count >= 2 || overall.comp.length >= 2) && (
+          <section className="space-y-3">
+            <div className="px-1 text-[12px] uppercase tracking-wide text-slate-400 font-medium">Trends</div>
+            {compStats.count >= 2 && (
+              <div className="card-surface rounded-[22px] p-4 space-y-2">
+                <h2 className="text-[15px] font-semibold flex items-center gap-2"><Trophy size={16} className="text-[#FF9500]" /> Wettkampf-Verlauf</h2>
+                <CompetitionTrendChart competitions={(data.competitions || []).filter(c => season === 'all' ? true : inRange(c.date))} programs={data.programs || []} best={compStats.best} onTapWettkampf={() => setView('wettkampf')} />
+              </div>
             )}
-          </div>
+            {overall.comp.length >= 2 && (
+              <div className="card-surface rounded-[22px] p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Trainings-Trend</h2>
+                  <span className="text-[12px] text-slate-400 tabular-nums">Erfolgsquote · {seasonRange.label}</span>
+                </div>
+                <TrendChart comp={overall.comp} is3 showHit={dashShowHit} showDanger={dashShowDanger} />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <StatusLegendToggle active fixed color={STATUS.success} label="Geklappt" />
+                  <StatusLegendToggle active={dashShowHit} onClick={() => setDashShowHit(v => !v)} color={STATUS.hit} label="Getroffen" />
+                  <StatusLegendToggle active={dashShowDanger} onClick={() => setDashShowDanger(v => !v)} color={STATUS.danger} label="Gefährlich" />
+                </div>
+              </div>
+            )}
+          </section>
         )}
 
-        {/* LANGE NICHT TRAINIERT — sekundär, nur als Disclosure */}
+        {/* DETAILS — wichtigste Übungen kompakt (Top/Flop), bewusst weiter unten */}
+        {perExercise.length > 0 && (() => {
+          const sorted = [...perExercise].sort((a, b) => b.rate - a.rate);
+          const split = sorted.length > 6;
+          const exRow = (r, i) => (
+            <button key={r.ex.id} onClick={() => setView('uebungen')} className={'w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 active:bg-slate-50 ' + (i > 0 ? 'border-t border-slate-100' : '')}>
+              <span className="text-[15px] font-medium truncate">{localizedExerciseName(r.ex)}</span>
+              <span className="flex items-center gap-3 shrink-0">
+                <span className="text-[12px] text-slate-400 tabular-nums">{r.sessions}×</span>
+                <span className={'text-[15px] font-semibold tabular-nums w-11 text-right ' + (r.rate >= 80 ? 'text-emerald-600' : r.rate >= 55 ? 'text-slate-700' : 'text-rose-600')}>{r.rate}%</span>
+              </span>
+            </button>
+          );
+          return (
+            <section className="space-y-2">
+              <div className="px-1 flex items-center justify-between">
+                <div className="text-[12px] uppercase tracking-wide text-slate-400 font-medium">{split ? 'Stärkste Übungen' : 'Pro Übung'}</div>
+                <button onClick={() => setView('uebungen')} className="text-[13px] text-[#007AFF] font-medium active:opacity-60">Alle</button>
+              </div>
+              <div className="card-surface rounded-[22px] overflow-hidden">{(split ? sorted.slice(0, 3) : sorted).map(exRow)}</div>
+              {split && (
+                <>
+                  <div className="px-1 text-[12px] uppercase tracking-wide text-slate-400 font-medium pt-1">Mehr Fokus</div>
+                  <div className="card-surface rounded-[22px] overflow-hidden">{sorted.slice(-3).reverse().map(exRow)}</div>
+                </>
+              )}
+            </section>
+          );
+        })()}
+
+        {/* Lange nicht trainiert — sekundär, nur als Disclosure */}
         {neglected.length > 0 && (
           <div className="card-surface rounded-[22px] p-4 space-y-2">
             <DisclosureToggle open={dashNeglectOpen} onToggle={() => setDashNeglectOpen(v => !v)} labelOpen="Lange nicht trainiert ausblenden" labelClosed={`Lange nicht trainiert (${neglected.length})`} />
@@ -5446,24 +5467,6 @@ function Dashboard({ data, setView, onOpenFeedback }) {
               </div>
             )}
           </div>
-        )}
-
-        {/* PRO ÜBUNG — ruhige Liste statt dichter Karten */}
-        {perExercise.length > 0 && (
-          <section className="space-y-2">
-            <div className="px-4 text-[12px] uppercase tracking-wide text-slate-400 font-medium">Pro Übung</div>
-            <div className="card-surface rounded-[22px] overflow-hidden">
-              {perExercise.map((r, i) => (
-                <button key={r.ex.id} onClick={() => setView('uebungen')} className={'w-full text-left px-4 py-3 flex items-center justify-between gap-3 active:bg-slate-50 ' + (i > 0 ? 'border-t border-slate-100' : '')}>
-                  <span className="text-[15px] font-medium truncate">{localizedExerciseName(r.ex)}</span>
-                  <span className="flex items-center gap-3 shrink-0">
-                    <span className="text-[12px] text-slate-400 tabular-nums">{r.sessions}×</span>
-                    <span className={'text-[15px] font-semibold tabular-nums w-11 text-right ' + (r.rate >= 80 ? 'text-emerald-600' : r.rate >= 55 ? 'text-slate-700' : 'text-rose-600')}>{r.rate}%</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
         )}
 
         {/* PRIMÄRE AKTION — bewusst ans Ende, nicht in den KPI-Flow */}
