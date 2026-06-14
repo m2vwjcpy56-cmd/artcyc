@@ -6093,6 +6093,7 @@ function TrainingView({ data, setData, setView }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [filterExId, setFilterExId] = useState(''); // '' = alle Übungen
   const [filterRange, setFilterRange] = useState('all'); // 'all'|'7d'|'30d'|'90d'|'thisMonth'|'thisYear'
+  const [histOpen, setHistOpen] = useState(false); // TrainingV2: Verlauf (Rohdaten) erst auf Wunsch
 
   // Übungs-CRUD + Detail-Navigation aus der Übungs-Sektion oben
   // (analog zu ProgrammeView, damit Klick auf Übung direkt in die
@@ -6405,6 +6406,118 @@ function TrainingView({ data, setData, setView }) {
           />
         )}
       </>
+    );
+  }
+
+  const previewV2 = (() => { try { return localStorage.getItem('artcyc:exDetailPreview') === '1'; } catch { return false; } })();
+  if (previewV2) {
+    const histList = filtered.length === 0
+      ? <div className="text-[14px] text-[#8E8E93] text-center py-4">{t('training.noMatches')}</div>
+      : sortMode === 'exercise'
+        ? <div className="space-y-2">{exerciseGroups.map(renderExerciseGroup)}</div>
+        : <div className="space-y-1">{renderGroup(t('training.today'), groups.today)}{renderGroup(t('training.yesterday'), groups.yesterday)}{renderGroup(t('training.thisWeek'), groups.week)}{groups.months.map(m => renderGroup(m.label, m.items))}</div>;
+    return (
+      <div className="space-y-5 pb-2">
+        {/* TOP BAR — Actions dezenter (ghost + kompakt) */}
+        <header className="flex items-end justify-between gap-3 pt-2 px-1">
+          <div className="min-w-0">
+            <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('training.title')}</h1>
+            <p className="text-[#8E8E93] text-[15px] mt-1">{t('training.totalSessions', { n: totalCount })}</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={() => setNewExercise(true)} title="Neue Übung"
+              className="w-9 h-9 rounded-full card-surface text-[#FF9500] flex items-center justify-center active:scale-95 transition"><Plus size={18} strokeWidth={2.5} /></button>
+            <button onClick={() => setView('erfassen')}
+              className="px-3.5 py-2 rounded-full bg-[#FF9500] text-white text-[14px] font-semibold flex items-center gap-1 active:scale-95 transition"><Plus size={15} strokeWidth={2.6} /> Erfassen</button>
+          </div>
+        </header>
+
+        {/* Trainingsplan */}
+        <button onClick={() => setView('trainingsplan')} className="w-full card-surface rounded-[20px] px-4 py-3 flex items-center gap-3 active:bg-[#D1D1D6]/30 transition">
+          <ListChecks size={18} className="text-[#FF9500] shrink-0" />
+          <span className="flex-1 text-left text-[15px] font-medium">Trainingsplan</span>
+          <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
+        </button>
+
+        {/* OVERVIEW — getönte Karten; Erfolgsquote NICHT als Warnung (violet, neutral-positiv) */}
+        {totalCount > 0 && (
+          <div className="grid grid-cols-2 gap-3">
+            <MetricCard accent="violet" icon={TrendingUp} label="Erfolgsquote" value={trainTopStats.rate + ' %'} sub="über alle Sessions" />
+            <MetricCard accent="emerald" icon={Activity} label="Aktuelle Serie" value={trainTopStats.streak > 0 ? trainTopStats.streak + (trainTopStats.streak === 1 ? ' Tag' : ' Tage') : '—'} sub={trainTopStats.streak > 0 ? 'in Folge' : 'keine aktive Serie'} />
+            <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(trainTopStats.sessionCount)} sub={trainTopStats.exCount + ' Übungen'} />
+            <MetricCard accent="amber" icon={Calendar} label="Trainingstage" value={String(trainTopStats.days)} sub="aktive Tage" />
+          </div>
+        )}
+
+        {/* ÜBUNGEN — kompakter, primärer Einstieg (keine Rohdaten) */}
+        {trainedExercises.length > 0 && (
+          <IOSList header={'Übungen (' + trainedExercises.length + ')'} footer="Tippen öffnet die Übungs-Detailseite.">
+            {trainedExercises.map(({ ex, sessions, total, rate }) => {
+              const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 55 ? 'text-slate-600 dark:text-slate-200' : 'text-rose-600';
+              const meta = ex.uci_code ? ('UCI ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : '');
+              return (
+                <IOSListRow key={ex.id} onClick={() => setSelectedExercise(ex)}
+                  trailing={<div className="flex items-center gap-2 shrink-0">{total > 0 && <span className={'font-semibold text-[15px] tabular-nums ' + rateColor}>{rate}%</span>}<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" /></div>}>
+                  <div className="font-medium text-[15px] truncate">{localizedExerciseName(ex)}</div>
+                  <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">{(meta ? meta + ' · ' : '') + sessions + ' Sessions'}</div>
+                </IOSListRow>
+              );
+            })}
+          </IOSList>
+        )}
+
+        {/* VERLAUF — Rohdaten erst auf Wunsch (Disclosure) */}
+        {totalCount > 0 && (
+          <div className="card-surface rounded-[22px] p-4 space-y-3">
+            <DisclosureToggle open={histOpen} onToggle={() => setHistOpen(v => !v)} labelOpen="Verlauf ausblenden" labelClosed={`Verlauf anzeigen (${totalCount} Sessions)`} />
+            {histOpen && (
+              <div className="space-y-3">
+                <div className="relative">
+                  <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
+                  {query && <button onClick={() => setQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#8E8E93]/60 text-white flex items-center justify-center active:opacity-70" aria-label="Suche löschen"><X size={12} strokeWidth={3} /></button>}
+                  <input value={query} onChange={e => setQuery(e.target.value)} placeholder={t('training.searchPlaceholder')} className="w-full pl-9 pr-9 py-2.5 bg-slate-100 rounded-xl outline-none text-[15px]" />
+                </div>
+                <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1" data-no-swipe="true">
+                  {[['all', t('training.range.all')], ['7d', t('training.range.7d')], ['30d', t('training.range.30d')], ['90d', t('training.range.90d')], ['thisMonth', t('training.range.thisMonth')], ['thisYear', t('training.range.thisYear')]].map(([id, label]) => (
+                    <button key={id} onClick={() => setFilterRange(id)} className={'px-3.5 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition active:scale-95 ' + (filterRange === id ? 'bg-[#FF9500] text-white' : 'bg-white text-[#3C3C43] shadow-[0_1px_2px_rgba(0,0,0,0.04)]')}>{label}</button>
+                  ))}
+                </div>
+                {exerciseList.length > 1 && (
+                  <select value={filterExId} onChange={e => setFilterExId(e.target.value)} className="w-full px-3 py-2.5 bg-white rounded-xl outline-none text-[15px] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                    <option value="">{t('training.allExercises', { n: totalCount })}</option>
+                    {exerciseList.map(e => <option key={e.id} value={e.id}>{localizedExerciseName(e)}</option>)}
+                  </select>
+                )}
+                <div className="bg-[#E5E5EA]/70 rounded-xl p-0.5 flex">
+                  <button onClick={() => setSortMode('date')} className={'flex-1 py-1.5 rounded-[10px] text-[13px] font-medium transition ' + (sortMode === 'date' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>{t('training.sortByDate')}</button>
+                  <button onClick={() => setSortMode('exercise')} className={'flex-1 py-1.5 rounded-[10px] text-[13px] font-medium transition ' + (sortMode === 'exercise' ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>{t('training.sortByExercise')}</button>
+                </div>
+                {histList}
+              </div>
+            )}
+          </div>
+        )}
+
+        {totalCount === 0 && (
+          <EmptyState title={t('training.empty')} hint={t('training.emptyHint')} />
+        )}
+
+        {editing && <SessionEditModal session={editing} exercises={data.exercises || []} onSave={saveEdit} onDelete={() => setConfirmDelete(editing._origIdx)} onClose={() => setEditing(null)} />}
+        {confirmDelete !== null && (
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setConfirmDelete(null)}>
+            <div className="bg-white rounded-3xl sm:rounded-2xl w-full max-w-sm p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center"><Trash2 size={18} className="text-rose-600" /></div>
+                <div><h3 className="font-semibold">Session löschen?</h3><p className="text-xs text-slate-500">Kann nicht rückgängig gemacht werden.</p></div>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 font-medium text-sm">Abbrechen</button>
+                <button onClick={() => doDelete(confirmDelete)} className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white font-medium text-sm">Löschen</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     );
   }
 
