@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
+import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud, fileToBase64 } from './lib/feedback.js';
 import { parseProgramFile } from './lib/programImport.js';
 import { loadUciExercisesFromDb, getRulesLanguage, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram } from './lib/uciRules.js';
@@ -7951,43 +7952,10 @@ function ExerciseDetailV2({ exercise, data, onBack, onEdit, onArchive, onDelete 
 
   const rate = vm.successRateCurrent || 0;
   const delta = vm.successDelta;
-  const R = 56, C = 2 * Math.PI * R;
-  const ringOffset = C * (1 - rate / 100);
   const focus = (vm.nextFocusInsight || []).slice(0, 2);
 
   // Trend: drei konsistente Status-Linien aus compositionSeries (Quote je Bucket).
-  // Geklappt = grüne Primärlinie; Getroffen/Gefährlich sekundär zuschaltbar.
   const comp = (vm.compositionSeries || []).filter(b => b.total > 0);
-  const Chart = () => {
-    if (comp.length < 2) return <div className="text-[13px] text-slate-400 py-6 text-center">Zu wenig Daten für diesen Zeitraum.</div>;
-    const W = 320, H = 110, P = 8;
-    const xs = (i) => P + (i * (W - 2 * P)) / (comp.length - 1);
-    const ys = (v) => H - P - (v / 100) * (H - 2 * P);
-    const r = (b, key) => b.total > 0 ? (b[key] / b.total) * 100 : 0;
-    const line = (key) => comp.map((b, i) => `${i ? 'L' : 'M'}${xs(i).toFixed(1)},${ys(r(b, key)).toFixed(1)}`).join(' ');
-    const area = `${line('success')} L${xs(comp.length - 1).toFixed(1)},${H - P} L${xs(0).toFixed(1)},${H - P} Z`;
-    return (
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
-        <defs><linearGradient id="v2grad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={STATUS.success} stopOpacity="0.20" /><stop offset="100%" stopColor={STATUS.success} stopOpacity="0" />
-        </linearGradient></defs>
-        <line x1={P} y1={ys(80)} x2={W - P} y2={ys(80)} stroke="currentColor" strokeOpacity="0.14" strokeDasharray="3 4" className="text-slate-400" />
-        <path d={area} fill="url(#v2grad)" />
-        {showHit && is3 && <path d={line('third')} fill="none" stroke={STATUS.hit} strokeWidth="1.8" strokeOpacity="0.9" strokeLinecap="round" strokeLinejoin="round" />}
-        {showDanger && <path d={line('fail')} fill="none" stroke={STATUS.danger} strokeWidth="1.8" strokeOpacity="0.9" strokeDasharray="2 3" strokeLinecap="round" strokeLinejoin="round" />}
-        <path d={line('success')} fill="none" stroke={STATUS.success} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-        {comp.map((b, i) => <circle key={i} cx={xs(i)} cy={ys(r(b, 'success'))} r="2.4" fill={STATUS.success} />)}
-      </svg>
-    );
-  };
-  const LegendToggle = ({ active, onClick, color, label, fixed }) => (
-    <button onClick={fixed ? undefined : onClick} disabled={fixed}
-      className={'inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1 rounded-full transition ' +
-        (active ? 'bg-slate-100 text-slate-700' : 'bg-slate-100/50 text-slate-400 active:opacity-60')}>
-      <span className="w-2.5 h-2.5 rounded-full" style={{ background: color, opacity: active ? 1 : 0.35 }} />
-      {label}
-    </button>
-  );
 
   return (
     <div className="min-h-screen bg-[#F2F2F7]">
@@ -8009,127 +7977,35 @@ function ExerciseDetailV2({ exercise, data, onBack, onEdit, onArchive, onDelete 
         {!hasAnyData ? (
           <div className="card-surface rounded-[22px] p-8 text-center text-[15px] text-slate-400">Noch keine Trainingsdaten erfasst.</div>
         ) : (<>
-          {/* Zeitraum (scope für alles) */}
-          <div className="bg-[#E5E5EA] rounded-[13px] p-1 flex gap-1 text-[13px] font-medium">
-            {periodTabs.map(([val, label]) => (
-              <button key={val} onClick={() => changePeriod(val)}
-                className={'flex-1 px-2 py-1.5 rounded-[10px] transition ' + (period === val ? 'ios-seg-active' : 'text-slate-500 active:opacity-60')}>{label}</button>
-            ))}
-          </div>
-
-          {/* Modus-Filter — steuert den GESAMTEN Screen (nur bei Seil-Variante) */}
+          {/* Zeitraum + Modus — steuern den GESAMTEN Screen */}
+          <SegmentedControl value={period} onChange={changePeriod} options={periodTabs} />
           {exercise.has_rope_variant && (
-            <div className="bg-[#E5E5EA] rounded-[13px] p-1 flex gap-1 text-[13px] font-medium">
-              {[['all', t('training.range.all')], ['rope', t('log.withRope')], ['noRope', 'Ohne Seil']].map(([val, label]) => (
-                <button key={val} onClick={() => setMode(val)}
-                  className={'flex-1 px-2 py-1.5 rounded-[10px] transition ' + (mode === val ? 'ios-seg-active' : 'text-slate-500 active:opacity-60')}>
-                  {label}<span className="ml-1 opacity-50 tabular-nums">{modeCounts[val]}</span>
-                </button>
-              ))}
-            </div>
+            <SegmentedControl value={mode} onChange={setMode}
+              options={[['all', t('training.range.all'), modeCounts.all], ['rope', t('log.withRope'), modeCounts.rope], ['noRope', 'Ohne Seil', modeCounts.noRope]]} />
           )}
 
           {!vm.periodHasData ? (
-            <div className="card-surface rounded-[22px] p-8 text-center">
-              <div className="text-[15px] text-slate-400">Keine Daten{modeLabel} in den letzten {periodLabel}.</div>
-              <div className="text-[13px] text-slate-400 mt-1">Zeitraum{exercise.has_rope_variant ? ' oder Modus' : ''} oben anpassen.</div>
-            </div>
+            <EmptyState title={`Keine Daten${modeLabel} in den letzten ${periodLabel}.`} hint={`Zeitraum${exercise.has_rope_variant ? ' oder Modus' : ''} oben anpassen.`} />
           ) : (<>
-            {/* 02 — HERO: eine dominante KPI (A/B: Zahl oder Ring; Zahl bleibt primär) */}
-            <div className="card-surface rounded-[26px] p-6">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[12px] font-semibold uppercase tracking-wider text-emerald-600">Erfolgsquote</div>
-                <div className="flex gap-0.5 bg-[#E5E5EA] rounded-full p-0.5 text-[11px] font-medium">
-                  {[['number', 'Zahl'], ['ring', 'Ring']].map(([v, l]) => (
-                    <button key={v} onClick={() => changeKpi(v)}
-                      className={'px-2.5 py-1 rounded-full transition ' + (kpiVariant === v ? 'ios-seg-active' : 'text-slate-500 active:opacity-60')}>{l}</button>
-                  ))}
-                </div>
-              </div>
-
-              {kpiVariant === 'ring' ? (
-                <div className="flex items-center gap-6 mt-3">
-                  <div className="relative shrink-0" style={{ width: 128, height: 128 }}>
-                    <svg viewBox="0 0 128 128" className="w-full h-full -rotate-90">
-                      <circle cx="64" cy="64" r={R} fill="none" stroke="currentColor" strokeOpacity="0.10" strokeWidth="8" className="text-slate-400" />
-                      <circle cx="64" cy="64" r={R} fill="none" stroke={STATUS.success} strokeOpacity="0.85" strokeWidth="8" strokeLinecap="round"
-                        strokeDasharray={C} strokeDashoffset={ringOffset} style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-[42px] leading-none font-bold tracking-tight text-slate-900 tabular-nums">{rate}</span>
-                      <span className="text-[12px] font-semibold text-slate-400">%</span>
-                    </div>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[15px] text-slate-500 tabular-nums">{vm.totalSuccess} / {vm.totalAttempts} Versuche</div>
-                    {delta != null && (
-                      <div className={'inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-1 rounded-full tabular-nums mt-2 ' +
-                        (delta > 0 ? 'bg-emerald-50 text-emerald-700' : delta < 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500')}>
-                        {delta > 0 ? '↑' : delta < 0 ? '↓' : '·'} {Math.abs(delta)} % · 4 Wochen
-                      </div>
-                    )}
-                    <div className="mt-3 pt-3 border-t border-slate-100 text-[13px] flex items-center justify-between gap-2">
-                      <span className="text-slate-500 truncate">Zuletzt {formatDateShort(vm.lastSessionDate)}</span>
-                      <span className="font-medium text-slate-700 tabular-nums shrink-0">{vm.lastSessionRate} %</span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-end gap-1 mt-1">
-                    <span className="text-[72px] leading-[0.82] font-bold tracking-tight text-slate-900 tabular-nums">{rate}</span>
-                    <span className="text-[30px] font-bold text-slate-400 mb-1.5">%</span>
-                    {delta != null && (
-                      <span className={'ml-auto inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-1 rounded-full tabular-nums mb-2 ' +
-                        (delta > 0 ? 'bg-emerald-50 text-emerald-700' : delta < 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500')}>
-                        {delta > 0 ? '↑' : delta < 0 ? '↓' : '·'} {Math.abs(delta)} %
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-1.5 text-[15px] text-slate-500 tabular-nums">{vm.totalSuccess} / {vm.totalAttempts} Versuche · {periodLabel}</div>
-                  <div className="mt-3 pt-3 border-t border-slate-100 text-[13px] flex items-center justify-between gap-2">
-                    <span className="text-slate-500 truncate">Zuletzt {formatDateShort(vm.lastSessionDate)}</span>
-                    <span className="font-medium text-slate-700 tabular-nums shrink-0">{vm.lastSessionRate} % · {vm.lastSessionFraction}</span>
-                  </div>
-                </>
-              )}
-            </div>
+            {/* 02 — HERO: eine dominante KPI (A/B: Zahl Default, Ring optional) */}
+            <HeroKPI value={rate} delta={delta} variant={kpiVariant} onVariantChange={changeKpi}
+              totalLine={`${vm.totalSuccess} / ${vm.totalAttempts} Versuche${kpiVariant === 'number' ? ' · ' + periodLabel : ''}`}
+              footerLeft={`Zuletzt ${formatDateShort(vm.lastSessionDate)}`}
+              footerRight={`${vm.lastSessionRate} %${kpiVariant === 'number' ? ' · ' + vm.lastSessionFraction : ''}`} />
 
             {/* 03 — QUICK INSIGHTS (3 gleichrangig) */}
             <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: 'Letzte Session', value: vm.lastSessionRate + ' %', sub: vm.lastSessionFraction },
-                { label: '4 Wochen', value: vm.successRateLast4Weeks == null ? '—' : vm.successRateLast4Weeks + ' %', sub: 'Erfolg' },
-                { label: 'Sessions', value: String(vm.sessionsCount), sub: vm.totalAttempts + ' Vers.' },
-              ].map((c, i) => (
-                <div key={i} className="card-surface rounded-[20px] p-3 text-center">
-                  <div className="text-[11px] text-slate-500 font-medium leading-tight">{c.label}</div>
-                  <div className="text-[21px] font-bold text-slate-900 tabular-nums mt-1 leading-none">{c.value}</div>
-                  <div className="text-[11px] text-slate-400 tabular-nums mt-1 truncate">{c.sub}</div>
-                </div>
-              ))}
+              <MetricCard label="Letzte Session" value={vm.lastSessionRate + ' %'} sub={vm.lastSessionFraction} />
+              <MetricCard label="4 Wochen" value={vm.successRateLast4Weeks == null ? '—' : vm.successRateLast4Weeks + ' %'} sub="Erfolg" />
+              <MetricCard label="Sessions" value={String(vm.sessionsCount)} sub={vm.totalAttempts + ' Vers.'} />
             </div>
 
             {/* 04 — BREAKDOWN (Geklappt stark · Getroffen mittel · Gefährlich dezent) */}
-            <div className={'grid gap-3 ' + (is3 ? 'grid-cols-3' : 'grid-cols-2')}>
-              <div className="bg-emerald-50 border border-emerald-100 rounded-[20px] p-3.5 text-center">
-                <div className="text-[12px] font-medium text-emerald-700">{statusLabel(exercise, 'success')}</div>
-                <div className="text-[27px] font-bold text-emerald-700 tabular-nums leading-none mt-1">{vm.successRateCurrent} %</div>
-                <div className="text-[11px] text-emerald-600/70 tabular-nums mt-0.5">{vm.totalSuccess}×</div>
-              </div>
-              {is3 && (
-                <div className="bg-amber-50 border border-amber-100 rounded-[20px] p-3.5 text-center">
-                  <div className="text-[12px] font-medium text-amber-700">{statusLabel(exercise, 'third')}</div>
-                  <div className="text-[27px] font-bold text-amber-700 tabular-nums leading-none mt-1">{vm.hitRate} %</div>
-                  <div className="text-[11px] text-amber-600/70 tabular-nums mt-0.5">{vm.totalHit}×</div>
-                </div>
-              )}
-              <div className="card-surface rounded-[20px] p-3.5 text-center">
-                <div className="text-[12px] font-medium text-slate-500">{statusLabel(exercise, 'fail')}</div>
-                <div className="text-[27px] font-bold text-rose-600 tabular-nums leading-none mt-1">{vm.dangerRate} %</div>
-                <div className="text-[11px] text-slate-400 tabular-nums mt-0.5">{vm.totalDanger}×</div>
-              </div>
-            </div>
+            <StatusBreakdown items={[
+              { label: statusLabel(exercise, 'success'), value: vm.successRateCurrent + ' %', count: vm.totalSuccess + '×', tone: 'success' },
+              ...(is3 ? [{ label: statusLabel(exercise, 'third'), value: vm.hitRate + ' %', count: vm.totalHit + '×', tone: 'hit' }] : []),
+              { label: statusLabel(exercise, 'fail'), value: vm.dangerRate + ' %', count: vm.totalDanger + '×', tone: 'danger' },
+            ]} />
 
             {/* 05 — TREND — Status-Semantik: Geklappt grün (primär), Getroffen amber, Gefährlich rot (sekundär, zuschaltbar) */}
             <div className="card-surface rounded-[22px] p-4 space-y-3">
@@ -8137,17 +8013,13 @@ function ExerciseDetailV2({ exercise, data, onBack, onEdit, onArchive, onDelete 
                 <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Trend</h2>
                 <span className="text-[12px] text-slate-400 tabular-nums">{periodLabel}{modeLabel}</span>
               </div>
-              <Chart />
+              <TrendChart comp={comp} is3={is3} showHit={showHit} showDanger={showDanger} />
               <div className="flex items-center gap-2 flex-wrap">
-                <LegendToggle active fixed color={STATUS.success} label={statusLabel(exercise, 'success')} />
-                {is3 && <LegendToggle active={showHit} onClick={() => setShowHit(v => !v)} color={STATUS.hit} label={statusLabel(exercise, 'third')} />}
-                <LegendToggle active={showDanger} onClick={() => setShowDanger(v => !v)} color={STATUS.danger} label={statusLabel(exercise, 'fail')} />
+                <StatusLegendToggle active fixed color={STATUS.success} label={statusLabel(exercise, 'success')} />
+                {is3 && <StatusLegendToggle active={showHit} onClick={() => setShowHit(v => !v)} color={STATUS.hit} label={statusLabel(exercise, 'third')} />}
+                <StatusLegendToggle active={showDanger} onClick={() => setShowDanger(v => !v)} color={STATUS.danger} label={statusLabel(exercise, 'fail')} />
               </div>
-              <button onClick={() => setShowComp(v => !v)}
-                className="w-full text-[13px] font-medium text-[#007AFF] active:opacity-60 pt-1 flex items-center justify-center gap-1">
-                {showComp ? 'Verteilung ausblenden' : 'Verteilung anzeigen'}
-                <ChevronRight size={15} strokeWidth={2.4} className={'transition-transform ' + (showComp ? 'rotate-90' : '')} />
-              </button>
+              <DisclosureToggle open={showComp} onToggle={() => setShowComp(v => !v)} labelOpen="Verteilung ausblenden" labelClosed="Verteilung anzeigen" />
               {showComp && comp.length > 0 && (
                 <div className="space-y-2">
                   <svg viewBox="0 0 320 90" className="w-full" preserveAspectRatio="none">
