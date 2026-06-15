@@ -4291,6 +4291,22 @@ export default function App() {
         setData(null);
       }
       setLoading(false);
+
+      // Auto-Migration (Hintergrund): alle Nutzer tabellen-first, ohne manuellen
+      // Schritt — Daten liegen damit immer sauber in den Tabellen (für Trainer/
+      // Admin sichtbar). RPC ist idempotent (ON CONFLICT DO NOTHING) und setzt
+      // das Flag auch im Cloud-Snapshot, daher höchstens einmal nötig.
+      if (chosen && !chosen.migrated_to_tables) {
+        try {
+          const { error } = await migrateBlobToTables();
+          if (!error) {
+            const migratedData = { ...chosen, migrated_to_tables: true };
+            setData(migratedData);
+            await storage.set(userDataKey, JSON.stringify(migratedData));
+            await Promise.all([refreshSessions(), refreshCompetitions(), refreshPrograms(), refreshExercises()]);
+          }
+        } catch (_) { /* offline o. ä. → nächster Login migriert */ }
+      }
     })();
   }, [userDataKey]);
 
@@ -4660,6 +4676,9 @@ export default function App() {
       uci_version: '2026',
       uci_updated: null,
       uci_custom: null,
+      // Tabellen-first ab Start: keine spätere Migration nötig, Daten liegen
+      // direkt sauber in den Cloud-Tabellen (Trainer/Admin können sie sehen).
+      migrated_to_tables: true,
       created: new Date().toISOString()
     })} />;
   }
