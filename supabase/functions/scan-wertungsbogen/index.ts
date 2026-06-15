@@ -38,13 +38,21 @@ Gib AUSSCHLIESSLICH ein JSON-Objekt zurück (kein Text, keine Code-Fences) mit g
  "kg1_schwierigkeit": number|null, "kg2_schwierigkeit": number|null,
  "kg1_gesamtabzug": number|null, "kg2_gesamtabzug": number|null,
  "kg1_ausgefahren": number|null, "kg2_ausgefahren": number|null,
- "aufgestellt": number|null, "endergebnis": number|null
+ "aufgestellt": number|null, "endergebnis": number|null,
+ "exercises": [ { "points": number|null,
+                  "kg1": { "x": number, "w": number, "s": number, "k": number, "schw": number, "takt": number|null },
+                  "kg2": { "x": number, "w": number, "s": number, "k": number, "schw": number, "takt": number|null } } ]
 }
 Regeln:
 - Zahlen mit Dezimalpunkt (deutsches Komma → Punkt). Keine Tausenderpunkte.
-- Es gibt zwei Kampfgerichte (KG1 links, KG2 rechts) je für Ausführung/Schwierigkeit/Gesamtabzug/Ausgefahrene Punkte.
+- Zwei Kampfgerichte (KG1 links, KG2 rechts) je für Ausführung/Schwierigkeit/Gesamtabzug/Ausgefahrene Punkte.
 - "Aufgestellte Punkte" = aufgestellt. "Endergebnis" = endergebnis.
-- Wenn ein Feld nicht sicher lesbar ist: null. Nicht raten.
+- "exercises": die Tabelle Zeile für Zeile in DER REIHENFOLGE von oben nach unten. Pro Übung und je Kampfgericht die Anzahl der Symbole zählen:
+    x = Kreuz, w = Welle (~), s = Strich (|), k = Kreis/Sturz (○).
+    schw = Schwierigkeits-Abwertung in Prozent (meist 0, 10, 50 oder 100), takt = anerkannte taktische Punkte falls abweichend, sonst null.
+    Fehlt ein Wert: 0 (bzw. null bei takt). Gib für JEDE Übungszeile ein Objekt zurück.
+- Wenn die Übungstabelle nicht sicher lesbar ist: "exercises": [] (leeres Array) statt zu raten.
+- Andere Felder, die nicht sicher lesbar sind: null. Nicht raten.
 - Antworte NUR mit dem JSON-Objekt.`;
 
 function parseJsonLoose(txt: string): any {
