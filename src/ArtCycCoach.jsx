@@ -11962,7 +11962,15 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           )}
 
           {importStatus === 'parsing' && (
-            <div className="bg-white dark:bg-white/10 rounded-xl p-3 text-sm text-violet-900 dark:text-violet-100">⏳ {importMsg}</div>
+            <div className="bg-white dark:bg-white/10 rounded-xl p-3.5 flex items-center gap-3">
+              <Loader2 size={18} className="animate-spin text-[#FF9500] shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-medium text-violet-900 dark:text-violet-100 truncate">{importMsg || 'Wird gelesen …'}</div>
+                <div className="mt-1.5 h-1 rounded-full bg-violet-200/60 dark:bg-white/10 overflow-hidden">
+                  <div className="h-full w-1/3 rounded-full bg-[#FF9500] acc-indeterminate" />
+                </div>
+              </div>
+            </div>
           )}
           {importStatus === 'error' && (
             <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 rounded-xl p-3 text-sm text-rose-900 dark:text-rose-200">
