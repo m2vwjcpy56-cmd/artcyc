@@ -11950,7 +11950,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 </label>
                 <label className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
                   <ImageIcon size={14} /> Auswählen
-                  <input type="file" accept="image/*" multiple
+                  <input type="file" accept="image/*"
                     onChange={e => handleScanImport(e.target.files)}
                     className="hidden" />
                 </label>
