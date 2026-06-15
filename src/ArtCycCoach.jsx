@@ -12160,7 +12160,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
 function WertungstischEditor({ program, entries, onUpdate, result }) {
   const SCHW_OPTIONS = [0, 10, 50, 100];
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4">
+    <div className="card-surface rounded-[22px] p-4">
       {/* Mobile: Karten pro Übung */}
       <div className="sm:hidden space-y-2">
         {program.exercises.map((ex, idx) => {
@@ -12218,7 +12218,7 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                       onClick={() => onUpdate(idx, 'schwPct', p)}
                       className={'text-xs py-1.5 rounded-lg font-medium border ' +
                         (Number(e.schwPct||0) === p
-                          ? 'bg-amber-500 text-slate-900 border-amber-500'
+                          ? 'bg-amber-100 text-amber-900 border-amber-200'
                           : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100')}>
                       {p === 0 ? '—' : p + '%'}
                     </button>
@@ -14023,20 +14023,13 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
         )
       )}
 
-      {/* Tab-Umschaltung Kampfgericht 1 / 2 */}
+      {/* Einzelübungen je Kampfgericht — nur Tabellen-Umschalter (Scores stehen
+          bereits oben in den KPI-Karten; keine doppelte Ergebnis-Anzeige). */}
       {effProgram && (
         <>
-          <div className="flex gap-2">
-            <button onClick={() => setActiveTable(1)}
-              className={'flex-1 py-2.5 rounded-xl font-semibold ' +
-                (activeTable === 1 ? 'bg-slate-900 text-white' : 'bg-white border border-slate-300 text-slate-700')}>
-              Kampfgericht 1: {t1 && t1.ergebnis.toFixed(2)}
-            </button>
-            <button onClick={() => setActiveTable(2)}
-              className={'flex-1 py-2.5 rounded-xl font-semibold ' +
-                (activeTable === 2 ? 'bg-slate-900 text-white' : 'bg-white border border-slate-300 text-slate-700')}>
-              Kampfgericht 2: {t2 && t2.ergebnis.toFixed(2)}
-            </button>
+          <div className="space-y-2">
+            <div className="text-[12px] uppercase tracking-wide text-slate-400 px-1 font-medium">Einzelübungen je Kampfgericht</div>
+            <SegmentedControl value={activeTable} onChange={setActiveTable} options={[[1, 'Kampfgericht 1'], [2, 'Kampfgericht 2']]} />
           </div>
 
           {/* Übungs-Liste read-only */}
