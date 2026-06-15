@@ -11743,12 +11743,20 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
       }
       setImportMsg('Analysiere Wertungsbericht …');
       const parsed = parseWertungsbericht(fullText);
-      if (parsed.errors && parsed.errors.length > 0) {
-        throw new Error(parsed.errors.join(', '));
+      // Foto-OCR ist rauschig → nachsichtig: wenn IRGENDetwas Brauchbares erkannt
+      // wurde, übernehmen (Rest manuell ergänzen) statt komplett zu scheitern.
+      const hasAny = parsed.wettbewerb || parsed.starter || parsed.disziplin || parsed.datum
+        || parsed.endergebnis != null || parsed.aufgestellt != null
+        || parsed.kg1_gesamtabzug != null || parsed.kg1_schwierigkeit != null || parsed.kg1_ausfuehrung != null
+        || parsed.kg1_ausgefahren != null;
+      if (!hasAny) {
+        throw new Error('Aus dem Foto ließ sich nichts Lesbares erkennen');
       }
+      parsed.errors = []; // teilweise OK — fehlende Felder füllst du im Editor
+      const solide = parsed.wettbewerb || parsed.starter;
       setImportPreview(parsed);
       setImportStatus('success');
-      setImportMsg('Scan erkannt — bitte Werte prüfen');
+      setImportMsg(solide ? 'Scan erkannt — bitte Werte prüfen' : 'Teilweise erkannt — bitte Werte prüfen/ergänzen');
     } catch (err) {
       setImportStatus('error');
       setImportMsg('Scan fehlgeschlagen: ' + (err.message || 'unbekannt') + '. Tipp: in der Dateien-App scannen → als PDF sichern → „PDF auswählen".');
