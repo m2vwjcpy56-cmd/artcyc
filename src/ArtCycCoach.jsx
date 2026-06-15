@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera
 } from 'lucide-react';
-import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach } from './lib/supabase';
+import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -2206,6 +2206,22 @@ function loadTesseract() {
     document.head.appendChild(s);
   });
   return _tesseractPromise;
+}
+// Bild-Datei → verkleinerte JPEG-DataURL (für Vision-Upload; spart Bandbreite).
+function imageFileToDataUrl(file, maxDim = 1600, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.round(img.naturalWidth * scale), h = Math.round(img.naturalHeight * scale);
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      try { resolve(c.toDataURL('image/jpeg', quality)); } catch (e) { reject(e); }
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
 }
 let _pdfJsPromise = null;
 function loadPdfJs() {
@@ -11690,6 +11706,40 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     const list = Array.from(files || []);
     if (list.length === 0) return;
     setImportStatus('parsing');
+
+    // 1) Primär: KI-Bilderkennung (Vision-LLM) — robust bei Fotos.
+    const firstImg = list.find(f => /^image\//.test(f.type));
+    if (firstImg) {
+      try {
+        setImportMsg('KI liest das Bild …');
+        const dataUrl = await imageFileToDataUrl(firstImg, 1600, 0.82);
+        const { data, error } = await scanWertungsbogenVision(dataUrl);
+        if (!error && data) {
+          const num = (v) => v == null || v === '' ? undefined : (typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.')));
+          const parsed = {
+            errors: [],
+            wettbewerb: data.wettbewerb || null, ort: data.ort || null, ausrichter: data.ausrichter || null,
+            startnr: data.startnr || null, starter: data.starter || null, verein: data.verein || null,
+            disziplin: data.disziplin || null, datum: data.datum || null,
+          };
+          for (const k of ['kg1_ausfuehrung', 'kg2_ausfuehrung', 'kg1_schwierigkeit', 'kg2_schwierigkeit', 'kg1_gesamtabzug', 'kg2_gesamtabzug', 'kg1_ausgefahren', 'kg2_ausgefahren', 'aufgestellt', 'endergebnis']) {
+            const n = num(data[k]); if (typeof n === 'number' && !isNaN(n)) parsed[k] = n;
+          }
+          const hasAny = parsed.wettbewerb || parsed.starter || parsed.disziplin || parsed.datum
+            || parsed.endergebnis != null || parsed.aufgestellt != null
+            || parsed.kg1_gesamtabzug != null || parsed.kg1_schwierigkeit != null || parsed.kg1_ausfuehrung != null || parsed.kg1_ausgefahren != null;
+          if (hasAny) {
+            setImportPreview(parsed);
+            setImportStatus('success');
+            setImportMsg('Per KI erkannt — bitte Werte prüfen');
+            return;
+          }
+        }
+        // sonst: Fallback auf OCR unten
+      } catch (_) { /* Vision nicht verfügbar/Fehler → OCR-Fallback */ }
+    }
+
+    // 2) Fallback: clientseitiges OCR (Tesseract) mit Auto-Ausrichtung.
     setImportMsg('OCR-Bibliothek laden …');
     try {
       const Tesseract = await loadTesseract();
