@@ -11381,6 +11381,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
   const [importPreview, setImportPreview] = useState(() => initVal('importPreview', null));
   const [showPasteArea, setShowPasteArea] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const [photoSheet, setPhotoSheet] = useState(false); // Auswahl Kamera/Mediathek (statt iOS-Datei-Menü)
 
   // Draft schreiben sobald sich etwas ändert (nach allen useStates!).
   // importPreview kann groß sein (mit exerciseRows) — passt aber locker
@@ -11740,6 +11741,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
               kg2: { X: c(r.kg2?.x), W: c(r.kg2?.w), S: c(r.kg2?.s), K: c(r.kg2?.k), p: c(r.kg2?.schw), T: c(r.kg2?.takt) },
             }));
           }
+          if (data._exDebug) parsed._exDebug = String(data._exDebug);
           const hasAny = parsed.wettbewerb || parsed.starter || parsed.disziplin || parsed.datum
             || parsed.endergebnis != null || parsed.aufgestellt != null
             || parsed.kg1_gesamtabzug != null || parsed.kg1_schwierigkeit != null || parsed.kg1_ausfuehrung != null || parsed.kg1_ausgefahren != null
@@ -12016,17 +12018,37 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                     onChange={e => handlePdfImport(e.target.files && e.target.files[0])}
                     className="hidden" />
                 </label>
-                <label className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
+                <button type="button" onClick={() => setPhotoSheet(true)}
+                  className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center">
                   <Camera size={15} /> Foto scannen
-                  <input type="file" accept="image/*"
-                    onChange={e => handleScanImport(e.target.files)}
-                    className="hidden" />
-                </label>
+                </button>
               </div>
               <p className="text-[11px] text-violet-900/70 dark:text-violet-200/70 leading-snug px-0.5">
                 <strong>PDF / Dokument</strong> liefert das genaueste Ergebnis (auch ein gescanntes PDF) — Stammdaten und alle Abzüge pro Übung werden gesetzt.
                 <strong> Foto scannen</strong> lässt dich aufnehmen oder ein vorhandenes Bild wählen; die KI liest den Bogen aus (Stammdaten, Schwierigkeit, Endergebnis). Werte bitte kurz prüfen <em>(Beta)</em>.
               </p>
+            </div>
+          )}
+
+          {/* Foto-Auswahl-Sheet — app-eigene Optionen (Kamera/Mediathek) statt
+              direkt das iOS-Menü mit „Datei auswählen". */}
+          {photoSheet && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-3" onClick={() => setPhotoSheet(false)}>
+              <div className="bg-white dark:bg-[#1c1c1e] rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="px-4 py-3 text-center text-[13px] text-slate-500 border-b border-slate-200/60 dark:border-white/10">Foto scannen</div>
+                <label className="flex items-center gap-3 px-5 py-4 active:bg-slate-100 dark:active:bg-white/10 cursor-pointer border-b border-slate-200/60 dark:border-white/10">
+                  <Camera size={18} className="text-[#FF9500]" /> <span className="text-[15px] font-medium">Foto aufnehmen</span>
+                  <input type="file" accept="image/*" capture="environment" className="hidden"
+                    onChange={e => { setPhotoSheet(false); handleScanImport(e.target.files); e.target.value = ''; }} />
+                </label>
+                <label className="flex items-center gap-3 px-5 py-4 active:bg-slate-100 dark:active:bg-white/10 cursor-pointer">
+                  <ImageIcon size={18} className="text-[#FF9500]" /> <span className="text-[15px] font-medium">Aus Mediathek</span>
+                  <input type="file" accept="image/*" className="hidden"
+                    onChange={e => { setPhotoSheet(false); handleScanImport(e.target.files); e.target.value = ''; }} />
+                </label>
+                <button type="button" onClick={() => setPhotoSheet(false)}
+                  className="w-full px-5 py-3.5 text-[15px] font-semibold text-[#007AFF] border-t border-slate-200/60 dark:border-white/10">Abbrechen</button>
+              </div>
             </div>
           )}
 
@@ -12071,6 +12093,12 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 <p className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-lg p-2">
                   {t('pdfImport.noExerciseRows')}
                 </p>
+              )}
+              {importPreview._exDebug && !(importPreview._scanRows && importPreview._scanRows.length > 0) && (
+                <details className="text-[11px] text-violet-900/70 dark:text-violet-200/70 bg-white/50 dark:bg-white/5 border border-violet-200/60 dark:border-violet-800/40 rounded-lg p-2">
+                  <summary className="cursor-pointer font-medium select-none">Diagnose: KI-Tabellen-Antwort anzeigen</summary>
+                  <pre className="mt-1.5 whitespace-pre-wrap break-words font-mono text-[10px] leading-snug max-h-44 overflow-auto opacity-90">{importPreview._exDebug}</pre>
+                </details>
               )}
               {importPreview.warnings && importPreview.warnings.length > 0 && (
                 <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-lg p-2">

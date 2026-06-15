@@ -41,7 +41,12 @@ Gib AUSSCHLIESSLICH ein JSON-Objekt zurück (kein Text, keine Code-Fences) mit g
  "kg1_ausgefahren": number|null, "kg2_ausgefahren": number|null,
  "aufgestellt": number|null, "endergebnis": number|null
 }
-Regeln: Zahlen mit Dezimalpunkt (Komma→Punkt). Zwei Kampfgerichte (KG1 links, KG2 rechts).
+Feld-Regeln (WICHTIG — Felder NICHT vermischen, je Wert NUR aus dem zugehörigen Label):
+- "wettbewerb": NUR der kurze Veranstaltungsname (z. B. „Kreismeisterschaft", „Deutsche Meisterschaft", „German Masters"). OHNE Disziplin, OHNE Verein/Ort/Region.
+- "disziplin": die Disziplin separat (z. B. „1er Kunstradsport Männer Elite").
+- "ausrichter": nur der ausrichtende Verein bzw. Ort, knapp (z. B. „Esslingen") — nicht die Vereine der Kampfrichter.
+- "ort": der Austragungsort.
+Zahlen mit Dezimalpunkt (Komma→Punkt). Zwei Kampfgerichte (KG1 links, KG2 rechts).
 "Aufgestellte Punkte"=aufgestellt, "Endergebnis"=endergebnis. Unsicher → null. NUR das JSON.`;
 
 const EX_PROMPT = `Du liest die ÜBUNGSTABELLE eines deutschen Kunstrad-Wertungsbogens aus einem Foto.
@@ -90,10 +95,11 @@ async function callVision(systemPrompt: string, dataUrl: string, maxTokens: numb
       ],
     }),
   });
-  if (!res.ok) return { data: null, error: `Vision ${res.status}: ${(await res.text()).slice(0, 200)}` };
+  if (!res.ok) return { data: null, raw: "", error: `Vision ${res.status}: ${(await res.text()).slice(0, 200)}` };
   const json = await res.json();
   const content = json?.choices?.[0]?.message?.content || "";
-  return { data: parseJsonLoose(typeof content === "string" ? content : JSON.stringify(content)), error: null };
+  const raw = typeof content === "string" ? content : JSON.stringify(content);
+  return { data: parseJsonLoose(raw), raw, error: null };
 }
 
 // @ts-ignore Deno-Runtime
@@ -123,12 +129,14 @@ Deno.serve(async (req: Request) => {
 
     // 2) Übungstabelle — best effort, darf nicht fehlschlagen lassen
     let exercises: any[] = [];
+    let exDebug: string | null = null;
     try {
       const ex = await callVision(EX_PROMPT, dataUrl, 4000);
       if (ex.data && Array.isArray(ex.data.exercises)) exercises = ex.data.exercises;
-    } catch { /* ignorieren — Stammdaten reichen */ }
+      if (exercises.length === 0) exDebug = (ex.error || ex.raw || "").slice(0, 600);
+    } catch (e) { exDebug = "Ausnahme: " + String((e as Error)?.message || e); }
 
-    return new Response(JSON.stringify({ ok: true, data: { ...stamm.data, exercises } }), { status: 200, headers: jsonHeaders(req) });
+    return new Response(JSON.stringify({ ok: true, data: { ...stamm.data, exercises, _exDebug: exDebug } }), { status: 200, headers: jsonHeaders(req) });
   } catch (e) {
     return new Response(JSON.stringify({ ok: false, error: String((e as Error)?.message || e) }), { status: 500, headers: jsonHeaders(req) });
   }
