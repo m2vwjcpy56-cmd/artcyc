@@ -2,16 +2,17 @@
 // ArtCyc Coach — Wertungsbogen-Bilderkennung (Vision, via OpenRouter)
 // =============================================================
 //
-// Liest ein Foto/Scan eines Wertungsbogens per Vision-LLM aus und gibt
-// strukturierte Stammdaten + Footer-Werte als JSON zurück. Deutlich robuster
-// als clientseitiges OCR (Tesseract) bei Fotos.
+// Liest ein Foto/Scan eines Wertungsbogens per Vision-LLM aus.
+// ZWEI getrennte Calls, damit die (schwierige) Übungstabelle den (zuverlässigen)
+// Stammdaten-Call NICHT umkippt:
+//   1) Stammdaten + Footer (Endergebnis/KG)  — muss klappen
+//   2) Übungstabelle pro Zeile (x/~/|/○ + Schw% + taktisch je KG)  — best effort
 //
-// Body:  { image: "data:image/jpeg;base64,…" }   (oder reines base64)
-// Antwort: { ok: true, data: { …Felder… } }  |  { ok:false, error }
+// Body:  { image: "data:image/jpeg;base64,…" }
+// Antwort: { ok:true, data:{ …stammdaten…, exercises:[…] } }  | { ok:false, error }
 //
-// Default-Modell: google/gemini-2.5-flash (vision-fähig, günstig). Override
-// via Supabase-Secret OPENROUTER_VISION_MODEL. OPENROUTER_API_KEY wird
-// projektweit geteilt.
+// Default-Modell: google/gemini-2.5-flash (vision). Override via
+// OPENROUTER_VISION_MODEL. OPENROUTER_API_KEY ist projektweit gesetzt.
 // =============================================================
 
 // @ts-ignore Deno-Runtime
@@ -26,9 +27,9 @@ const APP_TITLE = Deno.env.get("APP_TITLE") ?? "ArtCyc Coach";
 // @ts-ignore Deno-Runtime resolution
 import { corsHeaders, jsonHeaders } from "../_shared/cors.ts";
 
-const MAX_BODY_BYTES = 12 * 1024 * 1024; // Fotos sind groß; Client komprimiert vorher
+const MAX_BODY_BYTES = 12 * 1024 * 1024;
 
-const SYSTEM_PROMPT = `Du liest deutsche Kunstrad-„Wertungsberichte/Wertungsblätter" aus einem Foto.
+const STAMM_PROMPT = `Du liest deutsche Kunstrad-„Wertungsberichte/Wertungsblätter" aus einem Foto.
 Gib AUSSCHLIESSLICH ein JSON-Objekt zurück (kein Text, keine Code-Fences) mit genau diesen Schlüsseln:
 {
  "wettbewerb": string|null, "ort": string|null, "ausrichter": string|null,
@@ -40,31 +41,59 @@ Gib AUSSCHLIESSLICH ein JSON-Objekt zurück (kein Text, keine Code-Fences) mit g
  "kg1_ausgefahren": number|null, "kg2_ausgefahren": number|null,
  "aufgestellt": number|null, "endergebnis": number|null
 }
-Regeln:
-- Zahlen mit Dezimalpunkt (deutsches Komma → Punkt). Keine Tausenderpunkte.
-- Es gibt zwei Kampfgerichte (KG1 links, KG2 rechts) je für Ausführung/Schwierigkeit/Gesamtabzug/Ausgefahrene Punkte.
-- "Aufgestellte Punkte" = aufgestellt. "Endergebnis" = endergebnis.
-- Wenn ein Feld nicht sicher lesbar ist: null. Nicht raten.
-- Antworte NUR mit dem JSON-Objekt.`;
+Regeln: Zahlen mit Dezimalpunkt (Komma→Punkt). Zwei Kampfgerichte (KG1 links, KG2 rechts).
+"Aufgestellte Punkte"=aufgestellt, "Endergebnis"=endergebnis. Unsicher → null. NUR das JSON.`;
+
+const EX_PROMPT = `Du liest die ÜBUNGSTABELLE eines deutschen Kunstrad-Wertungsbogens aus einem Foto.
+Gib AUSSCHLIESSLICH ein JSON-Objekt zurück (kein Text, keine Code-Fences):
+{ "exercises": [ { "points": number|null,
+                   "kg1": {"x":number,"w":number,"s":number,"k":number,"schw":number,"takt":number|null},
+                   "kg2": {"x":number,"w":number,"s":number,"k":number,"schw":number,"takt":number|null} } ] }
+Eine Zeile pro Übung, in der REIHENFOLGE von oben nach unten. Pro Übung und je Kampfgericht zählen:
+ x = Kreuz, w = Welle (~), s = Strich (|), k = Kreis/Sturz (○).
+ schw = Schwierigkeits-Abwertung in Prozent (meist 0/10/50/100). takt = anerkannte taktische Punkte (sonst null).
+Fehlender Symbol-Wert → 0. Wenn die Tabelle nicht sicher lesbar ist → "exercises": []. Nicht raten. NUR das JSON.`;
 
 function parseJsonLoose(txt: string): any {
   if (!txt) return null;
-  let s = txt.trim();
-  // Code-Fences entfernen
-  s = s.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
-  // Erstes {...} herausziehen
-  const a = s.indexOf("{");
-  const b = s.lastIndexOf("}");
+  let s = String(txt).trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+  const a = s.indexOf("{"); const b = s.lastIndexOf("}");
   if (a >= 0 && b > a) s = s.slice(a, b + 1);
-  try { return JSON.parse(s); } catch { /* weiter unten salvage */ }
-  // Salvage bei Truncation: das (oft riesige) exercises-Array abschneiden und
-  // wenigstens die Stammdaten retten.
+  try { return JSON.parse(s); } catch { /* salvage unten */ }
   try {
     let core = s.replace(/,\s*"exercises"\s*:\s*\[[\s\S]*$/, "");
     core = core.replace(/,\s*$/, "");
     if (!core.trim().endsWith("}")) core = core.trim() + "}";
     return JSON.parse(core);
   } catch { return null; }
+}
+
+async function callVision(systemPrompt: string, dataUrl: string, maxTokens: number) {
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + OPENROUTER_API_KEY,
+      "HTTP-Referer": APP_REFERER,
+      "X-Title": APP_TITLE,
+    },
+    body: JSON.stringify({
+      model: VISION_MODEL,
+      temperature: 0,
+      max_tokens: maxTokens,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: [
+          { type: "text", text: "Lies den Wertungsbogen und gib das JSON zurück." },
+          { type: "image_url", image_url: { url: dataUrl } },
+        ] },
+      ],
+    }),
+  });
+  if (!res.ok) return { data: null, error: `Vision ${res.status}: ${(await res.text()).slice(0, 200)}` };
+  const json = await res.json();
+  const content = json?.choices?.[0]?.message?.content || "";
+  return { data: parseJsonLoose(typeof content === "string" ? content : JSON.stringify(content)), error: null };
 }
 
 // @ts-ignore Deno-Runtime
@@ -86,41 +115,20 @@ Deno.serve(async (req: Request) => {
     }
     const dataUrl = image.startsWith("data:") ? image : ("data:image/jpeg;base64," + image);
 
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + OPENROUTER_API_KEY,
-        "HTTP-Referer": APP_REFERER,
-        "X-Title": APP_TITLE,
-      },
-      body: JSON.stringify({
-        model: VISION_MODEL,
-        temperature: 0,
-        max_tokens: 1200,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Lies diesen Wertungsbogen aus und gib das JSON zurück." },
-              { type: "image_url", image_url: { url: dataUrl } },
-            ],
-          },
-        ],
-      }),
-    });
-    if (!res.ok) {
-      const txt = await res.text();
-      return new Response(JSON.stringify({ ok: false, error: `Vision ${res.status}: ${txt.slice(0, 300)}` }), { status: 502, headers: jsonHeaders(req) });
+    // 1) Stammdaten — muss klappen
+    const stamm = await callVision(STAMM_PROMPT, dataUrl, 1200);
+    if (!stamm.data) {
+      return new Response(JSON.stringify({ ok: false, error: stamm.error || "Antwort nicht lesbar" }), { status: 502, headers: jsonHeaders(req) });
     }
-    const json = await res.json();
-    const content = json?.choices?.[0]?.message?.content || "";
-    const data = parseJsonLoose(typeof content === "string" ? content : JSON.stringify(content));
-    if (!data) {
-      return new Response(JSON.stringify({ ok: false, error: "Antwort nicht lesbar" }), { status: 502, headers: jsonHeaders(req) });
-    }
-    return new Response(JSON.stringify({ ok: true, data }), { status: 200, headers: jsonHeaders(req) });
+
+    // 2) Übungstabelle — best effort, darf nicht fehlschlagen lassen
+    let exercises: any[] = [];
+    try {
+      const ex = await callVision(EX_PROMPT, dataUrl, 4000);
+      if (ex.data && Array.isArray(ex.data.exercises)) exercises = ex.data.exercises;
+    } catch { /* ignorieren — Stammdaten reichen */ }
+
+    return new Response(JSON.stringify({ ok: true, data: { ...stamm.data, exercises } }), { status: 200, headers: jsonHeaders(req) });
   } catch (e) {
     return new Response(JSON.stringify({ ok: false, error: String((e as Error)?.message || e) }), { status: 500, headers: jsonHeaders(req) });
   }
