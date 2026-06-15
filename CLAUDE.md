@@ -159,6 +159,11 @@ positional via `parseFooterPositional()` extrahiert (linke Spalte = KG1, rechte 
 
 ## Style-Guide (iOS 26)
 
+> **Verbindlicher UI/UX-Leitfaden: [docs/UI-GUIDELINES.md](docs/UI-GUIDELINES.md)**
+> — Wahrnehmungs-/IA-Regeln, Status-Farbsemantik, KPI-/Button-/Header-Regeln,
+> Import/Scan, Screen-Entscheidungen. Tokens + Komponenten: `src/ui/`.
+> Bei neuen Screens/Änderungen ZUERST dort nachsehen.
+
 ### Farben (iOS System Colors)
 - Background: `#F2F2F7` (systemGroupedBackground)
 - Primary text: `#000`
