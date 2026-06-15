@@ -11949,22 +11949,28 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
 
           {!importPreview && (
             <div className="space-y-2">
+              <label className="w-full bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
+                <FileText size={14} /> {t('pdfImport.choosePdf')}
+                <input type="file" accept="application/pdf"
+                  onChange={e => handlePdfImport(e.target.files && e.target.files[0])}
+                  className="hidden" />
+              </label>
               <div className="grid grid-cols-2 gap-2">
                 <label className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
-                  <FileText size={14} /> {t('pdfImport.choosePdf')}
-                  <input type="file" accept="application/pdf"
-                    onChange={e => handlePdfImport(e.target.files && e.target.files[0])}
+                  <Camera size={14} /> Aufnehmen
+                  <input type="file" accept="image/*" capture="environment"
+                    onChange={e => handleScanImport(e.target.files)}
                     className="hidden" />
                 </label>
                 <label className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
-                  <Camera size={14} /> Scannen
-                  <input type="file" accept="image/*" capture="environment"
+                  <ImageIcon size={14} /> Auswählen
+                  <input type="file" accept="image/*" multiple
                     onChange={e => handleScanImport(e.target.files)}
                     className="hidden" />
                 </label>
               </div>
               <p className="text-[11px] text-violet-900/70 dark:text-violet-200/70 leading-snug px-0.5">
-                📄 <strong>PDF auswählen</strong> = genauestes Ergebnis (auch ein in der Dateien-App gescanntes PDF). 📷 <strong>Scannen</strong> fotografiert den Bogen und liest ihn per Texterkennung — Stammdaten/Endergebnis werden gefüllt, einzelne Abzüge bitte prüfen <em>(Beta)</em>.
+                📄 <strong>PDF auswählen</strong> = genauestes Ergebnis (auch ein in der Dateien-App gescanntes PDF). 📷 <strong>Aufnehmen</strong> fotografiert direkt, 🖼 <strong>Auswählen</strong> nimmt ein vorhandenes Foto aus der Galerie — beide lesen per Texterkennung (Ausrichtung automatisch); Stammdaten/Endergebnis werden gefüllt, einzelne Abzüge bitte prüfen <em>(Beta)</em>.
               </p>
             </div>
           )}
