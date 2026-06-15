@@ -259,3 +259,10 @@ html[data-theme="dark"] select.border-slate-300 {
   100% { transform: scale(1.25) rotate(22deg); opacity: 0; }
 }
 .acc-spark { animation: acc-spark 0.9s ease-out 1 both; }
+
+/* Indeterminater Fortschrittsbalken (Import/OCR) */
+@keyframes acc-indeterminate {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(360%); }
+}
+.acc-indeterminate { animation: acc-indeterminate 1.15s ease-in-out infinite; }
