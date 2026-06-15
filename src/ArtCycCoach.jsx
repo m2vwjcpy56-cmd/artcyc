@@ -4832,19 +4832,6 @@ export default function App() {
         )}
       </SwipeableMain>
 
-      {/* KI-Coach — Floating-Button (mobil), da aus dem Header genommen.
-          Sitzt rechts oberhalb der Bottom-Nav. In dichten Flows mit eigenen
-          Bottom-CTAs (Erfassen/Trainingsplan) ausgeblendet, um Kollisionen
-          mit Content/Bottom-Nav zu vermeiden. */}
-      {!chatOpen && view !== 'erfassen' && view !== 'trainingsplan' && (
-        <button onClick={() => setChatOpen(true)}
-          className="sm:hidden fixed right-4 z-30 w-12 h-12 rounded-full bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white flex items-center justify-center shadow-[0_6px_20px_rgba(255,149,0,0.45)] active:scale-95 transition"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 5.5rem)' }}
-          aria-label="ArtCyc KI-Coach öffnen">
-          <Sparkles size={22} strokeWidth={2.2} />
-        </button>
-      )}
-
       {/* Mobile Bottom-Nav — iOS 26 Liquid Glass Pill mit Finger-Drag */}
       <BottomNav
         items={nav.filter(n => !n.soon).slice(0, 5)}
