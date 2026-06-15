@@ -4833,8 +4833,10 @@ export default function App() {
       </SwipeableMain>
 
       {/* KI-Coach — Floating-Button (mobil), da aus dem Header genommen.
-          Sitzt rechts oberhalb der Bottom-Nav. */}
-      {!chatOpen && (
+          Sitzt rechts oberhalb der Bottom-Nav. In dichten Flows mit eigenen
+          Bottom-CTAs (Erfassen/Trainingsplan) ausgeblendet, um Kollisionen
+          mit Content/Bottom-Nav zu vermeiden. */}
+      {!chatOpen && view !== 'erfassen' && view !== 'trainingsplan' && (
         <button onClick={() => setChatOpen(true)}
           className="sm:hidden fixed right-4 z-30 w-12 h-12 rounded-full bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white flex items-center justify-center shadow-[0_6px_20px_rgba(255,149,0,0.45)] active:scale-95 transition"
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 5.5rem)' }}
@@ -6872,21 +6874,21 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
             <label className="text-sm font-medium block mb-2">Wiederholungen · {entries.length}</label>
             <div className={'grid gap-3 mb-3 ' + (use3 ? 'grid-cols-3' : 'grid-cols-2')}>
               <button onClick={(ev) => { pressFeedback(ev, 'success'); setEntries(prev => [...prev, 'success']); }}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+                className="bg-emerald-50 border border-emerald-100 text-emerald-700 py-3.5 rounded-[20px] font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
                 <Check size={26} strokeWidth={2.6} />
                 <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'success')}</span>
                 <span className="text-xs opacity-80">{success}</span>
               </button>
               {use3 && (
                 <button onClick={(ev) => { pressFeedback(ev, 'warning'); setEntries(prev => [...prev, 'third']); }}
-                  className="bg-amber-500 hover:bg-amber-600 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+                  className="bg-amber-50 border border-amber-100 text-amber-700 py-3.5 rounded-[20px] font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
                   <AlertTriangle size={26} strokeWidth={2.4} />
                   <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'third')}</span>
                   <span className="text-xs opacity-80">{third}</span>
                 </button>
               )}
               <button onClick={(ev) => { pressFeedback(ev, 'error'); setEntries(prev => [...prev, 'fail']); }}
-                className="bg-rose-600 hover:bg-rose-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+                className="bg-rose-50 border border-rose-100 text-rose-700 py-3.5 rounded-[20px] font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
                 <X size={26} strokeWidth={2.6} />
                 <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'fail')}</span>
                 <span className="text-xs opacity-80">{fail}</span>
@@ -7291,11 +7293,11 @@ function TrainingsplanView({ data, setData, onBack }) {
                       {it.loggable && ex && (
                         <div className="flex items-center gap-2 mt-2.5">
                           <button onClick={(ev) => { pressFeedback(ev, 'success'); logEntry(it, ex.id, 'success'); }}
-                            className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
+                            className="flex-1 bg-emerald-50 border border-emerald-100 text-emerald-700 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
                             <Check size={18} strokeWidth={2.6} /> Geklappt
                           </button>
                           <button onClick={(ev) => { pressFeedback(ev, 'error'); logEntry(it, ex.id, 'fail'); }}
-                            className="flex-1 bg-rose-600 text-white py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
+                            className="flex-1 bg-rose-50 border border-rose-100 text-rose-700 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
                             <X size={18} strokeWidth={2.6} /> Nicht
                           </button>
                           <button onClick={() => undoEntry(ex.id)} disabled={entries.length === 0}
@@ -7314,7 +7316,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                         <button onClick={(ev) => { pressFeedback(ev, 'success'); toggleDone(it.id); }}
                           className={'mt-2.5 w-full py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition ' +
                             (isDoneToday(it)
-                              ? 'bg-emerald-600 text-white'
+                              ? 'bg-emerald-50 border border-emerald-100 text-emerald-700'
                               : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/10')}>
                           <Check size={18} strokeWidth={2.6} /> {isDoneToday(it) ? 'Erledigt' : 'Abhaken'}
                         </button>
@@ -9842,21 +9844,21 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
 
           <div className={'grid gap-3 mb-3 ' + (use3 ? 'grid-cols-3' : 'grid-cols-2')}>
             <button onClick={(ev) => { pressFeedback(ev, 'success'); setEntries(prev => [...prev, 'success']); }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+              className="bg-emerald-50 border border-emerald-100 text-emerald-700 py-3.5 rounded-[20px] font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
               <Check size={26} strokeWidth={2.6} />
               <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'success')}</span>
               <span className="text-xs opacity-80">{success}</span>
             </button>
             {use3 && (
               <button onClick={(ev) => { pressFeedback(ev, 'warning'); setEntries(prev => [...prev, 'third']); }}
-                className="bg-amber-500 hover:bg-amber-600 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+                className="bg-amber-50 border border-amber-100 text-amber-700 py-3.5 rounded-[20px] font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
                 <AlertTriangle size={26} strokeWidth={2.4} />
                 <span className="text-[13px] leading-tight text-center px-1">{thirdLabel}</span>
                 <span className="text-xs opacity-80">{third}</span>
               </button>
             )}
             <button onClick={(ev) => { pressFeedback(ev, 'error'); setEntries(prev => [...prev, 'fail']); }}
-              className="bg-rose-600 hover:bg-rose-700 text-white py-5 rounded-2xl font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+              className="bg-rose-50 border border-rose-100 text-rose-700 py-3.5 rounded-[20px] font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
               <X size={26} strokeWidth={2.6} />
               <span className="text-[13px] leading-tight text-center px-1">{statusLabel(exercise, 'fail')}</span>
               <span className="text-xs opacity-80">{fail}</span>
