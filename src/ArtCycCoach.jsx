@@ -5401,7 +5401,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.sessions, season]);
 
-  const previewV2 = (() => { try { return localStorage.getItem('artcyc:exDetailPreview') !== '0'; } catch { return false; } })();
+  const previewV2 = true;
   const seasonPills = (
     <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1" data-no-swipe="true">
       {[{ id: 'all', label: 'Alle Zeit' }, ...availableYears.map(y => ({ id: y, label: y })), { id: '90d', label: '90 Tage' }, { id: '30d', label: '30 Tage' }].map(s => (
@@ -6461,7 +6461,7 @@ function TrainingView({ data, setData, setView }) {
     );
   }
 
-  const previewV2 = (() => { try { return localStorage.getItem('artcyc:exDetailPreview') !== '0'; } catch { return false; } })();
+  const previewV2 = true;
   if (previewV2) {
     const weekStreak = trainingWeekStreak(data.sessions);
     const histList = filtered.length === 0
@@ -7381,10 +7381,6 @@ function deriveExerciseNames(programs) {
 
 function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, dbAthleteCoaches, refreshAthletes, theme, setTheme, langPref, setLangPref, rulesLangPref, setRulesLangPref, setView, onOpenFeedback }) {
   const { t } = useI18n();
-  const [previewExDetail, setPreviewExDetail] = useState(() => { try { return localStorage.getItem('artcyc:exDetailPreview') !== '0'; } catch { return false; } });
-  const togglePreviewExDetail = () => {
-    setPreviewExDetail(v => { const n = !v; try { localStorage.setItem('artcyc:exDetailPreview', n ? '1' : '0'); } catch { /* ignore */ } return n; });
-  };
   const roleLabel = profile?.role === 'admin' ? t('role.admin') : profile?.role === 'coach' ? t('role.coach') : t('role.athlete');
   const syncLabel = cloudStatus === 'syncing' ? t('settings.cloudSyncing') : cloudStatus === 'error' ? t('settings.cloudSyncError') : t('settings.cloudSynced');
   const syncTagColor = cloudStatus === 'syncing' ? 'orange' : cloudStatus === 'error' ? 'red' : 'green';
@@ -7618,16 +7614,6 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
       </IOSList>
 
       <BackupSettings data={data} setData={setData} />
-
-      {/* Darstellung — neues Design ist Standard; Opt-out für klassische Ansicht */}
-      <IOSList header="Darstellung" footer="Das neue Design ist Standard. Ausschalten zeigt wieder die klassische Ansicht (nur auf diesem Gerät).">
-        <IOSListRow trailing={<IOSToggle checked={previewExDetail} onChange={togglePreviewExDetail} />}>
-          <span className="flex items-center gap-3">
-            <Sparkles size={18} className="text-[#FF9500]" />
-            <span className="text-[15px] font-medium">Neues Design</span>
-          </span>
-        </IOSListRow>
-      </IOSList>
 
       {/* App-Cache + Diagnose */}
       <IOSList header="Diagnose" footer={'Falls Sportler-Daten nicht angezeigt werden, hilft meistens „Cache leeren + neu laden". Die Diagnose-Info zeigt, welche Verknüpfungen die App lokal kennt.'}>
@@ -8590,7 +8576,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
 }
 
 function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, onDelete }) {
-  if ((() => { try { return localStorage.getItem('artcyc:exDetailPreview') !== '0'; } catch { return false; } })()) {
+  if (true) {
     return <ExerciseDetailV2 exercise={exercise} data={data} setData={setData} onBack={onBack} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />;
   }
   const { t } = useI18n();
@@ -10960,7 +10946,7 @@ function WettkampfView({ data, setData, dbAthletes }) {
   }, {});
   const years = Object.keys(byYear).sort((a, b) => b.localeCompare(a));
 
-  const previewV2 = (() => { try { return localStorage.getItem('artcyc:exDetailPreview') !== '0'; } catch { return false; } })();
+  const previewV2 = true;
   if (previewV2) {
     const compRow = ({ c, final }) => {
       const athlete = athletes.find(a => a.id === c.athlete_id);
