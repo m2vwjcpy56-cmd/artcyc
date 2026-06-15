@@ -11577,9 +11577,14 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     }
 
     // Pro-Übung-Werte: PDF-Spalten X/W/S/K → cross/wave/bar/circle
-    if (parsed.exerciseRows && parsed.exerciseRows.length > 0 && activeProgram) {
+    // Tabellen-Quelle: PDF-Zeilen ODER (Scan) KI-erkannte Zeilen, sofern Anzahl
+    // zum aktiven Programm passt — dann nur Werte mappen, kein Programm-Neuaufbau.
+    const tableRows = (parsed.exerciseRows && parsed.exerciseRows.length > 0)
+      ? parsed.exerciseRows
+      : (parsed._scanRows && parsed._scanRows.length > 0 && activeProgram && parsed._scanRows.length === activeProgram.exercises.length ? parsed._scanRows : null);
+    if (tableRows && activeProgram) {
       const newT1 = activeProgram.exercises.map((ex, idx) => {
-        const r = parsed.exerciseRows[idx];
+        const r = tableRows[idx];
         const kg1 = (r && r.kg1) || {};
         return {
           exerciseId: ex.id,
@@ -11593,7 +11598,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
         };
       });
       const newT2 = activeProgram.exercises.map((ex, idx) => {
-        const r = parsed.exerciseRows[idx];
+        const r = tableRows[idx];
         const kg2 = (r && r.kg2) || {};
         return {
           exerciseId: ex.id,
@@ -11725,13 +11730,24 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           for (const k of ['kg1_ausfuehrung', 'kg2_ausfuehrung', 'kg1_schwierigkeit', 'kg2_schwierigkeit', 'kg1_gesamtabzug', 'kg2_gesamtabzug', 'kg1_ausgefahren', 'kg2_ausgefahren', 'aufgestellt', 'endergebnis']) {
             const n = num(data[k]); if (typeof n === 'number' && !isNaN(n)) parsed[k] = n;
           }
+          // Pro-Übung-Werte (best effort) — werden in applyImport auf das aktive
+          // Programm nach Reihenfolge gemappt (kein Programm-Neuaufbau).
+          if (Array.isArray(data.exercises) && data.exercises.length > 0) {
+            const c = (v) => { const x = num(v); return typeof x === 'number' && !isNaN(x) ? x : 0; };
+            parsed._scanRows = data.exercises.map(r => ({
+              points: num(r.points),
+              kg1: { X: c(r.kg1?.x), W: c(r.kg1?.w), S: c(r.kg1?.s), K: c(r.kg1?.k), p: c(r.kg1?.schw), T: c(r.kg1?.takt) },
+              kg2: { X: c(r.kg2?.x), W: c(r.kg2?.w), S: c(r.kg2?.s), K: c(r.kg2?.k), p: c(r.kg2?.schw), T: c(r.kg2?.takt) },
+            }));
+          }
           const hasAny = parsed.wettbewerb || parsed.starter || parsed.disziplin || parsed.datum
             || parsed.endergebnis != null || parsed.aufgestellt != null
-            || parsed.kg1_gesamtabzug != null || parsed.kg1_schwierigkeit != null || parsed.kg1_ausfuehrung != null || parsed.kg1_ausgefahren != null;
+            || parsed.kg1_gesamtabzug != null || parsed.kg1_schwierigkeit != null || parsed.kg1_ausfuehrung != null || parsed.kg1_ausgefahren != null
+            || (parsed._scanRows && parsed._scanRows.length > 0);
           if (hasAny) {
             setImportPreview(parsed);
             setImportStatus('success');
-            setImportMsg('Per KI erkannt — bitte Werte prüfen');
+            setImportMsg((parsed._scanRows && parsed._scanRows.length > 0) ? 'Per KI erkannt (inkl. Übungen) — bitte prüfen' : 'Per KI erkannt — bitte Werte prüfen');
             return;
           }
         }
@@ -11993,28 +12009,23 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
 
           {!importPreview && (
             <div className="space-y-2">
-              <label className="w-full bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
-                <FileText size={14} /> {t('pdfImport.choosePdf')}
-                <input type="file" accept="application/pdf"
-                  onChange={e => handlePdfImport(e.target.files && e.target.files[0])}
-                  className="hidden" />
-              </label>
               <div className="grid grid-cols-2 gap-2">
                 <label className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
-                  <Camera size={14} /> Aufnehmen
-                  <input type="file" accept="image/*" capture="environment"
-                    onChange={e => handleScanImport(e.target.files)}
+                  <FileText size={15} /> PDF / Dokument
+                  <input type="file" accept="application/pdf"
+                    onChange={e => handlePdfImport(e.target.files && e.target.files[0])}
                     className="hidden" />
                 </label>
                 <label className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
-                  <ImageIcon size={14} /> Auswählen
+                  <Camera size={15} /> Foto scannen
                   <input type="file" accept="image/*"
                     onChange={e => handleScanImport(e.target.files)}
                     className="hidden" />
                 </label>
               </div>
               <p className="text-[11px] text-violet-900/70 dark:text-violet-200/70 leading-snug px-0.5">
-                📄 <strong>PDF auswählen</strong> = genauestes Ergebnis (auch ein in der Dateien-App gescanntes PDF). 📷 <strong>Aufnehmen</strong> fotografiert direkt, 🖼 <strong>Auswählen</strong> nimmt ein vorhandenes Foto aus der Galerie — beide lesen per Texterkennung (Ausrichtung automatisch); Stammdaten/Endergebnis werden gefüllt, einzelne Abzüge bitte prüfen <em>(Beta)</em>.
+                <strong>PDF / Dokument</strong> liefert das genaueste Ergebnis (auch ein gescanntes PDF) — Stammdaten und alle Abzüge pro Übung werden gesetzt.
+                <strong> Foto scannen</strong> lässt dich aufnehmen oder ein vorhandenes Bild wählen; die KI liest den Bogen aus (Stammdaten, Schwierigkeit, Endergebnis). Werte bitte kurz prüfen <em>(Beta)</em>.
               </p>
             </div>
           )}
@@ -12052,9 +12063,9 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 {typeof importPreview.aufgestellt === 'number' && <div><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.tabled')}:</span> <strong>{importPreview.aufgestellt.toFixed(2)}</strong></div>}
                 {typeof importPreview.endergebnis === 'number' && <div className="col-span-2 text-amber-700 dark:text-amber-300"><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.finalScorePdf')}:</span> <strong>{importPreview.endergebnis.toFixed(2)}</strong></div>}
               </div>
-              {importPreview.exerciseRows && importPreview.exerciseRows.length > 0 ? (
+              {((importPreview.exerciseRows && importPreview.exerciseRows.length > 0) || (importPreview._scanRows && importPreview._scanRows.length > 0)) ? (
                 <p className="text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 rounded-lg p-2">
-                  ✓ <strong>{t('pdfImport.exercisesRecognized', { n: importPreview.exerciseRows.length })}</strong>
+                  ✓ <strong>{t('pdfImport.exercisesRecognized', { n: (importPreview.exerciseRows && importPreview.exerciseRows.length) || importPreview._scanRows.length })}</strong>
                 </p>
               ) : (
                 <p className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-lg p-2">
