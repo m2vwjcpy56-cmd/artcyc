@@ -64,7 +64,15 @@ function parseJsonLoose(txt: string): any {
   const a = s.indexOf("{");
   const b = s.lastIndexOf("}");
   if (a >= 0 && b > a) s = s.slice(a, b + 1);
-  try { return JSON.parse(s); } catch { return null; }
+  try { return JSON.parse(s); } catch { /* weiter unten salvage */ }
+  // Salvage bei Truncation: das (oft riesige) exercises-Array abschneiden und
+  // wenigstens die Stammdaten retten.
+  try {
+    let core = s.replace(/,\s*"exercises"\s*:\s*\[[\s\S]*$/, "");
+    core = core.replace(/,\s*$/, "");
+    if (!core.trim().endsWith("}")) core = core.trim() + "}";
+    return JSON.parse(core);
+  } catch { return null; }
 }
 
 // @ts-ignore Deno-Runtime
@@ -97,7 +105,9 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         model: VISION_MODEL,
         temperature: 0,
-        max_tokens: 800,
+        // Hoch genug, damit Stammdaten + komplette exercises-Tabelle (viele
+        // Übungszeilen) NICHT abgeschnitten werden — sonst kommt invalides JSON.
+        max_tokens: 4000,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           {
