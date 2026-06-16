@@ -67,6 +67,17 @@ CREATE TABLE IF NOT EXISTS team_members (
 CREATE INDEX IF NOT EXISTS team_members_team_idx ON team_members(team_id);
 CREATE INDEX IF NOT EXISTS team_members_athlete_idx ON team_members(athlete_id);
 
+-- Sicherstellen, dass athlete_coaches existiert (Multi-Coach, Phase 11). Wird
+-- hier referenziert (coaches_team_member). In Produktion längst vorhanden;
+-- IF NOT EXISTS macht das Basis-Setup self-contained. RLS/Policies dieser
+-- Tabelle bleiben aus der Phase-11-Migration unangetastet.
+CREATE TABLE IF NOT EXISTS athlete_coaches (
+  athlete_id UUID NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
+  coach_id   UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  added_at   TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (athlete_id, coach_id)
+);
+
 -- =====================================================
 -- 3) EXERCISES (UCI-Übungen + custom)
 -- =====================================================
@@ -190,9 +201,30 @@ RETURNS BOOLEAN AS $$
     )
 $$ LANGUAGE sql STABLE SECURITY DEFINER;
 
+-- Bin ich Trainer:in mindestens eines Mitglieds dieses Teams?
+-- (über created_by_coach_id ODER die Multi-Coach-Tabelle athlete_coaches.)
+-- So sieht ein Trainer auch Teams, die ein Sportler selbst angelegt hat.
+CREATE OR REPLACE FUNCTION coaches_team_member(team_uuid UUID)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM team_members tm
+    JOIN athletes a ON a.id = tm.athlete_id
+    WHERE tm.team_id = team_uuid
+      AND (
+        a.created_by_coach_id = auth.uid()
+        OR EXISTS (
+          SELECT 1 FROM athlete_coaches ac
+          WHERE ac.athlete_id = a.id AND ac.coach_id = auth.uid()
+        )
+      )
+  )
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
+
 -- Ist ein bestimmter Athlete für mich sichtbar/editierbar?
 -- Eigener Eintrag, von mir betreuter Sportler, Admin — ODER ein Team-Subjekt,
--- in dem ich Mitglied bin (dann darf ich die geteilten Team-Daten lesen/schreiben).
+-- in dem ich Mitglied bin bzw. dessen Mitglied ich trainiere (dann darf ich die
+-- geteilten Team-Daten lesen/schreiben).
 CREATE OR REPLACE FUNCTION can_access_athlete(athlete_uuid UUID)
 RETURNS BOOLEAN AS $$
   SELECT EXISTS (
@@ -204,6 +236,7 @@ RETURNS BOOLEAN AS $$
         OR is_admin()
       )
   ) OR is_team_member(athlete_uuid)
+    OR coaches_team_member(athlete_uuid)
 $$ LANGUAGE sql STABLE SECURITY DEFINER;
 
 -- Generiert einen 6-stelligen alphanumerischen Claim-Code (vermeidet ähnliche Zeichen wie 0/O, 1/I)
@@ -388,7 +421,8 @@ CREATE POLICY athletes_select ON athletes
     auth_user_id = auth.uid()
     OR created_by_coach_id = auth.uid()
     OR is_admin()
-    OR visible_via_team(id)   -- Team-Subjekte + Team-Kollegen (Namen/Roster)
+    OR visible_via_team(id)          -- Team-Subjekte + Team-Kollegen (Namen/Roster)
+    OR coaches_team_member(id)       -- Trainer eines Mitglieds sieht das Team
   );
 -- Anlegen: Coach/Admin legen Sportler an (Sportler-Self via Trigger);
 -- Team-Subjekte (type='team') darf jeder Account anlegen (created_by = ich).
@@ -454,7 +488,7 @@ DROP POLICY IF EXISTS team_members_delete ON team_members;
 
 CREATE POLICY team_members_select ON team_members
   FOR SELECT TO authenticated
-  USING (is_team_member(team_id) OR manages_team(team_id));
+  USING (is_team_member(team_id) OR manages_team(team_id) OR coaches_team_member(team_id));
 CREATE POLICY team_members_insert ON team_members
   FOR INSERT TO authenticated
   WITH CHECK (manages_team(team_id));
