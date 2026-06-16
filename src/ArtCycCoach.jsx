@@ -6676,6 +6676,30 @@ function TrainingView({ data, setData, setView }) {
     return { sessionCount: all.length, days: days.size, exCount: exIds.size, rate, streak };
   })();
 
+  // Feedback (Prototyp): Badge an Übungen mit Feedback + Übungen, zu denen es
+  // nur Feedback gibt, automatisch einblenden. Archivierte separat.
+  const proto = useProtoFeatures();
+  const viewingAthleteId = data._viewingAthleteId || null;
+  const [feedbackEntries, setFeedbackEntries] = useState([]);
+  const [showArchivedTrain, setShowArchivedTrain] = useState(false);
+  useEffect(() => {
+    if (!proto || !viewingAthleteId) { setFeedbackEntries([]); return undefined; }
+    let cancelled = false;
+    fetchFeedback(viewingAthleteId).then(fb => { if (!cancelled) setFeedbackEntries(fb); });
+    return () => { cancelled = true; };
+  }, [proto, viewingAthleteId]);
+  const fbByBase = useMemo(() => {
+    const m = new Map();
+    for (const f of feedbackEntries) {
+      const b = exerciseBaseKey(f.exercise_name);
+      if (!b) continue;
+      const e = m.get(b) || { count: 0, names: new Map() };
+      e.count++; e.names.set(f.exercise_name, (e.names.get(f.exercise_name) || 0) + 1);
+      m.set(b, e);
+    }
+    return m;
+  }, [feedbackEntries]);
+
   // Übungen mit Trainingsdaten — für die Übungs-Sektion oben.
   // Zählt Sessions pro Übung + ermittelt Erfolgsquote, damit wir
   // direkt sinnvoll sortieren + anzeigen können.
@@ -6711,6 +6735,43 @@ function TrainingView({ data, setData, setView }) {
     });
     return rows;
   })();
+
+  // Aktive vs. archivierte trainierte Übungen.
+  const activeTrained = trainedExercises.filter(r => r.ex.active !== false);
+  const archivedTrained = trainedExercises.filter(r => r.ex.active === false);
+  // Übungen, zu denen es NUR Feedback gibt (keine passende Übung) → einblenden.
+  const feedbackOnlyRows = (() => {
+    if (!proto) return [];
+    const existing = new Set((data.exercises || []).map(e => exerciseBaseKey(e.name)));
+    const out = [];
+    for (const [base, info] of fbByBase) {
+      if (!base || existing.has(base)) continue;
+      let nm = base, best = -1;
+      for (const [n, c] of info.names) if (c > best) { best = c; nm = n; }
+      out.push({ ex: { id: 'fbx:' + base, name: nm, active: true, points: 0, _feedbackOnly: true }, sessions: 0, total: 0, rate: 0 });
+    }
+    return out.sort((a, b) => (a.ex.name || '').localeCompare(b.ex.name || '', 'de'));
+  })();
+  const activeExerciseRows = [...activeTrained, ...feedbackOnlyRows];
+
+  const renderTrainedRow = ({ ex, sessions, total, rate }) => {
+    const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 55 ? 'text-slate-600 dark:text-slate-200' : 'text-rose-600';
+    const meta = ex.uci_code ? ('UCI ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : '');
+    const fbCount = fbByBase.get(exerciseBaseKey(ex.name))?.count || 0;
+    const sub = ex._feedbackOnly ? 'nur Feedback erfasst' : ((meta ? meta + ' · ' : '') + sessions + ' Sessions');
+    return (
+      <IOSListRow key={ex.id} onClick={() => setSelectedExercise(ex)}
+        trailing={<div className="flex items-center gap-2 shrink-0">{!ex._feedbackOnly && total > 0 && <span className={'font-semibold text-[15px] tabular-nums ' + rateColor}>{rate}%</span>}<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" /></div>}>
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+          <span className="font-medium text-[15px] truncate">{localizedExerciseName(ex)}</span>
+          {ex.active === false && <IOSTag color="gray">archiviert</IOSTag>}
+          {ex._feedbackOnly && <IOSTag color="purple">nur Feedback</IOSTag>}
+          {fbCount > 0 && <IOSTag color="green">{fbCount}× Feedback</IOSTag>}
+        </div>
+        <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">{sub}</div>
+      </IOSListRow>
+    );
+  };
 
   if (newExercise || editingExercise) {
     return <ExerciseEditor
@@ -6792,20 +6853,24 @@ function TrainingView({ data, setData, setView }) {
         )}
 
         {/* ÜBUNGEN — kompakter, primärer Einstieg (keine Rohdaten) */}
-        {trainedExercises.length > 0 && (
-          <IOSList header={'Übungen (' + trainedExercises.length + ')'} footer="Tippen öffnet die Übungs-Detailseite.">
-            {trainedExercises.map(({ ex, sessions, total, rate }) => {
-              const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 55 ? 'text-slate-600 dark:text-slate-200' : 'text-rose-600';
-              const meta = ex.uci_code ? ('UCI ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : '');
-              return (
-                <IOSListRow key={ex.id} onClick={() => setSelectedExercise(ex)}
-                  trailing={<div className="flex items-center gap-2 shrink-0">{total > 0 && <span className={'font-semibold text-[15px] tabular-nums ' + rateColor}>{rate}%</span>}<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" /></div>}>
-                  <div className="font-medium text-[15px] truncate">{localizedExerciseName(ex)}</div>
-                  <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">{(meta ? meta + ' · ' : '') + sessions + ' Sessions'}</div>
-                </IOSListRow>
-              );
-            })}
+        {activeExerciseRows.length > 0 && (
+          <IOSList header={'Übungen (' + activeExerciseRows.length + ')'} footer="Tippen öffnet die Übungs-Detailseite.">
+            {activeExerciseRows.map(renderTrainedRow)}
           </IOSList>
+        )}
+
+        {archivedTrained.length > 0 && (
+          <div className="space-y-1.5">
+            <button onClick={() => setShowArchivedTrain(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-1 active:opacity-60">
+              <span className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
+                {t('exercises.archived')} ({archivedTrained.length})
+              </span>
+              <ChevronRight size={16} strokeWidth={2.4}
+                className={'text-[#C7C7CC] transition-transform ' + (showArchivedTrain ? 'rotate-90' : '')} />
+            </button>
+            {showArchivedTrain && <IOSList>{archivedTrained.map(renderTrainedRow)}</IOSList>}
+          </div>
         )}
 
         {/* VERLAUF — Rohdaten erst auf Wunsch (Disclosure) */}
