@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
+import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyLicense, saveLicenseIfEmpty, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -7669,6 +7669,17 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
   const isOwner = isAppOwner(session);
   const [showAdminAccounts, setShowAdminAccounts] = useState(false);
 
+  // Lizenznummer (profiles.license_no) — editierbar im Account-Bereich.
+  const [licenseNo, setLicenseNo] = useState(profile?.license_no || '');
+  const [licenseSaved, setLicenseSaved] = useState(false);
+  useEffect(() => { setLicenseNo(profile?.license_no || ''); }, [profile?.license_no]);
+  const saveLicense = async () => {
+    const clean = licenseNo.trim();
+    if (clean === (profile?.license_no || '')) return;
+    const { error } = await updateMyLicense(clean);
+    if (!error) { setLicenseSaved(true); setTimeout(() => setLicenseSaved(false), 1500); }
+  };
+
   return (
     <div className="space-y-6">
       <header className="pt-2 px-1">
@@ -7690,6 +7701,13 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
           <div className="px-4 py-3.5 flex items-center justify-between gap-3">
             <span className="text-[15px] text-[#3C3C43]">{t('settings.role')}</span>
             <IOSTag color={profile?.role === 'admin' ? 'orange' : 'gray'}>{roleLabel}</IOSTag>
+          </div>
+          <div className="px-4 py-3.5 flex items-center gap-3">
+            <span className="text-[15px] text-[#3C3C43] shrink-0">{t('settings.license')}</span>
+            <input value={licenseNo} onChange={e => setLicenseNo(e.target.value)} onBlur={saveLicense}
+              placeholder={t('settings.licensePlaceholder')} inputMode="numeric"
+              className="flex-1 bg-transparent text-[15px] text-right outline-none placeholder:text-[#C7C7CC]" />
+            {licenseSaved && <Check size={16} className="text-[#34C759] shrink-0" />}
           </div>
           <div className="px-4 py-3.5 flex items-center justify-between gap-3">
             <span className="text-[15px] text-[#3C3C43]">{t('settings.cloudSync')}</span>
@@ -11419,7 +11437,7 @@ function parseWertungsbericht(text) {
   //      direkt nach den Stammdaten als Spalten-Überschriften auftauchen.
   // (.*?) statt (.+?), damit ein leeres Feld (PDF mit "Ort:" direkt gefolgt
   // von "Datum:") sauber als null erkannt wird statt den Folge-Wert einzusaugen.
-  const LABELS_WITH_COLON = '(?:Wettbewerb|Ort|Datum|Ausrichter|Startnummer|Starter|Verein|Disziplin|Ansager|Schreiber|Chief|Abzug|Gesamtabzug|Aufgestellte|Endergebnis|Ausgefahrene)';
+  const LABELS_WITH_COLON = '(?:Wettbewerb|Ort|Datum|Ausrichter|Startnummer|Starter|Verein|Disziplin|Lizenznummer|Lizenz-Nr|Lizenz|Ansager|Schreiber|Chief|Abzug|Gesamtabzug|Aufgestellte|Endergebnis|Ausgefahrene)';
   // \b funktioniert in JS-Regex nur mit ASCII — `Üb-Nr` startet mit Ü und hätte
   // keine Wortgrenze davor. Daher fordern wir explizit \s+ vor dem Tabellen-Marker.
   const TABLE_MARKERS = '(?:Üb-Nr|Übungstext|Pkte)';
@@ -11438,6 +11456,16 @@ function parseWertungsbericht(text) {
   result.startnr = field('Startnummer');
   result.starter = field('Starter');
   result.verein = field('Verein');
+  // Lizenznummer (best effort) — Position/Bezeichnung variiert je Wertungsbericht.
+  result.lizenz = field('Lizenznummer') || field('Lizenz-Nr') || field('Lizenz') || null;
+  if (!result.lizenz) {
+    const lM = text.match(/Lizenz(?:nummer|-?Nr)?\.?\s*:?\s*([A-Z]{0,3}\s?\d[\d\s.\/-]{3,})/i);
+    if (lM) result.lizenz = lM[1];
+  }
+  if (result.lizenz) {
+    result.lizenz = result.lizenz.replace(/[^0-9A-Za-z]/g, '');
+    if (result.lizenz.length < 4 || result.lizenz.length > 20) result.lizenz = null;
+  }
   const dM = text.match(/Disziplin:\s*([^]+?)(?=\s*(?:\d{4}[a-z]|Üb-Nr|Übungstext|\b\d{1,2}\s+\d{4})|\s{2,}|\n|$)/);
   if (dM) {
     let d = dM[1].trim();
@@ -11668,6 +11696,8 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     if (parsed.ort) setLocation(parsed.ort);
     if (parsed.ausrichter) setHost(parsed.ausrichter);
     if (parsed.startnr) setStartNr(parsed.startnr);
+    // Lizenznummer best effort ins eigene Profil übernehmen (nur wenn noch leer).
+    if (parsed.lizenz) { saveLicenseIfEmpty(parsed.lizenz).catch(() => {}); }
 
     let activeProgram = pendingNewProgram || programs.find(p => p.id === programId);
     let createdNewProgram = null;
