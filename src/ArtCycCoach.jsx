@@ -6454,12 +6454,15 @@ function TrainingView({ data, setData, setView }) {
     });
   };
   const toggleArchiveExercise = (id) => {
+    // Robust gegen active === undefined: aktiv = (active !== false). Toggle dreht
+    // explizit auf den Gegenwert, sonst bliebe eine Übung mit active=undefined
+    // beim Archivieren faelschlich aktiv (!undefined === true).
     setData({
       ...data,
-      exercises: (data.exercises || []).map(e => e.id === id ? { ...e, active: !e.active } : e)
+      exercises: (data.exercises || []).map(e => e.id === id ? { ...e, active: !(e.active !== false) } : e)
     });
     if (selectedExercise && selectedExercise.id === id) {
-      setSelectedExercise({ ...selectedExercise, active: !selectedExercise.active });
+      setSelectedExercise({ ...selectedExercise, active: !(selectedExercise.active !== false) });
     }
   };
   const removeExercise = (id) => {
@@ -6676,18 +6679,17 @@ function TrainingView({ data, setData, setView }) {
     return { sessionCount: all.length, days: days.size, exCount: exIds.size, rate, streak };
   })();
 
-  // Feedback (Prototyp): Badge an Übungen mit Feedback + Übungen, zu denen es
-  // nur Feedback gibt, automatisch einblenden. Archivierte separat.
-  const proto = useProtoFeatures();
+  // Feedback: Badge an Übungen mit Feedback + Übungen, zu denen es nur Feedback
+  // gibt, automatisch einblenden. Archivierte separat.
   const viewingAthleteId = data._viewingAthleteId || null;
   const [feedbackEntries, setFeedbackEntries] = useState([]);
   const [showArchivedTrain, setShowArchivedTrain] = useState(false);
   useEffect(() => {
-    if (!proto || !viewingAthleteId) { setFeedbackEntries([]); return undefined; }
+    if (!viewingAthleteId) { setFeedbackEntries([]); return undefined; }
     let cancelled = false;
     fetchFeedback(viewingAthleteId).then(fb => { if (!cancelled) setFeedbackEntries(fb); });
     return () => { cancelled = true; };
-  }, [proto, viewingAthleteId]);
+  }, [viewingAthleteId]);
   const fbByBase = useMemo(() => {
     const m = new Map();
     for (const f of feedbackEntries) {
@@ -6741,7 +6743,6 @@ function TrainingView({ data, setData, setView }) {
   const archivedTrained = trainedExercises.filter(r => r.ex.active === false);
   // Übungen, zu denen es NUR Feedback gibt (keine passende Übung) → einblenden.
   const feedbackOnlyRows = (() => {
-    if (!proto) return [];
     const existing = new Set((data.exercises || []).map(e => exerciseBaseKey(e.name)));
     const out = [];
     for (const [base, info] of fbByBase) {
@@ -8963,7 +8964,6 @@ function FeedbackSection({ athleteId, exercise }) {
 
 function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, onDelete }) {
   const { t } = useI18n();
-  const proto = useProtoFeatures();
   useEdgeSwipeBack(onBack);
   const is3 = exercise.category_mode === 3;
   const [compOpen, setCompOpen] = useState(false);
@@ -9057,9 +9057,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
           </div>
         </header>
 
-        {proto && (
-          <FeedbackSection athleteId={data._viewingAthleteId || null} exercise={exercise} />
-        )}
+        <FeedbackSection athleteId={data._viewingAthleteId || null} exercise={exercise} />
 
         {!hasAnyData ? (
           <div className="card-surface rounded-[22px] p-8 text-center text-[15px] text-slate-400">Noch keine Trainingsdaten erfasst.</div>
@@ -10726,12 +10724,15 @@ function ProgrammeView({ data, setData }) {
     });
   };
   const toggleArchiveExercise = (id) => {
+    // Robust gegen active === undefined: aktiv = (active !== false). Toggle dreht
+    // explizit auf den Gegenwert, sonst bliebe eine Übung mit active=undefined
+    // beim Archivieren faelschlich aktiv (!undefined === true).
     setData({
       ...data,
-      exercises: (data.exercises || []).map(e => e.id === id ? { ...e, active: !e.active } : e)
+      exercises: (data.exercises || []).map(e => e.id === id ? { ...e, active: !(e.active !== false) } : e)
     });
     if (selectedExercise && selectedExercise.id === id) {
-      setSelectedExercise({ ...selectedExercise, active: !selectedExercise.active });
+      setSelectedExercise({ ...selectedExercise, active: !(selectedExercise.active !== false) });
     }
   };
   const removeExercise = (id) => {
