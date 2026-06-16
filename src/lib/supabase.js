@@ -100,7 +100,7 @@ export async function fetchProfiles() {
 export async function fetchAthletes() {
   const { data, error } = await supabase
     .from('athletes')
-    .select('id, name, last_name, type, discipline, notes, email, auth_user_id, created_by_coach_id, claim_code, created_at')
+    .select('id, name, last_name, type, discipline, notes, email, auth_user_id, created_by_coach_id, claim_code, join_code, created_at')
     .order('created_at', { ascending: true });
   if (error) {
     console.warn('Athletes fetch fehlgeschlagen:', error.message);
@@ -215,6 +215,19 @@ export async function removeTeamMember(teamId, athleteId) {
   const { error } = await supabase
     .from('team_members').delete().eq('team_id', teamId).eq('athlete_id', athleteId);
   return { error };
+}
+
+// Beitritt per Code (Self-Join). Gibt { data: teamId } oder { error }.
+export async function joinTeamByCode(code) {
+  const normalized = (code || '').toUpperCase().replace(/[\s-]/g, '');
+  const { data, error } = await supabase.rpc('join_team', { input_code: normalized });
+  return { data, error };
+}
+
+// (Re)generiert den Beitritts-Code eines Teams (nur Verwalter). Gibt Code zurück.
+export async function regenerateTeamJoinCode(teamId) {
+  const { data, error } = await supabase.rpc('regenerate_team_join_code', { team_uuid: teamId });
+  return { data, error };
 }
 
 export async function generateClaimCodeForAthlete(athleteId) {
