@@ -52,12 +52,17 @@ Zahlen mit Dezimalpunkt (Komma→Punkt). Zwei Kampfgerichte (KG1 links, KG2 rech
 const EX_PROMPT = `Du liest die ÜBUNGSTABELLE eines deutschen Kunstrad-Wertungsbogens aus einem Foto.
 Gib AUSSCHLIESSLICH ein JSON-Objekt zurück (kein Text, keine Code-Fences):
 { "exercises": [ { "points": number|null,
-                   "kg1": {"x":number,"w":number,"s":number,"k":number,"schw":number,"takt":number|null},
-                   "kg2": {"x":number,"w":number,"s":number,"k":number,"schw":number,"takt":number|null} } ] }
-Eine Zeile pro Übung, in der REIHENFOLGE von oben nach unten. Pro Übung und je Kampfgericht zählen:
- x = Kreuz, w = Welle (~), s = Strich (|), k = Kreis/Sturz (○).
- schw = Schwierigkeits-Abwertung in Prozent (meist 0/10/50/100). takt = anerkannte taktische Punkte (sonst null).
-Fehlender Symbol-Wert → 0. Wenn die Tabelle nicht sicher lesbar ist → "exercises": []. Nicht raten. NUR das JSON.`;
+                   "kg1": {"x":number,"w":number,"s":number,"k":number,"schw":number},
+                   "kg2": {"x":number,"w":number,"s":number,"k":number,"schw":number} } ] }
+Eine Zeile pro Übung, in der REIHENFOLGE von oben nach unten. Pro Übung und je Kampfgericht ZÄHLE die tatsächlich eingetragenen Fehlerzeichen:
+ x = Anzahl Kreuze, w = Anzahl Wellen (~), s = Anzahl Striche (|), k = Anzahl Kreise/Stürze (○).
+ schw = Schwierigkeits-Abwertung in Prozent — NUR einer der Werte 0, 10, 50 oder 100 (leere Zelle = 0).
+STRENGE REGELN:
+- Leere oder durchgestrichene Zelle = 0. Erfinde KEINE Zeichen. Im Zweifel 0.
+- Punktwerte aus der Pkte-/Aufwertungs-Spalte (z. B. 5,8 oder 10,0) gehören NICHT in x/w/s/k/schw. Trage dort NIEMALS Punktwerte ein.
+- Gib KEINE taktische Aufwertung aus (dieses Feld gibt es hier bewusst nicht).
+- "points" = der gedruckte Punktwert der Übung (Pkte-Spalte), nicht die Summe.
+- Tabelle nicht sicher lesbar → "exercises": []. Lieber leer als geraten. NUR das JSON.`;
 
 function parseJsonLoose(txt: string): any {
   if (!txt) return null;
