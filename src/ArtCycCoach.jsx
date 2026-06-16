@@ -8540,6 +8540,22 @@ function fbColor(v) {
   return '#C7C7CC';
 }
 
+// Basis-Name einer Übung (Phase 1 der Hauptübung-Gruppierung): entfernt
+// Varianten-Zusätze (einfach/zweifach/…, „1x", „2. Halbe" …), damit z. B.
+// „Drehsprung", „Drehsprung vierfach" und „Drehspung" zusammenfallen.
+function exerciseBaseKey(name) {
+  let s = (name || '').toLowerCase()
+    .replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss');
+  s = s.replace(/\b(einfach|zweifach|dreifach|vierfach|fuenffach|funffach|sechsfach|siebenfach|achtfach|neunfach|zehnfach|halbe|ganze|doppelt?)\b/g, ' ');
+  s = s.replace(/\b\d+\s*(?:x|fach)\b/g, ' ');   // 1x, 2 fach
+  s = s.replace(/\b\d+\s*\.\s*/g, ' ');           // "2. " (z. B. 2. Halbe)
+  s = s.replace(/\b\d+\b/g, ' ');                 // übrige Zahlen
+  // häufige Tippfehler einsammeln
+  s = s.replace(/drehspung/g, 'drehsprung').replace(/sattelenker/g, 'sattellenker');
+  s = s.replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return s;
+}
+
 // 1–4-Auswahl als vier Punkte.
 function RatingPicker({ value, onChange }) {
   return (
@@ -8690,11 +8706,11 @@ function FeedbackSection({ athleteId, exercise }) {
     setLoading(true);
     const all = await fetchFeedback(athleteId);
     const code = (exercise.uci_code || '').trim();
-    const nm = (exercise.name || '').trim().toLowerCase();
+    const base = exerciseBaseKey(exercise.name);
     const mine = all.filter(f =>
       (exercise.id && f.exercise_ref === exercise.id)
       || (code && f.exercise_code === code)
-      || ((f.exercise_name || '').trim().toLowerCase() === nm && nm)
+      || (base && exerciseBaseKey(f.exercise_name) === base)   // Hauptübung-Gruppierung
     );
     setEntries(mine); setLoading(false);
   }, [athleteId, exercise.id, exercise.uci_code, exercise.name]);
@@ -8745,6 +8761,9 @@ function FeedbackSection({ athleteId, exercise }) {
                 </div>
               )}
               <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                {f.exercise_name && f.exercise_name.trim().toLowerCase() !== (exercise.name || '').trim().toLowerCase() && (
+                  <IOSTag color="orange">{f.exercise_name}</IOSTag>
+                )}
                 {f.context && <IOSTag color="gray">{f.context}</IOSTag>}
                 {f.given_by && <IOSTag color="purple">{f.given_by}</IOSTag>}
                 {f.feedback_type && <IOSTag color="blue">{f.feedback_type}</IOSTag>}
