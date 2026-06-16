@@ -15,6 +15,7 @@ import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureTo
 import { STATUS } from './ui/tokens.js';
 import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud, fileToBase64 } from './lib/feedback.js';
 import { useProtoFeatures, setProtoFeatures } from './lib/featureFlags.js';
+import { suggestClubs, COUNTRY_FLAG } from './lib/clubs.js';
 import { parseProgramFile } from './lib/programImport.js';
 import { loadUciExercisesFromDb, getRulesLanguage, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram } from './lib/uciRules.js';
 
@@ -13415,7 +13416,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
     try {
       if (formData.id) {
         const { error } = await updateAthlete(formData.id, {
-          name: formData.name, type: formData.type, notes: formData.notes, email: formData.email
+          name: formData.name, last_name: formData.last_name, type: formData.type, notes: formData.notes, email: formData.email
         });
         if (error) throw error;
       } else {
@@ -13699,30 +13700,67 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
   );
 }
 
+// Verein-Eingabe mit Autocomplete: schlägt aus der kuratierten Vereinsliste vor,
+// erlaubt aber jederzeit freien Text (wie eine Adress-Autovervollständigung).
+function ClubCombobox({ value, onChange, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const matches = useMemo(() => suggestClubs(value, 8), [value]);
+  const show = open && matches.length > 0;
+  return (
+    <div className="relative">
+      <input
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        placeholder={placeholder}
+        autoComplete="off" autoCorrect="off" autoCapitalize="words"
+        className="w-full bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
+      {show && (
+        <div className="absolute left-0 right-0 top-full mt-2 z-30 bg-white rounded-2xl overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.14)] border border-[#C6C6C8]/40">
+          {matches.map((c, i) => (
+            <button key={c.name} type="button"
+              onMouseDown={e => { e.preventDefault(); onChange(c.name); setOpen(false); }}
+              className={'w-full text-left px-4 py-2.5 flex items-center gap-2.5 active:bg-[#D1D1D6]/40 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+              <span className="text-[15px] leading-none">{COUNTRY_FLAG[c.country] || ''}</span>
+              <span className="text-[15px] text-black truncate">{c.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AthleteEditor({ open, athlete, onClose, onSave, busy = false }) {
   const { t } = useI18n();
   const [name, setName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [type, setType] = useState('athlete');
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
     if (athlete) {
-      setName(athlete.name);
+      setName(athlete.name || '');
+      setLastName(athlete.last_name || '');
       setType(athlete.type || 'athlete');
       setNotes(athlete.notes || '');
     } else {
-      setName(''); setType('athlete'); setNotes('');
+      setName(''); setLastName(''); setType('athlete'); setNotes('');
     }
   }, [athlete, open]);
 
   if (!open) return null;
 
+  const isTeam = type === 'team';
   const canSave = name.trim().length > 0 && !busy;
   const doSave = () => canSave && onSave({
     id: athlete && athlete.id ? athlete.id : null,
     name: name.trim(),
+    // Bei Teams kein Nachname.
+    last_name: isTeam ? '' : lastName.trim(),
     type,
-    notes,
+    notes: notes.trim(),
     email: (athlete && athlete.email) || ''
   });
 
@@ -13742,16 +13780,10 @@ function AthleteEditor({ open, athlete, onClose, onSave, busy = false }) {
         </div>
 
         <div className="px-3 py-4 space-y-5">
-          {/* Name + Typ */}
-          <IOSList header={t('athletes.typeAthlete')}>
+          {/* Typ + Name(n) */}
+          <IOSList header={isTeam ? t('athletes.typeTeam') : t('athletes.typeAthlete')}>
             <div className="px-4 py-3 flex items-center gap-3">
-              <label className="text-[15px] text-[#3C3C43] w-20 shrink-0">{t('athletes.editorName')}</label>
-              <input value={name} onChange={e => setName(e.target.value)}
-                placeholder={t('athletes.editorNamePlaceholder')} autoFocus
-                className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
-            </div>
-            <div className="px-4 py-3 flex items-center gap-3">
-              <label className="text-[15px] text-[#3C3C43] w-20 shrink-0">{t('athletes.type')}</label>
+              <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">{t('athletes.type')}</label>
               <select value={type} onChange={e => setType(e.target.value)}
                 className="flex-1 bg-transparent text-[15px] outline-none appearance-none">
                 <option value="athlete">{t('athletes.typeAthlete')}</option>
@@ -13759,16 +13791,37 @@ function AthleteEditor({ open, athlete, onClose, onSave, busy = false }) {
               </select>
               <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
             </div>
+            <div className="px-4 py-3 flex items-center gap-3">
+              <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">
+                {isTeam ? t('athletes.editorName') : t('athletes.editorFirstName')}
+              </label>
+              <input value={name} onChange={e => setName(e.target.value)}
+                placeholder={isTeam ? t('athletes.editorNamePlaceholder') : t('athletes.editorFirstNamePlaceholder')} autoFocus
+                className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
+            </div>
+            {!isTeam && (
+              <div className="px-4 py-3 flex items-center gap-3">
+                <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">{t('athletes.editorLastName')}</label>
+                <input value={lastName} onChange={e => setLastName(e.target.value)}
+                  placeholder={t('athletes.editorLastNamePlaceholder')}
+                  className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
+              </div>
+            )}
           </IOSList>
 
-          {/* Verein / Notizen */}
-          <IOSList header={t('athletes.notes')}>
-            <div className="px-4 py-3">
-              <input value={notes} onChange={e => setNotes(e.target.value)}
-                placeholder={t('athletes.notesPlaceholder')}
-                className="w-full bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
+          {/* Verein (mit Autocomplete) — eigene Card, damit die Vorschlagsliste
+              nicht von overflow-hidden abgeschnitten wird. */}
+          <div className="space-y-1.5">
+            <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-4 font-medium">
+              {t('athletes.club')}
             </div>
-          </IOSList>
+            <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-4 py-3">
+              <ClubCombobox value={notes} onChange={setNotes} placeholder={t('athletes.clubPlaceholder')} />
+            </div>
+            <div className="text-[12px] text-[#8E8E93] px-4 leading-snug pt-1">
+              {t('athletes.clubFooter')}
+            </div>
+          </div>
         </div>
       </div>
     </div>

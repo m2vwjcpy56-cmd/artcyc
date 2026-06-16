@@ -20,9 +20,10 @@ CREATE TABLE IF NOT EXISTS profiles (
 -- =====================================================
 CREATE TABLE IF NOT EXISTS athletes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
+  name TEXT NOT NULL,            -- Vorname (bei Einzel) bzw. Teamname
+  last_name TEXT DEFAULT '',     -- Nachname (leer bei Teams)
   type TEXT NOT NULL DEFAULT 'athlete', -- 'athlete' | 'team'
-  notes TEXT DEFAULT '',
+  notes TEXT DEFAULT '',         -- Verein
   email TEXT DEFAULT '',
   -- User-Verknüpfung (NULL = vom Trainer ohne Account angelegt)
   auth_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -38,6 +39,8 @@ CREATE TABLE IF NOT EXISTS athletes (
 CREATE INDEX IF NOT EXISTS athletes_coach_idx ON athletes(created_by_coach_id) WHERE created_by_coach_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS athletes_user_idx ON athletes(auth_user_id) WHERE auth_user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS athletes_claim_idx ON athletes(claim_code) WHERE claim_code IS NOT NULL;
+-- Nachträglich für bestehende DBs: Nachname-Spalte ergänzen (idempotent).
+ALTER TABLE athletes ADD COLUMN IF NOT EXISTS last_name TEXT DEFAULT '';
 
 -- =====================================================
 -- 3) EXERCISES (UCI-Übungen + custom)
@@ -208,9 +211,10 @@ BEGIN
   -- Wenn Rolle 'athlete' ODER 'admin' (Admin trainiert ja auch ggf. selbst): Athlete-Eintrag automatisch
   -- Coaches starten mit leerer Liste
   IF chosen_role IN ('athlete', 'admin') THEN
-    INSERT INTO public.athletes (name, auth_user_id)
+    INSERT INTO public.athletes (name, last_name, auth_user_id)
     VALUES (
       COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1)),
+      COALESCE(NULLIF(NEW.raw_user_meta_data->>'last_name', ''), ''),
       NEW.id
     );
   END IF;
