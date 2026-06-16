@@ -63,8 +63,8 @@ export const COUNTRY_FLAG = {
   CZ: '🇨🇿', JP: '🇯🇵', HK: '🇭🇰', BE: '🇧🇪', US: '🇺🇸', HU: '🇭🇺',
 };
 
-// Normalisiert für die Suche: Umlaute/ß auflösen, Sonderzeichen → Space.
-function norm(s) {
+// Normalisiert für die Suche/Dedup: Umlaute/ß auflösen, Sonderzeichen → Space.
+export function normClub(s) {
   return (s || '')
     .toLowerCase()
     .replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss')
@@ -73,14 +73,26 @@ function norm(s) {
 }
 
 // Liefert bis zu `limit` Vorschläge zu `query`. Treffer am Wortanfang zuerst.
+// `dynamic` = zusätzliche, von Nutzern eingegebene Vereine (Crowdsource), z. B.
+//   [{ name, country, usage_count }]. Wird mit der kuratierten Liste gemerged
+//   (Dedup über normalisierten Namen; kuratiert hat Vorrang).
 // Exakte Eingabe (Verein schon vollständig getippt) erzeugt keine Vorschläge.
-export function suggestClubs(query, limit = 8) {
-  const q = norm(query);
+export function suggestClubs(query, dynamic = [], limit = 8) {
+  const q = normClub(query);
   if (!q) return [];
+  // Merge: kuratiert zuerst, dann dynamische (ohne Dubletten).
+  const seen = new Set(CLUBS.map(c => normClub(c.name)));
+  const merged = [...CLUBS];
+  for (const c of dynamic || []) {
+    const n = normClub(c.name);
+    if (!n || seen.has(n)) continue;
+    seen.add(n);
+    merged.push(c);
+  }
   const starts = [];
   const contains = [];
-  for (const c of CLUBS) {
-    const n = norm(c.name);
+  for (const c of merged) {
+    const n = normClub(c.name);
     if (n === q) return []; // exakt getroffen → keine Liste mehr zeigen
     if (n.startsWith(q)) starts.push(c);
     else if (n.includes(q)) contains.push(c);

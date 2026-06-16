@@ -9,13 +9,13 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
+import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
 import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud, fileToBase64 } from './lib/feedback.js';
 import { useProtoFeatures, setProtoFeatures } from './lib/featureFlags.js';
-import { suggestClubs, COUNTRY_FLAG } from './lib/clubs.js';
+import { suggestClubs, normClub, COUNTRY_FLAG } from './lib/clubs.js';
 import { parseProgramFile } from './lib/programImport.js';
 import { loadUciExercisesFromDb, getRulesLanguage, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram } from './lib/uciRules.js';
 
@@ -13397,6 +13397,18 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
   }, []);
   useEffect(() => { refreshTeamMembers(); }, [refreshTeamMembers]);
 
+  // Selbstlernende Vereinsliste: oft genannte Nutzer-Vereine als Vorschläge.
+  const [clubSuggestions, setClubSuggestions] = useState([]);
+  const refreshClubs = useCallback(async () => { setClubSuggestions(await fetchClubs(2)); }, []);
+  useEffect(() => { refreshClubs(); }, [refreshClubs]);
+  // Verein aus einem Formular crowdsourcen (fire-and-forget).
+  const trackClub = useCallback((clubName) => {
+    const name = (clubName || '').trim();
+    const norm = normClub(name);
+    if (!name || !norm) return;
+    registerClub(name, norm).then(() => refreshClubs());
+  }, [refreshClubs]);
+
   // Alle für mich sichtbaren Team-Subjekte (RLS liefert nur erlaubte).
   const myTeams = athletes.filter(a => a.type === 'team');
   // Mitglieder eines Teams als Athleten-Objekte (über teamMembers + athletes).
@@ -13470,6 +13482,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
         const { error } = await createAthlete(formData);
         if (error) throw error;
       }
+      if (!formData.id || formData.notes !== (editing?.notes || '')) trackClub(formData.notes);
       await refreshAthletes();
       setShowNew(false); setEditing(null);
     } catch (e) {
@@ -13498,6 +13511,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
         const { error } = await createTeam(formData);
         if (error) throw error;
       }
+      if (!formData.id || formData.notes !== (teamEditing?.notes || '')) trackClub(formData.notes);
       await refreshAthletes();
       await refreshTeamMembers();
       setShowNewTeam(false); setTeamEditing(null);
@@ -13797,6 +13811,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
         open={showNew || !!editing}
         athlete={editing}
         busy={busy}
+        clubSuggestions={clubSuggestions}
         onClose={() => { setShowNew(false); setEditing(null); setErr(''); }}
         onSave={onSaveAthlete}
       />
@@ -13805,6 +13820,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
         open={showNewTeam || !!teamEditing}
         team={teamEditing}
         busy={busy}
+        clubSuggestions={clubSuggestions}
         onClose={() => { setShowNewTeam(false); setTeamEditing(null); setErr(''); }}
         onSave={onSaveTeam}
       />
@@ -13921,9 +13937,9 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
 
 // Verein-Eingabe mit Autocomplete: schlägt aus der kuratierten Vereinsliste vor,
 // erlaubt aber jederzeit freien Text (wie eine Adress-Autovervollständigung).
-function ClubCombobox({ value, onChange, placeholder }) {
+function ClubCombobox({ value, onChange, placeholder, suggestions = [] }) {
   const [open, setOpen] = useState(false);
-  const matches = useMemo(() => suggestClubs(value, 8), [value]);
+  const matches = useMemo(() => suggestClubs(value, suggestions, 8), [value, suggestions]);
   const show = open && matches.length > 0;
   return (
     <div className="relative">
@@ -13951,7 +13967,7 @@ function ClubCombobox({ value, onChange, placeholder }) {
   );
 }
 
-function AthleteEditor({ open, athlete, onClose, onSave, busy = false }) {
+function AthleteEditor({ open, athlete, onClose, onSave, busy = false, clubSuggestions = [] }) {
   const { t } = useI18n();
   const [name, setName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -14035,7 +14051,7 @@ function AthleteEditor({ open, athlete, onClose, onSave, busy = false }) {
               {t('athletes.club')}
             </div>
             <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-4 py-3">
-              <ClubCombobox value={notes} onChange={setNotes} placeholder={t('athletes.clubPlaceholder')} />
+              <ClubCombobox value={notes} onChange={setNotes} placeholder={t('athletes.clubPlaceholder')} suggestions={clubSuggestions} />
             </div>
             <div className="text-[12px] text-[#8E8E93] px-4 leading-snug pt-1">
               {t('athletes.clubFooter')}
@@ -14050,7 +14066,7 @@ function AthleteEditor({ open, athlete, onClose, onSave, busy = false }) {
 // Team = Formation. Einzeldisziplin 1er ist kein Team.
 const TEAM_DISCIPLINES = ['2er', '4er', '6er'];
 
-function TeamEditor({ open, team, onClose, onSave, busy = false }) {
+function TeamEditor({ open, team, onClose, onSave, busy = false, clubSuggestions = [] }) {
   const { t } = useI18n();
   const [name, setName] = useState('');
   const [discipline, setDiscipline] = useState('2er');
@@ -14104,7 +14120,7 @@ function TeamEditor({ open, team, onClose, onSave, busy = false }) {
           <div className="space-y-1.5">
             <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-4 font-medium">{t('athletes.club')}</div>
             <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-4 py-3">
-              <ClubCombobox value={club} onChange={setClub} placeholder={t('athletes.clubPlaceholder')} />
+              <ClubCombobox value={club} onChange={setClub} placeholder={t('athletes.clubPlaceholder')} suggestions={clubSuggestions} />
             </div>
           </div>
         </div>
