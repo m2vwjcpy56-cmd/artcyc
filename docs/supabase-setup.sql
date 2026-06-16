@@ -80,6 +80,24 @@ CREATE TABLE IF NOT EXISTS athlete_coaches (
 );
 
 -- =====================================================
+-- 2c) CLUBS — selbstlernende Vereinsliste (Crowdsource).
+--     Von Nutzern eingegebene Vereine werden gesammelt; ab genügend
+--     Nennungen (usage_count) erscheinen sie als Vorschlag für alle.
+--     name_norm = normalisiert (Dedup). country/source ggf. später per KI.
+-- =====================================================
+CREATE TABLE IF NOT EXISTS clubs (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        TEXT NOT NULL,                  -- Anzeige-Schreibweise
+  name_norm   TEXT NOT NULL UNIQUE,           -- normalisiert (Dedup-Schlüssel)
+  country     TEXT DEFAULT '',
+  source      TEXT NOT NULL DEFAULT 'user',   -- 'user' | 'curated' | 'ai'
+  usage_count INT  NOT NULL DEFAULT 1,
+  created_by  UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS clubs_usage_idx ON clubs(usage_count DESC);
+
+-- =====================================================
 -- 3) EXERCISES (UCI-Übungen + custom)
 -- =====================================================
 CREATE TABLE IF NOT EXISTS exercises (
@@ -328,6 +346,29 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER;
 
+-- Verein registrieren (Crowdsource): legt einen neuen Verein an oder erhöht
+-- den Zähler eines bestehenden (Dedup über name_norm). Gibt die kanonische
+-- Anzeige-Schreibweise zurück. SECURITY DEFINER, damit clubs ohne direkte
+-- Schreibrechte gepflegt werden kann.
+CREATE OR REPLACE FUNCTION register_club(p_name TEXT, p_norm TEXT, p_country TEXT DEFAULT '')
+RETURNS TEXT AS $$
+DECLARE
+  canonical TEXT;
+BEGIN
+  IF auth.uid() IS NULL THEN RETURN NULL; END IF;
+  p_name := trim(p_name);
+  IF p_name = '' OR coalesce(trim(p_norm), '') = '' THEN RETURN NULL; END IF;
+
+  INSERT INTO clubs (name, name_norm, country, source, created_by)
+  VALUES (p_name, p_norm, coalesce(p_country, ''), 'user', auth.uid())
+  ON CONFLICT (name_norm)
+    DO UPDATE SET usage_count = clubs.usage_count + 1
+  RETURNING name INTO canonical;
+
+  RETURN canonical;
+END;
+$$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER;
+
 -- =====================================================
 -- 8) TRIGGER: Beim ersten User automatisch Admin, sonst Rolle aus Signup-Metadata
 -- =====================================================
@@ -500,6 +541,14 @@ CREATE POLICY team_members_update ON team_members
 CREATE POLICY team_members_delete ON team_members
   FOR DELETE TO authenticated
   USING (manages_team(team_id));
+
+-- CLUBS: alle Authenticated dürfen lesen (Vorschläge). Schreiben nur über die
+-- SECURITY-DEFINER-RPC register_club() — keine direkten Insert/Update-Policies.
+ALTER TABLE clubs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS clubs_select ON clubs;
+CREATE POLICY clubs_select ON clubs
+  FOR SELECT TO authenticated
+  USING (true);
 
 -- =====================================================
 -- 10) FERTIG. Im Supabase-Dashboard noch konfigurieren:

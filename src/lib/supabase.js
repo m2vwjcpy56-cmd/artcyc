@@ -217,6 +217,30 @@ export async function removeTeamMember(teamId, athleteId) {
   return { error };
 }
 
+// Selbstlernende Vereinsliste: lädt von Nutzern eingegebene Vereine, die oft
+// genug genannt wurden (>= minCount), als Vorschläge für alle.
+export async function fetchClubs(minCount = 2) {
+  const { data, error } = await supabase
+    .from('clubs')
+    .select('name, country, usage_count')
+    .gte('usage_count', minCount)
+    .order('usage_count', { ascending: false })
+    .limit(1000);
+  if (error) { console.warn('clubs fetch fehlgeschlagen:', error.message); return []; }
+  return data || [];
+}
+
+// Registriert einen eingegebenen Verein (Crowdsource). p_norm wird im Client
+// mit normClub() berechnet (gleiche Normalisierung wie die Vorschlagssuche).
+export async function registerClub(name, norm, country = '') {
+  if (!name || !norm) return { data: null };
+  const { data, error } = await supabase.rpc('register_club', {
+    p_name: name, p_norm: norm, p_country: country
+  });
+  if (error) console.warn('register_club fehlgeschlagen:', error.message);
+  return { data, error };
+}
+
 // Beitritt per Code (Self-Join). Gibt { data: teamId } oder { error }.
 export async function joinTeamByCode(code) {
   const normalized = (code || '').toUpperCase().replace(/[\s-]/g, '');
