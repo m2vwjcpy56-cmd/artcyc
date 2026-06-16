@@ -100,7 +100,7 @@ export async function fetchProfiles() {
 export async function fetchAthletes() {
   const { data, error } = await supabase
     .from('athletes')
-    .select('id, name, type, notes, email, auth_user_id, created_by_coach_id, claim_code, created_at')
+    .select('id, name, last_name, type, notes, email, auth_user_id, created_by_coach_id, claim_code, created_at')
     .order('created_at', { ascending: true });
   if (error) {
     console.warn('Athletes fetch fehlgeschlagen:', error.message);
@@ -109,11 +109,12 @@ export async function fetchAthletes() {
   return data || [];
 }
 
-export async function createAthlete({ name, type = 'athlete', notes = '', email = '' }) {
+export async function createAthlete({ name, last_name = '', type = 'athlete', notes = '', email = '' }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: { message: 'Nicht angemeldet' } };
   const payload = {
     name,
+    last_name: last_name || '',
     type,
     notes: notes || '',
     email: email || '',
