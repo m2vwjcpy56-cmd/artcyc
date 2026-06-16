@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS athletes (
   name TEXT NOT NULL,            -- Vorname (bei Einzel) bzw. Teamname
   last_name TEXT DEFAULT '',     -- Nachname (leer bei Teams)
   type TEXT NOT NULL DEFAULT 'athlete', -- 'athlete' | 'team'
+  discipline TEXT DEFAULT '',    -- nur bei Teams: '2er' | '4er' | '6er' (Formation)
   notes TEXT DEFAULT '',         -- Verein
   email TEXT DEFAULT '',
   -- User-Verknüpfung (NULL = vom Trainer ohne Account angelegt)
@@ -41,6 +42,26 @@ CREATE INDEX IF NOT EXISTS athletes_user_idx ON athletes(auth_user_id) WHERE aut
 CREATE INDEX IF NOT EXISTS athletes_claim_idx ON athletes(claim_code) WHERE claim_code IS NOT NULL;
 -- Nachträglich für bestehende DBs: Nachname-Spalte ergänzen (idempotent).
 ALTER TABLE athletes ADD COLUMN IF NOT EXISTS last_name TEXT DEFAULT '';
+-- Formation für Team-Subjekte ('2er'|'4er'|'6er').
+ALTER TABLE athletes ADD COLUMN IF NOT EXISTS discipline TEXT DEFAULT '';
+
+-- =====================================================
+-- 2b) TEAM_MEMBERS — verknüpft Accounts (Sportler) mit Team-Subjekten.
+--     Ein Team ist eine athletes-Zeile mit type='team'. Mitglieder sind
+--     athletes-Zeilen mit auth_user_id (= echte Accounts). So teilen alle
+--     Mitglieder dieselben Team-Daten (Sessions/Wettkämpfe), während
+--     Einzeldaten (1er) privat bleiben.
+-- =====================================================
+CREATE TABLE IF NOT EXISTS team_members (
+  team_id    UUID NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,  -- type='team'
+  athlete_id UUID NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,  -- Mitglied (mit Account)
+  role       TEXT NOT NULL DEFAULT 'member',  -- 'captain' | 'member'
+  added_by   UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (team_id, athlete_id)
+);
+CREATE INDEX IF NOT EXISTS team_members_team_idx ON team_members(team_id);
+CREATE INDEX IF NOT EXISTS team_members_athlete_idx ON team_members(athlete_id);
 
 -- =====================================================
 -- 3) EXERCISES (UCI-Übungen + custom)
@@ -126,7 +147,48 @@ RETURNS BOOLEAN AS $$
   SELECT EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('coach', 'admin'))
 $$ LANGUAGE sql STABLE SECURITY DEFINER;
 
+-- Bin ich (eingeloggter User) Mitglied dieses Team-Subjekts?
+CREATE OR REPLACE FUNCTION is_team_member(team_uuid UUID)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM team_members tm
+    JOIN athletes me ON me.id = tm.athlete_id
+    WHERE tm.team_id = team_uuid AND me.auth_user_id = auth.uid()
+  )
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
+
+-- Verwalte ich dieses Team (Ersteller oder Admin)?
+CREATE OR REPLACE FUNCTION manages_team(team_uuid UUID)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM athletes
+    WHERE id = team_uuid
+      AND type = 'team'
+      AND (created_by_coach_id = auth.uid() OR is_admin())
+  )
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
+
+-- Ist dieser Athlete über eine gemeinsame Team-Mitgliedschaft sichtbar?
+-- (= das Subjekt ist ein Team, in dem ich Mitglied bin, ODER es ist ein
+--  Team-Kollege aus einem meiner Teams.) Nur für Namens-/Roster-Anzeige —
+--  Einzeldaten bleiben über can_access_athlete privat.
+CREATE OR REPLACE FUNCTION visible_via_team(athlete_uuid UUID)
+RETURNS BOOLEAN AS $$
+  SELECT
+    is_team_member(athlete_uuid)
+    OR EXISTS (
+      SELECT 1
+      FROM team_members tmem
+      JOIN team_members tmine ON tmine.team_id = tmem.team_id
+      JOIN athletes me ON me.id = tmine.athlete_id
+      WHERE tmem.athlete_id = athlete_uuid
+        AND me.auth_user_id = auth.uid()
+    )
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
+
 -- Ist ein bestimmter Athlete für mich sichtbar/editierbar?
+-- Eigener Eintrag, von mir betreuter Sportler, Admin — ODER ein Team-Subjekt,
+-- in dem ich Mitglied bin (dann darf ich die geteilten Team-Daten lesen/schreiben).
 CREATE OR REPLACE FUNCTION can_access_athlete(athlete_uuid UUID)
 RETURNS BOOLEAN AS $$
   SELECT EXISTS (
@@ -137,7 +199,7 @@ RETURNS BOOLEAN AS $$
         OR created_by_coach_id = auth.uid()
         OR is_admin()
       )
-  )
+  ) OR is_team_member(athlete_uuid)
 $$ LANGUAGE sql STABLE SECURITY DEFINER;
 
 -- Generiert einen 6-stelligen alphanumerischen Claim-Code (vermeidet ähnliche Zeichen wie 0/O, 1/I)
@@ -276,13 +338,15 @@ CREATE POLICY athletes_select ON athletes
     auth_user_id = auth.uid()
     OR created_by_coach_id = auth.uid()
     OR is_admin()
+    OR visible_via_team(id)   -- Team-Subjekte + Team-Kollegen (Namen/Roster)
   );
--- Anlegen: nur Coach/Admin (Sportler-Self wird vom Trigger angelegt)
+-- Anlegen: Coach/Admin legen Sportler an (Sportler-Self via Trigger);
+-- Team-Subjekte (type='team') darf jeder Account anlegen (created_by = ich).
 CREATE POLICY athletes_insert ON athletes
   FOR INSERT TO authenticated
   WITH CHECK (
-    is_coach()
-    AND created_by_coach_id = auth.uid()
+    (is_coach() AND created_by_coach_id = auth.uid())
+    OR (type = 'team' AND created_by_coach_id = auth.uid())
   );
 -- Update: eigener Eintrag ODER Coach der ihn angelegt hat
 CREATE POLICY athletes_update ON athletes
@@ -329,6 +393,28 @@ CREATE POLICY competitions_write ON competitions
   FOR ALL TO authenticated
   USING (can_access_athlete(athlete_id))
   WITH CHECK (can_access_athlete(athlete_id));
+
+-- TEAM_MEMBERS: sichtbar für Mitglieder + Team-Verwalter; verwalten nur der
+-- Ersteller/Admin des Teams.
+ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS team_members_select ON team_members;
+DROP POLICY IF EXISTS team_members_insert ON team_members;
+DROP POLICY IF EXISTS team_members_update ON team_members;
+DROP POLICY IF EXISTS team_members_delete ON team_members;
+
+CREATE POLICY team_members_select ON team_members
+  FOR SELECT TO authenticated
+  USING (is_team_member(team_id) OR manages_team(team_id));
+CREATE POLICY team_members_insert ON team_members
+  FOR INSERT TO authenticated
+  WITH CHECK (manages_team(team_id));
+CREATE POLICY team_members_update ON team_members
+  FOR UPDATE TO authenticated
+  USING (manages_team(team_id))
+  WITH CHECK (manages_team(team_id));
+CREATE POLICY team_members_delete ON team_members
+  FOR DELETE TO authenticated
+  USING (manages_team(team_id));
 
 -- =====================================================
 -- 10) FERTIG. Im Supabase-Dashboard noch konfigurieren:
