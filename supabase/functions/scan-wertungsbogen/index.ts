@@ -107,6 +107,35 @@ async function callVision(systemPrompt: string, dataUrl: string, maxTokens: numb
   return { data: parseJsonLoose(raw), raw, error: null };
 }
 
+// Bereinigt eine Übungs-Zeile aus der Vision-Antwort — der EINZIGE Chokepoint,
+// daher hart absichern (schützt auch alte, gecachte Frontend-Versionen):
+//  • takt (taktische Aufwertung) wird IMMER entfernt — sie wurde aus Fotos
+//    halluziniert (Übungen sprangen fälschlich auf 10,0). Über PDF bleibt sie exakt.
+//  • Symbol-Zähler (x/w/s/k): nur kleine, ganze Zahlen 0..20; alles andere
+//    (z. B. ein verlesener Punktwert wie 5,8) → 0.
+//  • schw: nur die zulässigen Stufen 0/10/50/100; alles andere → 0.
+function sanitizeExerciseRow(row: any): any {
+  const cnt = (v: any) => {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0 || n > 20 || n !== Math.round(n)) return 0;
+    return n;
+  };
+  const schw = (v: any) => {
+    const n = Number(v);
+    return (n === 0 || n === 10 || n === 50 || n === 100) ? n : 0;
+  };
+  const kg = (k: any) => ({
+    x: cnt(k?.x), w: cnt(k?.w), s: cnt(k?.s), k: cnt(k?.k), schw: schw(k?.schw),
+    // takt bewusst NICHT übernommen
+  });
+  const pts = Number(row?.points);
+  return {
+    points: Number.isFinite(pts) ? pts : null,
+    kg1: kg(row?.kg1),
+    kg2: kg(row?.kg2),
+  };
+}
+
 // @ts-ignore Deno-Runtime
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
@@ -137,7 +166,7 @@ Deno.serve(async (req: Request) => {
     let exDebug: string | null = null;
     try {
       const ex = await callVision(EX_PROMPT, dataUrl, 4000);
-      if (ex.data && Array.isArray(ex.data.exercises)) exercises = ex.data.exercises;
+      if (ex.data && Array.isArray(ex.data.exercises)) exercises = ex.data.exercises.map(sanitizeExerciseRow);
       if (exercises.length === 0) exDebug = (ex.error || ex.raw || "").slice(0, 600);
     } catch (e) { exDebug = "Ausnahme: " + String((e as Error)?.message || e); }
 
