@@ -191,6 +191,44 @@ export async function deleteAthlete(id) {
 }
 
 // =============================================================
+// FEEDBACK — Coaching-Feedback pro Übung (+ Sportler/Team).
+// Sichtbarkeit via RLS (can_access_athlete) — eigene + Trainer + Team.
+// =============================================================
+
+// Lädt alle Feedbacks für ein Subjekt (Sportler oder Team). Optional auf eine
+// Übung gefiltert (exercise_ref ODER exercise_code).
+export async function fetchFeedback(athleteId) {
+  if (!athleteId) return [];
+  const { data, error } = await supabase
+    .from('feedback_entries')
+    .select('*')
+    .eq('athlete_id', athleteId)
+    .order('created_at', { ascending: false });
+  if (error) { console.warn('feedback fetch fehlgeschlagen:', error.message); return []; }
+  return data || [];
+}
+
+export async function addFeedback(entry) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: { message: 'Nicht angemeldet' } };
+  const payload = { ...entry, created_by: user.id };
+  const { data, error } = await supabase
+    .from('feedback_entries').insert(payload).select().single();
+  return { data, error };
+}
+
+export async function updateFeedback(id, fields) {
+  const { data, error } = await supabase
+    .from('feedback_entries').update(fields).eq('id', id).select().single();
+  return { data, error };
+}
+
+export async function deleteFeedback(id) {
+  const { error } = await supabase.from('feedback_entries').delete().eq('id', id);
+  return { error };
+}
+
+// =============================================================
 // TEAMS — ein Team ist eine athletes-Zeile mit type='team' (eigenes
 // Trainings-Subjekt). team_members verknüpft echte Accounts damit.
 // =============================================================

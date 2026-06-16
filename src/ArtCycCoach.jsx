@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyLicense, saveLicenseIfEmpty, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
+import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -8519,8 +8519,273 @@ function buildExerciseScreenModel(exercise, data, ropeFilter = null, period = '6
 // Admin klar im Footer. Nutzt dasselbe buildExerciseScreenModel — keine
 // neuen Metriken. Wird nur angezeigt, wenn der Vorschau-Schalter an ist.
 // =============================================================
+// =============================================================
+// FEEDBACK (Coaching-Feedback pro Übung) — Prototyp
+// =============================================================
+const FB_RATINGS = [
+  { key: 'r_technik', label: 'Technik' },
+  { key: 'r_ausfuehrung', label: 'Ausführung' },
+  { key: 'r_fortschritt', label: 'Fortschritt' },
+  { key: 'r_programm', label: 'Programm-bereit' },
+  { key: 'r_wettkampf', label: 'Wettkampf-bereit' },
+];
+const FB_CONTEXTS = ['Heimtraining', 'Lehrgang', 'C-Kader', 'Wettkampf'];
+const FB_GIVENBY = ['Heimtrainer', 'Lehrgangsleiter', 'Sportler', 'Bundestrainer'];
+const FB_TYPES = ['verbale Korrektur', 'Video-Analyse', 'Dartfish'];
+const FB_RATING_LABEL = { 4: 'gut', 3: 'eher gut', 2: 'eher schlecht', 1: 'schlecht' };
+function fbColor(v) {
+  if (v >= 4) return '#34C759';
+  if (v === 3) return '#FF9F0A';
+  if (v >= 1) return '#FF453A';
+  return '#C7C7CC';
+}
+
+// 1–4-Auswahl als vier Punkte.
+function RatingPicker({ value, onChange }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {[1, 2, 3, 4].map(n => (
+        <button key={n} type="button" onClick={() => onChange(value === n ? 0 : n)}
+          className="w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-semibold transition active:scale-90"
+          style={value === n
+            ? { background: fbColor(n), color: '#fff' }
+            : { background: 'rgba(120,120,128,0.12)', color: '#8E8E93' }}>
+          {n}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FeedbackEditor({ open, athleteId, exercise, entry, onClose, onSaved }) {
+  const [fehlerbild, setFehlerbild] = useState('');
+  const [handlung, setHandlung] = useState('');
+  const [context, setContext] = useState('');
+  const [givenBy, setGivenBy] = useState('');
+  const [ftype, setFtype] = useState('');
+  const [dartfish, setDartfish] = useState('');
+  const [helpful, setHelpful] = useState(0);
+  const [ratings, setRatings] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    if (entry) {
+      setFehlerbild(entry.fehlerbild || ''); setHandlung(entry.handlungsanweisung || '');
+      setContext(entry.context || ''); setGivenBy(entry.given_by || ''); setFtype(entry.feedback_type || '');
+      setDartfish(entry.dartfish_url || ''); setHelpful(entry.helpful || 0);
+      setRatings(Object.fromEntries(FB_RATINGS.map(r => [r.key, entry[r.key] || 0])));
+    } else {
+      setFehlerbild(''); setHandlung(''); setContext(''); setGivenBy(''); setFtype('');
+      setDartfish(''); setHelpful(0); setRatings({});
+    }
+    setErr('');
+  }, [entry, open]);
+
+  if (!open) return null;
+  const canSave = (fehlerbild.trim() || handlung.trim()) && !busy && !!athleteId;
+
+  const save = async () => {
+    if (!canSave) return;
+    setBusy(true); setErr('');
+    const payload = {
+      athlete_id: athleteId,
+      exercise_ref: exercise?.id || null,
+      exercise_name: exercise?.name || '',
+      exercise_code: exercise?.uci_code || '',
+      fehlerbild: fehlerbild.trim(),
+      handlungsanweisung: handlung.trim(),
+      context, given_by: givenBy, feedback_type: ftype,
+      dartfish_url: dartfish.trim(),
+      helpful: helpful || null,
+      ...Object.fromEntries(FB_RATINGS.map(r => [r.key, ratings[r.key] || null])),
+    };
+    const res = entry ? await updateFeedback(entry.id, payload) : await addFeedback(payload);
+    if (res.error) { setErr(res.error.message || 'Speichern fehlgeschlagen'); setBusy(false); return; }
+    setBusy(false); onSaved();
+  };
+
+  const selRow = (label, val, set, opts) => (
+    <div className="px-4 py-3 flex items-center gap-3">
+      <label className="text-[15px] text-[#3C3C43] w-32 shrink-0">{label}</label>
+      <select value={val} onChange={e => set(e.target.value)}
+        className="flex-1 bg-transparent text-[15px] outline-none appearance-none text-right">
+        <option value="">—</option>
+        {opts.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-[#F2F2F7] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-[#F2F2F7]/95 backdrop-blur-xl px-4 py-3 flex items-center justify-between z-10">
+          <button onClick={onClose} className="text-[17px] text-[#007AFF] active:opacity-60 px-1">Abbrechen</button>
+          <h3 className="font-semibold text-[17px]">{entry ? 'Feedback bearbeiten' : 'Neues Feedback'}</h3>
+          <button onClick={save} disabled={!canSave}
+            className="text-[17px] text-[#FF9500] font-semibold active:opacity-60 disabled:opacity-30 px-1">
+            {busy ? '…' : 'Fertig'}
+          </button>
+        </div>
+
+        <div className="px-3 py-4 space-y-5">
+          <div className="text-[12px] text-[#8E8E93] px-4 -mb-2">{exercise?.name}</div>
+
+          <IOSList header="Fehlerbild — was stimmt nicht?">
+            <div className="px-4 py-3">
+              <textarea value={fehlerbild} onChange={e => setFehlerbild(e.target.value)} rows={2}
+                placeholder="z. B. Schulter beim Weitermachen zu weit hinten"
+                className="w-full bg-transparent text-[15px] outline-none resize-none placeholder:text-[#C7C7CC]" />
+            </div>
+          </IOSList>
+
+          <IOSList header="Handlungsanweisung — worauf achten?">
+            <div className="px-4 py-3">
+              <textarea value={handlung} onChange={e => setHandlung(e.target.value)} rows={2}
+                placeholder="z. B. Po oben lassen, Schulter weiter vorne"
+                className="w-full bg-transparent text-[15px] outline-none resize-none placeholder:text-[#C7C7CC]" />
+            </div>
+          </IOSList>
+
+          <IOSList header="Kontext">
+            {selRow('Wo', context, setContext, FB_CONTEXTS)}
+            {selRow('Von wem', givenBy, setGivenBy, FB_GIVENBY)}
+            {selRow('Art', ftype, setFtype, FB_TYPES)}
+            <div className="px-4 py-3 flex items-center gap-3">
+              <label className="text-[15px] text-[#3C3C43] w-32 shrink-0">Dartfish-Link</label>
+              <input value={dartfish} onChange={e => setDartfish(e.target.value)} inputMode="url"
+                placeholder="https://dartfi.sh/…"
+                className="flex-1 bg-transparent text-[15px] outline-none text-right placeholder:text-[#C7C7CC]" />
+            </div>
+          </IOSList>
+
+          <IOSList header="Bewertung (1–4)" footer="4 = gut · 3 = eher gut · 2 = eher schlecht · 1 = schlecht">
+            {FB_RATINGS.map(r => (
+              <div key={r.key} className="px-4 py-3 flex items-center justify-between gap-3">
+                <span className="text-[15px] text-[#3C3C43]">{r.label}</span>
+                <RatingPicker value={ratings[r.key] || 0} onChange={v => setRatings(s => ({ ...s, [r.key]: v }))} />
+              </div>
+            ))}
+            <div className="px-4 py-3 flex items-center justify-between gap-3">
+              <span className="text-[15px] text-[#3C3C43]">Hilfreich?</span>
+              <RatingPicker value={helpful} onChange={setHelpful} />
+            </div>
+          </IOSList>
+
+          {err && <div className="text-[13px] text-[#FF3B30] px-4">✗ {err}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FeedbackSection({ athleteId, exercise }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editEntry, setEditEntry] = useState(null);
+
+  const load = useCallback(async () => {
+    if (!athleteId) { setEntries([]); setLoading(false); return; }
+    setLoading(true);
+    const all = await fetchFeedback(athleteId);
+    const code = (exercise.uci_code || '').trim();
+    const nm = (exercise.name || '').trim().toLowerCase();
+    const mine = all.filter(f =>
+      (exercise.id && f.exercise_ref === exercise.id)
+      || (code && f.exercise_code === code)
+      || ((f.exercise_name || '').trim().toLowerCase() === nm && nm)
+    );
+    setEntries(mine); setLoading(false);
+  }, [athleteId, exercise.id, exercise.uci_code, exercise.name]);
+  useEffect(() => { load(); }, [load]);
+
+  const del = async (id) => {
+    if (!confirm('Dieses Feedback wirklich löschen?')) return;
+    await deleteFeedback(id);
+    load();
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between px-1">
+        <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium">
+          Feedback{entries.length ? ` (${entries.length})` : ''}
+        </div>
+        {athleteId && (
+          <button onClick={() => { setEditEntry(null); setEditorOpen(true); }}
+            className="text-[13px] text-[#FF9500] font-semibold active:opacity-60 flex items-center gap-1 pr-1">
+            <Plus size={14} /> Feedback
+          </button>
+        )}
+      </div>
+
+      {!athleteId ? (
+        <div className="bg-white rounded-2xl px-4 py-4 text-[13px] text-[#8E8E93] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          Wähle oben einen Sportler/ein Team, um Feedback zu erfassen.
+        </div>
+      ) : loading ? (
+        <div className="bg-white rounded-2xl px-4 py-4 text-[13px] text-[#8E8E93] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">Lädt …</div>
+      ) : entries.length === 0 ? (
+        <div className="bg-white rounded-2xl px-4 py-4 text-[13px] text-[#8E8E93] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          Noch kein Feedback zu dieser Übung. Tippe oben auf „Feedback".
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          {entries.map((f, idx) => (
+            <div key={f.id} className={'px-4 py-3.5 ' + (idx > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+              {f.fehlerbild && (
+                <div className="text-[14px] text-black leading-snug">
+                  <span className="text-[#FF453A] font-medium">✗ </span>{f.fehlerbild}
+                </div>
+              )}
+              {f.handlungsanweisung && (
+                <div className="text-[14px] text-black leading-snug mt-1">
+                  <span className="text-[#34C759] font-medium">→ </span>{f.handlungsanweisung}
+                </div>
+              )}
+              <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                {f.context && <IOSTag color="gray">{f.context}</IOSTag>}
+                {f.given_by && <IOSTag color="purple">{f.given_by}</IOSTag>}
+                {f.feedback_type && <IOSTag color="blue">{f.feedback_type}</IOSTag>}
+                {f.dartfish_url && (
+                  <a href={f.dartfish_url} target="_blank" rel="noreferrer"
+                    className="text-[12px] text-[#007AFF] font-medium active:opacity-60">Dartfish ↗</a>
+                )}
+              </div>
+              {FB_RATINGS.some(r => f[r.key]) && (
+                <div className="flex items-center gap-2 flex-wrap mt-2">
+                  {FB_RATINGS.filter(r => f[r.key]).map(r => (
+                    <span key={r.key} className="inline-flex items-center gap-1 text-[11px] text-[#8E8E93]">
+                      <span className="w-2 h-2 rounded-full" style={{ background: fbColor(f[r.key]) }} />
+                      {r.label} {f[r.key]}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-[11px] text-[#C7C7CC]">{formatDateShort(f.created_at)}</span>
+                <div className="flex gap-1">
+                  <button onClick={() => { setEditEntry(f); setEditorOpen(true); }}
+                    className="p-1.5 text-[#007AFF] active:bg-[#D1D1D6]/40 rounded-full"><Edit2 size={15} /></button>
+                  <button onClick={() => del(f.id)}
+                    className="p-1.5 text-[#FF3B30] active:bg-[#D1D1D6]/40 rounded-full"><Trash2 size={15} /></button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <FeedbackEditor open={editorOpen} athleteId={athleteId} exercise={exercise} entry={editEntry}
+        onClose={() => setEditorOpen(false)} onSaved={() => { setEditorOpen(false); load(); }} />
+    </div>
+  );
+}
+
 function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, onDelete }) {
   const { t } = useI18n();
+  const proto = useProtoFeatures();
   const is3 = exercise.category_mode === 3;
   const [compOpen, setCompOpen] = useState(false);
   const [importStatus, setImportStatus] = useState(null);
@@ -8612,6 +8877,10 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
             </div>
           </div>
         </header>
+
+        {proto && (
+          <FeedbackSection athleteId={data._viewingAthleteId || null} exercise={exercise} />
+        )}
 
         {!hasAnyData ? (
           <div className="card-surface rounded-[22px] p-8 text-center text-[15px] text-slate-400">Noch keine Trainingsdaten erfasst.</div>
