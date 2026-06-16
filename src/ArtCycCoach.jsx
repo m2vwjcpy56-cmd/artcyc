@@ -3917,6 +3917,9 @@ function SwipeableMain({ view, setView, visibleNav, children }) {
       el = el.parentElement;
     }
     const t = e.touches[0];
+    // Swipes direkt vom linken Bildschirmrand sind die iOS-„Zurück"-Geste
+    // (useEdgeSwipeBack) — hier NICHT als Tab-Wechsel behandeln.
+    if (t.clientX <= 30) { stateRef.current.active = false; return; }
     stateRef.current = { x: t.clientX, y: t.clientY, time: Date.now(), lock: null, active: true };
   };
 
@@ -3960,6 +3963,42 @@ function SwipeableMain({ view, setView, visibleNav, children }) {
       {children}
     </main>
   );
+}
+
+// iOS-Style „Edge-Swipe-Back": Wisch vom linken Bildschirmrand nach rechts →
+// ruft onBack(). Detailseiten setzen zusätzlich data-no-swipe auf ihren Root,
+// damit SwipeableMain in dem Moment NICHT den Tab wechselt.
+function useEdgeSwipeBack(onBack, enabled = true) {
+  const cb = useRef(onBack);
+  cb.current = onBack;
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const EDGE = 30;     // px ab linkem Rand, wo die Geste starten darf
+    const THRESH = 72;   // nötige Wischdistanz nach rechts
+    let sx = 0, sy = 0, tracking = false, fired = false;
+    const ts = (e) => {
+      if (e.touches.length !== 1) { tracking = false; return; }
+      const t = e.touches[0];
+      if (t.clientX > EDGE) { tracking = false; return; }
+      sx = t.clientX; sy = t.clientY; tracking = true; fired = false;
+    };
+    const tm = (e) => {
+      if (!tracking || fired || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      const dx = t.clientX - sx, dy = t.clientY - sy;
+      if (Math.abs(dy) > 45 && Math.abs(dy) > Math.abs(dx)) { tracking = false; return; }
+      if (dx > THRESH) { fired = true; tracking = false; if (typeof cb.current === 'function') cb.current(); }
+    };
+    const te = () => { tracking = false; };
+    document.addEventListener('touchstart', ts, { passive: true });
+    document.addEventListener('touchmove', tm, { passive: true });
+    document.addEventListener('touchend', te, { passive: true });
+    return () => {
+      document.removeEventListener('touchstart', ts);
+      document.removeEventListener('touchmove', tm);
+      document.removeEventListener('touchend', te);
+    };
+  }, [enabled]);
 }
 
 function Brand({ size = 'md' }) {
@@ -7302,6 +7341,7 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
 // =============================================================
 function TrainingsplanView({ data, setData, onBack }) {
   const { t } = useI18n();
+  useEdgeSwipeBack(onBack);
   const plans = data.trainingPlans || [];
   const activeExercises = (data.exercises || []).filter(e => e.active);
   const today = new Date().toISOString().slice(0, 10);
@@ -8805,6 +8845,7 @@ function FeedbackSection({ athleteId, exercise }) {
 function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, onDelete }) {
   const { t } = useI18n();
   const proto = useProtoFeatures();
+  useEdgeSwipeBack(onBack);
   const is3 = exercise.category_mode === 3;
   const [compOpen, setCompOpen] = useState(false);
   const [importStatus, setImportStatus] = useState(null);
@@ -8881,7 +8922,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
   const comp = (vm.compositionSeries || []).filter(b => b.total > 0);
 
   return (
-    <div className="min-h-screen bg-[#F2F2F7]">
+    <div className="min-h-screen bg-[#F2F2F7]" data-no-swipe>
       <div className="max-w-2xl mx-auto px-4 pt-2 pb-28 space-y-6">
 
         {/* 01 — TOP BAR */}
@@ -13001,6 +13042,7 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
 // =============================================================
 function AthleteDetailView({ athlete, ownData, onBack }) {
   const { t } = useI18n();
+  useEdgeSwipeBack(onBack);
   const [remoteData, setRemoteData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -15017,6 +15059,7 @@ function ExportTraining({ data }) {
 // =============================================================
 function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDelete }) {
   const { t } = useI18n();
+  useEdgeSwipeBack(onBack);
   const [activeTable, setActiveTable] = useState(1);
 
   if (!competition) return null;
