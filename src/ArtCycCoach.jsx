@@ -9710,6 +9710,100 @@ function UebungenView({ data, setData, onBack }) {
     return [...(data.exercises || [])].sort(cmp);
   }, [data.exercises, data.sessions]);
 
+  // Feedback (Prototyp): zeigen, welche Übungen Feedback haben — und Übungen,
+  // zu denen es Feedback gibt, die aber (noch) nicht in der Liste stehen,
+  // automatisch als „nur Feedback"-Eintrag einblenden.
+  const proto = useProtoFeatures();
+  const viewingAthleteId = data._viewingAthleteId || null;
+  const [feedbackEntries, setFeedbackEntries] = useState([]);
+  useEffect(() => {
+    if (!proto || !viewingAthleteId) { setFeedbackEntries([]); return undefined; }
+    let cancelled = false;
+    fetchFeedback(viewingAthleteId).then(fb => { if (!cancelled) setFeedbackEntries(fb); });
+    return () => { cancelled = true; };
+  }, [proto, viewingAthleteId]);
+  const fbByBase = useMemo(() => {
+    const m = new Map();
+    for (const f of feedbackEntries) {
+      const b = exerciseBaseKey(f.exercise_name);
+      if (!b) continue;
+      const e = m.get(b) || { count: 0, names: new Map() };
+      e.count++; e.names.set(f.exercise_name, (e.names.get(f.exercise_name) || 0) + 1);
+      m.set(b, e);
+    }
+    return m;
+  }, [feedbackEntries]);
+  const feedbackOnlyExercises = useMemo(() => {
+    if (!proto) return [];
+    const existing = new Set((data.exercises || []).map(e => exerciseBaseKey(e.name)));
+    const rows = [];
+    for (const [base, info] of fbByBase) {
+      if (!base || existing.has(base)) continue;
+      let nm = base, best = -1;
+      for (const [n, c] of info.names) if (c > best) { best = c; nm = n; }
+      rows.push({ id: 'fbx:' + base, name: nm, active: true, points: 0, _feedbackOnly: true });
+    }
+    return rows.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+  }, [proto, fbByBase, data.exercises]);
+
+  // Aktive vs. archivierte Übungen getrennt — Archivierte erscheinen in einer
+  // eigenen, standardmäßig eingeklappten Sektion (nicht mehr in „Meine Übungen").
+  // Übungen, zu denen es nur Feedback gibt, werden hinten angehängt.
+  const activeExercises = useMemo(
+    () => [...sortedExercises.filter(e => e.active), ...feedbackOnlyExercises],
+    [sortedExercises, feedbackOnlyExercises]
+  );
+  const archivedExercises = useMemo(() => sortedExercises.filter(e => !e.active), [sortedExercises]);
+  const [showArchived, setShowArchived] = useState(false);
+
+  const renderExerciseRow = (ex) => {
+    const compStats = calcExerciseCompetitionStats(ex, data.programs || [], data.competitions || []);
+    const dedSymbols = compStats.cross * 0.2 + compStats.wave * 0.5 + compStats.bar * 1.0 + compStats.circle * 2.0;
+    const dedSchw    = (Number(ex.points || 0) * compStats.schwPctSum) / 100;
+    const totalDeduction = dedSymbols + dedSchw;
+    const avgDeduction = compStats.count > 0 ? totalDeduction / compStats.count : 0;
+    const trainStats = calcExerciseTrainingStats(ex, data.sessions || []);
+    const rateColor = trainStats.rate >= 80 ? 'text-[#34C759]'
+      : trainStats.rate >= 60 ? 'text-[#FF9500]'
+      : 'text-[#FF3B30]';
+    return (
+      <IOSListRow
+        key={ex.id}
+        onClick={() => setSelected(ex)}
+        className={!ex.active ? 'opacity-60' : ''}
+        trailing={
+          <div className="flex items-center gap-2 shrink-0">
+            {trainStats.total > 0 && (
+              <span className={'text-[13px] font-semibold tabular-nums ' + rateColor}>{trainStats.rate}%</span>
+            )}
+            <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
+          </div>
+        }>
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+          <h3 className="font-medium text-[15px] text-[#000] truncate">{localizedExerciseName(ex)}</h3>
+          {ex.uci_code && <IOSTag color="blue">{ex.uci_code}</IOSTag>}
+          {ex.category_mode === 3 && <IOSTag color="orange">3-Status</IOSTag>}
+          {!ex.active && <IOSTag color="gray">archiviert</IOSTag>}
+          {ex._feedbackOnly && <IOSTag color="purple">nur Feedback</IOSTag>}
+          {(() => { const n = fbByBase.get(exerciseBaseKey(ex.name))?.count || 0; return n > 0 ? <IOSTag color="green">{n}× Feedback</IOSTag> : null; })()}
+        </div>
+        <div className="text-[13px] text-[#8E8E93] mt-0.5 flex items-center gap-1.5 flex-wrap">
+          {Number(ex.points) > 0 && <span className="font-medium">{Number(ex.points).toFixed(1)} Pkt</span>}
+          {compStats.wettkaempfe > 0 && (
+            <>
+              {Number(ex.points) > 0 && <span>·</span>}
+              <span>{compStats.wettkaempfe}× Wettkampf</span>
+              <span>·</span>
+              {totalDeduction === 0
+                ? <span className="text-[#34C759]">Ø sauber ✓</span>
+                : <span>Ø −{avgDeduction.toFixed(2).replace('.', ',')} Pkt</span>}
+            </>
+          )}
+        </div>
+      </IOSListRow>
+    );
+  };
+
   const upsert = (ex) => {
     const exists = data.exercises.find(e => e.id === ex.id);
     setData({
@@ -9795,63 +9889,34 @@ function UebungenView({ data, setData, onBack }) {
               [stats-zeile sekundär — kompakt]
             Trainings-Rate wird als farbige Badge rechts gezeigt, damit
             man auf einen Blick sieht welche Übung sicher sitzt. */}
-        {sortedExercises.length === 0 ? (
+        {activeExercises.length === 0 && archivedExercises.length === 0 ? (
           <EmptyState title="Noch keine Übungen" hint="Lege über Neu deine erste Übung an." />
         ) : (
-        <IOSList footer="Tippe auf eine Übung um Statistik (Training + Wettkampf) zu sehen.">
-          {sortedExercises.map(ex => {
-            const compStats = calcExerciseCompetitionStats(ex, data.programs || [], data.competitions || []);
-            // Vollständiger Punktverlust = Symbol-Abzüge + Schwierigkeits-Abwertung.
-            // Symbol-Logik (UCI 8.4.027): x=0.2, ~=0.5, |=1.0, ○=2.0.
-            // Schw-Effekt pro Stellung: ex.points × schwPct/100. Aufsummiert für
-            // alle Stellungen, dann durch count (= 2 × wettkaempfe) geteilt =
-            // mittlerer Beitrag aufs Endergebnis. Ohne diesen Anteil würde eine
-            // 100%-Schw-Abwertung als 'sauber' erscheinen, obwohl die halbe
-            // Übungspunktzahl weggefallen ist.
-            const dedSymbols = compStats.cross * 0.2 + compStats.wave * 0.5 + compStats.bar * 1.0 + compStats.circle * 2.0;
-            const dedSchw    = (Number(ex.points || 0) * compStats.schwPctSum) / 100;
-            const totalDeduction = dedSymbols + dedSchw;
-            const avgDeduction = compStats.count > 0 ? totalDeduction / compStats.count : 0;
-            const trainStats = calcExerciseTrainingStats(ex, data.sessions || []);
-            const rateColor = trainStats.rate >= 80 ? 'text-[#34C759]'
-              : trainStats.rate >= 60 ? 'text-[#FF9500]'
-              : 'text-[#FF3B30]';
-            return (
-              <IOSListRow
-                key={ex.id}
-                onClick={() => setSelected(ex)}
-                className={!ex.active ? 'opacity-60' : ''}
-                trailing={
-                  <div className="flex items-center gap-2 shrink-0">
-                    {trainStats.total > 0 && (
-                      <span className={'text-[13px] font-semibold tabular-nums ' + rateColor}>{trainStats.rate}%</span>
-                    )}
-                    <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
-                  </div>
-                }>
-                <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                  <h3 className="font-medium text-[15px] text-[#000] truncate">{localizedExerciseName(ex)}</h3>
-                  {ex.uci_code && <IOSTag color="blue">{ex.uci_code}</IOSTag>}
-                  {ex.category_mode === 3 && <IOSTag color="orange">3-Status</IOSTag>}
-                  {!ex.active && <IOSTag color="gray">archiviert</IOSTag>}
-                </div>
-                <div className="text-[13px] text-[#8E8E93] mt-0.5 flex items-center gap-1.5 flex-wrap">
-                  {Number(ex.points) > 0 && <span className="font-medium">{Number(ex.points).toFixed(1)} Pkt</span>}
-                  {compStats.wettkaempfe > 0 && (
-                    <>
-                      {Number(ex.points) > 0 && <span>·</span>}
-                      <span>{compStats.wettkaempfe}× Wettkampf</span>
-                      <span>·</span>
-                      {totalDeduction === 0
-                        ? <span className="text-[#34C759]">Ø sauber ✓</span>
-                        : <span>Ø −{avgDeduction.toFixed(2).replace('.', ',')} Pkt</span>}
-                    </>
-                  )}
-                </div>
-              </IOSListRow>
-            );
-          })}
-        </IOSList>
+          <div className="space-y-5">
+            {activeExercises.length > 0 && (
+              <IOSList footer="Tippe auf eine Übung um Statistik (Training + Wettkampf) zu sehen.">
+                {activeExercises.map(renderExerciseRow)}
+              </IOSList>
+            )}
+
+            {archivedExercises.length > 0 && (
+              <div className="space-y-1.5">
+                <button onClick={() => setShowArchived(v => !v)}
+                  className="w-full flex items-center justify-between px-4 py-1 active:opacity-60">
+                  <span className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
+                    {t('exercises.archived')} ({archivedExercises.length})
+                  </span>
+                  <ChevronRight size={16} strokeWidth={2.4}
+                    className={'text-[#C7C7CC] transition-transform ' + (showArchived ? 'rotate-90' : '')} />
+                </button>
+                {showArchived && (
+                  <IOSList>
+                    {archivedExercises.map(renderExerciseRow)}
+                  </IOSList>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
