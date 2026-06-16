@@ -4073,6 +4073,8 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false); // Passwort-Reset-Link geklickt → neues Passwort setzen
+  const [recoveryLinkError, setRecoveryLinkError] = useState(null); // abgelaufener/ungültiger Reset-Link
   const [chatOpen, setChatOpen] = useState(false);
 
   // Reglement-Sprache: separat von App-Sprache wählbar. 'auto' = App-Sprache spiegeln
@@ -4159,12 +4161,29 @@ export default function App() {
     (async () => {
       try {
         const hash = typeof window !== 'undefined' ? window.location.hash : '';
+        const search = typeof window !== 'undefined' ? window.location.search : '';
+        // Fehler-Links (z. B. abgelaufener Reset-Link) kommen als Query UND/ODER Hash:
+        //   ?error=access_denied&error_code=otp_expired#error=…
+        const errParams = new URLSearchParams(
+          (hash && hash.includes('error') ? hash.slice(1) : '') || (search ? search.slice(1) : '')
+        );
+        if (errParams.get('error') || errParams.get('error_code')) {
+          const code = errParams.get('error_code') || errParams.get('error') || '';
+          setRecoveryLinkError(
+            code === 'otp_expired'
+              ? 'Der Link ist abgelaufen oder wurde schon benutzt. Bitte fordere einen neuen Link an.'
+              : (errParams.get('error_description') || 'Der Link ist ungültig.').replace(/\+/g, ' ')
+          );
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
         if (hash && hash.includes('access_token=')) {
           const params = new URLSearchParams(hash.slice(1));
           const access_token = params.get('access_token');
           const refresh_token = params.get('refresh_token');
           if (access_token && refresh_token) {
             await supabase.auth.setSession({ access_token, refresh_token });
+            // Passwort-Reset-Link? → „Neues Passwort setzen"-Ansicht zeigen.
+            if (params.get('type') === 'recovery') setRecoveryMode(true);
             // Hash entfernen, damit ein Reload nicht erneut die alte Session setzt
             window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
           }
@@ -4175,8 +4194,11 @@ export default function App() {
       setSession(session);
       setAuthChecked(true);
     })();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, sess) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sess) => {
       setSession(sess);
+      // Supabase feuert PASSWORD_RECOVERY, sobald ein Reset-Link verarbeitet wurde
+      // (auch im PKCE-Flow). → „Neues Passwort setzen"-Ansicht zeigen.
+      if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true);
       if (!sess) { setProfile(null); setData(null); }
     });
     return () => { cancelled = true; subscription.unsubscribe(); };
@@ -4266,6 +4288,7 @@ export default function App() {
   // Lokale Daten erst nach Login laden (DATA_KEY pro User getrennt)
   const userDataKey = session ? DATA_KEY + ':' + session.user.id : null;
   const [cloudStatus, setCloudStatus] = useState('idle'); // 'idle' | 'syncing' | 'error' | 'offline'
+  const [saveError, setSaveError] = useState(null); // sichtbare Meldung bei DB-Speicherfehler
   useEffect(() => {
     if (!session) { setLoading(false); return; }
     setLoading(true);
@@ -4411,7 +4434,10 @@ export default function App() {
   }, []);
 
   // Generischer Diff-Sync für upsertable Entitäten (competitions, programs, exercises)
+  // Gibt eine Liste der aufgetretenen Fehler zurück (leer = alles ok), damit
+  // save() echte Speicherfehler sichtbar machen kann (nicht mehr still schlucken).
   const syncListToDb = useCallback(async (oldList, newList, upsertFn, deleteFn, normalizeFn) => {
+    const errors = [];
     const oldById = new Map((oldList || []).filter(x => x && x.id).map(x => [x.id, x]));
     const newById = new Map((newList || []).filter(x => x && x.id).map(x => [x.id, x]));
     // Inserts (kein id) + Updates (id mit anderem Inhalt)
@@ -4421,46 +4447,33 @@ export default function App() {
       if (!item.id) {
         // INSERT
         const { error } = await upsertFn(payload);
-        if (error) console.warn('Upsert (insert):', error.message);
+        if (error) { console.warn('Upsert (insert):', error.message); errors.push(error.message); }
       } else if (oldById.has(item.id)) {
         // UPDATE — nur wenn sich Inhalt geändert hat (deep equal vereinfacht)
         const oldStr = JSON.stringify(normalizeFn(oldById.get(item.id)));
         const newStr = JSON.stringify(payload);
         if (oldStr !== newStr) {
           const { error } = await upsertFn({ ...payload, id: item.id });
-          if (error) console.warn('Upsert (update):', error.message);
+          if (error) { console.warn('Upsert (update):', error.message); errors.push(error.message); }
         }
       } else {
         // ID gesetzt aber nicht in alt → eingeschmuggelt von außen, INSERT
         const { error } = await upsertFn({ ...payload, id: item.id });
-        if (error) console.warn('Upsert (new-id):', error.message);
+        if (error) { console.warn('Upsert (new-id):', error.message); errors.push(error.message); }
       }
     }
     // DELETES
     for (const o of (oldList || [])) {
       if (o && o.id && !newById.has(o.id)) {
         const { error } = await deleteFn(o.id);
-        if (error) console.warn('Delete:', error.message);
+        if (error) { console.warn('Delete:', error.message); errors.push(error.message); }
       }
     }
+    return errors;
   }, []);
 
   // Normalizer: Blob-Shape → DB-Shape (für upserts)
-  const normalizeCompetition = useCallback((c) => ({
-    athlete_id: c.athlete_id || c.athleteId || null,
-    program_id: c.program_id || null,
-    name: c.name,
-    date: c.date,
-    location: c.location || '',
-    host: c.host || '',
-    start_nr: c.start_nr || '',
-    table1: c.table1 || [],
-    table2: c.table2 || [],
-    t1_schwierigkeit: Number(c.t1_schwierigkeit || 0),
-    t2_schwierigkeit: Number(c.t2_schwierigkeit || 0),
-    pdf_ref: c.pdf_ref || null,
-    target_score: c.target_score
-  }), []);
+  // (normalizeCompetition steht weiter unten — es braucht selectedAthleteId/myAthleteId.)
   const normalizeProgram = useCallback((p) => ({
     name: p.name,
     discipline: p.discipline,
@@ -4533,6 +4546,24 @@ export default function App() {
   const isReadOnlyView = !!selectedAthleteId && !isOwnAthlete;
   const [showAthletePicker, setShowAthletePicker] = useState(false);
 
+  // Normalizer für Wettkämpfe — hier, weil athlete_id auf den aktiven/eigenen
+  // Sportler zurückfallen muss (NOT NULL in der DB).
+  const normalizeCompetition = useCallback((c) => ({
+    athlete_id: c.athlete_id || c.athleteId || selectedAthleteId || myAthleteId || null,
+    program_id: c.program_id || null,
+    name: c.name,
+    date: c.date,
+    location: c.location || '',
+    host: c.host || '',
+    start_nr: c.start_nr || '',
+    table1: c.table1 || [],
+    table2: c.table2 || [],
+    t1_schwierigkeit: Number(c.t1_schwierigkeit || 0),
+    t2_schwierigkeit: Number(c.t2_schwierigkeit || 0),
+    pdf_ref: c.pdf_ref || null,
+    target_score: c.target_score
+  }), [selectedAthleteId, myAthleteId]);
+
   const save = useCallback(async (next) => {
     setActiveDb(next.uci_custom);
 
@@ -4549,15 +4580,16 @@ export default function App() {
     const ownerWritable = isOwnAthlete; // = eigener Athlet ODER kein Filter
 
     if (data && data.migrated_to_tables) {
+      const syncErrors = [];
       try {
         if (ownerWritable && next.exercises) {
           const current = dbExercises.map(dbExerciseToBlob);
-          await syncListToDb(current, next.exercises, upsertExercise, deleteExercise, normalizeExercise);
+          syncErrors.push(...(await syncListToDb(current, next.exercises, upsertExercise, deleteExercise, normalizeExercise) || []));
           await refreshExercises();
         }
         if (ownerWritable && next.programs) {
           const current = dbPrograms.map(dbProgramToBlob);
-          await syncListToDb(current, next.programs, upsertProgram, deleteProgram, normalizeProgram);
+          syncErrors.push(...(await syncListToDb(current, next.programs, upsertProgram, deleteProgram, normalizeProgram) || []));
           await refreshPrograms();
         }
         if (next.sessions) {
@@ -4569,11 +4601,16 @@ export default function App() {
         if (next.competitions) {
           const current = dbCompetitions.map(dbCompetitionToBlob).filter(cf);
           const newOnes = (next.competitions || []).filter(cf);
-          await syncListToDb(current, newOnes, upsertCompetition, deleteCompetition, normalizeCompetition);
+          syncErrors.push(...(await syncListToDb(current, newOnes, upsertCompetition, deleteCompetition, normalizeCompetition) || []));
           await refreshCompetitions();
         }
       } catch (e) {
         console.warn('DB-Sync fehlgeschlagen:', e);
+        syncErrors.push(String(e?.message || e));
+      }
+      if (syncErrors.length > 0) {
+        setCloudStatus('error');
+        setSaveError('Speichern in der Cloud fehlgeschlagen: ' + syncErrors[0]);
       }
     }
 
@@ -4676,8 +4713,11 @@ export default function App() {
     </div>
   );
 
+  // Passwort-Reset-Link geklickt → neues Passwort setzen (vor allem anderen)
+  if (recoveryMode) return <SetNewPasswordScreen onDone={() => setRecoveryMode(false)} />;
+
   // Nicht eingeloggt → AuthScreen
-  if (!session) return <AuthScreen />;
+  if (!session) return <AuthScreen linkError={recoveryLinkError} onClearLinkError={() => setRecoveryLinkError(null)} />;
 
   if (!data) {
     return <SetupScreen onStart={() => save({
@@ -4875,6 +4915,20 @@ export default function App() {
       {notices.length > 0 && (
         <NoticeBanner notices={notices} onDismiss={dismissNoticeLocal} />
       )}
+
+      {/* Speicherfehler-Toast — z. B. wenn ein Wettkampf nicht in die Cloud kam */}
+      {saveError && (
+        <div className="fixed left-3 right-3 bottom-24 z-[60] mx-auto max-w-md">
+          <div className="bg-rose-600 text-white rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.25)] px-4 py-3 flex items-start gap-3">
+            <span className="mt-0.5 text-lg leading-none">⚠️</span>
+            <div className="flex-1 text-[13px] leading-snug">{saveError}</div>
+            <button onClick={() => setSaveError(null)}
+              className="text-white/80 active:opacity-60 text-[13px] font-semibold shrink-0">
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4984,7 +5038,7 @@ function IOSTag({ color = 'gray', children }) {
 // =============================================================
 // AUTH-SCREEN — Login / Signup mit Rollen-Wahl
 // =============================================================
-function AuthScreen() {
+function AuthScreen({ linkError = null, onClearLinkError } = {}) {
   const { t, langPref, setLangPref } = useI18n();
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');
@@ -5108,6 +5162,21 @@ function AuthScreen() {
           </button>
         </div>
 
+        {linkError && (
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-amber-900 dark:text-amber-300 text-[13px] rounded-2xl p-3 mb-4 flex items-start gap-2">
+            <span className="mt-0.5">⚠️</span>
+            <div className="flex-1">
+              {linkError}
+              {onClearLinkError && (
+                <button type="button" onClick={onClearLinkError}
+                  className="block mt-1 text-[#007AFF] font-medium active:opacity-60">
+                  Verstanden
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         <form onSubmit={submit} className="space-y-3">
           {mode === 'signup' && (
             <>
@@ -5194,6 +5263,104 @@ function AuthScreen() {
             Mit der Registrierung akzeptierst du, dass deine Trainings-Daten in unserer
             Datenbank in Frankfurt gespeichert werden. Du kannst deinen Account jederzeit löschen.
           </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================
+// NEUES PASSWORT SETZEN (nach Reset-Link)
+// =============================================================
+function SetNewPasswordScreen({ onDone }) {
+  const { t } = useI18n();
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [done, setDone] = useState(false);
+
+  const validPwd = password.length >= 10;
+  const matches = password === confirm;
+  const canSubmit = validPwd && matches;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!canSubmit) return;
+    setBusy(true); setErr('');
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      setDone(true);
+      // kurz Erfolg zeigen, dann in die App (Session besteht bereits durch Reset-Link)
+      setTimeout(() => { onDone && onDone(); }, 1200);
+    } catch (e) {
+      setErr(e.message || t('validation.genericError'));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F2F2F7] flex items-center justify-center p-4"
+      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif' }}>
+      <div className="bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] p-8 max-w-md w-full">
+        <div className="text-center mb-6">
+          <div className="w-14 h-14 bg-gradient-to-br from-slate-900 to-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm">
+            <KeyRound className="text-amber-400" size={26} />
+          </div>
+          <h1 className="text-[24px] font-bold tracking-tight">Neues Passwort setzen</h1>
+          <p className="text-[#8E8E93] text-[14px] mt-1">Wähle ein neues Passwort für dein Konto.</p>
+        </div>
+
+        {done ? (
+          <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/40 text-emerald-900 dark:text-emerald-300 text-[14px] rounded-2xl p-4 text-center">
+            ✓ Passwort geändert. Du wirst angemeldet…
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-3">
+            <div>
+              <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">
+                Neues Passwort <span className="text-[#C7C7CC]">(min. 10)</span>
+              </label>
+              <div className="relative">
+                <KeyRound size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                  placeholder="Neues Passwort"
+                  autoComplete="new-password"
+                  className="w-full pl-11 pr-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">Passwort wiederholen</label>
+              <div className="relative">
+                <KeyRound size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
+                <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
+                  placeholder="Passwort wiederholen"
+                  autoComplete="new-password"
+                  className="w-full pl-11 pr-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
+              </div>
+              {confirm.length > 0 && !matches && (
+                <p className="text-[12px] text-rose-500 mt-1 px-1">Die Passwörter stimmen nicht überein.</p>
+              )}
+            </div>
+
+            {err && (
+              <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-rose-900 dark:text-rose-300 text-[14px] rounded-2xl p-3">
+                ✗ {err}
+              </div>
+            )}
+
+            <button type="submit" disabled={!canSubmit || busy}
+              className="bg-[#FF9500] text-white px-5 py-3.5 rounded-full font-semibold w-full text-[15px] active:scale-[0.98] transition shadow-[0_4px_14px_rgba(255,149,0,0.35)] disabled:opacity-40 disabled:shadow-none">
+              {busy ? '…' : 'Passwort speichern'}
+            </button>
+
+            <button type="button" onClick={() => onDone && onDone()} disabled={busy}
+              className="text-[14px] text-[#8E8E93] block mx-auto mt-2 active:opacity-60 disabled:opacity-50">
+              Abbrechen
+            </button>
+          </form>
         )}
       </div>
     </div>

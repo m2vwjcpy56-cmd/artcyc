@@ -237,6 +237,14 @@ export async function fetchPrograms() {
 export async function upsertProgram(prog) {
   const payload = { ...prog };
   if (!payload.id) delete payload.id;
+  // owner_id IMMER setzen — die RLS-Policy programs_write verlangt
+  // owner_id = auth.uid() im WITH CHECK. Ohne owner_id wird der INSERT
+  // still verworfen (z. B. ein beim Wettkampf-Import neu angelegtes Programm),
+  // wodurch danach auch der Wettkampf (program_id-FK) nicht gespeichert wird.
+  if (payload.owner_id == null) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) payload.owner_id = user.id;
+  }
   const { data, error } = await supabase.from('programs').upsert(payload).select().single();
   return { data, error };
 }
