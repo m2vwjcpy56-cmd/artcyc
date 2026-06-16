@@ -13,8 +13,11 @@ CREATE TABLE IF NOT EXISTS profiles (
   role TEXT NOT NULL DEFAULT 'athlete' CHECK (role IN ('athlete', 'coach', 'admin')),
   display_name TEXT,
   last_name TEXT,
+  license_no TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- Nachträglich für bestehende DBs (idempotent).
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS license_no TEXT;
 
 -- =====================================================
 -- 2) ATHLETES — kann mit/ohne User-Account existieren

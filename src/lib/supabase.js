@@ -47,6 +47,35 @@ export async function updateMyLastName(lastName) {
   return { data, error };
 }
 
+// Setzt die Lizenznummer (profiles.license_no) des eingeloggten Users.
+export async function updateMyLicense(licenseNo) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: { message: 'Nicht angemeldet' } };
+  const clean = (licenseNo || '').trim();
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ license_no: clean })
+    .eq('id', user.id)
+    .select()
+    .single();
+  return { data, error };
+}
+
+// Schreibt eine (z. B. aus einem Wertungsbogen erkannte) Lizenznummer in das
+// eigene Profil — aber NUR, wenn dort noch keine hinterlegt ist (nie
+// überschreiben). Best effort für die PDF-Auto-Erkennung.
+export async function saveLicenseIfEmpty(licenseNo) {
+  const clean = (licenseNo || '').trim();
+  if (!clean) return { skipped: true };
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { skipped: true };
+  const { data: prof } = await supabase
+    .from('profiles').select('license_no').eq('id', user.id).maybeSingle();
+  if (prof && (prof.license_no || '').trim()) return { skipped: true };
+  const { error } = await supabase.from('profiles').update({ license_no: clean }).eq('id', user.id);
+  return { error, saved: !error };
+}
+
 // Setzt den Verein (athletes.notes) des eigenen Sportler-Eintrags.
 export async function updateMyClub(club) {
   const { data: { user } } = await supabase.auth.getUser();
