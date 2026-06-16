@@ -11784,7 +11784,27 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
       setT1S(0);
       setT2S(0);
     } else {
-      // Fallback: nur Pauschal-Schwierigkeit aus Footer
+      // Fallback: keine pro-Übung-Werte übernehmbar (z. B. Foto-Scan, dessen
+      // erkannte Übungs-Anzahl NICHT zum Programm passt — etwa 28 statt 30).
+      // Dann nur die Pauschal-Schwierigkeit aus dem Footer setzen.
+      //
+      // WICHTIG (Bugfix): calcTableResult addiert die Pauschal-Schwierigkeit
+      // ZUSÄTZLICH zu den pro-Übung-%-Abzügen in table1/table2. Bleiben dort
+      // also noch %-Abzüge aus einem früheren Import stehen, wird die
+      // Schwierigkeit DOPPELT gezählt (z. B. Ist 42,87 = 22,97 Pauschal +
+      // 19,90 alte pro-Übung). Deshalb beim Setzen der Pauschal-Schwierigkeit
+      // die pro-Übung-Werte der aktiven Tabelle auf 0 zurücksetzen, damit die
+      // Schwierigkeit genau einmal zählt.
+      const hatPauschal = typeof parsed.kg1_schwierigkeit === 'number'
+        || typeof parsed.kg2_schwierigkeit === 'number';
+      if (hatPauschal && activeProgram) {
+        const blankRows = () => activeProgram.exercises.map(ex => ({
+          exerciseId: ex.id, included: true,
+          cross: 0, wave: 0, bar: 0, circle: 0, schwPct: 0, taktischePunkte: 0
+        }));
+        setTable1(blankRows());
+        setTable2(blankRows());
+      }
       if (typeof parsed.kg1_schwierigkeit === 'number') setT1S(parsed.kg1_schwierigkeit);
       if (typeof parsed.kg2_schwierigkeit === 'number') setT2S(parsed.kg2_schwierigkeit);
     }
