@@ -25,6 +25,24 @@ export async function getCurrentProfile() {
   return profile ? { ...profile, email: user.email } : null;
 }
 
+// Setzt den Nachnamen des aktuell eingeloggten Users (profiles.last_name).
+// Wird beim Nachtrag-Pop-up für Bestands-User genutzt. Schreibt zusätzlich
+// in die Auth-Metadaten, damit der Wert konsistent bleibt.
+export async function updateMyLastName(lastName) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: { message: 'Nicht angemeldet' } };
+  const clean = (lastName || '').trim();
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ last_name: clean })
+    .eq('id', user.id)
+    .select()
+    .single();
+  // Best-effort: Auth-Metadaten mitschreiben (nicht zwingend für die App).
+  try { await supabase.auth.updateUser({ data: { last_name: clean } }); } catch { /* egal */ }
+  return { data, error };
+}
+
 // =============================================================
 // Cloud-Snapshot (Phase 3a — JSONB-basierte Datensynchronisation)
 // =============================================================

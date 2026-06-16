@@ -7,13 +7,14 @@ import {
   TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
-  Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera
+  Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, getCurrentProfile, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
+import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
 import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud, fileToBase64 } from './lib/feedback.js';
+import { useProtoFeatures, setProtoFeatures } from './lib/featureFlags.js';
 import { parseProgramFile } from './lib/programImport.js';
 import { loadUciExercisesFromDb, getRulesLanguage, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram } from './lib/uciRules.js';
 
@@ -4546,6 +4547,13 @@ export default function App() {
   const isReadOnlyView = !!selectedAthleteId && !isOwnAthlete;
   const [showAthletePicker, setShowAthletePicker] = useState(false);
 
+  // Nachname-Nachtrag: Bestands-User ohne profiles.last_name werden einmal pro
+  // Session gefragt. „Später" schiebt es per sessionStorage auf die nächste.
+  const [lastNameSnoozed, setLastNameSnoozed] = useState(() => {
+    try { return sessionStorage.getItem('artcyc:lastname-snooze') === '1'; } catch { return false; }
+  });
+  const showLastNamePrompt = !!session && !!profile && !profile.last_name && !lastNameSnoozed;
+
   // Normalizer für Wettkämpfe — hier, weil athlete_id auf den aktiven/eigenen
   // Sportler zurückfallen muss (NOT NULL in der DB).
   const normalizeCompetition = useCallback((c) => ({
@@ -4911,6 +4919,18 @@ export default function App() {
       {/* Globales Feedback-Modal — kann aus Dashboard, Settings o.\xa0a. geöffnet werden */}
       {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
 
+      {/* Nachname-Nachtrag für Bestands-User ohne last_name */}
+      {showLastNamePrompt && (
+        <LastNameModal
+          firstName={profile?.display_name || ''}
+          onSaved={(ln) => setProfile(p => (p ? { ...p, last_name: ln } : p))}
+          onLater={() => {
+            try { sessionStorage.setItem('artcyc:lastname-snooze', '1'); } catch { /* egal */ }
+            setLastNameSnoozed(true);
+          }}
+        />
+      )}
+
       {/* App-Notices (z. B. neues UCI-Reglement) — als floatender Toast */}
       {notices.length > 0 && (
         <NoticeBanner notices={notices} onDismiss={dismissNoticeLocal} />
@@ -5044,6 +5064,7 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [role, setRole] = useState('athlete'); // 'athlete' | 'coach'
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -5054,7 +5075,7 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
   const validPwd = password.length >= 10;
   const canSubmit = mode === 'login'
     ? validEmail && password.length >= 1
-    : validEmail && validPwd && displayName.trim().length >= 2;
+    : validEmail && validPwd && displayName.trim().length >= 2 && lastName.trim().length >= 2;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -5072,6 +5093,7 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
           options: {
             data: {
               display_name: displayName.trim(),
+              last_name: lastName.trim(),
               role
             },
             emailRedirectTo: window.location.origin
@@ -5181,10 +5203,17 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
           {mode === 'signup' && (
             <>
               <div>
-                <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">{t('auth.displayName')}</label>
+                <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">{t('auth.firstName')}</label>
                 <input value={displayName} onChange={e => setDisplayName(e.target.value)}
-                  placeholder="Vor- oder Spitzname"
-                  autoComplete="name"
+                  placeholder={t('auth.firstName')}
+                  autoComplete="given-name"
+                  className="w-full px-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
+              </div>
+              <div>
+                <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">{t('auth.lastName')}</label>
+                <input value={lastName} onChange={e => setLastName(e.target.value)}
+                  placeholder={t('auth.lastName')}
+                  autoComplete="family-name"
                   className="w-full px-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
               </div>
               <div>
@@ -7564,6 +7593,7 @@ function deriveExerciseNames(programs) {
 
 function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, dbAthleteCoaches, refreshAthletes, theme, setTheme, langPref, setLangPref, rulesLangPref, setRulesLangPref, setView, onOpenFeedback }) {
   const { t } = useI18n();
+  const protoOn = useProtoFeatures();
   const roleLabel = profile?.role === 'admin' ? t('role.admin') : profile?.role === 'coach' ? t('role.coach') : t('role.athlete');
   const syncLabel = cloudStatus === 'syncing' ? t('settings.cloudSyncing') : cloudStatus === 'error' ? t('settings.cloudSyncError') : t('settings.cloudSynced');
   const syncTagColor = cloudStatus === 'syncing' ? 'orange' : cloudStatus === 'error' ? 'red' : 'green';
@@ -7666,6 +7696,20 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
             </span>
           </span>
         </IOSListRow>
+      </IOSList>
+
+      {/* Prototyp-Funktionen — vorab freischaltbare, experimentelle Features */}
+      <IOSList header="Prototyp" footer="Schaltet experimentelle Funktionen frei, die noch in Arbeit sind (z. B. die Feedback-Dokumentation). Kann jederzeit wieder ausgeschaltet werden.">
+        <div className="px-4 py-3 flex items-center gap-3">
+          <span className="w-9 h-9 rounded-full bg-[#AF52DE]/12 flex items-center justify-center shrink-0">
+            <FlaskConical size={18} className="text-[#AF52DE]" />
+          </span>
+          <span className="flex flex-col min-w-0 flex-1">
+            <span className="text-[15px] font-medium">Prototyp-Funktionen</span>
+            <span className="text-[12px] text-[#8E8E93]">Experimentelles vorab aktivieren</span>
+          </span>
+          <IOSToggle checked={protoOn} onChange={(v) => setProtoFeatures(v)} />
+        </div>
       </IOSList>
 
       {/* Erscheinungsbild */}
@@ -12264,6 +12308,16 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                   {t('pdfImport.noExerciseRows')}
                 </p>
               )}
+              {/* Foto-Scan: erkannte Übungs-Anzahl passt nicht zum Programm →
+                  pro-Übung-Abzüge können nicht zugeordnet werden. */}
+              {importPreview._scanRows && importPreview._scanRows.length > 0 && program && program.exercises
+                && importPreview._scanRows.length !== program.exercises.length && (
+                <p className="text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900/60 rounded-lg p-2">
+                  ⚠️ {importPreview._scanRows.length} Übungen erkannt, aber das Programm hat {program.exercises.length}.
+                  Die <strong>Einzel-Abzüge pro Übung werden deshalb nicht übernommen</strong> — nur Stammdaten und die
+                  Gesamt-Schwierigkeit. Für exakte Werte pro Übung bitte den <strong>PDF-Import</strong> nutzen.
+                </p>
+              )}
               {importPreview._exDebug && !(importPreview._scanRows && importPreview._scanRows.length > 0) && (
                 <details className="text-[11px] text-violet-900/70 dark:text-violet-200/70 bg-white/50 dark:bg-white/5 border border-violet-200/60 dark:border-violet-800/40 rounded-lg p-2">
                   <summary className="cursor-pointer font-medium select-none">Diagnose: KI-Tabellen-Antwort anzeigen</summary>
@@ -14380,6 +14434,68 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
           className="flex-1 bg-white border border-slate-300 px-4 py-3 rounded-xl font-medium">
           Zurück
         </button>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================
+// NACHNAME-NACHTRAG — Pop-up für Bestands-User ohne Nachnamen
+// =============================================================
+// Erscheint einmalig pro Session, wenn das Profil noch keinen last_name hat.
+// „Später" verschiebt es auf die nächste Session (sessionStorage-Snooze).
+function LastNameModal({ firstName, onSaved, onLater }) {
+  const { t } = useI18n();
+  const [val, setVal] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const canSave = val.trim().length >= 2;
+
+  const save = async () => {
+    if (!canSave || busy) return;
+    setBusy(true); setErr('');
+    const { error } = await updateMyLastName(val.trim());
+    if (error) { setErr(error.message || 'Speichern fehlgeschlagen'); setBusy(false); return; }
+    onSaved(val.trim());
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-2 sm:p-4 bg-black/40 backdrop-blur-sm">
+      <div className="w-full sm:max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-xl rounded-2xl overflow-hidden">
+          <div className="px-6 pt-5 pb-3 text-center">
+            <div className="w-12 h-12 rounded-full bg-[#FF9500]/12 flex items-center justify-center mx-auto mb-3">
+              <User size={22} className="text-[#FF9500]" />
+            </div>
+            <h3 className="font-semibold text-[17px] mb-1">
+              {firstName ? `Hallo ${firstName}! 👋` : 'Kurz noch dein Nachname'}
+            </h3>
+            <p className="text-[13px] text-[#3C3C43] dark:text-slate-300 leading-snug">
+              Bitte ergänze einmalig deinen <strong>Nachnamen</strong>. Angesprochen wirst
+              du weiterhin nur mit deinem Vornamen — der Nachname liegt nur in den Daten.
+            </p>
+          </div>
+          <div className="px-5 pb-2">
+            <input value={val} onChange={e => setVal(e.target.value)}
+              autoFocus
+              placeholder={t('auth.lastName')}
+              autoComplete="family-name"
+              onKeyDown={e => { if (e.key === 'Enter') save(); }}
+              className="w-full px-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
+            {err && <div className="text-[13px] text-[#FF3B30] mt-2 px-1">✗ {err}</div>}
+          </div>
+          <div className="border-t border-[#C6C6C8]/40 mt-1" />
+          <button onClick={save} disabled={!canSave || busy}
+            className="w-full py-3.5 text-[17px] text-[#007AFF] font-semibold active:bg-[#D1D1D6]/40 transition disabled:opacity-40">
+            {busy ? '…' : 'Speichern'}
+          </button>
+        </div>
+        <div className="bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-xl rounded-2xl overflow-hidden mt-2">
+          <button onClick={onLater}
+            className="w-full py-3.5 text-[17px] text-[#8E8E93] font-medium active:bg-[#D1D1D6]/40 transition">
+            Später
+          </button>
+        </div>
       </div>
     </div>
   );

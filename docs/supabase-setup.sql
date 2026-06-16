@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   role TEXT NOT NULL DEFAULT 'athlete' CHECK (role IN ('athlete', 'coach', 'admin')),
   display_name TEXT,
+  last_name TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -196,11 +197,12 @@ BEGIN
   -- Erster User immer Admin
   IF is_first THEN chosen_role := 'admin'; END IF;
 
-  INSERT INTO public.profiles (id, role, display_name)
+  INSERT INTO public.profiles (id, role, display_name, last_name)
   VALUES (
     NEW.id,
     chosen_role,
-    COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1))
+    COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1)),
+    NULLIF(NEW.raw_user_meta_data->>'last_name', '')
   );
 
   -- Wenn Rolle 'athlete' ODER 'admin' (Admin trainiert ja auch ggf. selbst): Athlete-Eintrag automatisch
