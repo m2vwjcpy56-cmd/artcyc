@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { normClub } from './clubs.js';
 
 // Anon-Key ist explizit als public gedacht und durch Row Level Security
 // in der DB abgesichert — kann/darf im Frontend stehen.
@@ -38,8 +39,25 @@ export async function updateMyLastName(lastName) {
     .eq('id', user.id)
     .select()
     .single();
+  // Nachname auch in den eigenen Sportler-Eintrag spiegeln, damit er im
+  // Sportler-Editor auftaucht (sonst bleibt athletes.last_name leer).
+  try { await supabase.from('athletes').update({ last_name: clean }).eq('auth_user_id', user.id); } catch { /* egal */ }
   // Best-effort: Auth-Metadaten mitschreiben (nicht zwingend für die App).
   try { await supabase.auth.updateUser({ data: { last_name: clean } }); } catch { /* egal */ }
+  return { data, error };
+}
+
+// Setzt den Verein (athletes.notes) des eigenen Sportler-Eintrags.
+export async function updateMyClub(club) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: { message: 'Nicht angemeldet' } };
+  const clean = (club || '').trim();
+  const { data, error } = await supabase
+    .from('athletes')
+    .update({ notes: clean })
+    .eq('auth_user_id', user.id)
+    .select()
+    .maybeSingle();
   return { data, error };
 }
 
@@ -254,6 +272,24 @@ export async function registerClub(name, norm, country = '') {
   });
   if (error) console.warn('register_club fehlgeschlagen:', error.message);
   return { data, error };
+}
+
+// Einen eingegebenen Verein erfassen: bekannte Vereine nur hochzählen, neue
+// erst per KI normalisieren (Tippfehler/Dublette/Land), dann registrieren.
+// knownNames = kuratierte + bereits bekannte Namen (für Dubletten-Abgleich).
+export async function recordClubEntry(name, knownNames = []) {
+  const clean = (name || '').trim();
+  const norm = normClub(clean);
+  if (!clean || !norm) return;
+  const knownSet = new Set((knownNames || []).map(normClub));
+  if (knownSet.has(norm)) { await registerClub(clean, norm); return; }
+  let finalName = clean, country = '';
+  try {
+    const res = await normalizeClub(clean, (knownNames || []).slice(0, 40));
+    if (res?.duplicateOf) finalName = res.duplicateOf;
+    else if (res?.canonical) { finalName = res.canonical; country = res.country || ''; }
+  } catch { /* KI optional */ }
+  await registerClub(finalName, normClub(finalName), country);
 }
 
 // Beitritt per Code (Self-Join). Gibt { data: teamId } oder { error }.

@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
+import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -4563,6 +4563,18 @@ export default function App() {
   });
   const showLastNamePrompt = !!session && !!profile && !profile.last_name && !lastNameSnoozed;
 
+  // Verein-Nachtrag: eigener Sportler-Eintrag ohne Verein (notes) → einmal pro
+  // Session fragen. Erst nach dem Nachname-Pop-up (nicht zwei gleichzeitig).
+  const myAthlete = useMemo(
+    () => dbAthletes.find(a => a.auth_user_id === session?.user?.id) || null,
+    [dbAthletes, session?.user?.id]
+  );
+  const [clubSnoozed, setClubSnoozed] = useState(() => {
+    try { return sessionStorage.getItem('artcyc:club-snooze') === '1'; } catch { return false; }
+  });
+  const showClubPrompt = !!session && !showLastNamePrompt && !!myAthlete
+    && !((myAthlete.notes || '').trim()) && !clubSnoozed;
+
   // Normalizer für Wettkämpfe — hier, weil athlete_id auf den aktiven/eigenen
   // Sportler zurückfallen muss (NOT NULL in der DB).
   const normalizeCompetition = useCallback((c) => ({
@@ -4941,6 +4953,18 @@ export default function App() {
           onLater={() => {
             try { sessionStorage.setItem('artcyc:lastname-snooze', '1'); } catch { /* egal */ }
             setLastNameSnoozed(true);
+          }}
+        />
+      )}
+
+      {/* Verein-Nachtrag für eigenen Sportler-Eintrag ohne Verein */}
+      {showClubPrompt && (
+        <ClubModal
+          firstName={profile?.display_name || ''}
+          onSaved={() => { setClubSnoozed(true); if (refreshAthletes) refreshAthletes(); }}
+          onLater={() => {
+            try { sessionStorage.setItem('artcyc:club-snooze', '1'); } catch { /* egal */ }
+            setClubSnoozed(true);
           }}
         />
       )}
@@ -13401,32 +13425,12 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
   const [clubSuggestions, setClubSuggestions] = useState([]);
   const refreshClubs = useCallback(async () => { setClubSuggestions(await fetchClubs(2)); }, []);
   useEffect(() => { refreshClubs(); }, [refreshClubs]);
-  // Verein aus einem Formular crowdsourcen (fire-and-forget). Bei einem NEUEN
-  // Verein (nicht kuratiert/bekannt) läuft zuerst der KI-Abgleich: Tippfehler
-  // korrigieren, Dubletten auf bestehende Vereine mappen, Land ergänzen.
+  // Verein aus einem Formular crowdsourcen (fire-and-forget): bekannt → Zähler,
+  // neu → KI-Abgleich (Tippfehler/Dublette/Land) via recordClubEntry.
   const trackClub = useCallback(async (clubName) => {
-    const name = (clubName || '').trim();
-    const norm = normClub(name);
-    if (!name || !norm) return;
-    const knownNorms = new Set([
-      ...CLUBS.map(c => normClub(c.name)),
-      ...clubSuggestions.map(c => normClub(c.name)),
-    ]);
-    if (knownNorms.has(norm)) {
-      // Bereits bekannt → nur Zähler hoch.
-      await registerClub(name, norm);
-      refreshClubs();
-      return;
-    }
-    // Neuer Verein → KI-Abgleich (best effort).
-    let finalName = name, country = '';
-    try {
-      const candidates = [...CLUBS.map(c => c.name), ...clubSuggestions.map(c => c.name)].slice(0, 40);
-      const res = await normalizeClub(name, candidates);
-      if (res?.duplicateOf) finalName = res.duplicateOf;
-      else if (res?.canonical) { finalName = res.canonical; country = res.country || ''; }
-    } catch { /* KI optional */ }
-    await registerClub(finalName, normClub(finalName), country);
+    if (!clubName || !clubName.trim()) return;
+    const known = [...CLUBS.map(c => c.name), ...clubSuggestions.map(c => c.name)];
+    await recordClubEntry(clubName, known);
     refreshClubs();
   }, [clubSuggestions, refreshClubs]);
 
@@ -14972,6 +14976,65 @@ function LastNameModal({ firstName, onSaved, onLater }) {
               autoComplete="family-name"
               onKeyDown={e => { if (e.key === 'Enter') save(); }}
               className="w-full px-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
+            {err && <div className="text-[13px] text-[#FF3B30] mt-2 px-1">✗ {err}</div>}
+          </div>
+          <div className="border-t border-[#C6C6C8]/40 mt-1" />
+          <button onClick={save} disabled={!canSave || busy}
+            className="w-full py-3.5 text-[17px] text-[#007AFF] font-semibold active:bg-[#D1D1D6]/40 transition disabled:opacity-40">
+            {busy ? '…' : 'Speichern'}
+          </button>
+        </div>
+        <div className="bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-xl rounded-2xl overflow-hidden mt-2">
+          <button onClick={onLater}
+            className="w-full py-3.5 text-[17px] text-[#8E8E93] font-medium active:bg-[#D1D1D6]/40 transition">
+            Später
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Verein-Nachtrag-Pop-up — analog zum Nachname-Pop-up, mit Vereins-Autocomplete.
+function ClubModal({ firstName, onSaved, onLater }) {
+  const { t } = useI18n();
+  const [val, setVal] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  useEffect(() => { fetchClubs(2).then(setSuggestions).catch(() => {}); }, []);
+  const canSave = val.trim().length >= 2;
+
+  const save = async () => {
+    if (!canSave || busy) return;
+    setBusy(true); setErr('');
+    const { error } = await updateMyClub(val.trim());
+    if (error) { setErr(error.message || 'Speichern fehlgeschlagen'); setBusy(false); return; }
+    // Crowdsource (best effort, blockiert das Schließen nicht).
+    try { recordClubEntry(val.trim(), [...CLUBS.map(c => c.name), ...suggestions.map(c => c.name)]); } catch { /* egal */ }
+    onSaved(val.trim());
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-sm">
+      <div className="w-full sm:max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-xl rounded-2xl overflow-visible">
+          <div className="px-6 pt-5 pb-3 text-center">
+            <div className="w-12 h-12 rounded-full bg-[#FF9500]/12 flex items-center justify-center mx-auto mb-3">
+              <Users size={22} className="text-[#FF9500]" />
+            </div>
+            <h3 className="font-semibold text-[17px] mb-1">
+              {firstName ? `Noch dein Verein, ${firstName}` : 'Dein Verein'}
+            </h3>
+            <p className="text-[13px] text-[#3C3C43] dark:text-slate-300 leading-snug">
+              Für welchen <strong>Verein</strong> startest du? Tippen und aus den
+              Vorschlägen wählen — oder frei eingeben.
+            </p>
+          </div>
+          <div className="px-5 pb-3">
+            <div className="px-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl">
+              <ClubCombobox value={val} onChange={setVal} placeholder={t('athletes.clubPlaceholder')} suggestions={suggestions} />
+            </div>
             {err && <div className="text-[13px] text-[#FF3B30] mt-2 px-1">✗ {err}</div>}
           </div>
           <div className="border-t border-[#C6C6C8]/40 mt-1" />
