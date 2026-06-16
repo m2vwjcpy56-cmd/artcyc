@@ -230,6 +230,21 @@ export async function fetchClubs(minCount = 2) {
   return data || [];
 }
 
+// KI-Abgleich eines neuen Vereinsnamens (Tippfehler/Dublette/Schreibweise).
+// candidates = kleine Liste bekannter Namen zur Dubletten-Erkennung.
+// Gibt { canonical, country, isClub, duplicateOf } oder null bei Fehler.
+export async function normalizeClub(name, candidates = []) {
+  try {
+    const { data, error } = await supabase.functions.invoke('normalize-club', {
+      body: { name, candidates }
+    });
+    if (error) { console.warn('normalize-club fehlgeschlagen:', error.message); return null; }
+    return data || null;
+  } catch (e) {
+    console.warn('normalize-club Ausnahme:', e?.message); return null;
+  }
+}
+
 // Registriert einen eingegebenen Verein (Crowdsource). p_norm wird im Client
 // mit normClub() berechnet (gleiche Normalisierung wie die Vorschlagssuche).
 export async function registerClub(name, norm, country = '') {

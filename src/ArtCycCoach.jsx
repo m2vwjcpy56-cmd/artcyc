@@ -9,13 +9,13 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
+import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
 import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud, fileToBase64 } from './lib/feedback.js';
 import { useProtoFeatures, setProtoFeatures } from './lib/featureFlags.js';
-import { suggestClubs, normClub, COUNTRY_FLAG } from './lib/clubs.js';
+import { suggestClubs, normClub, CLUBS, COUNTRY_FLAG } from './lib/clubs.js';
 import { parseProgramFile } from './lib/programImport.js';
 import { loadUciExercisesFromDb, getRulesLanguage, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram } from './lib/uciRules.js';
 
@@ -13401,13 +13401,34 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
   const [clubSuggestions, setClubSuggestions] = useState([]);
   const refreshClubs = useCallback(async () => { setClubSuggestions(await fetchClubs(2)); }, []);
   useEffect(() => { refreshClubs(); }, [refreshClubs]);
-  // Verein aus einem Formular crowdsourcen (fire-and-forget).
-  const trackClub = useCallback((clubName) => {
+  // Verein aus einem Formular crowdsourcen (fire-and-forget). Bei einem NEUEN
+  // Verein (nicht kuratiert/bekannt) läuft zuerst der KI-Abgleich: Tippfehler
+  // korrigieren, Dubletten auf bestehende Vereine mappen, Land ergänzen.
+  const trackClub = useCallback(async (clubName) => {
     const name = (clubName || '').trim();
     const norm = normClub(name);
     if (!name || !norm) return;
-    registerClub(name, norm).then(() => refreshClubs());
-  }, [refreshClubs]);
+    const knownNorms = new Set([
+      ...CLUBS.map(c => normClub(c.name)),
+      ...clubSuggestions.map(c => normClub(c.name)),
+    ]);
+    if (knownNorms.has(norm)) {
+      // Bereits bekannt → nur Zähler hoch.
+      await registerClub(name, norm);
+      refreshClubs();
+      return;
+    }
+    // Neuer Verein → KI-Abgleich (best effort).
+    let finalName = name, country = '';
+    try {
+      const candidates = [...CLUBS.map(c => c.name), ...clubSuggestions.map(c => c.name)].slice(0, 40);
+      const res = await normalizeClub(name, candidates);
+      if (res?.duplicateOf) finalName = res.duplicateOf;
+      else if (res?.canonical) { finalName = res.canonical; country = res.country || ''; }
+    } catch { /* KI optional */ }
+    await registerClub(finalName, normClub(finalName), country);
+    refreshClubs();
+  }, [clubSuggestions, refreshClubs]);
 
   // Alle für mich sichtbaren Team-Subjekte (RLS liefert nur erlaubte).
   const myTeams = athletes.filter(a => a.type === 'team');
