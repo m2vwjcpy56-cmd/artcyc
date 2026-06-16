@@ -11899,12 +11899,16 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           }
           // Pro-Übung-Werte (best effort) — werden in applyImport auf das aktive
           // Programm nach Reihenfolge gemappt (kein Programm-Neuaufbau).
+          // WICHTIG: taktische Aufwertung (T) wird aus dem FOTO NICHT übernommen.
+          // Sie ist selten, bewusst gesetzt und sehr fehleranfällig beim Verlesen
+          // (die KI „erfand" 10.0-Aufwertungen für Übungen ohne T). Über das PDF
+          // bleibt die taktische Aufwertung exakt — beim Foto bei Bedarf manuell.
           if (Array.isArray(data.exercises) && data.exercises.length > 0) {
             const c = (v) => { const x = num(v); return typeof x === 'number' && !isNaN(x) ? x : 0; };
             parsed._scanRows = data.exercises.map(r => ({
               points: num(r.points),
-              kg1: { X: c(r.kg1?.x), W: c(r.kg1?.w), S: c(r.kg1?.s), K: c(r.kg1?.k), p: c(r.kg1?.schw), T: c(r.kg1?.takt) },
-              kg2: { X: c(r.kg2?.x), W: c(r.kg2?.w), S: c(r.kg2?.s), K: c(r.kg2?.k), p: c(r.kg2?.schw), T: c(r.kg2?.takt) },
+              kg1: { X: c(r.kg1?.x), W: c(r.kg1?.w), S: c(r.kg1?.s), K: c(r.kg1?.k), p: c(r.kg1?.schw), T: 0 },
+              kg2: { X: c(r.kg2?.x), W: c(r.kg2?.w), S: c(r.kg2?.s), K: c(r.kg2?.k), p: c(r.kg2?.schw), T: 0 },
             }));
           }
           if (data._exDebug) parsed._exDebug = String(data._exDebug);
