@@ -7355,6 +7355,32 @@ function TrainingsplanView({ data, setData, onBack }) {
   const [draft, setDraft] = useState(null);
   const plan = plans.find(p => p.id === selectedId) || null;
 
+  // Protokoll: vergangene Trainingstage (≠ heute) aus den echten Sessions der
+  // im Plan verknüpften Übungen. Pro Tag: je Übung Anzahl + ✓/✗. So ist der
+  // Plan ein stehender Plan, darunter die Historie „wann wie oft geklappt".
+  const planLog = useMemo(() => {
+    if (!plan) return [];
+    const exIds = new Set((plan.items || []).filter(it => it.loggable && it.exerciseId).map(it => it.exerciseId));
+    if (exIds.size === 0) return [];
+    const exName = (id) => {
+      const ex = (data.exercises || []).find(e => e.id === id);
+      return ex ? localizedExerciseName(ex) : 'Übung';
+    };
+    const byDate = new Map();
+    for (const s of (data.sessions || [])) {
+      if (!exIds.has(s.exerciseId) || s.date === today) continue;
+      const entries = s.entries || [];
+      if (entries.length === 0) continue;
+      const succ = entries.filter(e => e === 'success').length;
+      const rec = byDate.get(s.date) || { date: s.date, total: 0, succ: 0, items: [] };
+      rec.total += entries.length;
+      rec.succ += succ;
+      rec.items.push({ name: exName(s.exerciseId), total: entries.length, succ, fail: entries.length - succ });
+      byDate.set(s.date, rec);
+    }
+    return [...byDate.values()].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }, [plan, data.sessions, data.exercises, today]);
+
   const writePlans = (next) => setData({ ...data, trainingPlans: next });
   const upsertPlan = (p) => writePlans(plans.some(x => x.id === p.id) ? plans.map(x => x.id === p.id ? p : x) : [...plans, p]);
   const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -7604,6 +7630,34 @@ function TrainingsplanView({ data, setData, onBack }) {
               </div>
             )}
             <div className="text-[12px] text-slate-400 px-1">„Geklappt/Nicht" wird direkt als Training für die verknüpfte Übung gespeichert (Datum heute) und fließt in die Statistiken.</div>
+
+            {/* Protokoll — vergangene Trainingstage automatisch aus den Sessions */}
+            {planLog.length > 0 && (
+              <div className="space-y-1.5 pt-2">
+                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-4 font-medium">Protokoll</div>
+                <div className="bg-white rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                  {planLog.map((d, idx) => (
+                    <div key={d.date} className={'px-4 py-3 ' + (idx > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[15px] font-medium text-black">{formatDateShort(d.date)}</span>
+                        <span className="text-[12px] tabular-nums shrink-0">
+                          <span className="text-slate-400">{d.total}×</span>
+                          {' · '}<span className="text-emerald-600">{d.succ}✓</span>
+                          {' '}<span className="text-rose-500">{d.total - d.succ}✗</span>
+                        </span>
+                      </div>
+                      <div className="text-[12px] text-[#8E8E93] mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5">
+                        {d.items.map((it, i) => (
+                          <span key={i} className="tabular-nums">
+                            {it.name} {it.succ}/{it.total}{i < d.items.length - 1 ? ' ·' : ''}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
