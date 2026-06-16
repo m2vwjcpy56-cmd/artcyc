@@ -1,5 +1,6 @@
 -- =====================================================
 -- ArtCyc Coach — Supabase Schema
+-- (idempotent; CI re-run 2026-06-16 nach transientem 503)
 -- =====================================================
 -- Komplett im Supabase-SQL-Editor ausführen (einmalig).
 -- Erst danach: Anon-Key + Project-URL in der App eintragen.
