@@ -13316,7 +13316,10 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
   const onRedeemCode = async () => {
     if (!redeemCode.trim()) return;
     setBusy(true); setErr(''); setInfo('');
-    const { data, error } = await redeemAthleteCode(redeemCode.trim());
+    // Wie serverseitig normalisieren (Großschreibung, ohne Leer-/Bindestriche),
+    // damit Copy-&-Paste mit Formatierung nicht fälschlich „ungültig" meldet.
+    const normalized = redeemCode.toUpperCase().replace(/[\s-]/g, '');
+    const { data, error } = await redeemAthleteCode(normalized);
     if (error) {
       setErr(error.message);
     } else if (data) {
@@ -13581,6 +13584,13 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
               {err && (
                 <div className="bg-rose-50 border border-rose-200 text-rose-900 text-sm rounded-xl p-3">
                   ✗ {err}
+                  {/^Code ung/i.test(err) && (
+                    <div className="text-[12px] text-rose-700/90 mt-1.5 leading-snug">
+                      Tipp: Bitte die Person, dir einen <strong>frisch generierten</strong> Code zu schicken und
+                      löse ihn gleich ein. Ein neu erstellter Code ersetzt den alten, und Einladungs-Codes
+                      können nach längerer Zeit automatisch erneuert werden.
+                    </div>
+                  )}
                 </div>
               )}
               <div className="flex gap-2">
