@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS athletes (
   -- Claim-Code (6-stellig) zum Verknüpfen mit eigenem Account
   claim_code TEXT UNIQUE,
   claim_code_used_at TIMESTAMPTZ,
+  -- Bei Team-Subjekten: Mehrfach-Beitritts-Code (Sportler treten per Code bei)
+  join_code TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   -- Eindeutigkeit: ein User kann max. einen athlete-Eintrag mit auth_user_id haben (vermeidet Doppel-Sportler)
   CONSTRAINT athletes_unique_user UNIQUE (auth_user_id)
@@ -44,6 +46,8 @@ CREATE INDEX IF NOT EXISTS athletes_claim_idx ON athletes(claim_code) WHERE clai
 ALTER TABLE athletes ADD COLUMN IF NOT EXISTS last_name TEXT DEFAULT '';
 -- Formation für Team-Subjekte ('2er'|'4er'|'6er').
 ALTER TABLE athletes ADD COLUMN IF NOT EXISTS discipline TEXT DEFAULT '';
+-- Beitritts-Code für Team-Subjekte (mehrfach nutzbar).
+ALTER TABLE athletes ADD COLUMN IF NOT EXISTS join_code TEXT;
 
 -- =====================================================
 -- 2b) TEAM_MEMBERS — verknüpft Accounts (Sportler) mit Team-Subjekten.
@@ -241,6 +245,52 @@ BEGIN
          claim_code_used_at = NOW()
    WHERE id = matched_id;
   RETURN matched_id;
+END;
+$$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER;
+
+-- Team-Beitritt per Code: fügt den eigenen Athleten-Eintrag als Mitglied hinzu.
+-- SECURITY DEFINER, damit der Self-Join die team_members-Insert-Policy
+-- (nur Verwalter) gezielt umgehen darf — Berechtigung = gültiger Code.
+CREATE OR REPLACE FUNCTION join_team(input_code TEXT)
+RETURNS UUID AS $$
+DECLARE
+  team_uuid UUID;
+  my_athlete UUID;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Nicht angemeldet';
+  END IF;
+  SELECT id INTO team_uuid FROM athletes
+   WHERE type = 'team'
+     AND join_code IS NOT NULL
+     AND join_code = upper(replace(replace(input_code, ' ', ''), '-', ''))
+   LIMIT 1;
+  IF team_uuid IS NULL THEN
+    RAISE EXCEPTION 'Team-Code ungültig';
+  END IF;
+  SELECT id INTO my_athlete FROM athletes WHERE auth_user_id = auth.uid() LIMIT 1;
+  IF my_athlete IS NULL THEN
+    RAISE EXCEPTION 'Kein Sportler-Profil vorhanden';
+  END IF;
+  INSERT INTO team_members (team_id, athlete_id, role, added_by)
+  VALUES (team_uuid, my_athlete, 'member', auth.uid())
+  ON CONFLICT (team_id, athlete_id) DO NOTHING;
+  RETURN team_uuid;
+END;
+$$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER;
+
+-- (Re)Generiert den Beitritts-Code eines Teams. Nur Verwalter/Admin.
+CREATE OR REPLACE FUNCTION regenerate_team_join_code(team_uuid UUID)
+RETURNS TEXT AS $$
+DECLARE
+  code TEXT;
+BEGIN
+  IF NOT manages_team(team_uuid) THEN
+    RAISE EXCEPTION 'Keine Berechtigung';
+  END IF;
+  code := generate_claim_code();
+  UPDATE athletes SET join_code = code WHERE id = team_uuid;
+  RETURN code;
 END;
 $$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER;
 

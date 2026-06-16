@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
+import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -13358,16 +13358,50 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
     return s;
   }, [athleteCoaches, myUserId]);
   const managedAthletes = athletes.filter(a => (
-    (a.created_by_coach_id === myUserId || myCoachAthleteIds.has(a.id))
+    a.type !== 'team'
+    && (a.created_by_coach_id === myUserId || myCoachAthleteIds.has(a.id))
     && a.id !== (myAthlete?.id)
   ));
   const otherAthletesAdminView = isAdmin
     ? athletes.filter(a => (
-        a.id !== (myAthlete?.id)
+        a.type !== 'team'
+        && a.id !== (myAthlete?.id)
         && a.created_by_coach_id !== myUserId
         && !myCoachAthleteIds.has(a.id)
       ))
     : [];
+
+  // ---- Teams (Formationen) ----
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [teamEditing, setTeamEditing] = useState(null);   // Team-Objekt oder null
+  const [showNewTeam, setShowNewTeam] = useState(false);
+  const [teamDetail, setTeamDetail] = useState(null);     // geöffnetes Team
+  const [showJoinTeam, setShowJoinTeam] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+
+  const refreshTeamMembers = useCallback(async () => {
+    setTeamMembers(await fetchTeamMembers());
+  }, []);
+  useEffect(() => { refreshTeamMembers(); }, [refreshTeamMembers]);
+
+  // Alle für mich sichtbaren Team-Subjekte (RLS liefert nur erlaubte).
+  const myTeams = athletes.filter(a => a.type === 'team');
+  // Mitglieder eines Teams als Athleten-Objekte (über teamMembers + athletes).
+  const athleteById = useMemo(() => {
+    const m = new Map();
+    (athletes || []).forEach(a => m.set(a.id, a));
+    return m;
+  }, [athletes]);
+  const membersOfTeam = useCallback((teamId) => (
+    teamMembers
+      .filter(tm => tm.team_id === teamId)
+      .map(tm => ({ ...tm, athlete: athleteById.get(tm.athlete_id) }))
+  ), [teamMembers, athleteById]);
+  // Kandidaten zum Hinzufügen: sichtbare Sportler (kein Team), noch nicht im Team.
+  const addCandidates = useCallback((teamId) => {
+    const inTeam = new Set(teamMembers.filter(tm => tm.team_id === teamId).map(tm => tm.athlete_id));
+    return athletes.filter(a => a.type !== 'team' && !inTeam.has(a.id));
+  }, [teamMembers, athletes]);
 
   const onGenerateCode = async (athleteId) => {
     setBusy(true); setErr(''); setInfo('');
@@ -13436,6 +13470,76 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
     const { error } = await deleteAthlete(a.id);
     if (error) setErr(error.message);
     await refreshAthletes();
+    setBusy(false);
+  };
+
+  const onSaveTeam = async (formData) => {
+    setBusy(true); setErr('');
+    try {
+      if (formData.id) {
+        const { error } = await updateTeam(formData.id, {
+          name: formData.name, discipline: formData.discipline, notes: formData.notes
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await createTeam(formData);
+        if (error) throw error;
+      }
+      await refreshAthletes();
+      await refreshTeamMembers();
+      setShowNewTeam(false); setTeamEditing(null);
+    } catch (e) {
+      setErr(e.message || 'Speichern fehlgeschlagen');
+    } finally { setBusy(false); }
+  };
+
+  const onDeleteTeam = async (team) => {
+    if (!confirm('Team „' + team.name + '" wirklich löschen?\n\nDie Mitgliedschaften werden entfernt. Trainings/Wettkämpfe des Teams bleiben in den Daten erhalten, sind aber nicht mehr zugeordnet.')) return;
+    setBusy(true); setErr('');
+    const { error } = await deleteTeam(team.id);
+    if (error) setErr(error.message);
+    else { setTeamDetail(null); }
+    await refreshAthletes();
+    await refreshTeamMembers();
+    setBusy(false);
+  };
+
+  const onAddMember = async (teamId, athleteId) => {
+    setBusy(true); setErr('');
+    const { error } = await addTeamMember(teamId, athleteId);
+    if (error) setErr(error.message);
+    await refreshTeamMembers();
+    setBusy(false);
+  };
+
+  const onRemoveMember = async (teamId, athleteId) => {
+    setBusy(true); setErr('');
+    const { error } = await removeTeamMember(teamId, athleteId);
+    if (error) setErr(error.message);
+    await refreshTeamMembers();
+    setBusy(false);
+  };
+
+  const onRegenTeamCode = async (teamId) => {
+    setBusy(true); setErr(''); setInfo('');
+    const { error } = await regenerateTeamJoinCode(teamId);
+    if (error) setErr(error.message);
+    else setInfo('Beitritts-Code erstellt. Gib ihn an die Team-Mitglieder weiter.');
+    await refreshAthletes();
+    setBusy(false);
+  };
+
+  const onJoinTeam = async () => {
+    if (!joinCode.trim()) return;
+    setBusy(true); setErr(''); setInfo('');
+    const { error } = await joinTeamByCode(joinCode);
+    if (error) setErr(error.message);
+    else {
+      setInfo('✓ Du bist dem Team beigetreten.');
+      setShowJoinTeam(false); setJoinCode('');
+    }
+    await refreshAthletes();
+    await refreshTeamMembers();
     setBusy(false);
   };
 
@@ -13624,7 +13728,55 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
         </IOSList>
       )}
 
-      {(managedAthletes.length === 0 && !myAthlete) && (
+      {/* Teams (Formationen 2er/4er/6er) */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-4 font-medium">
+            {t('teams.section')}
+          </div>
+          <div className="flex gap-3 pr-1">
+            <button onClick={() => { setShowJoinTeam(true); setJoinCode(''); }}
+              className="text-[13px] text-[#007AFF] font-medium active:opacity-60 flex items-center gap-1">
+              <KeyRound size={13} /> {t('teams.join')}
+            </button>
+            <button onClick={() => setShowNewTeam(true)}
+              className="text-[13px] text-[#FF9500] font-semibold active:opacity-60 flex items-center gap-1">
+              <Plus size={14} /> {t('teams.new')}
+            </button>
+          </div>
+        </div>
+        {myTeams.length > 0 ? (
+          <div className="bg-white rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            {myTeams.map((team, idx) => {
+              const mem = membersOfTeam(team.id);
+              return (
+                <button key={team.id} onClick={() => setTeamDetail(team)}
+                  className={'w-full text-left px-4 py-3.5 active:bg-[#D1D1D6]/40 ' + (idx > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-[15px] text-black truncate">{team.name}</span>
+                        {team.discipline && <IOSTag color="blue">{team.discipline}</IOSTag>}
+                      </div>
+                      <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">
+                        {mem.length} {mem.length === 1 ? t('teams.memberOne') : t('teams.memberMany')}
+                        {team.notes ? ' · ' + team.notes : ''}
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-[#C7C7CC] shrink-0" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl px-4 py-4 text-[13px] text-[#8E8E93] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            {t('teams.empty')}
+          </div>
+        )}
+      </div>
+
+      {(managedAthletes.length === 0 && !myAthlete && myTeams.length === 0) && (
         <EmptyState title={t('athletes.empty')} hint={t('athletes.emptyHint')} />
       )}
 
@@ -13635,6 +13787,60 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
         onClose={() => { setShowNew(false); setEditing(null); setErr(''); }}
         onSave={onSaveAthlete}
       />
+
+      <TeamEditor
+        open={showNewTeam || !!teamEditing}
+        team={teamEditing}
+        busy={busy}
+        onClose={() => { setShowNewTeam(false); setTeamEditing(null); setErr(''); }}
+        onSave={onSaveTeam}
+      />
+
+      {teamDetail && (() => {
+        const freshTeam = athletes.find(a => a.id === teamDetail.id) || teamDetail;
+        const canManage = freshTeam.created_by_coach_id === myUserId || isAdmin;
+        return (
+          <TeamDetailModal
+            team={freshTeam}
+            members={membersOfTeam(teamDetail.id)}
+            candidates={addCandidates(teamDetail.id)}
+            canManage={canManage}
+            busy={busy}
+            onClose={() => setTeamDetail(null)}
+            onViewData={onPickAthlete ? () => { setTeamDetail(null); onPickAthlete(freshTeam.id); } : null}
+            onAddMember={onAddMember}
+            onRemoveMember={onRemoveMember}
+            onRegenCode={onRegenTeamCode}
+            onEdit={() => { setTeamEditing(freshTeam); setTeamDetail(null); }}
+            onDelete={() => onDeleteTeam(freshTeam)}
+          />
+        );
+      })()}
+
+      {showJoinTeam && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40"
+          onClick={() => setShowJoinTeam(false)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="font-semibold text-lg">{t('teams.joinTitle')}</h3>
+              <button onClick={() => setShowJoinTeam(false)} className="p-2 -m-2 text-slate-500"><X size={20} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-slate-600">{t('teams.joinHint')}</p>
+              <input type="text" value={joinCode}
+                onChange={e => setJoinCode(e.target.value.toUpperCase())}
+                placeholder={t('athletes.redeemPlaceholder')} maxLength={8} autoFocus
+                inputMode="latin" autoCapitalize="characters"
+                style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}
+                className="w-full border border-slate-300 rounded-xl px-4 py-3 text-lg tracking-wider outline-none focus:border-[#FF9500]" />
+              <button onClick={onJoinTeam} disabled={busy || !joinCode.trim()}
+                className="w-full bg-[#FF9500] text-white font-semibold py-3 rounded-full active:scale-95 transition disabled:opacity-40">
+                {busy ? '…' : t('teams.joinButton')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Redeem-Code Modal */}
       {showRedeemModal && (
@@ -13822,6 +14028,187 @@ function AthleteEditor({ open, athlete, onClose, onSave, busy = false }) {
               {t('athletes.clubFooter')}
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Team = Formation. Einzeldisziplin 1er ist kein Team.
+const TEAM_DISCIPLINES = ['2er', '4er', '6er'];
+
+function TeamEditor({ open, team, onClose, onSave, busy = false }) {
+  const { t } = useI18n();
+  const [name, setName] = useState('');
+  const [discipline, setDiscipline] = useState('2er');
+  const [club, setClub] = useState('');
+
+  useEffect(() => {
+    if (team) {
+      setName(team.name || '');
+      setDiscipline(team.discipline || '2er');
+      setClub(team.notes || '');
+    } else {
+      setName(''); setDiscipline('2er'); setClub('');
+    }
+  }, [team, open]);
+
+  if (!open) return null;
+
+  const canSave = name.trim().length > 0 && !busy;
+  const doSave = () => canSave && onSave({ id: team?.id || null, name: name.trim(), discipline, notes: club.trim() });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-[#F2F2F7] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-[#F2F2F7]/95 backdrop-blur-xl px-4 py-3 flex items-center justify-between z-10">
+          <button onClick={onClose} className="text-[17px] text-[#007AFF] active:opacity-60 px-1">{t('common.cancel')}</button>
+          <h3 className="font-semibold text-[17px]">{team ? t('teams.editTitle') : t('teams.newTitle')}</h3>
+          <button onClick={doSave} disabled={!canSave}
+            className="text-[17px] text-[#FF9500] font-semibold active:opacity-60 disabled:opacity-30 px-1">
+            {busy ? '…' : t('common.done')}
+          </button>
+        </div>
+
+        <div className="px-3 py-4 space-y-5">
+          <IOSList header={t('teams.section')}>
+            <div className="px-4 py-3 flex items-center gap-3">
+              <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">{t('teams.name')}</label>
+              <input value={name} onChange={e => setName(e.target.value)}
+                placeholder={t('teams.namePlaceholder')} autoFocus
+                className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
+            </div>
+            <div className="px-4 py-3 flex items-center gap-3">
+              <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">{t('teams.discipline')}</label>
+              <select value={discipline} onChange={e => setDiscipline(e.target.value)}
+                className="flex-1 bg-transparent text-[15px] outline-none appearance-none">
+                {TEAM_DISCIPLINES.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+              <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
+            </div>
+          </IOSList>
+
+          <div className="space-y-1.5">
+            <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-4 font-medium">{t('athletes.club')}</div>
+            <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-4 py-3">
+              <ClubCombobox value={club} onChange={setClub} placeholder={t('athletes.clubPlaceholder')} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TeamDetailModal({ team, members, candidates, canManage, busy, onClose, onViewData, onAddMember, onRemoveMember, onRegenCode, onEdit, onDelete }) {
+  const { t } = useI18n();
+  const [showAdd, setShowAdd] = useState(false);
+  const [q, setQ] = useState('');
+
+  const fullName = (a) => a ? [a.name, a.last_name].filter(Boolean).join(' ') : t('teams.unknownMember');
+  const filtered = candidates.filter(a => {
+    const n = [a.name, a.last_name].filter(Boolean).join(' ').toLowerCase();
+    return n.includes(q.trim().toLowerCase());
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-[#F2F2F7] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-[#F2F2F7]/95 backdrop-blur-xl px-4 py-3 flex items-center justify-between z-10">
+          <button onClick={onClose} className="text-[17px] text-[#007AFF] active:opacity-60 px-1">{t('common.done')}</button>
+          <h3 className="font-semibold text-[17px] truncate px-2">{team.name}</h3>
+          {canManage ? (
+            <button onClick={onEdit} className="text-[17px] text-[#FF9500] font-semibold active:opacity-60 px-1">{t('common.edit')}</button>
+          ) : <div className="w-10" />}
+        </div>
+
+        <div className="px-3 py-4 space-y-5">
+          {/* Meta */}
+          <IOSList footer={team.notes || undefined}>
+            <div className="px-4 py-3 flex items-center justify-between">
+              <span className="text-[15px] text-[#3C3C43]">{t('teams.discipline')}</span>
+              <span className="text-[15px] text-[#8E8E93]">{team.discipline || '—'}</span>
+            </div>
+          </IOSList>
+
+          {onViewData && (
+            <button onClick={onViewData}
+              className="w-full bg-white rounded-2xl px-4 py-3 text-[15px] text-[#007AFF] font-medium active:bg-[#D1D1D6]/40 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center gap-2">
+              <BarChart3 size={18} /> {t('teams.viewData')}
+            </button>
+          )}
+
+          {/* Mitglieder */}
+          <IOSList header={t('teams.members') + ' (' + members.length + ')'}>
+            {members.length === 0 ? (
+              <div className="px-4 py-3 text-[13px] text-[#8E8E93]">{t('teams.noMembers')}</div>
+            ) : members.map(m => (
+              <div key={m.athlete_id} className="px-4 py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                  <span className="text-[15px] text-black truncate">{fullName(m.athlete)}</span>
+                  {m.role === 'captain' && <IOSTag color="orange">{t('teams.captain')}</IOSTag>}
+                  {m.athlete?.notes && <span className="text-[13px] text-[#8E8E93] truncate">{m.athlete.notes}</span>}
+                </div>
+                {canManage && (
+                  <button onClick={() => onRemoveMember(team.id, m.athlete_id)} disabled={busy}
+                    className="p-2 -m-1 text-[#FF3B30] active:bg-[#D1D1D6]/40 rounded-full shrink-0">
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </IOSList>
+
+          {canManage && (
+            <>
+              {/* Mitglied hinzufügen */}
+              {!showAdd ? (
+                <button onClick={() => { setShowAdd(true); setQ(''); }}
+                  className="w-full bg-white rounded-2xl px-4 py-3 text-[15px] text-[#007AFF] font-medium active:bg-[#D1D1D6]/40 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center gap-2">
+                  <Plus size={18} /> {t('teams.addMember')}
+                </button>
+              ) : (
+                <IOSList header={t('teams.addMember')} footer={t('teams.addMemberFooter')}>
+                  <div className="px-4 py-2.5">
+                    <input value={q} onChange={e => setQ(e.target.value)} autoFocus
+                      placeholder={t('teams.searchAthlete')}
+                      className="w-full bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
+                  </div>
+                  {filtered.length === 0 ? (
+                    <div className="px-4 py-3 text-[13px] text-[#8E8E93]">{t('teams.noCandidates')}</div>
+                  ) : filtered.slice(0, 20).map(a => (
+                    <button key={a.id} onClick={() => { onAddMember(team.id, a.id); setShowAdd(false); }}
+                      disabled={busy}
+                      className="w-full text-left px-4 py-3 active:bg-[#D1D1D6]/40 flex items-center justify-between gap-2">
+                      <span className="text-[15px] text-black truncate">{fullName(a)}</span>
+                      <Plus size={16} className="text-[#007AFF] shrink-0" />
+                    </button>
+                  ))}
+                </IOSList>
+              )}
+
+              {/* Beitritts-Code */}
+              <IOSList header={t('teams.joinCode')} footer={t('teams.joinCodeFooter')}>
+                <div className="px-4 py-3 flex items-center justify-between gap-3">
+                  {team.join_code ? (
+                    <span className="font-mono text-lg tracking-wider text-black">{team.join_code}</span>
+                  ) : (
+                    <span className="text-[15px] text-[#8E8E93]">{t('teams.noJoinCode')}</span>
+                  )}
+                  <button onClick={() => onRegenCode(team.id)} disabled={busy}
+                    className="text-[13px] bg-amber-100 text-amber-900 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5 shrink-0">
+                    <KeyRound size={13} /> {team.join_code ? t('teams.newCode') : t('teams.createCode')}
+                  </button>
+                </div>
+              </IOSList>
+
+              {/* Löschen */}
+              <button onClick={onDelete} disabled={busy}
+                className="w-full bg-white rounded-2xl px-4 py-3 text-[15px] text-[#FF3B30] font-medium active:bg-[#D1D1D6]/40 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                {t('teams.delete')}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
