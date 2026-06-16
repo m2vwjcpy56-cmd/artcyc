@@ -100,7 +100,7 @@ export async function fetchProfiles() {
 export async function fetchAthletes() {
   const { data, error } = await supabase
     .from('athletes')
-    .select('id, name, last_name, type, notes, email, auth_user_id, created_by_coach_id, claim_code, created_at')
+    .select('id, name, last_name, type, discipline, notes, email, auth_user_id, created_by_coach_id, claim_code, created_at')
     .order('created_at', { ascending: true });
   if (error) {
     console.warn('Athletes fetch fehlgeschlagen:', error.message);
@@ -140,6 +140,80 @@ export async function updateAthlete(id, fields) {
 
 export async function deleteAthlete(id) {
   const { error } = await supabase.from('athletes').delete().eq('id', id);
+  return { error };
+}
+
+// =============================================================
+// TEAMS — ein Team ist eine athletes-Zeile mit type='team' (eigenes
+// Trainings-Subjekt). team_members verknüpft echte Accounts damit.
+// =============================================================
+
+// Alle Mitgliedschaften, die ich sehen darf (RLS filtert auf meine Teams).
+export async function fetchTeamMembers() {
+  const { data, error } = await supabase
+    .from('team_members')
+    .select('team_id, athlete_id, role, added_by, created_at');
+  if (error) {
+    console.warn('team_members fetch fehlgeschlagen:', error.message);
+    return [];
+  }
+  return data || [];
+}
+
+// Legt ein Team-Subjekt an und fügt den Ersteller (falls er einen eigenen
+// Athleten-Eintrag hat) direkt als Captain hinzu.
+export async function createTeam({ name, discipline = '', club = '' }) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: { message: 'Nicht angemeldet' } };
+  const { data: team, error } = await supabase
+    .from('athletes')
+    .insert({
+      name,
+      type: 'team',
+      discipline: discipline || '',
+      notes: club || '',
+      created_by_coach_id: user.id
+    })
+    .select()
+    .single();
+  if (error) return { error };
+  // Ersteller als Captain (nur wenn er selbst einen Athleten-Eintrag hat)
+  const { data: me } = await supabase
+    .from('athletes').select('id').eq('auth_user_id', user.id).limit(1).maybeSingle();
+  if (me?.id) {
+    const { error: memErr } = await supabase
+      .from('team_members')
+      .insert({ team_id: team.id, athlete_id: me.id, role: 'captain', added_by: user.id });
+    if (memErr) console.warn('Captain-Zuordnung fehlgeschlagen:', memErr.message);
+  }
+  return { data: team };
+}
+
+export async function updateTeam(id, fields) {
+  const { data, error } = await supabase
+    .from('athletes').update(fields).eq('id', id).select().single();
+  return { data, error };
+}
+
+export async function deleteTeam(id) {
+  // team_members werden per ON DELETE CASCADE mit entfernt.
+  const { error } = await supabase.from('athletes').delete().eq('id', id);
+  return { error };
+}
+
+export async function addTeamMember(teamId, athleteId, role = 'member') {
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data, error } = await supabase
+    .from('team_members')
+    .insert({ team_id: teamId, athlete_id: athleteId, role, added_by: user?.id || null })
+    .select()
+    .single();
+  return { data, error };
+}
+
+export async function removeTeamMember(teamId, athleteId) {
+  const { error } = await supabase
+    .from('team_members').delete().eq('team_id', teamId).eq('athlete_id', athleteId);
   return { error };
 }
 
