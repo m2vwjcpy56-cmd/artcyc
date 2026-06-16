@@ -4517,6 +4517,11 @@ export default function App() {
         || (dbAthleteCoaches || []).some(ac => ac.athlete_id === a.id && ac.coach_id === session?.user?.id);
       if (isManaged) { list.push(a); seen.add(a.id); }
     });
+    // Teams (Formationen): dbAthletes enthält nur RLS-sichtbare Team-Subjekte
+    // (Mitglied / Ersteller / Trainer eines Mitglieds) → alle in den Picker.
+    dbAthletes.forEach(a => {
+      if (!seen.has(a.id) && a.type === 'team') { list.push(a); seen.add(a.id); }
+    });
     if (profile?.role === 'admin' || isAppOwner(session)) {
       dbAthletes.forEach(a => { if (!seen.has(a.id)) { list.push(a); seen.add(a.id); } });
     }
@@ -4545,7 +4550,10 @@ export default function App() {
     [dbAthletes, selectedAthleteId]
   );
   const isOwnAthlete = !selectedAthlete || selectedAthlete.auth_user_id === session?.user?.id;
-  const isReadOnlyView = !!selectedAthleteId && !isOwnAthlete;
+  // Team-Subjekte sind für alle sichtbaren (= RLS-erlaubten) Nutzer beschreibbar:
+  // can_access_athlete lässt Mitglieder/Ersteller/Trainer schreiben. Daher nicht
+  // als Read-Only behandeln, obwohl auth_user_id (Team) ≠ eigener User ist.
+  const isReadOnlyView = !!selectedAthleteId && !isOwnAthlete && selectedAthlete?.type !== 'team';
   const [showAthletePicker, setShowAthletePicker] = useState(false);
 
   // Nachname-Nachtrag: Bestands-User ohne profiles.last_name werden einmal pro
@@ -4801,7 +4809,7 @@ export default function App() {
               className={'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[12px] font-medium max-w-[34vw] active:opacity-70 ' +
                 (isOwnAthlete ? 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200')}
               aria-label="Datenquelle wechseln">
-              {isOwnAthlete ? <User size={13} strokeWidth={2.4} className="shrink-0" /> : <Crown size={13} strokeWidth={2.4} className="shrink-0" />}
+              {selectedAthlete.type === 'team' ? <Users size={13} strokeWidth={2.4} className="shrink-0" /> : isOwnAthlete ? <User size={13} strokeWidth={2.4} className="shrink-0" /> : <Crown size={13} strokeWidth={2.4} className="shrink-0" />}
               <span className="truncate">{selectedAthlete.name}</span>
               {availableAthletes.length > 1 && <ChevronRight size={12} strokeWidth={2.6} className="rotate-90 opacity-60 shrink-0" />}
             </button>
@@ -4830,8 +4838,8 @@ export default function App() {
           <button onClick={() => availableAthletes.length > 1 && setShowAthletePicker(true)} disabled={availableAthletes.length <= 1}
             className={'mx-2 mb-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[12px] font-medium self-start active:opacity-70 ' +
               (isOwnAthlete ? 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200')}>
-            {isOwnAthlete ? <User size={13} strokeWidth={2.4} /> : <Crown size={13} strokeWidth={2.4} />}
-            <span className="truncate max-w-[150px]">{isOwnAthlete ? selectedAthlete.name : 'Trainer: ' + selectedAthlete.name}</span>
+            {selectedAthlete.type === 'team' ? <Users size={13} strokeWidth={2.4} /> : isOwnAthlete ? <User size={13} strokeWidth={2.4} /> : <Crown size={13} strokeWidth={2.4} />}
+            <span className="truncate max-w-[150px]">{selectedAthlete.type === 'team' ? selectedAthlete.name : isOwnAthlete ? selectedAthlete.name : 'Trainer: ' + selectedAthlete.name}</span>
             {availableAthletes.length > 1 && <ChevronRight size={12} strokeWidth={2.6} className="rotate-90 opacity-60" />}
           </button>
         )}
@@ -4877,15 +4885,20 @@ export default function App() {
               <div className="p-2">
                 {availableAthletes.map(a => {
                   const isMe = a.auth_user_id === session?.user?.id;
+                  const isTeam = a.type === 'team';
                   const isSel = a.id === selectedAthleteId;
                   return (
                     <button key={a.id} onClick={() => { setSelectedAthleteId(a.id); setShowAthletePicker(false); }}
                       className={'w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 active:bg-[#D1D1D6]/40 ' +
                         (isSel ? 'bg-[#FF9500]/10' : '')}>
-                      {isMe ? <User size={18} className="text-[#007AFF]" /> : <Crown size={18} className="text-[#FF9500]" />}
+                      {isTeam ? <Users size={18} className="text-[#007AFF]" />
+                        : isMe ? <User size={18} className="text-[#007AFF]" />
+                        : <Crown size={18} className="text-[#FF9500]" />}
                       <div className="flex-1 min-w-0">
                         <div className="text-[15px] font-medium truncate">{a.name}</div>
-                        <div className="text-[12px] text-[#8E8E93]">{isMe ? 'mein Profil' : 'als Trainer'}</div>
+                        <div className="text-[12px] text-[#8E8E93]">
+                          {isTeam ? ('Team' + (a.discipline ? ' · ' + a.discipline : '')) : isMe ? 'mein Profil' : 'als Trainer'}
+                        </div>
                       </div>
                       {isSel && <Check size={18} className="text-[#FF9500]" />}
                     </button>
