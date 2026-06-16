@@ -258,7 +258,9 @@ CREATE POLICY profiles_select ON profiles
 CREATE POLICY profiles_update ON profiles
   FOR UPDATE TO authenticated
   USING (id = auth.uid())
-  WITH CHECK (id = auth.uid() AND role IN ('athlete', 'coach')); -- Rolle nicht selbst auf admin hochstufen
+  -- Eigenes Profil aenderbar. Admins duerfen auch ihr (Admin-)Profil aendern;
+  -- Nicht-Admins koennen sich nicht selbst auf 'admin' hochstufen.
+  WITH CHECK (id = auth.uid() AND (is_admin() OR role IN ('athlete', 'coach')));
 CREATE POLICY profiles_insert ON profiles
   FOR INSERT TO authenticated
   WITH CHECK (id = auth.uid());
