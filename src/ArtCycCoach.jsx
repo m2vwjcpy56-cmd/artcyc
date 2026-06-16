@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
+import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -8876,6 +8876,29 @@ function FeedbackSection({ athleteId, exercise }) {
   }, [athleteId, exercise.id, exercise.uci_code, exercise.name]);
   useEffect(() => { load(); }, [load]);
 
+  // KI-Zusammenfassung (ab 2 Feedbacks), pro Session gecacht (kein Doppel-Call).
+  const [summary, setSummary] = useState('');
+  const [summaryBusy, setSummaryBusy] = useState(false);
+  useEffect(() => {
+    if (entries.length < 2) { setSummary(''); return undefined; }
+    const latest = entries[0]?.created_at || '';
+    const key = 'fbsum:' + (athleteId || '') + ':' + exerciseBaseKey(exercise.name) + ':' + entries.length + ':' + latest;
+    let cached = null;
+    try { cached = sessionStorage.getItem(key); } catch { /* egal */ }
+    if (cached) { setSummary(cached); return undefined; }
+    let cancelled = false;
+    setSummaryBusy(true);
+    summarizeFeedback(exercise.name, entries.map(e => ({ fehlerbild: e.fehlerbild, handlungsanweisung: e.handlungsanweisung })))
+      .then(res => {
+        if (cancelled) return;
+        const s = (res && res.summary) || '';
+        setSummary(s);
+        if (s) { try { sessionStorage.setItem(key, s); } catch { /* egal */ } }
+      })
+      .finally(() => { if (!cancelled) setSummaryBusy(false); });
+    return () => { cancelled = true; };
+  }, [entries, athleteId, exercise.name]);
+
   const del = async (id) => {
     if (!confirm('Dieses Feedback wirklich löschen?')) return;
     await deleteFeedback(id);
@@ -8895,6 +8918,18 @@ function FeedbackSection({ athleteId, exercise }) {
           </button>
         )}
       </div>
+
+      {(summary || summaryBusy) && (
+        <div className="bg-[#FF9500]/10 border border-[#FF9500]/25 rounded-2xl px-4 py-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Sparkles size={14} className="text-[#FF9500]" />
+            <span className="text-[12px] font-semibold text-[#FF9500] uppercase tracking-wide">KI-Zusammenfassung</span>
+          </div>
+          {summaryBusy && !summary
+            ? <div className="text-[13px] text-[#8E8E93]">Fasse zusammen …</div>
+            : <div className="text-[14px] text-black leading-snug">{summary}</div>}
+        </div>
+      )}
 
       {!athleteId ? (
         <div className="bg-white rounded-2xl px-4 py-4 text-[13px] text-[#8E8E93] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">

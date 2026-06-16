@@ -228,6 +228,20 @@ export async function deleteFeedback(id) {
   return { error };
 }
 
+// KI-Zusammenfassung der Feedbacks zu einer Übung. items = [{fehlerbild, handlungsanweisung}].
+// Gibt { summary } oder null bei Fehler.
+export async function summarizeFeedback(exercise, items) {
+  try {
+    const { data, error } = await supabase.functions.invoke('summarize-feedback', {
+      body: { exercise, items }
+    });
+    if (error) { console.warn('summarize-feedback fehlgeschlagen:', error.message); return null; }
+    return data || null;
+  } catch (e) {
+    console.warn('summarize-feedback Ausnahme:', e?.message); return null;
+  }
+}
+
 // =============================================================
 // TEAMS — ein Team ist eine athletes-Zeile mit type='team' (eigenes
 // Trainings-Subjekt). team_members verknüpft echte Accounts damit.
