@@ -169,6 +169,34 @@ CREATE TABLE IF NOT EXISTS competitions (
 CREATE INDEX IF NOT EXISTS competitions_athlete_idx ON competitions(athlete_id);
 
 -- =====================================================
+-- 6b) FEEDBACK_ENTRIES — Coaching-Feedback pro Übung (+ Sportler/Team).
+--     Felder spiegeln den bisherigen Forms/Excel-Prozess. Sichtbarkeit über
+--     can_access_athlete() → erbt Eigen-/Trainer-/Team-Sicht automatisch.
+-- =====================================================
+CREATE TABLE IF NOT EXISTS feedback_entries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  athlete_id        UUID NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
+  exercise_ref      TEXT,                 -- exercise.id im App-Datenmodell
+  exercise_name     TEXT DEFAULT '',
+  exercise_code     TEXT DEFAULT '',      -- uci_code (für Matching)
+  fehlerbild        TEXT DEFAULT '',      -- Was stimmt nicht?
+  handlungsanweisung TEXT DEFAULT '',     -- Worauf achten?
+  context           TEXT DEFAULT '',      -- Heimtraining / Lehrgang …
+  given_by          TEXT DEFAULT '',      -- Heimtrainer / Lehrgangsleiter / Sportler
+  feedback_type     TEXT DEFAULT '',      -- verbale Korrektur / Video / Dartfish
+  dartfish_url      TEXT DEFAULT '',
+  helpful           INT,                  -- 1..4
+  r_technik         INT,
+  r_ausfuehrung     INT,
+  r_fortschritt     INT,
+  r_programm        INT,
+  r_wettkampf       INT,
+  created_by        UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at        TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS feedback_athlete_idx ON feedback_entries(athlete_id);
+
+-- =====================================================
 -- 7) HELPER-FUNKTIONEN
 -- =====================================================
 
@@ -544,6 +572,19 @@ CREATE POLICY team_members_update ON team_members
 CREATE POLICY team_members_delete ON team_members
   FOR DELETE TO authenticated
   USING (manages_team(team_id));
+
+-- FEEDBACK_ENTRIES: sichtbar/schreibbar wenn der zugehörige Athlet (oder das
+-- Team) für mich zugänglich ist — gleiche Logik wie Sessions/Wettkämpfe.
+ALTER TABLE feedback_entries ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS feedback_select ON feedback_entries;
+DROP POLICY IF EXISTS feedback_write ON feedback_entries;
+CREATE POLICY feedback_select ON feedback_entries
+  FOR SELECT TO authenticated
+  USING (can_access_athlete(athlete_id));
+CREATE POLICY feedback_write ON feedback_entries
+  FOR ALL TO authenticated
+  USING (can_access_athlete(athlete_id))
+  WITH CHECK (can_access_athlete(athlete_id));
 
 -- CLUBS: alle Authenticated dürfen lesen (Vorschläge). Schreiben nur über die
 -- SECURITY-DEFINER-RPC register_club() — keine direkten Insert/Update-Policies.
