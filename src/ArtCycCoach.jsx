@@ -7664,7 +7664,43 @@ function TrainingsplanView({ data, setData, onBack }) {
     setSelectedId(p.id); setDraft(clone(p)); setEditing(true);
   };
   const startEdit = () => { if (plan) { setDraft(clone(plan)); setEditing(true); } };
-  const finishEdit = () => { if (draft) upsertPlan(draft); setEditing(false); setDraft(null); };
+  // Speichern: für Einträge mit Protokoll-Modus (2/3) ohne verknüpfte Übung wird
+  // im Hintergrund eine eigene Übung angelegt (bzw. unsere Auto-Übung mit den
+  // Eintrags-Einstellungen synchronisiert), damit das Protokollieren (Kacheln,
+  // Zähler, Statistik) wie bei normalen Übungen funktioniert.
+  const finishEdit = () => {
+    if (!draft) { setEditing(false); setDraft(null); return; }
+    let exs = (data.exercises || []).slice();
+    const items = (draft.items || []).map(it => {
+      const mode = it.logMode || (it.loggable ? '2' : 'check');
+      if (mode === 'check' || !it.loggable) return { ...it, logMode: 'check', loggable: false };
+      const catMode = mode === '3' ? 3 : 2;
+      const third = catMode === 3 ? ((it.thirdLabel || '').trim() || 'Gefährlich') : null;
+      const existing = it.exerciseId && exs.find(e => e.id === it.exerciseId);
+      let exId = it.exerciseId;
+      if (!existing) {
+        exId = uid();
+        exs.push({
+          id: exId, name: (it.label || '').trim() || 'Übung', active: true,
+          category_mode: catMode, third_label: third, has_rope_variant: !!it.hasRope,
+          points: 0, default_series: Number(it.reps) || 10, _autoFromPlan: true,
+          created: new Date().toISOString()
+        });
+      } else if (existing._autoFromPlan) {
+        // Nur unsere selbst angelegte Übung an die Eintrags-Einstellungen anpassen.
+        exs = exs.map(e => e.id === exId ? {
+          ...e, name: (it.label || '').trim() || e.name,
+          category_mode: catMode, third_label: third, has_rope_variant: !!it.hasRope
+        } : e);
+      }
+      return { ...it, logMode: mode, loggable: true, exerciseId: exId };
+    });
+    const nextPlan = { ...draft, items };
+    const plist = data.trainingPlans || [];
+    const nextPlans = plist.some(x => x.id === nextPlan.id) ? plist.map(x => x.id === nextPlan.id ? nextPlan : x) : [...plist, nextPlan];
+    setData({ ...data, exercises: exs, trainingPlans: nextPlans });
+    setEditing(false); setDraft(null);
+  };
   const deletePlan = (id) => { writePlans(plans.filter(p => p.id !== id)); setSelectedId(null); setEditing(false); setDraft(null); };
 
   // Entwurf rein lokal bearbeiten (sofort, korrekt)
@@ -7726,6 +7762,9 @@ function TrainingsplanView({ data, setData, onBack }) {
     return s ? (s.entries || []) : [];
   };
   const getEntries = (exId) => exId in optimisticRef.current ? optimisticRef.current[exId] : todayEntries(exId);
+  // Seil-Wahl für heute je Übung (nur relevant bei Seil-Übungen). Default: mit Seil.
+  const ropeRef = useRef({});
+  const getRope = (ex) => ex?.has_rope_variant ? (ropeRef.current[ex.id] !== false) : null;
 
   // In-Flight-Schutz: bei schnellem Tippen würden sich mehrere (asynchrone)
   // DB-Schreibungen überholen und Duplikat-Sessions anlegen. Daher serialisieren
@@ -7747,13 +7786,15 @@ function TrainingsplanView({ data, setData, onBack }) {
         } else if (todays.length >= 1) {
           // EINE behalten (mit den aktuellen Einträgen), eventuelle Duplikate löschen.
           const keepId = todays[0].id;
+          const ex = activeExercises.find(e => e.id === exId);
+          const rope = getRope(ex);
           sessions = sessions
             .filter(s => !(s.exerciseId === exId && s.date === today && s.id !== keepId))
-            .map(s => (s.exerciseId === exId && s.date === today) ? { ...s, entries } : s);
+            .map(s => (s.exerciseId === exId && s.date === today) ? { ...s, entries, withRope: rope } : s);
           changed = true;
         } else {
           const ex = activeExercises.find(e => e.id === exId);
-          sessions = [...sessions, { id: uid(), date: today, athleteId, exerciseId: exId, exerciseName: ex?.name || '', entries, notes: null, withRope: ex?.has_rope_variant ? true : null, created: new Date().toISOString() }];
+          sessions = [...sessions, { id: uid(), date: today, athleteId, exerciseId: exId, exerciseName: ex?.name || '', entries, notes: null, withRope: getRope(ex), created: new Date().toISOString() }];
           changed = true;
         }
       }
@@ -7799,14 +7840,25 @@ function TrainingsplanView({ data, setData, onBack }) {
     optimisticRef.current[exId] = cur.slice(0, -1);
     persistBuf(); rerender(); scheduleFlush();
   };
-  // Einzelnen Versuch umschalten (geklappt ↔ nicht) — wie die nummerierten
-  // Chips im SessionEditor.
-  const toggleEntryAt = (exId, idx) => {
+  // Einzelnen Versuch umschalten — wie die nummerierten Chips im SessionEditor.
+  // Bei 3-Kategorien-Übungen rotiert geklappt → nicht → dritte → geklappt.
+  const toggleEntryAt = (exId, idx, use3) => {
     const cur = getEntries(exId).slice();
     if (idx < 0 || idx >= cur.length) return;
-    cur[idx] = cur[idx] === 'success' ? 'fail' : 'success';
+    const order = use3 ? ['success', 'fail', 'third'] : ['success', 'fail'];
+    cur[idx] = order[(order.indexOf(cur[idx]) + 1) % order.length];
     optimisticRef.current[exId] = cur;
     persistBuf(); rerender(); scheduleFlush();
+  };
+  // Seil-Wahl für heute umschalten.
+  const setRope = (exId, val) => { ropeRef.current[exId] = val; rerender(); scheduleFlush(); };
+
+  // Protokoll-Modus eines Eintrags setzen (Editor). 'check' = nur abhaken,
+  // '2'/'3' = Geklappt/Nicht bzw. mit dritter Kategorie. Die echte (eigene)
+  // Übung dahinter wird erst beim Speichern (finishEdit) angelegt/synchronisiert.
+  const setItemMode = (it, mode) => {
+    if (mode === 'check') patchItem(it.id, { logMode: 'check', loggable: false });
+    else patchItem(it.id, { logMode: mode, loggable: true });
   };
 
   // Abhaken (nicht-verknüpfte Einträge): „erledigt heute" pro Eintrag, ohne in
@@ -7884,22 +7936,48 @@ function TrainingsplanView({ data, setData, onBack }) {
                         placeholder="—"
                         className="w-20 px-2 py-1.5 border border-slate-300 rounded-lg text-[15px] text-right bg-white outline-none" />
                     </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[13px] text-slate-500">Übung verknüpfen</span>
-                      <IOSToggle checked={!!it.loggable} onChange={() => toggleLoggable(it)} />
+                    {/* Protokoll-Modus: wie wird dieser Eintrag erfasst? */}
+                    <div className="space-y-2">
+                      <span className="text-[13px] text-slate-500">Protokoll-Modus</span>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(() => {
+                          const cur = it.logMode || (it.loggable ? '2' : 'check');
+                          return [['check', 'Abhaken'], ['2', 'Geklappt / Nicht'], ['3', '3 Kategorien']].map(([m, lbl]) => (
+                            <button key={m} type="button" onClick={() => setItemMode(it, m)}
+                              className={'py-2 px-1 rounded-lg text-[12px] font-medium border transition active:scale-95 ' +
+                                (cur === m ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white text-slate-600 border-slate-300')}>
+                              {lbl}
+                            </button>
+                          ));
+                        })()}
+                      </div>
+                      {it.logMode === '3' && (
+                        <input value={it.thirdLabel ?? 'Gefährlich'} onChange={e => patchItem(it.id, { thirdLabel: e.target.value })}
+                          placeholder="3. Kategorie (z. B. Gefährlich)"
+                          className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-[14px] bg-white outline-none" />
+                      )}
+                      {(it.logMode === '2' || it.logMode === '3') && (
+                        <>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[13px] text-slate-500">Mit-Seil-Variante</span>
+                            <IOSToggle checked={!!it.hasRope} onChange={() => patchItem(it.id, { hasRope: !it.hasRope })} />
+                          </div>
+                          {(() => {
+                            const le = (data.exercises || []).find(e => e.id === it.exerciseId);
+                            const linked = le && !le._autoFromPlan;
+                            return (
+                              <button type="button" onClick={() => setPickerItemId(it.id)}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-[13px] bg-white outline-none flex items-center justify-between gap-2 active:opacity-70">
+                                <span className={'truncate ' + (linked ? 'text-slate-800' : 'text-slate-400')}>
+                                  {linked ? ('Verknüpft: ' + localizedExerciseName(le)) : 'Optional: mit bestehender Übung verknüpfen'}
+                                </span>
+                                <Search size={14} className="text-slate-400 shrink-0" />
+                              </button>
+                            );
+                          })()}
+                        </>
+                      )}
                     </div>
-                    {it.loggable && (() => {
-                      const le = (data.exercises || []).find(e => e.id === it.exerciseId);
-                      return (
-                        <button type="button" onClick={() => setPickerItemId(it.id)}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-[14px] bg-white outline-none flex items-center justify-between gap-2 active:opacity-70">
-                          <span className={'truncate ' + (le ? 'text-slate-800' : 'text-slate-400')}>
-                            {le ? localizedExerciseName(le) : 'Übung wählen (eigene + Reglement)'}
-                          </span>
-                          <Search size={15} className="text-slate-400 shrink-0" />
-                        </button>
-                      );
-                    })()}
                   </div>
                 </div>
               ))}
@@ -7928,6 +8006,10 @@ function TrainingsplanView({ data, setData, onBack }) {
                   const entries = ex ? getEntries(ex.id) : [];
                   const succ = entries.filter(e => e === 'success').length;
                   const fail = entries.filter(e => e === 'fail').length;
+                  const third = entries.filter(e => e === 'third').length;
+                  const use3 = ex && ex.category_mode === 3;
+                  const thirdLbl = (ex && ex.third_label) || 'Dritte';
+                  const ropeOn = ex && ex.has_rope_variant ? getRope(ex) : null;
                   const reps = Number(it.reps || 0);
                   const complete = ex && reps > 0 && entries.length >= reps;
                   return (
@@ -7950,19 +8032,39 @@ function TrainingsplanView({ data, setData, onBack }) {
                       </div>
                       {it.loggable && ex && (
                         <div className="mt-2.5">
-                          {/* Gleiche Kacheln wie „Wiederholungen erfassen": Icon, Label,
-                              Zähler direkt darunter. */}
-                          <div className="grid grid-cols-2 gap-3">
+                          {/* Mit-Seil-Wahl (nur bei Seil-Übungen) — wie im SessionEditor. */}
+                          {ex.has_rope_variant && (
+                            <div className="grid grid-cols-2 gap-2 mb-2.5">
+                              <button type="button" onClick={() => setRope(ex.id, true)}
+                                className={'py-2 rounded-xl text-[13px] font-medium border transition active:scale-95 ' + (ropeOn ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-700 border-slate-300')}>
+                                Mit Seil
+                              </button>
+                              <button type="button" onClick={() => setRope(ex.id, false)}
+                                className={'py-2 rounded-xl text-[13px] font-medium border transition active:scale-95 ' + (!ropeOn ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-700 border-slate-300')}>
+                                Ohne Seil
+                              </button>
+                            </div>
+                          )}
+                          {/* Gleiche Kacheln wie „Wiederholungen erfassen". */}
+                          <div className={'grid gap-3 ' + (use3 ? 'grid-cols-3' : 'grid-cols-2')}>
                             <button onClick={(ev) => { pressFeedback(ev, 'success'); logEntry(it, ex.id, 'success'); }}
                               className="bg-emerald-50 border border-emerald-100 text-emerald-700 py-3.5 rounded-[20px] font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
-                              <Check size={26} strokeWidth={2.6} />
-                              <span className="text-[13px] leading-tight">Geklappt</span>
+                              <Check size={24} strokeWidth={2.6} />
+                              <span className="text-[12px] leading-tight text-center px-1">{statusLabel(ex, 'success')}</span>
                               <span className="text-xs opacity-80 tabular-nums">{succ}</span>
                             </button>
+                            {use3 && (
+                              <button onClick={(ev) => { pressFeedback(ev, 'warning'); logEntry(it, ex.id, 'third'); }}
+                                className="bg-amber-50 border border-amber-100 text-amber-700 py-3.5 rounded-[20px] font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+                                <AlertTriangle size={24} strokeWidth={2.4} />
+                                <span className="text-[12px] leading-tight text-center px-1">{thirdLbl}</span>
+                                <span className="text-xs opacity-80 tabular-nums">{third}</span>
+                              </button>
+                            )}
                             <button onClick={(ev) => { pressFeedback(ev, 'error'); logEntry(it, ex.id, 'fail'); }}
                               className="bg-rose-50 border border-rose-100 text-rose-700 py-3.5 rounded-[20px] font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
-                              <X size={26} strokeWidth={2.6} />
-                              <span className="text-[13px] leading-tight">Nicht</span>
+                              <X size={24} strokeWidth={2.6} />
+                              <span className="text-[12px] leading-tight text-center px-1">{statusLabel(ex, 'fail')}</span>
                               <span className="text-xs opacity-80 tabular-nums">{fail}</span>
                             </button>
                           </div>
@@ -7970,9 +8072,9 @@ function TrainingsplanView({ data, setData, onBack }) {
                           {entries.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 mt-3">
                               {entries.map((s, idx) => (
-                                <button key={idx} onClick={(ev) => { pressFeedback(ev, 'light'); toggleEntryAt(ex.id, idx); }}
+                                <button key={idx} onClick={(ev) => { pressFeedback(ev, 'light'); toggleEntryAt(ex.id, idx, use3); }}
                                   className={'w-9 h-9 rounded-lg font-bold text-white text-sm flex items-center justify-center active:scale-90 transition-transform ' +
-                                    (s === 'success' ? 'bg-emerald-600' : 'bg-rose-600')}>
+                                    (s === 'success' ? 'bg-emerald-600' : s === 'third' ? 'bg-amber-500' : 'bg-rose-600')}>
                                   {idx + 1}
                                 </button>
                               ))}
@@ -8075,7 +8177,11 @@ function TrainingsplanView({ data, setData, onBack }) {
         onClose={() => setPickerItemId(null)}
         onPick={(ex, isNew) => {
           if (isNew) setData({ ...data, exercises: [...(data.exercises || []), ex] });
-          patchItem(pickerItemId, { exerciseId: ex.id });
+          patchItem(pickerItemId, {
+            exerciseId: ex.id, loggable: true,
+            logMode: ex.category_mode === 3 ? '3' : '2',
+            hasRope: !!ex.has_rope_variant
+          });
           setPickerItemId(null);
         }}
       />
