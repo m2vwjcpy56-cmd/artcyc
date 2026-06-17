@@ -6763,17 +6763,24 @@ function TrainingView({ data, setData, setView }) {
     const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 55 ? 'text-slate-600 dark:text-slate-200' : 'text-rose-600';
     const meta = ex.uci_code ? ('UCI ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : '');
     const fbCount = fbByBase.get(exerciseBaseKey(ex.name))?.count || 0;
-    const sub = ex._feedbackOnly ? 'nur Feedback erfasst' : ((meta ? meta + ' · ' : '') + sessions + ' Sessions');
+    // Feedback ruhig als Untertitel-Text (keine bunten Pillen — UI-Guide:
+    // Farben nur für Status-Semantik). Untertitel je nach Inhalt zusammensetzen.
+    const parts = [];
+    if (ex._feedbackOnly) {
+      if (fbCount > 0) parts.push(fbCount + '× Feedback');
+    } else {
+      if (meta) parts.push(meta);
+      parts.push(sessions + ' Sessions');
+      if (fbCount > 0) parts.push(fbCount + '× Feedback');
+    }
     return (
       <IOSListRow key={ex.id} onClick={() => setSelectedExercise(ex)}
         trailing={<div className="flex items-center gap-2 shrink-0">{!ex._feedbackOnly && total > 0 && <span className={'font-semibold text-[15px] tabular-nums ' + rateColor}>{rate}%</span>}<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" /></div>}>
-        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0">
           <span className="font-medium text-[15px] truncate">{localizedExerciseName(ex)}</span>
           {ex.active === false && <IOSTag color="gray">archiviert</IOSTag>}
-          {ex._feedbackOnly && <IOSTag color="purple">nur Feedback</IOSTag>}
-          {fbCount > 0 && <IOSTag color="green">{fbCount}× Feedback</IOSTag>}
         </div>
-        <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">{sub}</div>
+        <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">{parts.join(' · ')}</div>
       </IOSListRow>
     );
   };
@@ -6858,11 +6865,6 @@ function TrainingView({ data, setData, setView }) {
         )}
 
         {/* ÜBUNGEN — kompakter, primärer Einstieg (keine Rohdaten) */}
-        {/* TEMP-Diagnose — hilft den Feedback-Sichtbarkeits-Bug zu finden. Wird wieder entfernt. */}
-        <div className="text-[11px] text-[#8E8E93] px-4 -mt-2">
-          Diagnose: {feedbackEntries.length} Feedbacks · {feedbackOnlyRows.length} nur-Feedback-Übungen · Sportler {viewingAthleteId ? 'ok' : 'fehlt'} · v{__APP_VERSION__}
-        </div>
-
         {activeExerciseRows.length > 0 && (
           <IOSList header={'Übungen (' + activeExerciseRows.length + ')'} footer="Tippen öffnet die Übungs-Detailseite.">
             {activeExerciseRows.map(renderTrainedRow)}
