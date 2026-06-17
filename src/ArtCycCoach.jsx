@@ -6764,18 +6764,9 @@ function TrainingView({ data, setData, setView }) {
 
   const renderTrainedRow = ({ ex, sessions, total, rate }) => {
     const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 55 ? 'text-slate-600 dark:text-slate-200' : 'text-rose-600';
-    const meta = ex.uci_code ? ('UCI ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : '');
     const fbCount = fbByBase.get(exerciseBaseKey(ex.name))?.count || 0;
-    // Feedback ruhig als Untertitel-Text (keine bunten Pillen — UI-Guide:
-    // Farben nur für Status-Semantik). Untertitel je nach Inhalt zusammensetzen.
-    const parts = [];
-    if (ex._feedbackOnly) {
-      if (fbCount > 0) parts.push(fbCount + '× Feedback');
-    } else {
-      if (meta) parts.push(meta);
-      parts.push(sessions + ' Sessions');
-      if (fbCount > 0) parts.push(fbCount + '× Feedback');
-    }
+    // Kompakte Meta: kleine Icons + Zahl (Hantel = Sessions, Sprechblase =
+    // Feedback) statt langem Text — weniger Platz, ruhiger (UI-Guide).
     return (
       <IOSListRow key={ex.id} onClick={() => setSelectedExercise(ex)}
         trailing={<div className="flex items-center gap-2 shrink-0">{!ex._feedbackOnly && total > 0 && <span className={'font-semibold text-[15px] tabular-nums ' + rateColor}>{rate}%</span>}<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" /></div>}>
@@ -6783,7 +6774,14 @@ function TrainingView({ data, setData, setView }) {
           <span className="font-medium text-[15px] truncate">{localizedExerciseName(ex)}</span>
           {ex.active === false && <IOSTag color="gray">archiviert</IOSTag>}
         </div>
-        <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">{parts.join(' · ')}</div>
+        <div className="text-[13px] text-[#8E8E93] mt-1 flex items-center gap-3 tabular-nums">
+          {!ex._feedbackOnly && sessions > 0 && (
+            <span className="inline-flex items-center gap-1"><Dumbbell size={13} strokeWidth={2} /> {sessions}</span>
+          )}
+          {fbCount > 0 && (
+            <span className="inline-flex items-center gap-1"><MessageCircle size={13} strokeWidth={2} /> {fbCount}</span>
+          )}
+        </div>
       </IOSListRow>
     );
   };
