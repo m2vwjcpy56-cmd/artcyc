@@ -9131,7 +9131,6 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
 
   const rate = vm.successRateCurrent || 0;
   const delta = vm.successDelta;
-  const focus = (vm.nextFocusInsight || []).slice(0, 2);
 
   // Trend: drei konsistente Status-Linien aus compositionSeries (Quote je Bucket).
   const comp = (vm.compositionSeries || []).filter(b => b.total > 0);
@@ -9215,27 +9214,6 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* 06 — NÄCHSTER FOKUS */}
-            <div className="card-surface rounded-[22px] p-4 space-y-3">
-              <h2 className="text-[15px] font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[#FF9500]" /> Nächster Fokus</h2>
-              {focus.length > 0 && (
-                <ul className="text-[14px] leading-snug space-y-1.5 list-disc pl-4 marker:text-[#FF9500]">
-                  {focus.map((line, i) => <li key={i}>{line}</li>)}
-                </ul>
-              )}
-              {(() => {
-                const insight = generateExerciseInsight(exercise, data.sessions || [], t, data.programs || [], data.competitions || []);
-                if (!insight || !insight.lines || insight.lines.length === 0) return null;
-                return (<>
-                  <button onClick={() => setCoachOpen(v => !v)} className="w-full text-[13px] font-medium text-[#007AFF] active:opacity-60 flex items-center justify-center gap-1">
-                    {coachOpen ? 'KI-Coach ausblenden' : 'KI-Coach anzeigen'}
-                    <ChevronRight size={15} strokeWidth={2.4} className={'transition-transform ' + (coachOpen ? 'rotate-90' : '')} />
-                  </button>
-                  {coachOpen && <ul className="text-[14px] leading-snug space-y-1.5 list-disc pl-4 marker:text-slate-400 pt-1 border-t border-slate-100">{insight.lines.map((line, i) => <li key={i}>{line}</li>)}</ul>}
-                </>);
-              })()}
             </div>
 
             {/* 07 — LETZTE SESSIONS */}
