@@ -8,8 +8,12 @@
 DO $$
 DECLARE rub UUID; rubath UUID;
 BEGIN
-  SELECT id INTO rub FROM auth.users WHERE lower(email)='info@neue-weberei.de' LIMIT 1;
-  IF rub IS NULL THEN RAISE NOTICE 'Ruben nicht gefunden, skip'; RETURN; END IF;
+  -- Robust: den (ersten) Admin nehmen = der Owner/Ruben. Fallback per E-Mail.
+  SELECT id INTO rub FROM profiles WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1;
+  IF rub IS NULL THEN
+    SELECT id INTO rub FROM auth.users WHERE lower(email) = 'info@neue-weberei.de' LIMIT 1;
+  END IF;
+  IF rub IS NULL THEN RAISE NOTICE 'Admin/Ruben nicht gefunden, skip'; RETURN; END IF;
   SELECT a.id INTO rubath FROM athletes a WHERE a.auth_user_id=rub LIMIT 1;
   -- Kader (vom Trainer Ruben verwaltet) anlegen
   INSERT INTO athletes (id, name, type, created_by_coach_id) VALUES
