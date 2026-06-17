@@ -39,6 +39,19 @@ html[data-theme="dark"] .ios-bottom-pill {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.06) inset;
 }
 
+/* iOS-26 Liquid-Glass Action-Sheet — durchscheinendes Material (mit
+   backdrop-blur inline kombiniert). Heller + dunkler Modus. */
+.ios-sheet {
+  background: rgba(255, 255, 255, 0.78);
+  border: 0.5px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.12), 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+}
+html[data-theme="dark"] .ios-sheet {
+  background: rgba(30, 30, 32, 0.78);
+  border: 0.5px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.07) inset;
+}
+
 /* =============================================================
    DARK MODE — gesteuert via html[data-theme="dark"]
    JS setzt das Attribut basierend auf:

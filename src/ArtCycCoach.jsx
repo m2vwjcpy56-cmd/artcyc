@@ -6921,32 +6921,17 @@ function TrainingView({ data, setData, setView }) {
         )}
 
         {/* „Erfassen"-Auswahl als iOS-Action-Sheet */}
-        {erfassenOpen && (
-          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-3" onClick={() => setErfassenOpen(false)}>
-            <div className="w-full sm:max-w-sm space-y-2" onClick={e => e.stopPropagation()}>
-              <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl overflow-hidden">
-                <div className="px-4 py-3 text-center text-[13px] text-[#8E8E93] border-b border-[#C6C6C8]/40">Was möchtest du erfassen?</div>
-                {[
-                  { icon: Dumbbell, label: 'Serie protokollieren', sub: 'Geklappt / nicht — fürs Training', act: () => setView('erfassen') },
-                  { icon: Trophy, label: 'Wertungsbogen erfassen', sub: 'Wettkampf (PDF/Foto/manuell)', act: () => setView('wettkampf') },
-                  { icon: MessageCircle, label: 'Feedback zu Übung', sub: 'Fehlerbild + Handlungsanweisung', act: () => setFbPickerOpen(true) },
-                  { icon: Plus, label: 'Neue Übung anlegen', sub: 'Übung zur Liste hinzufügen', act: () => setNewExercise(true) },
-                ].map((o, i) => (
-                  <button key={i} onClick={() => { setErfassenOpen(false); o.act(); }}
-                    className={'w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
-                    <span className="w-9 h-9 rounded-full bg-[#FF9500]/12 flex items-center justify-center shrink-0"><o.icon size={18} className="text-[#FF9500]" /></span>
-                    <span className="min-w-0">
-                      <span className="block text-[15px] font-medium">{o.label}</span>
-                      <span className="block text-[12px] text-[#8E8E93]">{o.sub}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <button onClick={() => setErfassenOpen(false)}
-                className="w-full bg-white dark:bg-[#1c1c1e] rounded-2xl py-3.5 text-[17px] font-semibold text-[#007AFF] active:bg-[#D1D1D6]/40">Abbrechen</button>
-            </div>
-          </div>
-        )}
+        <ActionSheet
+          open={erfassenOpen}
+          onClose={() => setErfassenOpen(false)}
+          message="Was möchtest du erfassen?"
+          actions={[
+            { icon: Dumbbell, label: 'Serie protokollieren', sublabel: 'Geklappt / nicht — fürs Training', onClick: () => setView('erfassen') },
+            { icon: Trophy, label: 'Wertungsbogen erfassen', sublabel: 'Wettkampf (PDF/Foto/manuell)', onClick: () => setView('wettkampf') },
+            { icon: MessageCircle, label: 'Feedback zu Übung', sublabel: 'Fehlerbild + Handlungsanweisung', onClick: () => setFbPickerOpen(true) },
+            { icon: Plus, label: 'Neue Übung anlegen', sublabel: 'Übung zur Liste hinzufügen', onClick: () => setNewExercise(true) },
+          ]}
+        />
 
         {/* Übungs-Picker für „Feedback zu Übung" — suchbar (eigene + Reglement) */}
         <ExercisePickerSheet
@@ -7828,30 +7813,16 @@ function TrainingsplanView({ data, setData, onBack }) {
       )}
 
       {/* Protokoll löschen — mit Scope-Abfrage */}
-      {deleteProtocol && (
-        <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-3" onClick={() => setDeleteProtocol(null)}>
-          <div className="w-full sm:max-w-sm space-y-2" onClick={e => e.stopPropagation()}>
-            <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl overflow-hidden">
-              <div className="px-4 py-3 text-center border-b border-[#C6C6C8]/40">
-                <div className="text-[15px] font-semibold">Protokoll vom {formatDateShort(deleteProtocol.date)} löschen?</div>
-                <div className="text-[12px] text-[#8E8E93] mt-0.5">Was soll gelöscht werden?</div>
-              </div>
-              <button onClick={() => doDeleteProtocol(deleteProtocol, false)}
-                className="w-full px-4 py-3.5 text-left active:bg-[#D1D1D6]/40 border-b border-[#C6C6C8]/40">
-                <span className="block text-[15px] text-[#FF3B30] font-medium">Nur dieses Protokoll</span>
-                <span className="block text-[12px] text-[#8E8E93]">Nur die Trainingsdaten dieses Tages</span>
-              </button>
-              <button onClick={() => doDeleteProtocol(deleteProtocol, true)}
-                className="w-full px-4 py-3.5 text-left active:bg-[#D1D1D6]/40">
-                <span className="block text-[15px] text-[#FF3B30] font-medium">Auch alle Trainingsdaten dieser Übungen</span>
-                <span className="block text-[12px] text-[#8E8E93]">Komplette Trainings-Historie der beteiligten Übungen</span>
-              </button>
-            </div>
-            <button onClick={() => setDeleteProtocol(null)}
-              className="w-full bg-white dark:bg-[#1c1c1e] rounded-2xl py-3.5 text-[17px] font-semibold text-[#007AFF] active:bg-[#D1D1D6]/40">Abbrechen</button>
-          </div>
-        </div>
-      )}
+      <ActionSheet
+        open={!!deleteProtocol}
+        onClose={() => setDeleteProtocol(null)}
+        title={deleteProtocol ? `Protokoll vom ${formatDateShort(deleteProtocol.date)} löschen?` : ''}
+        message="Was soll gelöscht werden?"
+        actions={[
+          { label: 'Nur dieses Protokoll', sublabel: 'Nur die Trainingsdaten dieses Tages', destructive: true, onClick: () => doDeleteProtocol(deleteProtocol, false) },
+          { label: 'Auch alle Trainingsdaten dieser Übungen', sublabel: 'Komplette Trainings-Historie der beteiligten Übungen', destructive: true, onClick: () => doDeleteProtocol(deleteProtocol, true) },
+        ]}
+      />
 
       {/* Such-Picker zum Verknüpfen einer Übung (eigene + Reglement) */}
       <ExercisePickerSheet
@@ -14756,6 +14727,57 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
 
 // Verein-Eingabe mit Autocomplete: schlägt aus der kuratierten Vereinsliste vor,
 // erlaubt aber jederzeit freien Text (wie eine Adress-Autovervollständigung).
+// iOS-26 Liquid-Glass Action-Sheet (durchscheinend, unten andockend).
+// actions: [{ label, sublabel?, destructive?, icon?, onClick }]
+function ActionSheet({ open, onClose, title, message, actions = [], cancelLabel = 'Abbrechen' }) {
+  if (!open) return null;
+  const glass = { backdropFilter: 'blur(40px) saturate(180%)', WebkitBackdropFilter: 'blur(40px) saturate(180%)' };
+  const hasIcons = actions.some(a => a.icon);
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center px-2"
+      style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 10px)', background: 'rgba(0,0,0,0.28)' }}
+      onClick={onClose}>
+      <div className="w-full sm:max-w-sm space-y-2" onClick={e => e.stopPropagation()}>
+        <div className="ios-sheet rounded-[22px] overflow-hidden" style={glass}>
+          {(title || message) && (
+            <div className="px-5 py-3 text-center border-b border-black/10 dark:border-white/10">
+              {title && <div className="text-[14px] font-semibold">{title}</div>}
+              {message && <div className="text-[12px] text-[#8E8E93] mt-0.5">{message}</div>}
+            </div>
+          )}
+          {actions.map((a, i) => {
+            const Icon = a.icon;
+            return (
+              <button key={i} onClick={() => { onClose(); a.onClick && a.onClick(); }}
+                className={'w-full px-5 py-3.5 transition active:bg-black/[0.06] dark:active:bg-white/10 '
+                  + (i > 0 ? 'border-t border-black/10 dark:border-white/10 ' : '')
+                  + (hasIcons ? 'flex items-center gap-3 text-left' : 'text-center')}>
+                {hasIcons && (
+                  <span className={'w-9 h-9 rounded-full flex items-center justify-center shrink-0 ' + (a.destructive ? 'bg-[#FF3B30]/12' : 'bg-[#FF9500]/12')}>
+                    {Icon && <Icon size={18} className={a.destructive ? 'text-[#FF3B30]' : 'text-[#FF9500]'} />}
+                  </span>
+                )}
+                <span className={hasIcons ? 'min-w-0' : ''}>
+                  <span className={'block ' + (hasIcons
+                    ? 'text-[15px] font-medium ' + (a.destructive ? 'text-[#FF3B30]' : '')
+                    : 'text-[17px] ' + (a.destructive ? 'text-[#FF3B30] font-medium' : 'text-[#007AFF]'))}>
+                    {a.label}
+                  </span>
+                  {a.sublabel && <span className="block text-[12px] text-[#8E8E93] mt-0.5">{a.sublabel}</span>}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <button onClick={onClose} style={glass}
+          className="ios-sheet w-full rounded-[22px] py-3.5 text-[17px] font-semibold text-[#007AFF] transition active:bg-black/[0.06] dark:active:bg-white/10">
+          {cancelLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ClubCombobox({ value, onChange, placeholder, suggestions = [], onBlur, align = 'left' }) {
   const [open, setOpen] = useState(false);
   const matches = useMemo(() => suggestClubs(value, suggestions, 8), [value, suggestions]);
