@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
+import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -7965,6 +7965,42 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
     if (!error) { setLicenseSaved(true); setTimeout(() => setLicenseSaved(false), 1500); }
   };
 
+  // Eigenes Profil direkt hier editieren (Vorname/Nachname/Verein) — damit alles
+  // an einem Ort ist und sich nicht mit dem Sportler-Editor doppelt.
+  const myAthleteSelf = (dbAthletes || []).find(a => a.auth_user_id === session?.user?.id) || null;
+  const [firstName, setFirstName] = useState(profile?.display_name || '');
+  const [lastNameS, setLastNameS] = useState(profile?.last_name || '');
+  const [clubS, setClubS] = useState(myAthleteSelf?.notes || '');
+  const [clubSugg, setClubSugg] = useState([]);
+  const [savedField, setSavedField] = useState('');
+  useEffect(() => { setFirstName(profile?.display_name || ''); }, [profile?.display_name]);
+  useEffect(() => { setLastNameS(profile?.last_name || ''); }, [profile?.last_name]);
+  useEffect(() => { setClubS(myAthleteSelf?.notes || ''); }, [myAthleteSelf?.notes]);
+  useEffect(() => { fetchClubs(2).then(setClubSugg).catch(() => {}); }, []);
+  const flashSaved = (k) => { setSavedField(k); setTimeout(() => setSavedField(s => (s === k ? '' : s)), 1500); };
+  const saveFirstName = async () => {
+    const v = firstName.trim();
+    if (!v || v === (profile?.display_name || '')) return;
+    const { error } = await updateMyDisplayName(v);
+    if (!error) { flashSaved('first'); if (refreshAthletes) refreshAthletes(); }
+  };
+  const saveLastNameSelf = async () => {
+    const v = lastNameS.trim();
+    if (v === (profile?.last_name || '')) return;
+    const { error } = await updateMyLastName(v);
+    if (!error) { flashSaved('last'); if (refreshAthletes) refreshAthletes(); }
+  };
+  const saveClubSelf = async () => {
+    const v = clubS.trim();
+    if (v === (myAthleteSelf?.notes || '')) return;
+    const { error } = await updateMyClub(v);
+    if (!error) {
+      flashSaved('club');
+      try { recordClubEntry(v, [...CLUBS.map(c => c.name), ...clubSugg.map(c => c.name)]); } catch { /* egal */ }
+      if (refreshAthletes) refreshAthletes();
+    }
+  };
+
   return (
     <div className="space-y-6">
       <header className="pt-2 px-1">
@@ -7975,10 +8011,30 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
       {/* Account */}
       {session && (
         <IOSList header={t('settings.account')}>
-          <div className="px-4 py-3.5 flex items-center justify-between gap-3">
-            <span className="text-[15px] text-[#3C3C43]">{t('settings.loggedInAs')}</span>
-            <span className="text-[15px] font-medium text-right truncate ml-3">{profile?.display_name || session.user.email}</span>
+          <div className="px-4 py-3.5 flex items-center gap-3">
+            <span className="text-[15px] text-[#3C3C43] w-24 shrink-0">Vorname</span>
+            <input value={firstName} onChange={e => setFirstName(e.target.value)} onBlur={saveFirstName}
+              placeholder="Vorname"
+              className="flex-1 bg-transparent text-[15px] text-right outline-none placeholder:text-[#C7C7CC]" />
+            {savedField === 'first' && <Check size={16} className="text-[#34C759] shrink-0" />}
           </div>
+          <div className="px-4 py-3.5 flex items-center gap-3">
+            <span className="text-[15px] text-[#3C3C43] w-24 shrink-0">Nachname</span>
+            <input value={lastNameS} onChange={e => setLastNameS(e.target.value)} onBlur={saveLastNameSelf}
+              placeholder="Nachname"
+              className="flex-1 bg-transparent text-[15px] text-right outline-none placeholder:text-[#C7C7CC]" />
+            {savedField === 'last' && <Check size={16} className="text-[#34C759] shrink-0" />}
+          </div>
+          {myAthleteSelf && (
+            <div className="px-4 py-3.5 flex items-center gap-3">
+              <span className="text-[15px] text-[#3C3C43] w-24 shrink-0">Verein</span>
+              <div className="flex-1 min-w-0">
+                <ClubCombobox value={clubS} onChange={setClubS} onBlur={saveClubSelf} align="right"
+                  placeholder={t('athletes.clubPlaceholder')} suggestions={clubSugg} />
+              </div>
+              {savedField === 'club' && <Check size={16} className="text-[#34C759] shrink-0" />}
+            </div>
+          )}
           <div className="px-4 py-3.5 flex items-center justify-between gap-3">
             <span className="text-[15px] text-[#3C3C43]">{t('settings.email')}</span>
             <span className="text-[15px] text-[#8E8E93] text-right truncate ml-3">{session.user.email}</span>
@@ -14700,7 +14756,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
 
 // Verein-Eingabe mit Autocomplete: schlägt aus der kuratierten Vereinsliste vor,
 // erlaubt aber jederzeit freien Text (wie eine Adress-Autovervollständigung).
-function ClubCombobox({ value, onChange, placeholder, suggestions = [] }) {
+function ClubCombobox({ value, onChange, placeholder, suggestions = [], onBlur, align = 'left' }) {
   const [open, setOpen] = useState(false);
   const matches = useMemo(() => suggestClubs(value, suggestions, 8), [value, suggestions]);
   const show = open && matches.length > 0;
@@ -14710,10 +14766,10 @@ function ClubCombobox({ value, onChange, placeholder, suggestions = [] }) {
         value={value}
         onChange={e => { onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        onBlur={() => setTimeout(() => { setOpen(false); if (onBlur) onBlur(); }, 120)}
         placeholder={placeholder}
         autoComplete="off" autoCorrect="off" autoCapitalize="words"
-        className="w-full bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
+        className={'w-full bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC] ' + (align === 'right' ? 'text-right' : '')} />
       {show && (
         <div className="absolute left-0 right-0 top-full mt-2 z-30 bg-white rounded-2xl overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.14)] border border-[#C6C6C8]/40">
           {matches.map((c, i) => (
