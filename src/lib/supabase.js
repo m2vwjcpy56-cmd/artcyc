@@ -26,6 +26,20 @@ export async function getCurrentProfile() {
   return profile ? { ...profile, email: user.email } : null;
 }
 
+// Setzt den Vornamen/Anzeigenamen (profiles.display_name) + spiegelt ihn in den
+// eigenen Sportler-Eintrag (athletes.name) und die Auth-Metadaten.
+export async function updateMyDisplayName(name) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: { message: 'Nicht angemeldet' } };
+  const clean = (name || '').trim();
+  if (!clean) return { error: { message: 'Vorname darf nicht leer sein' } };
+  const { data, error } = await supabase
+    .from('profiles').update({ display_name: clean }).eq('id', user.id).select().single();
+  try { await supabase.from('athletes').update({ name: clean }).eq('auth_user_id', user.id); } catch { /* egal */ }
+  try { await supabase.auth.updateUser({ data: { display_name: clean } }); } catch { /* egal */ }
+  return { data, error };
+}
+
 // Setzt den Nachnamen des aktuell eingeloggten Users (profiles.last_name).
 // Wird beim Nachtrag-Pop-up für Bestands-User genutzt. Schreibt zusätzlich
 // in die Auth-Metadaten, damit der Wert konsistent bleibt.
