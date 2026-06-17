@@ -52,32 +52,30 @@ Feld-Regeln (WICHTIG — Felder NICHT vermischen, je Wert NUR aus dem zugehörig
 Zahlen mit Dezimalpunkt (Komma→Punkt). Zwei Kampfgerichte (KG1 links, KG2 rechts).
 "Aufgestellte Punkte"=aufgestellt, "Endergebnis"=endergebnis. Unsicher → null. NUR das JSON.`;
 
-const EX_PROMPT = `Du liest die ÜBUNGSTABELLE eines deutschen Kunstrad-Wertungsbogens aus einem Foto.
-Gib AUSSCHLIESSLICH ein JSON-Objekt zurück (kein Text, keine Code-Fences):
-{ "exercises": [ { "points": number|null, "confidence": number,
-                   "kg1": {"x":number,"w":number,"s":number,"k":number,"schw":number},
-                   "kg2": {"x":number,"w":number,"s":number,"k":number,"schw":number} } ] }
-Eine Zeile pro Übung, in der REIHENFOLGE von oben nach unten. Pro Übung und je Kampfgericht ZÄHLE die tatsächlich eingetragenen Fehlerzeichen:
- x = Anzahl Kreuze, w = Anzahl Wellen (~), s = Anzahl Striche (|), k = Anzahl Kreise/Stürze (○).
- schw = Schwierigkeits-Abwertung in Prozent — NUR einer der Werte 0, 10, 50 oder 100 (leere Zelle = 0).
- confidence = deine Sicherheit für DIESE Zeile, 0.0 (geraten) bis 1.0 (eindeutig).
-ARBEITSWEISE: Gehe Zeile für Zeile vor. Lies jede der Spaltengruppen X (Kreuze), W (Wellen), S (Striche), K (Kreise) für KG1 (linke Hälfte) und KG2 (rechte Hälfte) getrennt. Zähle die Zeichen je Zelle einzeln.
-STRENGE REGELN:
-- Leere oder durchgestrichene Zelle = 0. Erfinde KEINE Zeichen. Im Zweifel 0 und niedrige confidence.
-- Punktwerte aus der Pkte-/Aufwertungs-Spalte (z. B. 5,8 oder 10,0) gehören NICHT in x/w/s/k/schw. Trage dort NIEMALS Punktwerte ein.
-- Gib KEINE taktische Aufwertung aus (dieses Feld gibt es hier bewusst nicht).
-- "points" = der gedruckte Punktwert der Übung (Pkte-Spalte), nicht die Summe.
-- Tabelle nicht sicher lesbar → "exercises": []. Lieber leer als geraten. NUR das JSON.`;
+const EX_PROMPT = `Du liest die ÜBUNGSTABELLE eines deutschen Kunstrad-Wertungsbogens (Foto) Zeile für Zeile ab.
+Die Datenspalten stehen in Dreiergruppen — je Gruppe EINE Spalte pro Kampfgericht (KG1, KG2, KG3; KG3 ist meist leer):
+  P = Schwierigkeit in % , X = Kreuze, W = Wellen (~), S = Striche (|), K = Kreise/Sturz (○).
+In JEDER Zelle steht eine ZAHL (die Anzahl bzw. der %-Wert) ODER die Zelle ist leer (= 0). Lies die EINGETRAGENE ZAHL ab — du zählst NICHTS und erfindest NICHTS.
+Gib AUSSCHLIESSLICH dieses JSON zurück (kein Text, keine Code-Fences):
+{ "rows": [ { "points": number|null, "confidence": number,
+              "P":[kg1,kg2,kg3], "X":[kg1,kg2,kg3], "W":[kg1,kg2,kg3], "S":[kg1,kg2,kg3], "K":[kg1,kg2,kg3] } ] }
+REGELN:
+- Eine Zeile pro Übung, von oben nach unten. "points" = Punktwert aus der Pkte-Spalte (z. B. 5,8).
+- Leere Zelle = 0. X/W/S/K sind kleine ganze Zahlen (0–9). P ist 0, 10, 50 oder 100.
+- Jede Gruppe hat GENAU 3 Werte (KG1, KG2, KG3) — fehlt eine Spalte, trage 0 ein.
+- Verwechsle die Spaltengruppen NICHT: % (Schwierigkeit) ≠ X (Kreuze). Punktwerte gehören NUR in "points".
+- confidence: 0.0 (geraten) bis 1.0 (eindeutig) für diese Zeile.
+- Gib so viele Zeilen aus, wie du erkennst (im Zweifel Werte 0, aber Zeile trotzdem ausgeben). NUR das JSON.`;
 
 // Baut den Tabellen-Prompt mit optionalen Ankern: bekannte Punktfolge (Anzahl +
 // Reihenfolge der Übungen) und ein Korrektur-Hinweis aus der Footer-Prüfsumme.
 function buildExPrompt(programPoints: number[] | null, correction: string | null): string {
   let p = EX_PROMPT;
   if (programPoints && programPoints.length) {
-    p += `\n\nANKER: Es gibt GENAU ${programPoints.length} Übungen, in dieser Reihenfolge mit diesen Punktwerten (Pkte-Spalte): [${programPoints.map((n) => Number(n).toFixed(1)).join(", ")}]. Gib exakt ${programPoints.length} Einträge zurück, Zeile i passt zu Punktwert i. Nutze die Punktwerte, um die richtige Zeile zu finden.`;
+    p += `\n\nANKER: Es gibt GENAU ${programPoints.length} Übungen, in dieser Reihenfolge mit diesen Punktwerten (Pkte-Spalte): [${programPoints.map((n) => Number(n).toFixed(1)).join(", ")}]. Gib exakt ${programPoints.length} Zeilen zurück, Zeile i passt zu Punktwert i.`;
   }
   if (correction && correction.trim()) {
-    p += `\n\nKORREKTUR: Ein erster Lesevorgang ergab falsche Summen. ${correction.trim()} Prüfe die Markierungen besonders sorgfältig erneut (häufig: Kreise ○ mit Kreuzen x verwechselt, oder Zeichen in der falschen KG-Hälfte gezählt).`;
+    p += `\n\nKORREKTUR: Ein erster Lesevorgang ergab falsche Summen. ${correction.trim()} Prüfe die abgelesenen Zahlen besonders sorgfältig erneut (häufig: Wert in der falschen Spaltengruppe oder falschen KG-Spalte abgelesen).`;
   }
   return p;
 }
@@ -89,7 +87,7 @@ function parseJsonLoose(txt: string): any {
   if (a >= 0 && b > a) s = s.slice(a, b + 1);
   try { return JSON.parse(s); } catch { /* salvage unten */ }
   try {
-    let core = s.replace(/,\s*"exercises"\s*:\s*\[[\s\S]*$/, "");
+    let core = s.replace(/,\s*"(?:exercises|rows)"\s*:\s*\[[\s\S]*$/, "");
     core = core.replace(/,\s*$/, "");
     if (!core.trim().endsWith("}")) core = core.trim() + "}";
     return JSON.parse(core);
@@ -132,27 +130,23 @@ async function callVision(systemPrompt: string, dataUrl: string, maxTokens: numb
 //  • Symbol-Zähler (x/w/s/k): nur kleine, ganze Zahlen 0..20; alles andere
 //    (z. B. ein verlesener Punktwert wie 5,8) → 0.
 //  • schw: nur die zulässigen Stufen 0/10/50/100; alles andere → 0.
+// Neue Roh-Raster-Form: P/X/W/S/K sind je ein Array [KG1, KG2, KG3].
+// Wir geben sie bereinigt zurück; die Spalten→KG/Symbol-Semantik wendet der
+// Client an (exakt wie der PDF-Parser).
 function sanitizeExerciseRow(row: any): any {
-  const cnt = (v: any) => {
-    const n = Number(v);
-    if (!Number.isFinite(n) || n < 0 || n > 20 || n !== Math.round(n)) return 0;
-    return n;
-  };
-  const schw = (v: any) => {
-    const n = Number(v);
-    return (n === 0 || n === 10 || n === 50 || n === 100) ? n : 0;
-  };
-  const kg = (k: any) => ({
-    x: cnt(k?.x), w: cnt(k?.w), s: cnt(k?.s), k: cnt(k?.k), schw: schw(k?.schw),
-    // takt bewusst NICHT übernommen
-  });
+  const cnt = (v: any) => { const n = Number(v); return (Number.isFinite(n) && n >= 0 && n <= 20) ? Math.round(n) : 0; };
+  const pct = (v: any) => { const n = Number(v); return (n === 0 || n === 10 || n === 50 || n === 100) ? n : 0; };
+  const triple = (a: any, f: (v: any) => number) => { const arr = Array.isArray(a) ? a : []; return [f(arr[0]), f(arr[1]), f(arr[2])]; };
   const pts = Number(row?.points);
   const conf = Number(row?.confidence);
   return {
     points: Number.isFinite(pts) ? pts : null,
     confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf)) : null,
-    kg1: kg(row?.kg1),
-    kg2: kg(row?.kg2),
+    P: triple(row?.P, pct),
+    X: triple(row?.X, cnt),
+    W: triple(row?.W, cnt),
+    S: triple(row?.S, cnt),
+    K: triple(row?.K, cnt),
   };
 }
 
@@ -199,7 +193,8 @@ Deno.serve(async (req: Request) => {
     let exDebug: string | null = null;
     try {
       const ex = await callVision(buildExPrompt(programPoints, correction), dataUrl, 6000, tableModel);
-      if (ex.data && Array.isArray(ex.data.exercises)) exercises = ex.data.exercises.map(sanitizeExerciseRow);
+      const rawRows = ex.data && (Array.isArray(ex.data.rows) ? ex.data.rows : (Array.isArray(ex.data.exercises) ? ex.data.exercises : null));
+      if (rawRows) exercises = rawRows.map(sanitizeExerciseRow);
       if (exercises.length === 0) exDebug = (ex.error || ex.raw || "").slice(0, 600);
     } catch (e) { exDebug = "Ausnahme: " + String((e as Error)?.message || e); }
 
