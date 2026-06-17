@@ -7743,15 +7743,19 @@ function TrainingsplanView({ data, setData, onBack }) {
     let init = {};
     try { const raw = localStorage.getItem(bufKey); if (raw) init = JSON.parse(raw) || {}; } catch { /* egal */ }
     optimisticRef.current = init;
+    let initDone = {};
+    try { const raw = localStorage.getItem(doneBufKey); if (raw) initDone = JSON.parse(raw) || {}; } catch { /* egal */ }
+    doneRef.current = initDone;
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i);
-        if (k && k.startsWith('artcyc:plantap:') && !k.endsWith(':' + today)) localStorage.removeItem(k);
+        if (k && (k.startsWith('artcyc:plantap:') || k.startsWith('artcyc:plandone:')) && !k.endsWith(':' + today)) localStorage.removeItem(k);
       }
     } catch { /* egal */ }
     // Falls die letzte DB-Schreibung beim Schließen abgebrochen wurde: aus dem
-    // Puffer wiederherstellen + erneut in die DB syncen.
+    // Puffer wiederherstellen + erneut syncen.
     if (Object.keys(init).length) { rerender(); scheduleFlush(); }
+    if (Object.keys(initDone).length) { rerender(); scheduleDoneFlush(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bufKey]);
 
@@ -7765,6 +7769,67 @@ function TrainingsplanView({ data, setData, onBack }) {
   // Seil-Wahl für heute je Übung (nur relevant bei Seil-Übungen). Default: mit Seil.
   const ropeRef = useRef({});
   const getRope = (ex) => ex?.has_rope_variant ? (ropeRef.current[ex.id] !== false) : null;
+
+  // --- Abhaken-Zähler (Modus „Abhaken") ---------------------------------------
+  // Wie oft wurde der Eintrag HEUTE gemacht (kann über/unter der Plan-Anzahl
+  // liegen). Synchroner localStorage-Puffer wie beim Session-Zähler, damit der
+  // Stand das App-Schließen übersteht; gebündelt in den Plan (doneCounts).
+  const doneBufKey = 'artcyc:plandone:' + (athleteId || 'me') + ':' + today;
+  const doneRef = useRef(null);
+  if (doneRef.current === null) {
+    let init = {};
+    try { const raw = localStorage.getItem(doneBufKey); if (raw) init = JSON.parse(raw) || {}; } catch { /* egal */ }
+    doneRef.current = init;
+  }
+  const persistDoneBuf = () => { try { localStorage.setItem(doneBufKey, JSON.stringify(doneRef.current)); } catch { /* egal */ } };
+  const getDone = (it) => {
+    if (it.id in doneRef.current) return doneRef.current[it.id];
+    const dc = it.doneCounts && it.doneCounts[today];
+    if (typeof dc === 'number') return dc;
+    return (it.doneDates || []).includes(today) ? 1 : 0;   // Abwärtskompatibel
+  };
+  const doneFlushTimer = useRef(null);
+  const doneFlushing = useRef(false);
+  const doneDirty = useRef(false);
+  const flushDone = async () => {
+    if (doneFlushing.current) { doneDirty.current = true; return; }
+    doneFlushing.current = true;
+    try {
+      const buf = doneRef.current;
+      if (!Object.keys(buf).length) return;
+      const p = (dataRef.current.trainingPlans || []).find(x => x.id === selectedId);
+      if (!p) return;
+      let changed = false;
+      const items = (p.items || []).map(it => {
+        if (!(it.id in buf)) return it;
+        const n = buf[it.id];
+        const dc = { ...(it.doneCounts || {}) };
+        if (n > 0) dc[today] = n; else delete dc[today];
+        const dd = new Set(it.doneDates || []);
+        if (n > 0) dd.add(today); else dd.delete(today);
+        changed = true;
+        return { ...it, doneCounts: dc, doneDates: [...dd] };
+      });
+      if (changed) {
+        const plans = (dataRef.current.trainingPlans || []).map(x => x.id === p.id ? { ...p, items } : x);
+        await setData({ ...dataRef.current, trainingPlans: plans });
+      }
+    } finally {
+      doneFlushing.current = false;
+      if (doneDirty.current) { doneDirty.current = false; flushDone(); }
+    }
+  };
+  const scheduleDoneFlush = () => { clearTimeout(doneFlushTimer.current); doneFlushTimer.current = setTimeout(flushDone, 200); };
+  const bumpDone = (it, delta) => {
+    const next = Math.max(0, getDone(it) + delta);
+    doneRef.current[it.id] = next;
+    persistDoneBuf(); rerender(); scheduleDoneFlush();
+    const reps = Number(it.reps || 0);
+    if (delta > 0 && reps > 0 && next === reps) {
+      setCelebrate({ id: it.id, title: (it.label || '').trim() || 'Übung', reps });
+      setTimeout(() => setCelebrate(c => (c && c.id === it.id) ? null : c), 1700);
+    }
+  };
 
   // In-Flight-Schutz: bei schnellem Tippen würden sich mehrere (asynchrone)
   // DB-Schreibungen überholen und Duplikat-Sessions anlegen. Daher serialisieren
@@ -7807,13 +7872,14 @@ function TrainingsplanView({ data, setData, onBack }) {
   // Kurzer Debounce (200 ms) bündelt nur eine Tap-Salve, schreibt sonst quasi
   // sofort in die DB — so steht jede Aktion fast unmittelbar in der Datenbank.
   const scheduleFlush = () => { clearTimeout(flushTimer.current); flushTimer.current = setTimeout(flushAll, 200); };
-  // Immer die aktuellste flushAll referenzieren (für Listener-Closures).
+  // Immer die aktuellste Flush-Funktionen referenzieren (für Listener-Closures).
   const flushRef = useRef(flushAll); flushRef.current = flushAll;
-  useEffect(() => () => { clearTimeout(flushTimer.current); flushRef.current(); }, []); // beim Verlassen sofort sichern
+  const doneFlushRef = useRef(flushDone); doneFlushRef.current = flushDone;
+  useEffect(() => () => { clearTimeout(flushTimer.current); clearTimeout(doneFlushTimer.current); flushRef.current(); doneFlushRef.current(); }, []); // beim Verlassen sofort sichern
   // Theresas Bug: beim App-Schließen/Hintergrund ging der letzte Zählerstand
   // verloren (Debounce/Unmount feuert dann nicht). Daher hier sofort sichern.
   useEffect(() => {
-    const flushNow = () => { clearTimeout(flushTimer.current); flushRef.current(); };
+    const flushNow = () => { clearTimeout(flushTimer.current); clearTimeout(doneFlushTimer.current); flushRef.current(); doneFlushRef.current(); };
     const onVis = () => { if (document.visibilityState === 'hidden') flushNow(); };
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('pagehide', flushNow);
@@ -8092,15 +8158,28 @@ function TrainingsplanView({ data, setData, onBack }) {
                       {it.loggable && !ex && (
                         <div className="text-[12px] text-amber-600 mt-1.5">Keine Übung verknüpft — unter „Bearbeiten" zuordnen.</div>
                       )}
-                      {!it.loggable && (
-                        <button onClick={(ev) => { pressFeedback(ev, 'success'); toggleDone(it.id); }}
-                          className={'mt-2.5 w-full py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition ' +
-                            (isDoneToday(it)
-                              ? 'bg-emerald-50 border border-emerald-100 text-emerald-700'
-                              : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/10')}>
-                          <Check size={18} strokeWidth={2.6} /> {isDoneToday(it) ? 'Erledigt' : 'Abhaken'}
-                        </button>
-                      )}
+                      {!it.loggable && (() => {
+                        const cnt = getDone(it);
+                        const r = Number(it.reps || 0);
+                        const reached = r > 0 && cnt >= r;
+                        return (
+                          <div className="mt-2.5 flex items-center gap-2">
+                            <button onClick={() => bumpDone(it, -1)} disabled={cnt === 0}
+                              className="w-11 h-11 rounded-full border border-slate-200 text-slate-500 text-[20px] font-semibold leading-none flex items-center justify-center active:scale-90 disabled:opacity-40 transition">
+                              −
+                            </button>
+                            <div className="flex-1 text-center">
+                              <span className={'text-[22px] font-bold tabular-nums ' + (reached ? 'text-[#34C759]' : 'text-slate-700 dark:text-slate-200')}>{cnt}</span>
+                              {r > 0 && <span className="text-[15px] text-slate-400"> / {r}</span>}
+                              {reached && <Trophy size={14} strokeWidth={2.6} className="inline ml-1.5 -mt-0.5 text-[#FF9500]" />}
+                            </div>
+                            <button onClick={(ev) => { pressFeedback(ev, 'success'); bumpDone(it, +1); }}
+                              className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-100 text-emerald-700 px-5 h-11 rounded-full font-semibold active:scale-95 transition">
+                              <Check size={18} strokeWidth={2.6} /> Erledigt
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
