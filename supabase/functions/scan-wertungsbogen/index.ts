@@ -19,6 +19,9 @@
 const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY") ?? "";
 // @ts-ignore Deno-Runtime
 const VISION_MODEL = Deno.env.get("OPENROUTER_VISION_MODEL") ?? Deno.env.get("OPENROUTER_MODEL") ?? "google/gemini-2.5-flash";
+// Stärkeres Modell für die schwierige Übungstabelle (Markierungen zählen).
+// @ts-ignore Deno-Runtime
+const VISION_TABLE_MODEL = Deno.env.get("OPENROUTER_VISION_TABLE_MODEL") ?? "google/gemini-2.5-pro";
 // @ts-ignore Deno-Runtime
 const APP_REFERER = Deno.env.get("APP_REFERER") ?? "https://artcyc.vercel.app";
 // @ts-ignore Deno-Runtime
@@ -51,18 +54,33 @@ Zahlen mit Dezimalpunkt (Komma→Punkt). Zwei Kampfgerichte (KG1 links, KG2 rech
 
 const EX_PROMPT = `Du liest die ÜBUNGSTABELLE eines deutschen Kunstrad-Wertungsbogens aus einem Foto.
 Gib AUSSCHLIESSLICH ein JSON-Objekt zurück (kein Text, keine Code-Fences):
-{ "exercises": [ { "points": number|null,
+{ "exercises": [ { "points": number|null, "confidence": number,
                    "kg1": {"x":number,"w":number,"s":number,"k":number,"schw":number},
                    "kg2": {"x":number,"w":number,"s":number,"k":number,"schw":number} } ] }
 Eine Zeile pro Übung, in der REIHENFOLGE von oben nach unten. Pro Übung und je Kampfgericht ZÄHLE die tatsächlich eingetragenen Fehlerzeichen:
  x = Anzahl Kreuze, w = Anzahl Wellen (~), s = Anzahl Striche (|), k = Anzahl Kreise/Stürze (○).
  schw = Schwierigkeits-Abwertung in Prozent — NUR einer der Werte 0, 10, 50 oder 100 (leere Zelle = 0).
+ confidence = deine Sicherheit für DIESE Zeile, 0.0 (geraten) bis 1.0 (eindeutig).
+ARBEITSWEISE: Gehe Zeile für Zeile vor. Lies jede der Spaltengruppen X (Kreuze), W (Wellen), S (Striche), K (Kreise) für KG1 (linke Hälfte) und KG2 (rechte Hälfte) getrennt. Zähle die Zeichen je Zelle einzeln.
 STRENGE REGELN:
-- Leere oder durchgestrichene Zelle = 0. Erfinde KEINE Zeichen. Im Zweifel 0.
+- Leere oder durchgestrichene Zelle = 0. Erfinde KEINE Zeichen. Im Zweifel 0 und niedrige confidence.
 - Punktwerte aus der Pkte-/Aufwertungs-Spalte (z. B. 5,8 oder 10,0) gehören NICHT in x/w/s/k/schw. Trage dort NIEMALS Punktwerte ein.
 - Gib KEINE taktische Aufwertung aus (dieses Feld gibt es hier bewusst nicht).
 - "points" = der gedruckte Punktwert der Übung (Pkte-Spalte), nicht die Summe.
 - Tabelle nicht sicher lesbar → "exercises": []. Lieber leer als geraten. NUR das JSON.`;
+
+// Baut den Tabellen-Prompt mit optionalen Ankern: bekannte Punktfolge (Anzahl +
+// Reihenfolge der Übungen) und ein Korrektur-Hinweis aus der Footer-Prüfsumme.
+function buildExPrompt(programPoints: number[] | null, correction: string | null): string {
+  let p = EX_PROMPT;
+  if (programPoints && programPoints.length) {
+    p += `\n\nANKER: Es gibt GENAU ${programPoints.length} Übungen, in dieser Reihenfolge mit diesen Punktwerten (Pkte-Spalte): [${programPoints.map((n) => Number(n).toFixed(1)).join(", ")}]. Gib exakt ${programPoints.length} Einträge zurück, Zeile i passt zu Punktwert i. Nutze die Punktwerte, um die richtige Zeile zu finden.`;
+  }
+  if (correction && correction.trim()) {
+    p += `\n\nKORREKTUR: Ein erster Lesevorgang ergab falsche Summen. ${correction.trim()} Prüfe die Markierungen besonders sorgfältig erneut (häufig: Kreise ○ mit Kreuzen x verwechselt, oder Zeichen in der falschen KG-Hälfte gezählt).`;
+  }
+  return p;
+}
 
 function parseJsonLoose(txt: string): any {
   if (!txt) return null;
@@ -78,7 +96,7 @@ function parseJsonLoose(txt: string): any {
   } catch { return null; }
 }
 
-async function callVision(systemPrompt: string, dataUrl: string, maxTokens: number) {
+async function callVision(systemPrompt: string, dataUrl: string, maxTokens: number, model?: string) {
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -88,7 +106,7 @@ async function callVision(systemPrompt: string, dataUrl: string, maxTokens: numb
       "X-Title": APP_TITLE,
     },
     body: JSON.stringify({
-      model: VISION_MODEL,
+      model: model || VISION_MODEL,
       temperature: 0,
       max_tokens: maxTokens,
       messages: [
@@ -129,8 +147,10 @@ function sanitizeExerciseRow(row: any): any {
     // takt bewusst NICHT übernommen
   });
   const pts = Number(row?.points);
+  const conf = Number(row?.confidence);
   return {
     points: Number.isFinite(pts) ? pts : null,
+    confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf)) : null,
     kg1: kg(row?.kg1),
     kg2: kg(row?.kg2),
   };
@@ -149,28 +169,41 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { image } = await req.json();
+    const body = await req.json();
+    const image = body?.image;
     if (!image || typeof image !== "string") {
       return new Response(JSON.stringify({ ok: false, error: "image fehlt" }), { status: 400, headers: jsonHeaders(req) });
     }
     const dataUrl = image.startsWith("data:") ? image : ("data:image/jpeg;base64," + image);
+    // Optionale Anker/Steuerung vom Client:
+    const programPoints = Array.isArray(body?.programPoints)
+      ? body.programPoints.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n))
+      : null;
+    const correction = typeof body?.correction === "string" ? body.correction : null;
+    const tableModel = typeof body?.tableModel === "string" && body.tableModel ? body.tableModel : VISION_TABLE_MODEL;
+    // Wenn nur die Tabelle neu gelesen werden soll (Korrektur-Durchlauf), Stammdaten überspringen.
+    const tableOnly = body?.tableOnly === true;
 
-    // 1) Stammdaten — muss klappen
-    const stamm = await callVision(STAMM_PROMPT, dataUrl, 1200);
-    if (!stamm.data) {
-      return new Response(JSON.stringify({ ok: false, error: stamm.error || "Antwort nicht lesbar" }), { status: 502, headers: jsonHeaders(req) });
+    // 1) Stammdaten — muss klappen (außer im reinen Korrektur-Durchlauf)
+    let stammData: any = {};
+    if (!tableOnly) {
+      const stamm = await callVision(STAMM_PROMPT, dataUrl, 1200);
+      if (!stamm.data) {
+        return new Response(JSON.stringify({ ok: false, error: stamm.error || "Antwort nicht lesbar" }), { status: 502, headers: jsonHeaders(req) });
+      }
+      stammData = stamm.data;
     }
 
-    // 2) Übungstabelle — best effort, darf nicht fehlschlagen lassen
+    // 2) Übungstabelle — stärkeres Modell, mit Anker + optionaler Korrektur.
     let exercises: any[] = [];
     let exDebug: string | null = null;
     try {
-      const ex = await callVision(EX_PROMPT, dataUrl, 4000);
+      const ex = await callVision(buildExPrompt(programPoints, correction), dataUrl, 6000, tableModel);
       if (ex.data && Array.isArray(ex.data.exercises)) exercises = ex.data.exercises.map(sanitizeExerciseRow);
       if (exercises.length === 0) exDebug = (ex.error || ex.raw || "").slice(0, 600);
     } catch (e) { exDebug = "Ausnahme: " + String((e as Error)?.message || e); }
 
-    return new Response(JSON.stringify({ ok: true, data: { ...stamm.data, exercises, _exDebug: exDebug } }), { status: 200, headers: jsonHeaders(req) });
+    return new Response(JSON.stringify({ ok: true, data: { ...stammData, exercises, _exDebug: exDebug, _tableModel: tableModel } }), { status: 200, headers: jsonHeaders(req) });
   } catch (e) {
     return new Response(JSON.stringify({ ok: false, error: String((e as Error)?.message || e) }), { status: 500, headers: jsonHeaders(req) });
   }
