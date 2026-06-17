@@ -6904,9 +6904,10 @@ function TrainingView({ data, setData, setView }) {
       exercise={editingExercise}
       onSave={(ex) => {
         upsertExercise(ex);
+        const wasViewing = selectedExercise && editingExercise && selectedExercise.id === editingExercise.id;
         setNewExercise(false);
         setEditingExercise(null);
-        if (selectedExercise && selectedExercise.id === ex.id) setSelectedExercise(ex);
+        if (wasViewing || (selectedExercise && selectedExercise.id === ex.id)) setSelectedExercise(ex);
       }}
       onCancel={() => { setNewExercise(false); setEditingExercise(null); }}
     />;
@@ -9414,6 +9415,8 @@ function FeedbackSection({ athleteId, exercise, defaultOpen = false }) {
 function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, onDelete }) {
   const { t } = useI18n();
   useEdgeSwipeBack(onBack);
+  // Detail oben starten — sonst erbt der Screen die Scroll-Position der Liste.
+  useEffect(() => { window.scrollTo(0, 0); }, [exercise.id]);
   const is3 = exercise.category_mode === 3;
   const [compOpen, setCompOpen] = useState(false);
   const [importStatus, setImportStatus] = useState(null);
@@ -10483,6 +10486,8 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
   const [hasRopeVariant, setHasRopeVariant] = useState(
     exercise ? !!exercise.has_rope_variant : false
   );
+  // Editor oben starten (sonst erbt er die Scroll-Position der vorigen Ansicht).
+  useEffect(() => { window.scrollTo(0, 0); }, []);
 
   // Aus UCI-Liste: setzt Code + Disziplin + Punkte + übernimmt den Namen.
   const handleUciSelect = (selected) => {
@@ -10510,9 +10515,15 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
 
   const save = () => {
     if (!name.trim()) return;
+    // „Nur Feedback"-Übungen sind virtuell (id = 'fbx:…', keine DB-Zeile). Beim
+    // Speichern/Zuordnen daraus eine ECHTE Übung machen (frische UUID), sonst
+    // schlägt der DB-Sync fehl („invalid input syntax for type uuid").
+    const virtual = exercise && (exercise._feedbackOnly || String(exercise.id || '').startsWith('fbx:'));
+    const base = { ...(exercise || {}) };
+    delete base._feedbackOnly;
     onSave({
-      ...(exercise || {}),
-      id: (exercise && exercise.id) || uid(),
+      ...base,
+      id: (exercise && !virtual && exercise.id) || uid(),
       name: name.trim(),
       uci_code: uciCode || null,
       uci_disc: uciCode ? (uciDisc || null) : null,
@@ -11322,8 +11333,9 @@ function ProgrammeView({ data, setData }) {
       exercise={editingExercise}
       onSave={(ex) => {
         upsertExercise(ex);
+        const wasViewing = selectedExercise && editingExercise && selectedExercise.id === editingExercise.id;
         setEditingExercise(null);
-        if (selectedExercise && selectedExercise.id === ex.id) setSelectedExercise(ex);
+        if (wasViewing || (selectedExercise && selectedExercise.id === ex.id)) setSelectedExercise(ex);
       }}
       onCancel={() => setEditingExercise(null)}
     />;
