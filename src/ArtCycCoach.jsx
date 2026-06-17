@@ -6447,6 +6447,9 @@ function TrainingView({ data, setData, setView }) {
   const [editingExercise, setEditingExercise] = useState(null);
   const [newExercise, setNewExercise] = useState(false);
   const [pendingDeleteExercise, setPendingDeleteExercise] = useState(null);
+  // „Erfassen"-Auswahl (Action-Sheet) + Übungs-Picker für Feedback.
+  const [erfassenOpen, setErfassenOpen] = useState(false);
+  const [fbPickerOpen, setFbPickerOpen] = useState(false);
 
   const upsertExercise = (ex) => {
     const exists = (data.exercises || []).find(e => e.id === ex.id);
@@ -6840,9 +6843,7 @@ function TrainingView({ data, setData, setView }) {
             <p className="text-[#8E8E93] text-[15px] mt-1">{t('training.totalSessions', { n: totalCount })}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button onClick={() => setNewExercise(true)} title="Neue Übung"
-              className="w-9 h-9 rounded-full card-surface text-[#FF9500] flex items-center justify-center active:scale-95 transition"><Plus size={18} strokeWidth={2.5} /></button>
-            <button onClick={() => setView('erfassen')}
+            <button onClick={() => setErfassenOpen(true)}
               className="px-3.5 py-2 rounded-full bg-[#FF9500] text-white text-[14px] font-semibold flex items-center gap-1 active:scale-95 transition"><Plus size={15} strokeWidth={2.6} /> Erfassen</button>
           </div>
         </header>
@@ -6919,6 +6920,55 @@ function TrainingView({ data, setData, setView }) {
 
         {totalCount === 0 && (
           <EmptyState title={t('training.empty')} hint={t('training.emptyHint')} />
+        )}
+
+        {/* „Erfassen"-Auswahl als iOS-Action-Sheet */}
+        {erfassenOpen && (
+          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-3" onClick={() => setErfassenOpen(false)}>
+            <div className="w-full sm:max-w-sm space-y-2" onClick={e => e.stopPropagation()}>
+              <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 text-center text-[13px] text-[#8E8E93] border-b border-[#C6C6C8]/40">Was möchtest du erfassen?</div>
+                {[
+                  { icon: Dumbbell, label: 'Serie protokollieren', sub: 'Geklappt / nicht — fürs Training', act: () => setView('erfassen') },
+                  { icon: Trophy, label: 'Wertungsbogen erfassen', sub: 'Wettkampf (PDF/Foto/manuell)', act: () => setView('wettkampf') },
+                  { icon: MessageCircle, label: 'Feedback zu Übung', sub: 'Fehlerbild + Handlungsanweisung', act: () => setFbPickerOpen(true) },
+                  { icon: Plus, label: 'Neue Übung anlegen', sub: 'Übung zur Liste hinzufügen', act: () => setNewExercise(true) },
+                ].map((o, i) => (
+                  <button key={i} onClick={() => { setErfassenOpen(false); o.act(); }}
+                    className={'w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+                    <span className="w-9 h-9 rounded-full bg-[#FF9500]/12 flex items-center justify-center shrink-0"><o.icon size={18} className="text-[#FF9500]" /></span>
+                    <span className="min-w-0">
+                      <span className="block text-[15px] font-medium">{o.label}</span>
+                      <span className="block text-[12px] text-[#8E8E93]">{o.sub}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setErfassenOpen(false)}
+                className="w-full bg-white dark:bg-[#1c1c1e] rounded-2xl py-3.5 text-[17px] font-semibold text-[#007AFF] active:bg-[#D1D1D6]/40">Abbrechen</button>
+            </div>
+          </div>
+        )}
+
+        {/* Übungs-Picker für „Feedback zu Übung" → öffnet die Übungs-Detailseite */}
+        {fbPickerOpen && (
+          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setFbPickerOpen(false)}>
+            <div className="bg-white dark:bg-[#1c1c1e] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl px-4 py-3 flex items-center justify-between border-b border-[#C6C6C8]/40">
+                <h3 className="font-semibold text-[17px]">Für welche Übung?</h3>
+                <button onClick={() => setFbPickerOpen(false)} className="p-1 text-[#8E8E93] active:opacity-60"><X size={20} /></button>
+              </div>
+              <div className="p-2">
+                {(data.exercises || []).filter(e => e.active !== false).map(ex => (
+                  <button key={ex.id} onClick={() => { setFbPickerOpen(false); setSelectedExercise(ex); }}
+                    className="w-full text-left px-4 py-3 rounded-xl flex items-center justify-between gap-2 active:bg-[#D1D1D6]/40">
+                    <span className="text-[15px] truncate">{localizedExerciseName(ex)}</span>
+                    <ChevronRight size={16} className="text-[#C7C7CC] shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
 
         {editing && <SessionEditModal session={editing} exercises={data.exercises || []} onSave={saveEdit} onDelete={() => setConfirmDelete(editing._origIdx)} onClose={() => setEditing(null)} />}
