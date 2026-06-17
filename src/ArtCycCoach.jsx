@@ -6048,7 +6048,7 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf, b
 
   const wrapRef = useRef(null);
   const pressing = useRef(false);
-  const [active, setActive] = useState(null); // gescrubbter Punkt-Index
+  const [scrubX, setScrubX] = useState(null); // kontinuierliche Finger-Position (viewBox-x) oder null
 
   if (points.length < 2) return null;
 
@@ -6072,17 +6072,34 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf, b
   const areaPath = linePath + ' L' + svgPoints[svgPoints.length - 1].x.toFixed(1) + ',' + (H - PB).toFixed(1) + ' L' + svgPoints[0].x.toFixed(1) + ',' + (H - PB).toFixed(1) + ' Z';
   const bestPoint = svgPoints.find(p => p.id === (best && best.competition && best.competition.id));
 
-  const activeP = active != null ? svgPoints[active] : null;
-  const leftPct = activeP ? Math.min(88, Math.max(12, (activeP.x / W) * 100)) : 0;
-  const xPct = activeP ? (activeP.x / W) * 100 : 0;
-  const yPct = activeP ? (activeP.y / H) * 100 : 0;
+  // Kontinuierliches Gleiten entlang der Linie mit magnetischem Einrasten an den
+  // echten Wettkampf-Punkten — das Scalable-Capital-Gefühl auch bei wenigen,
+  // weit auseinanderliegenden Punkten (sonst „springt" der Marker nur).
+  const SNAP = plotW * 0.05;             // Fang-Radius (viewBox-Einheiten) um Punkte
+  let cross = null;
+  if (scrubX != null) {
+    const fx0 = Math.max(svgPoints[0].x, Math.min(svgPoints[svgPoints.length - 1].x, scrubX));
+    let ni = 0, bd = Infinity;
+    svgPoints.forEach((p, i) => { const d = Math.abs(p.x - fx0); if (d < bd) { bd = d; ni = i; } });
+    const snapped = bd <= SNAP;          // nah an einem Punkt → exakt einrasten
+    const fx = snapped ? svgPoints[ni].x : fx0;
+    let gy = svgPoints[ni].y;
+    if (!snapped) {                      // sonst y linear auf dem Linien-Segment
+      for (let i = 0; i < svgPoints.length - 1; i++) {
+        const a = svgPoints[i], b = svgPoints[i + 1];
+        if (fx >= a.x && fx <= b.x) { const tt = b.x === a.x ? 0 : (fx - a.x) / (b.x - a.x); gy = a.y + (b.y - a.y) * tt; break; }
+      }
+    }
+    cross = { fx, gy, p: svgPoints[ni], snapped };
+  }
+  const activeP = cross ? cross.p : null;
+  const leftPct = cross ? Math.min(88, Math.max(12, (cross.fx / W) * 100)) : 0;
+  const xPct = cross ? (cross.fx / W) * 100 : 0;
+  const yPct = cross ? (cross.gy / H) * 100 : 0;
   const pick = (clientX) => {
     const el = wrapRef.current; if (!el) return;
     const rect = el.getBoundingClientRect();
-    const vbx = ((clientX - rect.left) / Math.max(1, rect.width)) * W;
-    let bi = 0, bd = Infinity;
-    svgPoints.forEach((p, i) => { const d = Math.abs(p.x - vbx); if (d < bd) { bd = d; bi = i; } });
-    setActive(bi);
+    setScrubX(((clientX - rect.left) / Math.max(1, rect.width)) * W);
   };
 
   const chart = (
@@ -6090,9 +6107,9 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf, b
         <div ref={wrapRef} data-no-swipe className="relative select-none" style={{ touchAction: 'pan-y' }}
           onPointerDown={(e) => { pressing.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* egal */ } pick(e.clientX); }}
           onPointerMove={(e) => { if (pressing.current) pick(e.clientX); }}
-          onPointerUp={() => { pressing.current = false; setActive(null); }}
-          onPointerCancel={() => { pressing.current = false; setActive(null); }}
-          onPointerLeave={() => { if (pressing.current) { pressing.current = false; setActive(null); } }}>
+          onPointerUp={() => { pressing.current = false; setScrubX(null); }}
+          onPointerCancel={() => { pressing.current = false; setScrubX(null); }}
+          onPointerLeave={() => { if (pressing.current) { pressing.current = false; setScrubX(null); } }}>
           <svg viewBox={'0 0 ' + W + ' ' + H} className="w-full" preserveAspectRatio="none" style={{ height: 'auto' }}>
             {/* Y-Gridlines */}
             {[0, 0.25, 0.5, 0.75, 1].map(r => {
@@ -6132,16 +6149,16 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf, b
               nächsten Datenpunkt (rastet ein) wie bei Scalable Capital. */}
           {activeP && (
             <div className="absolute top-0 bottom-0 pointer-events-none"
-              style={{ left: xPct + '%', borderLeft: '1.5px dotted rgba(255,149,0,0.55)', transition: 'left 0.13s cubic-bezier(0.22,1,0.36,1)' }} />
+              style={{ left: xPct + '%', borderLeft: '1.5px dotted rgba(255,149,0,0.55)', transition: 'left 0.08s ease-out' }} />
           )}
           {activeP && (
             <div className="absolute w-3.5 h-3.5 rounded-full bg-white border-[2.5px] border-[#FF9500] shadow pointer-events-none -translate-x-1/2 -translate-y-1/2"
-              style={{ left: xPct + '%', top: yPct + '%', transition: 'left 0.13s cubic-bezier(0.22,1,0.36,1), top 0.13s cubic-bezier(0.22,1,0.36,1)' }} />
+              style={{ left: xPct + '%', top: yPct + '%', transition: 'left 0.08s ease-out, top 0.08s ease-out' }} />
           )}
           {/* Werte-Tooltip an der Finger-Position */}
           {activeP && (
             <div className="absolute -top-1 pointer-events-none z-10"
-              style={{ left: leftPct + '%', transform: 'translateX(-50%)', transition: 'left 0.13s cubic-bezier(0.22,1,0.36,1)' }}>
+              style={{ left: leftPct + '%', transform: 'translateX(-50%)', transition: 'left 0.08s ease-out' }}>
               <div className="bg-[#1c1c1e] text-white rounded-lg px-2.5 py-1 text-center shadow-lg whitespace-nowrap">
                 <div className="text-[13px] font-bold tabular-nums leading-tight">{activeP.final.toFixed(2)}</div>
                 <div className="text-[10px] text-slate-300 leading-tight">{formatDateShort(activeP.date)}</div>
