@@ -7798,6 +7798,15 @@ function TrainingsplanView({ data, setData, onBack }) {
     optimisticRef.current[exId] = cur.slice(0, -1);
     persistBuf(); rerender(); scheduleFlush();
   };
+  // Einzelnen Versuch umschalten (geklappt ↔ nicht) — wie die nummerierten
+  // Chips im SessionEditor.
+  const toggleEntryAt = (exId, idx) => {
+    const cur = getEntries(exId).slice();
+    if (idx < 0 || idx >= cur.length) return;
+    cur[idx] = cur[idx] === 'success' ? 'fail' : 'success';
+    optimisticRef.current[exId] = cur;
+    persistBuf(); rerender(); scheduleFlush();
+  };
 
   // Abhaken (nicht-verknüpfte Einträge): „erledigt heute" pro Eintrag, ohne in
   // die Übungs-Statistik zu schreiben. Persistiert als Datumsliste im Eintrag.
@@ -7933,24 +7942,43 @@ function TrainingsplanView({ data, setData, onBack }) {
                           {it.reps != null && <div className="text-[12px] text-slate-400 tabular-nums">Anzahl: {it.reps}</div>}
                         </div>
                         {it.loggable && ex && (
-                          <div className="text-[12px] tabular-nums shrink-0">
-                            <span className="text-slate-400">{entries.length}{it.reps ? '/' + it.reps : ''}</span>
-                            {entries.length > 0 && <> · <span className="text-emerald-600">{succ}✓</span> <span className="text-rose-500">{fail}✗</span></>}
+                          <div className="text-[13px] font-semibold tabular-nums shrink-0 text-slate-400">
+                            {entries.length}{it.reps ? '/' + it.reps : ''}
                           </div>
                         )}
                       </div>
                       {it.loggable && ex && (
-                        <div className="flex items-center gap-2 mt-2.5">
-                          <button onClick={(ev) => { pressFeedback(ev, 'success'); logEntry(it, ex.id, 'success'); }}
-                            className="flex-1 bg-emerald-50 border border-emerald-100 text-emerald-700 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
-                            <Check size={18} strokeWidth={2.6} /> Geklappt
-                          </button>
-                          <button onClick={(ev) => { pressFeedback(ev, 'error'); logEntry(it, ex.id, 'fail'); }}
-                            className="flex-1 bg-rose-50 border border-rose-100 text-rose-700 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
-                            <X size={18} strokeWidth={2.6} /> Nicht
-                          </button>
-                          <button onClick={() => undoEntry(ex.id)} disabled={entries.length === 0}
-                            className="px-3 py-2.5 rounded-xl text-slate-500 border border-slate-200 disabled:opacity-40 active:opacity-60"><RotateCcw size={16} /></button>
+                        <div className="mt-2.5">
+                          {/* Gleiche Kacheln wie „Wiederholungen erfassen": Icon, Label,
+                              Zähler direkt darunter. */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <button onClick={(ev) => { pressFeedback(ev, 'success'); logEntry(it, ex.id, 'success'); }}
+                              className="bg-emerald-50 border border-emerald-100 text-emerald-700 py-3.5 rounded-[20px] font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+                              <Check size={26} strokeWidth={2.6} />
+                              <span className="text-[13px] leading-tight">Geklappt</span>
+                              <span className="text-xs opacity-80 tabular-nums">{succ}</span>
+                            </button>
+                            <button onClick={(ev) => { pressFeedback(ev, 'error'); logEntry(it, ex.id, 'fail'); }}
+                              className="bg-rose-50 border border-rose-100 text-rose-700 py-3.5 rounded-[20px] font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
+                              <X size={26} strokeWidth={2.6} />
+                              <span className="text-[13px] leading-tight">Nicht</span>
+                              <span className="text-xs opacity-80 tabular-nums">{fail}</span>
+                            </button>
+                          </div>
+                          {/* Versuche als nummerierte Chips (1, 2, 3 …) — tippen schaltet um. */}
+                          {entries.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-3">
+                              {entries.map((s, idx) => (
+                                <button key={idx} onClick={(ev) => { pressFeedback(ev, 'light'); toggleEntryAt(ex.id, idx); }}
+                                  className={'w-9 h-9 rounded-lg font-bold text-white text-sm flex items-center justify-center active:scale-90 transition-transform ' +
+                                    (s === 'success' ? 'bg-emerald-600' : 'bg-rose-600')}>
+                                  {idx + 1}
+                                </button>
+                              ))}
+                              <button onClick={() => undoEntry(ex.id)}
+                                className="w-9 h-9 rounded-lg text-slate-500 border border-slate-200 flex items-center justify-center active:opacity-60"><RotateCcw size={15} /></button>
+                            </div>
+                          )}
                         </div>
                       )}
                       {complete && (
