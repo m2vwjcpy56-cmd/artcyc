@@ -7490,8 +7490,12 @@ function TrainingsplanView({ data, setData, onBack }) {
   const rerender = () => setTick(t => t + 1);
   const [celebrate, setCelebrate] = useState(null); // itemId mit „Anzahl erreicht"
 
-  const todayEntries = (exId) => (dataRef.current.sessions || [])
-    .filter(s => s.exerciseId === exId && s.date === today).flatMap(s => s.entries || []);
+  // Genau EINE Tages-Session pro Übung lesen (nicht über mehrere summieren —
+  // das war Theresas Bug: Zahl schaukelte sich auf / war bei jedem Öffnen anders).
+  const todayEntries = (exId) => {
+    const s = (dataRef.current.sessions || []).find(x => x.exerciseId === exId && x.date === today);
+    return s ? (s.entries || []) : [];
+  };
   const getEntries = (exId) => exId in optimisticRef.current ? optimisticRef.current[exId] : todayEntries(exId);
 
   const flushAll = () => {
@@ -7499,11 +7503,17 @@ function TrainingsplanView({ data, setData, onBack }) {
     let changed = false;
     for (const exId of Object.keys(optimisticRef.current)) {
       const entries = optimisticRef.current[exId];
-      const idx = sessions.findIndex(s => s.exerciseId === exId && s.date === today);
+      const todays = sessions.filter(s => s.exerciseId === exId && s.date === today);
       if (entries.length === 0) {
-        if (idx >= 0) { sessions = sessions.filter((_, i) => i !== idx); changed = true; }
-      } else if (idx >= 0) {
-        sessions = sessions.map((s, i) => i === idx ? { ...s, entries } : s); changed = true;
+        // Alle heutigen Sessions dieser Übung entfernen.
+        if (todays.length) { sessions = sessions.filter(s => !(s.exerciseId === exId && s.date === today)); changed = true; }
+      } else if (todays.length >= 1) {
+        // EINE behalten (mit den aktuellen Einträgen), eventuelle Duplikate löschen.
+        const keepId = todays[0].id;
+        sessions = sessions
+          .filter(s => !(s.exerciseId === exId && s.date === today && s.id !== keepId))
+          .map(s => (s.exerciseId === exId && s.date === today) ? { ...s, entries } : s);
+        changed = true;
       } else {
         const ex = activeExercises.find(e => e.id === exId);
         sessions = [...sessions, { id: uid(), date: today, athleteId, exerciseId: exId, exerciseName: ex?.name || '', entries, notes: null, withRope: ex?.has_rope_variant ? true : null, created: new Date().toISOString() }];
