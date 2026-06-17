@@ -7470,7 +7470,21 @@ function TrainingsplanView({ data, setData, onBack }) {
   // Buchstaben). Persistenz erst bei „Fertig".
   const [draft, setDraft] = useState(null);
   const [pickerItemId, setPickerItemId] = useState(null); // Übungs-Picker für welchen Eintrag
+  const [deleteProtocol, setDeleteProtocol] = useState(null); // Protokoll-Tag zum Löschen
   const plan = plans.find(p => p.id === selectedId) || null;
+
+  // Protokoll-Tag löschen: entweder nur diesen Tag oder ALLE Trainingsdaten
+  // der beteiligten Einzelübungen.
+  const doDeleteProtocol = (d, alsoAll) => {
+    const exIds = new Set(d.exIds || []);
+    const sessions = (data.sessions || []).filter(s => {
+      if (!exIds.has(s.exerciseId)) return true;       // andere Übungen behalten
+      if (alsoAll) return false;                       // alle Daten dieser Übungen weg
+      return s.date !== d.date;                         // nur diesen Tag entfernen
+    });
+    setData({ ...data, sessions });
+    setDeleteProtocol(null);
+  };
 
   // Protokoll: vergangene Trainingstage (≠ heute) aus den echten Sessions der
   // im Plan verknüpften Übungen. Pro Tag: je Übung Anzahl + ✓/✗. So ist der
@@ -7489,13 +7503,14 @@ function TrainingsplanView({ data, setData, onBack }) {
       const entries = s.entries || [];
       if (entries.length === 0) continue;
       const succ = entries.filter(e => e === 'success').length;
-      const rec = byDate.get(s.date) || { date: s.date, total: 0, succ: 0, items: [] };
+      const rec = byDate.get(s.date) || { date: s.date, total: 0, succ: 0, items: [], exIds: new Set() };
       rec.total += entries.length;
       rec.succ += succ;
+      rec.exIds.add(s.exerciseId);
       rec.items.push({ name: exName(s.exerciseId), total: entries.length, succ, fail: entries.length - succ });
       byDate.set(s.date, rec);
     }
-    return [...byDate.values()].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    return [...byDate.values()].map(r => ({ ...r, exIds: [...r.exIds] })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [plan, data.sessions, data.exercises, today]);
 
   const writePlans = (next) => setData({ ...data, trainingPlans: next });
@@ -7772,11 +7787,17 @@ function TrainingsplanView({ data, setData, onBack }) {
                     <div key={d.date} className={'px-4 py-3 ' + (idx > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-[15px] font-medium text-black">{formatDateShort(d.date)}</span>
-                        <span className="text-[12px] tabular-nums shrink-0">
-                          <span className="text-slate-400">{d.total}×</span>
-                          {' · '}<span className="text-emerald-600">{d.succ}✓</span>
-                          {' '}<span className="text-rose-500">{d.total - d.succ}✗</span>
-                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[12px] tabular-nums">
+                            <span className="text-slate-400">{d.total}×</span>
+                            {' · '}<span className="text-emerald-600">{d.succ}✓</span>
+                            {' '}<span className="text-rose-500">{d.total - d.succ}✗</span>
+                          </span>
+                          <button onClick={() => setDeleteProtocol(d)}
+                            className="p-1.5 -mr-1 text-[#FF3B30] active:bg-[#D1D1D6]/40 rounded-full" aria-label="Protokoll löschen">
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </div>
                       <div className="text-[12px] text-[#8E8E93] mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5">
                         {d.items.map((it, i) => (
@@ -7802,6 +7823,32 @@ function TrainingsplanView({ data, setData, onBack }) {
             <Trophy size={20} strokeWidth={2.4} />
             <span className="text-[15px] font-semibold truncate max-w-[60vw]">{celebrate.title} geschafft! · {celebrate.reps}×</span>
             <Sparkles size={16} className="acc-spark" />
+          </div>
+        </div>
+      )}
+
+      {/* Protokoll löschen — mit Scope-Abfrage */}
+      {deleteProtocol && (
+        <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-3" onClick={() => setDeleteProtocol(null)}>
+          <div className="w-full sm:max-w-sm space-y-2" onClick={e => e.stopPropagation()}>
+            <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl overflow-hidden">
+              <div className="px-4 py-3 text-center border-b border-[#C6C6C8]/40">
+                <div className="text-[15px] font-semibold">Protokoll vom {formatDateShort(deleteProtocol.date)} löschen?</div>
+                <div className="text-[12px] text-[#8E8E93] mt-0.5">Was soll gelöscht werden?</div>
+              </div>
+              <button onClick={() => doDeleteProtocol(deleteProtocol, false)}
+                className="w-full px-4 py-3.5 text-left active:bg-[#D1D1D6]/40 border-b border-[#C6C6C8]/40">
+                <span className="block text-[15px] text-[#FF3B30] font-medium">Nur dieses Protokoll</span>
+                <span className="block text-[12px] text-[#8E8E93]">Nur die Trainingsdaten dieses Tages</span>
+              </button>
+              <button onClick={() => doDeleteProtocol(deleteProtocol, true)}
+                className="w-full px-4 py-3.5 text-left active:bg-[#D1D1D6]/40">
+                <span className="block text-[15px] text-[#FF3B30] font-medium">Auch alle Trainingsdaten dieser Übungen</span>
+                <span className="block text-[12px] text-[#8E8E93]">Komplette Trainings-Historie der beteiligten Übungen</span>
+              </button>
+            </div>
+            <button onClick={() => setDeleteProtocol(null)}
+              className="w-full bg-white dark:bg-[#1c1c1e] rounded-2xl py-3.5 text-[17px] font-semibold text-[#007AFF] active:bg-[#D1D1D6]/40">Abbrechen</button>
           </div>
         </div>
       )}
