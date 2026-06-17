@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
+import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -14488,6 +14488,13 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
   const [adminPreselectUserId, setAdminPreselectUserId] = useState(null);
   // Zusammenführen: Platzhalter-Sportler (Quelle) → echtes Konto (Ziel)
   const [mergeSource, setMergeSource] = useState(null);
+  // Feedback-Anzahl je Athlet — zeigt, an welchem Eintrag Feedback hängt.
+  const [fbCounts, setFbCounts] = useState({});
+  useEffect(() => {
+    let cancelled = false;
+    fetchFeedbackCounts().then(c => { if (!cancelled) setFbCounts(c || {}); });
+    return () => { cancelled = true; };
+  }, [athletes]);
 
   // „Daten ansehen" auf einem Athleten → wechselt die ganze App in die
   // Sicht dieses Athleten (Dashboard/Training/Wettkampf/Übungen zeigen
@@ -14721,11 +14728,16 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
     setBusy(false);
   };
 
-  // Kandidaten zum Zusammenführen: echte Konten (mit Login), nicht die Quelle.
+  // Kandidaten zum Zusammenführen: alle anderen Athleten (echte Konten ZUERST),
+  // nicht die Quelle selbst. So lassen sich auch zwei Platzhalter konsolidieren.
   const mergeTargets = useMemo(
     () => (athletes || [])
-      .filter(a => a.auth_user_id && (!mergeSource || a.id !== mergeSource.id) && a.type !== 'team')
-      .sort((x, y) => (x.name || '').localeCompare(y.name || '', 'de')),
+      .filter(a => (!mergeSource || a.id !== mergeSource.id) && a.type !== 'team')
+      .sort((x, y) => {
+        const ax = x.auth_user_id ? 0 : 1, ay = y.auth_user_id ? 0 : 1;
+        if (ax !== ay) return ax - ay;
+        return (x.name || '').localeCompare(y.name || '', 'de');
+      }),
     [athletes, mergeSource]
   );
 
@@ -14768,6 +14780,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
               ) : (
                 <IOSTag color="orange">{t('athletes.tagNoAccount')}</IOSTag>
               )}
+              {fbCounts[a.id] > 0 && <IOSTag color="purple">{fbCounts[a.id]}× Feedback</IOSTag>}
               {linkedToCoach && (() => {
                 const coach = profileById.get(a.created_by_coach_id);
                 const coachName = coach?.display_name || t('role.coach');
@@ -15133,8 +15146,13 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
                   <button key={tg.id} onClick={() => onMerge(tg.id)} disabled={busy}
                     className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/40 disabled:opacity-50 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
                     <span className="min-w-0">
-                      <span className="block text-[15px] truncate">{tg.name}{tg.last_name ? ' ' + tg.last_name : ''}</span>
-                      {tg.email && <span className="block text-[12px] text-[#8E8E93] truncate">{tg.email}</span>}
+                      <span className="block text-[15px] truncate">
+                        {tg.name}{tg.last_name ? ' ' + tg.last_name : ''}
+                        {tg.auth_user_id ? '' : ' · ohne Login'}
+                      </span>
+                      <span className="block text-[12px] text-[#8E8E93] truncate">
+                        {tg.email ? tg.email + ' · ' : ''}{fbCounts[tg.id] > 0 ? fbCounts[tg.id] + '× Feedback' : 'kein Feedback'}
+                      </span>
                     </span>
                     <Users size={16} className="text-[#FF9500] shrink-0" />
                   </button>
