@@ -6954,7 +6954,7 @@ function TrainingView({ data, setData, setView }) {
             <p className="text-[#8E8E93] text-[15px] mt-1">{t('training.totalSessions', { n: totalCount })}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button onClick={() => setErfassenOpen(true)}
+            <button onClick={() => setView('erfassen')}
               className="px-3.5 py-2 rounded-full bg-[#FF9500] text-white text-[14px] font-semibold flex items-center gap-1 active:scale-95 transition"><Plus size={15} strokeWidth={2.6} /> Erfassen</button>
           </div>
         </header>
