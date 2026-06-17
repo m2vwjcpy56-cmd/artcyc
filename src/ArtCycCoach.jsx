@@ -6022,8 +6022,9 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
 
   if (points.length < 2) return null;
 
-  // SVG-Maße
-  const W = 600, H = 180, P = 28;
+  // SVG-Maße — asymmetrische Ränder, damit der Plot die Box besser ausfüllt.
+  const W = 600, H = 180;
+  const PL = 26, PR = 10, PT = 12, PB = 18; // links (Achsenlabels), rechts, oben, unten
   const minY = Math.min(...points.map(p => p.final));
   const maxY = Math.max(...points.map(p => p.final));
   const yPadding = Math.max(2, (maxY - minY) * 0.1);
@@ -6031,13 +6032,14 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
   const yMax = Math.ceil((maxY + yPadding) * 10) / 10;
   const yRange = Math.max(1, yMax - yMin);
 
+  const plotW = W - PL - PR, plotH = H - PT - PB;
   const svgPoints = points.map((p, i) => {
-    const x = points.length === 1 ? W / 2 : P + (i / (points.length - 1)) * (W - 2 * P);
-    const y = H - P - ((p.final - yMin) / yRange) * (H - 2 * P);
+    const x = points.length === 1 ? W / 2 : PL + (i / (points.length - 1)) * plotW;
+    const y = H - PB - ((p.final - yMin) / yRange) * plotH;
     return { ...p, x, y };
   });
   const linePath = svgPoints.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
-  const areaPath = linePath + ' L' + svgPoints[svgPoints.length - 1].x.toFixed(1) + ',' + (H - P).toFixed(1) + ' L' + svgPoints[0].x.toFixed(1) + ',' + (H - P).toFixed(1) + ' Z';
+  const areaPath = linePath + ' L' + svgPoints[svgPoints.length - 1].x.toFixed(1) + ',' + (H - PB).toFixed(1) + ' L' + svgPoints[0].x.toFixed(1) + ',' + (H - PB).toFixed(1) + ' Z';
   const bestPoint = svgPoints.find(p => p.id === (best && best.competition && best.competition.id));
 
   const activeP = active != null ? svgPoints[active] : null;
@@ -6061,7 +6063,7 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
         </div>
         <button onClick={onTapWettkampf} className="text-[13px] text-[#007AFF] font-medium active:opacity-60">Alle ansehen ›</button>
       </div>
-      <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
+      <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3 py-3">
         <div ref={wrapRef} data-no-swipe className="relative select-none" style={{ touchAction: 'pan-y' }}
           onPointerDown={(e) => { pressing.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* egal */ } pick(e.clientX); }}
           onPointerMove={(e) => { if (pressing.current) pick(e.clientX); }}
@@ -6071,14 +6073,14 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
           <svg viewBox={'0 0 ' + W + ' ' + H} className="w-full" preserveAspectRatio="none" style={{ height: 'auto' }}>
             {/* Y-Gridlines */}
             {[0, 0.25, 0.5, 0.75, 1].map(r => {
-              const y = H - P - r * (H - 2 * P);
+              const y = H - PB - r * plotH;
               const val = yMin + r * yRange;
               return (
                 <g key={r}>
-                  <line x1={P} y1={y} x2={W - P} y2={y}
+                  <line x1={PL} y1={y} x2={W - PR} y2={y}
                     stroke="#E5E5EA" strokeWidth="1"
                     strokeDasharray={r === 0 || r === 1 ? '' : '2 3'} />
-                  <text x={P - 4} y={y + 3} fontSize="9" fill="#8E8E93" textAnchor="end">
+                  <text x={PL - 4} y={y + 3} fontSize="9" fill="#8E8E93" textAnchor="end">
                     {val.toFixed(0)}
                   </text>
                 </g>
