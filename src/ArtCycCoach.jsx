@@ -6858,6 +6858,11 @@ function TrainingView({ data, setData, setView }) {
         )}
 
         {/* ÜBUNGEN — kompakter, primärer Einstieg (keine Rohdaten) */}
+        {/* TEMP-Diagnose — hilft den Feedback-Sichtbarkeits-Bug zu finden. Wird wieder entfernt. */}
+        <div className="text-[11px] text-[#8E8E93] px-4 -mt-2">
+          Diagnose: {feedbackEntries.length} Feedbacks geladen · Sportler {viewingAthleteId ? 'ok' : 'fehlt'} · v{__APP_VERSION__}
+        </div>
+
         {activeExerciseRows.length > 0 && (
           <IOSList header={'Übungen (' + activeExerciseRows.length + ')'} footer="Tippen öffnet die Übungs-Detailseite.">
             {activeExerciseRows.map(renderTrainedRow)}
