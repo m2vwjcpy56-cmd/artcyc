@@ -6860,7 +6860,7 @@ function TrainingView({ data, setData, setView }) {
         {/* ÜBUNGEN — kompakter, primärer Einstieg (keine Rohdaten) */}
         {/* TEMP-Diagnose — hilft den Feedback-Sichtbarkeits-Bug zu finden. Wird wieder entfernt. */}
         <div className="text-[11px] text-[#8E8E93] px-4 -mt-2">
-          Diagnose: {feedbackEntries.length} Feedbacks geladen · Sportler {viewingAthleteId ? 'ok' : 'fehlt'} · v{__APP_VERSION__}
+          Diagnose: {feedbackEntries.length} Feedbacks · {feedbackOnlyRows.length} nur-Feedback-Übungen · Sportler {viewingAthleteId ? 'ok' : 'fehlt'} · v{__APP_VERSION__}
         </div>
 
         {activeExerciseRows.length > 0 && (
@@ -8874,11 +8874,12 @@ function FeedbackEditor({ open, athleteId, exercise, entry, onClose, onSaved }) 
   );
 }
 
-function FeedbackSection({ athleteId, exercise }) {
+function FeedbackSection({ athleteId, exercise, defaultOpen = false }) {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editEntry, setEditEntry] = useState(null);
+  const [open, setOpen] = useState(defaultOpen);
 
   const load = useCallback(async () => {
     if (!athleteId) { setEntries([]); setLoading(false); return; }
@@ -8927,9 +8928,12 @@ function FeedbackSection({ athleteId, exercise }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between px-1">
-        <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium">
-          Feedback{entries.length ? ` (${entries.length})` : ''}
-        </div>
+        <button onClick={() => setOpen(o => !o)} className="flex items-center gap-1.5 active:opacity-60 pl-3">
+          <span className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
+            Feedback{entries.length ? ` (${entries.length})` : ''}
+          </span>
+          <ChevronRight size={14} strokeWidth={2.4} className={'text-[#C7C7CC] transition-transform ' + (open ? 'rotate-90' : '')} />
+        </button>
         {athleteId && (
           <button onClick={() => { setEditEntry(null); setEditorOpen(true); }}
             className="text-[13px] text-[#FF9500] font-semibold active:opacity-60 flex items-center gap-1 pr-1">
@@ -8949,6 +8953,16 @@ function FeedbackSection({ athleteId, exercise }) {
             : <div className="text-[14px] text-black leading-snug">{summary}</div>}
         </div>
       )}
+
+      {/* Kompakt-Hinweis wenn eingeklappt + es gibt Einträge */}
+      {!open && entries.length > 0 && (
+        <button onClick={() => setOpen(true)}
+          className="w-full text-left text-[12px] text-[#8E8E93] px-4 active:opacity-60">
+          {entries.length} {entries.length === 1 ? 'Eintrag' : 'Einträge'} — zum Ansehen ausklappen
+        </button>
+      )}
+
+      {open && (<>
 
       {!athleteId ? (
         <div className="bg-white rounded-2xl px-4 py-4 text-[13px] text-[#8E8E93] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
@@ -9009,6 +9023,7 @@ function FeedbackSection({ athleteId, exercise }) {
           ))}
         </div>
       )}
+      </>)}
 
       <FeedbackEditor open={editorOpen} athleteId={athleteId} exercise={exercise} entry={editEntry}
         onClose={() => setEditorOpen(false)} onSaved={() => { setEditorOpen(false); load(); }} />
@@ -9110,8 +9125,6 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
             </div>
           </div>
         </header>
-
-        <FeedbackSection athleteId={data._viewingAthleteId || null} exercise={exercise} />
 
         {!hasAnyData ? (
           <div className="card-surface rounded-[22px] p-8 text-center text-[15px] text-slate-400">Noch keine Trainingsdaten erfasst.</div>
@@ -9345,6 +9358,9 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
               )}
             </div>
           )}
+
+          {/* Feedback — unter der Statistik, eingeklappt (außer ohne Trainingsdaten) */}
+          <FeedbackSection athleteId={data._viewingAthleteId || null} exercise={exercise} defaultOpen={!hasAnyData} />
 
           <IOSList>
             {onEdit && <IOSListRow onClick={onEdit} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Edit2 size={17} className="text-[#007AFF]" /> Bearbeiten</span></IOSListRow>}
