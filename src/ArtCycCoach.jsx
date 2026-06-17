@@ -2255,6 +2255,47 @@ function imageFileToDataUrl(file, maxDim = 1600, quality = 0.82) {
     img.src = URL.createObjectURL(file);
   });
 }
+
+// Lädt ein <img> aus einer Datei/URL (für Kachelung der Wertungsbogen-Tabelle).
+function loadImageEl(src) {
+  return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
+}
+
+// Schneidet ein Bild in überlappende horizontale Bänder (als JPEG-DataURLs),
+// jeweils auf maxW Breite skaliert. Dadurch bekommt jede Tabellen-Zeile viel
+// mehr Pixel als auf dem Gesamtbild → die feinen Fehlerzeichen werden lesbar.
+function sliceImageBands(img, { bands = 4, overlap = 0.18, maxW = 2000, quality = 0.9 } = {}) {
+  const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+  const bandH = H / bands;
+  const out = [];
+  for (let i = 0; i < bands; i++) {
+    const y0 = Math.max(0, Math.round(i * bandH - bandH * overlap));
+    const y1 = Math.min(H, Math.round((i + 1) * bandH + bandH * overlap));
+    const sh = y1 - y0;
+    if (sh <= 0) continue;
+    const sc = Math.min(1, maxW / W);
+    const cw = Math.round(W * sc), ch = Math.round(sh * sc);
+    const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+    c.getContext('2d').drawImage(img, 0, y0, W, sh, 0, 0, cw, ch);
+    try { out.push(c.toDataURL('image/jpeg', quality)); } catch { /* egal */ }
+  }
+  return out;
+}
+
+// Setzt die aus mehreren Bändern gelesenen Zeilen über den PUNKTWERT wieder dem
+// Programm zu (Punktwert = Zeilen-Identität). Pro Programm-Übung die „informativste"
+// Lesung wählen (meiste erkannte Zeichen, dann höchste Confidence) — so gewinnen
+// echte Markierungen über leere Duplikate aus dem Überlappungsbereich.
+function assembleScanRowsByPoints(programPoints, tileRows) {
+  const emptyKg = () => ({ X: 0, W: 0, S: 0, K: 0, p: 0, T: 0 });
+  const marks = (r) => (r.kg1.X + r.kg1.W + r.kg1.S + r.kg1.K + r.kg2.X + r.kg2.W + r.kg2.S + r.kg2.K);
+  return programPoints.map((P) => {
+    const cands = tileRows.filter(r => typeof r.points === 'number' && Math.abs(r.points - P) <= 0.06);
+    if (!cands.length) return { points: P, conf: null, kg1: emptyKg(), kg2: emptyKg() };
+    cands.sort((a, b) => marks(b) - marks(a) || (b.conf || 0) - (a.conf || 0));
+    return { ...cands[0], points: P };
+  });
+}
 let _pdfJsPromise = null;
 function loadPdfJs() {
   if (typeof window === 'undefined') return Promise.reject(new Error('Kein Browser'));
@@ -13338,6 +13379,29 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             const cand = toRows(corr.data.exercises);
             const candErr = errOf(cand);
             if (candErr < bestErr) { best = cand; bestErr = candErr; }
+          }
+
+          // Inkrement 2 — Kachelung: wenn die Tabelle als Ganzes nicht (gut)
+          // gelesen wurde, das Bild in hochauflösende Bänder schneiden, jedes Band
+          // einzeln lesen und über die Punktwerte dem Programm zuordnen.
+          if (programPoints && programPoints.length && (best.length === 0 || bestErr > tol)) {
+            try {
+              setImportMsg('KI liest die Tabelle in Ausschnitten …');
+              const imgEl = await loadImageEl(dataUrl);
+              const bandCount = programPoints.length > 18 ? 5 : programPoints.length > 8 ? 4 : 3;
+              const tiles = sliceImageBands(imgEl, { bands: bandCount, overlap: 0.2, maxW: 2000, quality: 0.9 });
+              const tileRows = [];
+              for (let ti = 0; ti < tiles.length; ti++) {
+                setImportMsg(`KI liest Ausschnitt ${ti + 1}/${tiles.length} …`);
+                const tr = await scanWertungsbogenVision(tiles[ti], { tableOnly: true });
+                if (!tr.error && tr.data && Array.isArray(tr.data.exercises)) tileRows.push(...toRows(tr.data.exercises));
+              }
+              if (tileRows.length > 0) {
+                const assembled = assembleScanRowsByPoints(programPoints, tileRows);
+                const aErr = errOf(assembled);
+                if (best.length === 0 || aErr < bestErr) { best = assembled; bestErr = aErr; }
+              }
+            } catch (_) { /* Kachelung fehlgeschlagen → bisheriges Ergebnis behalten */ }
           }
 
           const parsed = {
