@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
+import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -14424,6 +14424,8 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
   const [showAdminAccounts, setShowAdminAccounts] = useState(false);
   const [adminPrefilter, setAdminPrefilter] = useState('');
   const [adminPreselectUserId, setAdminPreselectUserId] = useState(null);
+  // Zusammenführen: Platzhalter-Sportler (Quelle) → echtes Konto (Ziel)
+  const [mergeSource, setMergeSource] = useState(null);
 
   // „Daten ansehen" auf einem Athleten → wechselt die ganze App in die
   // Sicht dieses Athleten (Dashboard/Training/Wettkampf/Übungen zeigen
@@ -14657,6 +14659,25 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
     setBusy(false);
   };
 
+  // Kandidaten zum Zusammenführen: echte Konten (mit Login), nicht die Quelle.
+  const mergeTargets = useMemo(
+    () => (athletes || [])
+      .filter(a => a.auth_user_id && (!mergeSource || a.id !== mergeSource.id) && a.type !== 'team')
+      .sort((x, y) => (x.name || '').localeCompare(y.name || '', 'de')),
+    [athletes, mergeSource]
+  );
+
+  const onMerge = async (targetId) => {
+    if (!mergeSource) return;
+    setBusy(true); setErr(''); setInfo('');
+    const { error } = await mergeAthlete(mergeSource.id, targetId);
+    if (error) setErr(error.message);
+    else setInfo('✓ Zusammengeführt. Die Daten liegen jetzt am echten Konto.');
+    setMergeSource(null);
+    await refreshAthletes();
+    setBusy(false);
+  };
+
   const renderAthleteCard = (a, badges) => {
     const isMine = a.auth_user_id === myUserId;
     const isManagedByMe = a.created_by_coach_id === myUserId || myCoachAthleteIds.has(a.id);
@@ -14755,6 +14776,13 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
                 <KeyRound size={13} /> {!linkedToUser ? t('athletes.generateCodeForAthlete') : t('athletes.inviteCoach')}
               </button>
             )
+          )}
+          {/* Platzhalter (ohne Login) in ein echtes Konto zusammenführen. */}
+          {(isManagedByMe || isAdmin) && !linkedToUser && a.type !== 'team' && (
+            <button onClick={() => setMergeSource(a)} disabled={busy}
+              className="text-[13px] bg-slate-100 text-slate-800 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
+              <Users size={13} /> Mit Konto zusammenführen
+            </button>
           )}
           {/* Eigener Sportler-Eintrag: „Trainer verwalten" springt in
               Einstellungen UND scrollt direkt zur „Meine Trainer"-Sektion. */}
@@ -15017,6 +15045,42 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
           initialFilter={adminPrefilter}
           autoOpenUserId={adminPreselectUserId}
         />
+      )}
+
+      {/* Zusammenführen: Platzhalter (Quelle) in ein echtes Konto überführen. */}
+      {mergeSource && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm"
+          onClick={() => setMergeSource(null)}>
+          <div className="bg-[#F2F2F7] dark:bg-[#1c1c1e] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-[#C6C6C8]/40">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-[17px]">Zusammenführen</h3>
+                <button onClick={() => setMergeSource(null)} className="p-1 text-[#8E8E93] active:opacity-60"><X size={20} /></button>
+              </div>
+              <p className="text-[13px] text-[#8E8E93] mt-1 leading-snug">
+                Daten von <strong className="text-[#000] dark:text-white">{mergeSource.name}</strong> (ohne Login)
+                in ein echtes Konto überführen. Der Platzhalter wird danach gelöscht.
+              </p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">Echtes Konto wählen</div>
+              <div className="bg-white dark:bg-white/5 rounded-2xl overflow-hidden">
+                {mergeTargets.length === 0 ? (
+                  <div className="px-4 py-3 text-[13px] text-[#8E8E93]">Kein Konto mit Login gefunden. Der Sportler muss sich erst registrieren.</div>
+                ) : mergeTargets.map((tg, i) => (
+                  <button key={tg.id} onClick={() => onMerge(tg.id)} disabled={busy}
+                    className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/40 disabled:opacity-50 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+                    <span className="min-w-0">
+                      <span className="block text-[15px] truncate">{tg.name}{tg.last_name ? ' ' + tg.last_name : ''}</span>
+                      {tg.email && <span className="block text-[12px] text-[#8E8E93] truncate">{tg.email}</span>}
+                    </span>
+                    <Users size={16} className="text-[#FF9500] shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
