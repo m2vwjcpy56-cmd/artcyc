@@ -6016,6 +6016,10 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }, [competitions, programs]);
 
+  const wrapRef = useRef(null);
+  const pressing = useRef(false);
+  const [active, setActive] = useState(null); // gescrubbter Punkt-Index
+
   if (points.length < 2) return null;
 
   // SVG-Maße
@@ -6036,6 +6040,17 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
   const areaPath = linePath + ' L' + svgPoints[svgPoints.length - 1].x.toFixed(1) + ',' + (H - P).toFixed(1) + ' L' + svgPoints[0].x.toFixed(1) + ',' + (H - P).toFixed(1) + ' Z';
   const bestPoint = svgPoints.find(p => p.id === (best && best.competition && best.competition.id));
 
+  const activeP = active != null ? svgPoints[active] : null;
+  const leftPct = activeP ? Math.min(88, Math.max(12, (activeP.x / W) * 100)) : 0;
+  const pick = (clientX) => {
+    const el = wrapRef.current; if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const vbx = ((clientX - rect.left) / Math.max(1, rect.width)) * W;
+    let bi = 0, bd = Infinity;
+    svgPoints.forEach((p, i) => { const d = Math.abs(p.x - vbx); if (d < bd) { bd = d; bi = i; } });
+    setActive(bi);
+  };
+
   return (
     <section>
       <div className="flex items-center justify-between mb-2 px-4">
@@ -6045,42 +6060,62 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
         <button onClick={onTapWettkampf} className="text-[13px] text-[#007AFF] font-medium active:opacity-60">Alle ansehen ›</button>
       </div>
       <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
-        <svg viewBox={'0 0 ' + W + ' ' + H} className="w-full" preserveAspectRatio="none" style={{ height: 'auto' }}>
-          {/* Y-Gridlines */}
-          {[0, 0.25, 0.5, 0.75, 1].map(r => {
-            const y = H - P - r * (H - 2 * P);
-            const val = yMin + r * yRange;
-            return (
-              <g key={r}>
-                <line x1={P} y1={y} x2={W - P} y2={y}
-                  stroke="#E5E5EA" strokeWidth="1"
-                  strokeDasharray={r === 0 || r === 1 ? '' : '2 3'} />
-                <text x={P - 4} y={y + 3} fontSize="9" fill="#8E8E93" textAnchor="end">
-                  {val.toFixed(0)}
-                </text>
-              </g>
-            );
-          })}
-          {/* Fläche unter der Linie */}
-          <path d={areaPath} fill="rgba(255, 149, 0, 0.12)" />
-          {/* Linie */}
-          <path d={linePath} fill="none" stroke="#FF9500" strokeWidth="2.5" strokeLinejoin="round" />
-          {/* Punkte */}
-          {svgPoints.map((p, i) => {
-            const isBest = bestPoint && p.id === bestPoint.id;
-            return (
-              <g key={i}>
-                <circle cx={p.x} cy={p.y} r={isBest ? 6 : 3.5} fill={isBest ? '#FBBF24' : '#FF9500'} stroke="#fff" strokeWidth="1.5" />
-                {isBest && (
-                  <text x={p.x} y={p.y - 12} fontSize="10" fontWeight="700" fill="#92400E" textAnchor="middle">
-                    Best
+        <div ref={wrapRef} data-no-swipe className="relative select-none" style={{ touchAction: 'pan-y' }}
+          onPointerDown={(e) => { pressing.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* egal */ } pick(e.clientX); }}
+          onPointerMove={(e) => { if (pressing.current) pick(e.clientX); }}
+          onPointerUp={() => { pressing.current = false; setActive(null); }}
+          onPointerCancel={() => { pressing.current = false; setActive(null); }}
+          onPointerLeave={() => { if (pressing.current) { pressing.current = false; setActive(null); } }}>
+          <svg viewBox={'0 0 ' + W + ' ' + H} className="w-full" preserveAspectRatio="none" style={{ height: 'auto' }}>
+            {/* Y-Gridlines */}
+            {[0, 0.25, 0.5, 0.75, 1].map(r => {
+              const y = H - P - r * (H - 2 * P);
+              const val = yMin + r * yRange;
+              return (
+                <g key={r}>
+                  <line x1={P} y1={y} x2={W - P} y2={y}
+                    stroke="#E5E5EA" strokeWidth="1"
+                    strokeDasharray={r === 0 || r === 1 ? '' : '2 3'} />
+                  <text x={P - 4} y={y + 3} fontSize="9" fill="#8E8E93" textAnchor="end">
+                    {val.toFixed(0)}
                   </text>
-                )}
-              </g>
-            );
-          })}
-        </svg>
-        <div className="flex justify-between text-[10px] text-slate-400 mt-1 px-7">
+                </g>
+              );
+            })}
+            {/* Fläche unter der Linie */}
+            <path d={areaPath} fill="rgba(255, 149, 0, 0.12)" />
+            {/* Linie */}
+            <path d={linePath} fill="none" stroke="#FF9500" strokeWidth="2.5" strokeLinejoin="round" />
+            {/* Crosshair beim Scrubben */}
+            {activeP && <line x1={activeP.x} y1={P - 8} x2={activeP.x} y2={H - P} stroke="#FF9500" strokeWidth="1.5" strokeDasharray="3 3" />}
+            {/* Punkte */}
+            {svgPoints.map((p, i) => {
+              const isBest = bestPoint && p.id === bestPoint.id;
+              return (
+                <g key={i}>
+                  <circle cx={p.x} cy={p.y} r={isBest ? 6 : 3.5} fill={isBest ? '#FBBF24' : '#FF9500'} stroke="#fff" strokeWidth="1.5" />
+                  {isBest && !activeP && (
+                    <text x={p.x} y={p.y - 12} fontSize="10" fontWeight="700" fill="#92400E" textAnchor="middle">
+                      Best
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+            {/* aktiver (gescrubbter) Punkt hervorgehoben */}
+            {activeP && <circle cx={activeP.x} cy={activeP.y} r="6.5" fill="#FF9500" stroke="#fff" strokeWidth="2.5" />}
+          </svg>
+          {/* Werte-Tooltip an der Finger-Position */}
+          {activeP && (
+            <div className="absolute -top-1 pointer-events-none z-10" style={{ left: leftPct + '%', transform: 'translateX(-50%)' }}>
+              <div className="bg-[#1c1c1e] text-white rounded-lg px-2.5 py-1 text-center shadow-lg whitespace-nowrap">
+                <div className="text-[13px] font-bold tabular-nums leading-tight">{activeP.final.toFixed(2)}</div>
+                <div className="text-[10px] text-slate-300 leading-tight">{formatDateShort(activeP.date)}</div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="flex justify-between text-[10px] text-slate-400 mt-1 px-2">
           <span>{formatDateShort(svgPoints[0].date)}</span>
           <span className="text-slate-500 font-medium">
             {points.length} Wettkämpfe · Bestleistung {Math.max(...points.map(p => p.final)).toFixed(2)}
