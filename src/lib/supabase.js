@@ -204,6 +204,13 @@ export async function deleteAthlete(id) {
   return { error };
 }
 
+// Athleten zusammenführen: hängt alle Daten des Quell-Athleten (Platzhalter)
+// auf das echte Ziel-Konto um und löscht die Quelle (SECURITY-DEFINER-RPC).
+export async function mergeAthlete(sourceId, targetId) {
+  const { error } = await supabase.rpc('merge_athlete', { p_source: sourceId, p_target: targetId });
+  return { error };
+}
+
 // =============================================================
 // FEEDBACK — Coaching-Feedback pro Übung (+ Sportler/Team).
 // Sichtbarkeit via RLS (can_access_athlete) — eigene + Trainer + Team.

@@ -595,6 +595,46 @@ CREATE POLICY clubs_select ON clubs
   USING (true);
 
 -- =====================================================
+-- Athleten zusammenführen (Platzhalter → echtes Konto)
+-- -----------------------------------------------------
+-- Hängt alle Daten eines Quell-Athleten (z. B. ein Import-Platzhalter ohne
+-- Login) auf einen Ziel-Athleten (echtes Konto) um und löscht die Quelle.
+-- Berechtigung: Aufrufer muss die Quelle verwalten UND das Ziel verwalten/
+-- besitzen (oder Admin sein). SECURITY DEFINER, daher RLS-sicher gekapselt.
+CREATE OR REPLACE FUNCTION merge_athlete(p_source UUID, p_target UUID)
+RETURNS VOID AS $$
+DECLARE
+  can_src BOOLEAN;
+  can_tgt BOOLEAN;
+BEGIN
+  IF p_source IS NULL OR p_target IS NULL OR p_source = p_target THEN
+    RAISE EXCEPTION 'Ungültige Athleten-IDs';
+  END IF;
+  SELECT EXISTS (
+    SELECT 1 FROM athletes
+     WHERE id = p_source AND (created_by_coach_id = auth.uid() OR is_admin())
+  ) INTO can_src;
+  SELECT EXISTS (
+    SELECT 1 FROM athletes
+     WHERE id = p_target AND (created_by_coach_id = auth.uid() OR auth_user_id = auth.uid() OR is_admin())
+  ) INTO can_tgt;
+  IF NOT (can_src AND can_tgt) THEN
+    RAISE EXCEPTION 'Keine Berechtigung zum Zusammenführen';
+  END IF;
+
+  -- Daten der Quelle auf das Ziel umhängen.
+  UPDATE feedback_entries SET athlete_id = p_target WHERE athlete_id = p_source;
+  UPDATE sessions         SET athlete_id = p_target WHERE athlete_id = p_source;
+  UPDATE competitions     SET athlete_id = p_target WHERE athlete_id = p_source;
+  -- Platzhalter-Verknüpfungen sind irrelevant — entfernen.
+  DELETE FROM team_members    WHERE athlete_id = p_source;
+  DELETE FROM athlete_coaches WHERE athlete_id = p_source;
+  -- Platzhalter selbst löschen.
+  DELETE FROM athletes WHERE id = p_source;
+END;
+$$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER;
+
+-- =====================================================
 -- 10) FERTIG. Im Supabase-Dashboard noch konfigurieren:
 -- =====================================================
 -- Authentication → Providers → Email → "Confirm email" = ON
