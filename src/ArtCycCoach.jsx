@@ -12979,6 +12979,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
   });
   const [importMsg, setImportMsg] = useState(() => initVal('importMsg', ''));
   const [importPreview, setImportPreview] = useState(() => initVal('importPreview', null));
+  const [scanProgress, setScanProgress] = useState(0); // 0..1 für die Foto-Erkennung (bestimmt)
   const [showPasteArea, setShowPasteArea] = useState(false);
   const [pasteText, setPasteText] = useState('');
 
@@ -13333,30 +13334,45 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     const list = Array.from(files || []);
     if (list.length === 0) return;
     setImportStatus('parsing');
+    setScanProgress(0.04);
 
     // 1) Primär: KI-Bilderkennung (Vision-LLM) — robust bei Fotos.
     const firstImg = list.find(f => /^image\//.test(f.type));
     if (firstImg) {
       try {
-        setImportMsg('KI liest das Bild …');
+        setImportMsg('Bild wird vorbereitet …'); setScanProgress(0.1);
         // Höhere Auflösung als früher (1600) — die feinen Fehlerzeichen brauchen Detail.
         const dataUrl = await imageFileToDataUrl(firstImg, 2400, 0.9);
+        setImportMsg('KI liest Stammdaten & Tabelle …'); setScanProgress(0.18);
         const num = (v) => v == null || v === '' ? undefined : (typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.')));
         const c = (v) => { const x = num(v); return typeof x === 'number' && !isNaN(x) ? x : 0; };
         // Anker: bekannte Punktfolge des gewählten Programms (hilft der Zeilen-Zuordnung).
         const programPoints = (program && Array.isArray(program.exercises))
           ? program.exercises.map(e => Number(e.points)).filter(n => Number.isFinite(n)) : null;
-        // KI-Zeilen → interne Zeilen (Symbole + Schw% je KG; T bewusst 0 aus Foto).
-        const toRows = (exs) => (exs || []).map(r => ({
-          points: num(r.points), conf: (typeof r.confidence === 'number' ? r.confidence : null),
-          kg1: { X: c(r.kg1?.x), W: c(r.kg1?.w), S: c(r.kg1?.s), K: c(r.kg1?.k), p: c(r.kg1?.schw), T: 0 },
-          kg2: { X: c(r.kg2?.x), W: c(r.kg2?.w), S: c(r.kg2?.s), K: c(r.kg2?.k), p: c(r.kg2?.schw), T: 0 },
-        }));
+        // KI liefert das ROH-Raster: P/X/W/S/K je als [KG1, KG2, KG3]. Wir wenden
+        // die Spalten→KG/Symbol-Semantik an (Index 0 = KG1, 1 = KG2) — exakt wie
+        // der PDF-Parser. Fällt auf das alte kg1/kg2-Format zurück, falls vorhanden.
+        const cell = (a, i) => { const n = Number(a && a[i]); return Number.isFinite(n) && n >= 0 ? n : 0; };
+        const toRows = (exs) => (exs || []).map(r => {
+          if (r && (r.X || r.P || r.W || r.S || r.K)) {
+            return {
+              points: num(r.points), conf: (typeof r.confidence === 'number' ? r.confidence : null),
+              kg1: { X: cell(r.X, 0), W: cell(r.W, 0), S: cell(r.S, 0), K: cell(r.K, 0), p: cell(r.P, 0), T: 0 },
+              kg2: { X: cell(r.X, 1), W: cell(r.W, 1), S: cell(r.S, 1), K: cell(r.K, 1), p: cell(r.P, 1), T: 0 },
+            };
+          }
+          return {
+            points: num(r.points), conf: (typeof r.confidence === 'number' ? r.confidence : null),
+            kg1: { X: c(r.kg1?.x), W: c(r.kg1?.w), S: c(r.kg1?.s), K: c(r.kg1?.k), p: c(r.kg1?.schw), T: 0 },
+            kg2: { X: c(r.kg2?.x), W: c(r.kg2?.w), S: c(r.kg2?.s), K: c(r.kg2?.k), p: c(r.kg2?.schw), T: 0 },
+          };
+        });
         // Abzüge AUS den gezählten Zeichen — exakt der schwierige Teil, den der
         // Footer als Soll nennt → Prüfsumme.
         const deduct = (rows) => { let a1 = 0, s1 = 0, a2 = 0, s2 = 0; for (const r of rows) { a1 += r.kg1.X * 0.2 + r.kg1.W * 0.5 + r.kg1.S * 1 + r.kg1.K * 2; a2 += r.kg2.X * 0.2 + r.kg2.W * 0.5 + r.kg2.S * 1 + r.kg2.K * 2; s1 += (r.points || 0) * (r.kg1.p || 0) / 100; s2 += (r.points || 0) * (r.kg2.p || 0) / 100; } return { a1, s1, a2, s2 }; };
 
         const first = await scanWertungsbogenVision(dataUrl, { programPoints });
+        setScanProgress(0.35);
         if (!first.error && first.data) {
           const data = first.data;
           const a1Soll = num(data.kg1_ausfuehrung), a2Soll = num(data.kg2_ausfuehrung);
@@ -13373,7 +13389,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             if (typeof s1Soll === 'number' && Math.abs(d.s1 - s1Soll) > tol) parts.push(`KG1-Schwierigkeitsabzug muss ${s1Soll.toFixed(1)} sein (du zähltest ${d.s1.toFixed(1)})`);
             if (typeof s2Soll === 'number' && Math.abs(d.s2 - s2Soll) > tol) parts.push(`KG2-Schwierigkeitsabzug muss ${s2Soll.toFixed(1)} sein (du zähltest ${d.s2.toFixed(1)})`);
             if (parts.length === 0) break;
-            setImportMsg(`KI prüft nach (Durchlauf ${attempt + 2}) …`);
+            setImportMsg(`KI prüft die Summen nach (Durchlauf ${attempt + 2}) …`); setScanProgress(0.35 + 0.03 * (attempt + 1));
             const corr = await scanWertungsbogenVision(dataUrl, { programPoints, tableOnly: true, correction: 'Laut Footer: ' + parts.join('; ') + '.' });
             if (corr.error || !corr.data || !Array.isArray(corr.data.exercises) || corr.data.exercises.length === 0) break;
             const cand = toRows(corr.data.exercises);
@@ -13386,13 +13402,14 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           // einzeln lesen und über die Punktwerte dem Programm zuordnen.
           if (programPoints && programPoints.length && (best.length === 0 || bestErr > tol)) {
             try {
-              setImportMsg('KI liest die Tabelle in Ausschnitten …');
+              setImportMsg('Tabelle wird in Ausschnitte geteilt …'); setScanProgress(0.42);
               const imgEl = await loadImageEl(dataUrl);
               const bandCount = programPoints.length > 18 ? 5 : programPoints.length > 8 ? 4 : 3;
               const tiles = sliceImageBands(imgEl, { bands: bandCount, overlap: 0.2, maxW: 2000, quality: 0.9 });
               const tileRows = [];
               for (let ti = 0; ti < tiles.length; ti++) {
-                setImportMsg(`KI liest Ausschnitt ${ti + 1}/${tiles.length} …`);
+                setImportMsg(`KI liest Ausschnitt ${ti + 1} von ${tiles.length} …`);
+                setScanProgress(0.45 + 0.5 * ((ti + 1) / tiles.length));
                 const tr = await scanWertungsbogenVision(tiles[ti], { tableOnly: true });
                 if (!tr.error && tr.data && Array.isArray(tr.data.exercises)) tileRows.push(...toRows(tr.data.exercises));
               }
@@ -13422,6 +13439,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             || parsed.kg1_gesamtabzug != null || parsed.kg1_schwierigkeit != null || parsed.kg1_ausfuehrung != null || parsed.kg1_ausgefahren != null
             || (parsed._scanRows && parsed._scanRows.length > 0);
           if (hasAny) {
+            setScanProgress(1);
             setImportPreview(parsed);
             setImportStatus('success');
             const tag = parsed._scanRows ? (parsed._scanChecksumOk ? ' ✓ Summen stimmen' : ' — Summen prüfen') : '';
@@ -13712,10 +13730,16 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             <div className="bg-white dark:bg-white/10 rounded-xl p-3.5 flex items-center gap-3">
               <Loader2 size={18} className="animate-spin text-[#FF9500] shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-medium text-violet-900 dark:text-violet-100 truncate">{importMsg || 'Wird gelesen …'}</div>
-                <div className="mt-1.5 h-1 rounded-full bg-violet-200/60 dark:bg-white/10 overflow-hidden">
-                  <div className="h-full w-1/3 rounded-full bg-[#FF9500] acc-indeterminate" />
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[13px] font-medium text-violet-900 dark:text-violet-100 truncate">{importMsg || 'Wird gelesen …'}</div>
+                  {scanProgress > 0 && <div className="text-[12px] font-semibold tabular-nums text-[#FF9500] shrink-0">{Math.round(scanProgress * 100)}%</div>}
                 </div>
+                <div className="mt-1.5 h-1.5 rounded-full bg-violet-200/60 dark:bg-white/10 overflow-hidden">
+                  {scanProgress > 0
+                    ? <div className="h-full rounded-full bg-[#FF9500] transition-[width] duration-300 ease-out" style={{ width: Math.round(scanProgress * 100) + '%' }} />
+                    : <div className="h-full w-1/3 rounded-full bg-[#FF9500] acc-indeterminate" />}
+                </div>
+                <div className="text-[11px] text-violet-900/60 dark:text-violet-200/60 mt-1">Foto-Erkennung kann je nach Bild etwas dauern — bitte offen lassen.</div>
               </div>
             </div>
           )}
