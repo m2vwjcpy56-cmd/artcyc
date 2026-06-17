@@ -8018,9 +8018,13 @@ function TrainingsplanView({ data, setData, onBack }) {
                         })()}
                       </div>
                       {it.logMode === '3' && (
-                        <input value={it.thirdLabel ?? 'Gefährlich'} onChange={e => patchItem(it.id, { thirdLabel: e.target.value })}
-                          placeholder="3. Kategorie (z. B. Gefährlich)"
-                          className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-[14px] bg-white outline-none" />
+                        <div className="space-y-1">
+                          <span className="text-[12px] text-slate-500">Name der 3. Kategorie</span>
+                          <input value={it.thirdLabel ?? 'Gefährlich'} onChange={e => patchItem(it.id, { thirdLabel: e.target.value })}
+                            placeholder="z. B. Gefährlich, Unsicher, Sturz"
+                            className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-[14px] bg-white outline-none" />
+                          <span className="text-[11px] text-slate-400">Dritte Bewertungsstufe neben „Geklappt" und „Nicht" — z. B. für riskante Versuche.</span>
+                        </div>
                       )}
                       {(it.logMode === '2' || it.logMode === '3') && (
                         <>
