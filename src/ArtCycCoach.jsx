@@ -7860,13 +7860,13 @@ function TrainingsplanView({ data, setData, onBack }) {
               {(draft.items || []).map((it, i) => (
                 <div key={it.id} className="card-surface rounded-2xl p-3 space-y-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[12px] text-slate-400 w-5 shrink-0">{i + 1}.</span>
+                    <span className="w-6 h-6 shrink-0 rounded-full bg-[#FF9500] text-white text-[12px] font-bold flex items-center justify-center tabular-nums">{i + 1}</span>
                     <input value={it.label} onChange={e => patchItem(it.id, { label: e.target.value })}
                       placeholder="z. B. Aufwärmen / Maute Sprung / Teil 3-4"
                       className="flex-1 min-w-0 px-2 py-1.5 border border-slate-300 rounded-lg text-[15px] bg-white outline-none" />
                     <button onClick={() => removeItem(it.id)} className="p-1.5 text-rose-500 active:opacity-60 shrink-0"><Trash2 size={16} /></button>
                   </div>
-                  <div className="pl-7 space-y-2.5">
+                  <div className="pl-8 space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[13px] text-slate-500">Anzahl</span>
                       <input type="number" inputMode="numeric" value={it.reps ?? ''}
@@ -10611,7 +10611,24 @@ function IOSToggle({ checked, onChange }) {
 // =============================================================
 // Suchbarer Übungs-Picker: eigene Übungen zuerst + Suche im UCI-Reglement.
 // onPick(exercise, isNew) — isNew=true bei frisch aus dem Reglement erstellter Übung.
+// Höhe der eingeblendeten iOS-Tastatur (via visualViewport). Damit lassen sich
+// Bottom-Sheets über die Tastatur heben, statt dahinter zu verschwinden.
+function useKeyboardInset() {
+  const [inset, setInset] = useState(0);
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return undefined;
+    const onResize = () => setInset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
+    onResize();
+    vv.addEventListener('resize', onResize);
+    vv.addEventListener('scroll', onResize);
+    return () => { vv.removeEventListener('resize', onResize); vv.removeEventListener('scroll', onResize); };
+  }, []);
+  return inset;
+}
+
 function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung wählen' }) {
+  const kbInset = useKeyboardInset();
   const [query, setQuery] = useState('');
   useEffect(() => { if (open) setQuery(''); }, [open]);
   if (!open) return null;
@@ -10627,7 +10644,8 @@ function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-[#F2F2F7] dark:bg-[#1c1c1e] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#F2F2F7] dark:bg-[#1c1c1e] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}
+        style={kbInset > 0 ? { marginBottom: kbInset, height: 'calc(100dvh - ' + kbInset + 'px - 16px)' } : undefined}>
         <div className="px-4 py-3 flex items-center justify-between border-b border-[#C6C6C8]/40">
           <h3 className="font-semibold text-[17px]">{title}</h3>
           <button onClick={onClose} className="p-1 text-[#8E8E93] active:opacity-60"><X size={20} /></button>
