@@ -8978,12 +8978,9 @@ function FeedbackSection({ athleteId, exercise, defaultOpen = false }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between px-1">
-        <button onClick={() => setOpen(o => !o)} className="flex items-center gap-1.5 active:opacity-60 pl-3">
-          <span className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
-            Feedback{entries.length ? ` (${entries.length})` : ''}
-          </span>
-          <ChevronRight size={14} strokeWidth={2.4} className={'text-[#C7C7CC] transition-transform ' + (open ? 'rotate-90' : '')} />
-        </button>
+        <span className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium pl-3">
+          Feedback{entries.length ? ` (${entries.length})` : ''}
+        </span>
         {athleteId && (
           <button onClick={() => { setEditEntry(null); setEditorOpen(true); }}
             className="text-[13px] text-[#FF9500] font-semibold active:opacity-60 flex items-center gap-1 pr-1">
@@ -9004,8 +9001,6 @@ function FeedbackSection({ athleteId, exercise, defaultOpen = false }) {
         </div>
       )}
 
-      {open && (<>
-
       {!athleteId ? (
         <div className="bg-white rounded-2xl px-4 py-4 text-[13px] text-[#8E8E93] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
           Wähle oben einen Sportler/ein Team, um Feedback zu erfassen.
@@ -9018,7 +9013,7 @@ function FeedbackSection({ athleteId, exercise, defaultOpen = false }) {
         </div>
       ) : (
         <div className="bg-white rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-          {entries.map((f, idx) => (
+          {(open ? entries : entries.slice(0, 2)).map((f, idx) => (
             <div key={f.id} className={'px-4 py-3.5 ' + (idx > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
               {f.fehlerbild && (
                 <div className="text-[14px] text-black leading-snug">
@@ -9054,7 +9049,13 @@ function FeedbackSection({ athleteId, exercise, defaultOpen = false }) {
           ))}
         </div>
       )}
-      </>)}
+
+      {athleteId && !loading && entries.length > 2 && (
+        <button onClick={() => setOpen(o => !o)}
+          className="w-full text-[13px] text-[#007AFF] font-medium py-1 active:opacity-60">
+          {open ? 'Weniger anzeigen' : `Alle ${entries.length} Feedbacks anzeigen`}
+        </button>
+      )}
 
       <FeedbackEditor open={editorOpen} athleteId={athleteId} exercise={exercise} entry={editEntry}
         onClose={() => setEditorOpen(false)} onSaved={() => { setEditorOpen(false); load(); }} />
@@ -9335,11 +9336,20 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
           </div>
         )}
 
-        {/* 08 — ADMIN (Footer, klar getrennt) */}
+        {/* Feedback — direkt unter der Statistik */}
+        <FeedbackSection athleteId={data._viewingAthleteId || null} exercise={exercise} />
+
+        {/* 08 — Verwalten (Footer, klar getrennt) */}
         <div className="pt-2 space-y-2">
           <div className="text-[12px] uppercase tracking-wide text-slate-400 px-4 font-medium">Verwalten</div>
 
-          {/* XLSX-Import — sekundär/utility (nur 3-Status) */}
+          <IOSList>
+            {onEdit && <IOSListRow onClick={onEdit} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Edit2 size={17} className="text-[#007AFF]" /> Bearbeiten</span></IOSListRow>}
+            {onArchive && <IOSListRow onClick={onArchive} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Lock size={17} className="text-[#FF9500]" /> {exercise.active ? 'Archivieren' : 'Reaktivieren'}</span></IOSListRow>}
+            {onDelete && <IOSListRow onClick={onDelete}><span className="flex items-center gap-3 text-[#FF3B30]"><Trash2 size={17} /> Löschen</span></IOSListRow>}
+          </IOSList>
+
+          {/* XLSX-Import — sekundär/utility (nur 3-Status), ganz unten */}
           {is3 && setData && (
             <div className="card-surface rounded-[22px] p-4 space-y-3">
               <div className="flex items-start gap-2">
@@ -9389,16 +9399,6 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
               )}
             </div>
           )}
-
-          {/* Feedback — unter der Statistik, immer eingeklappt: zeigt nur die
-              KI-Zusammenfassung; Einzel-Feedbacks erst auf Ausklappen. */}
-          <FeedbackSection athleteId={data._viewingAthleteId || null} exercise={exercise} />
-
-          <IOSList>
-            {onEdit && <IOSListRow onClick={onEdit} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Edit2 size={17} className="text-[#007AFF]" /> Bearbeiten</span></IOSListRow>}
-            {onArchive && <IOSListRow onClick={onArchive} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Lock size={17} className="text-[#FF9500]" /> {exercise.active ? 'Archivieren' : 'Reaktivieren'}</span></IOSListRow>}
-            {onDelete && <IOSListRow onClick={onDelete}><span className="flex items-center gap-3 text-[#FF3B30]"><Trash2 size={17} /> Löschen</span></IOSListRow>}
-          </IOSList>
         </div>
 
       </div>
