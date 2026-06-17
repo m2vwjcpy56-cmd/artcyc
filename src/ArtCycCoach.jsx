@@ -7682,11 +7682,41 @@ function TrainingsplanView({ data, setData, onBack }) {
   // überholen sich/gehen verloren, die Anzeige hakt. Daher: sofort lokal
   // anzeigen (optimistic) und gebündelt (debounced) in echte Sessions schreiben.
   const dataRef = useRef(data); dataRef.current = data;
-  const optimisticRef = useRef({}); // exId -> entries[]
+  // Tages-Puffer der Taps SYNCHRON in localStorage — überlebt App-Schließen
+  // zuverlässig (im Gegensatz zur asynchronen DB-/Cloud-Schreibung, die iOS beim
+  // Suspendieren abbricht). Das ist Theresas „Zähler nach Schließen weg"-Fix.
+  const bufKey = 'artcyc:plantap:' + (athleteId || 'me') + ':' + today;
+  const optimisticRef = useRef(null); // exId -> entries[]
+  if (optimisticRef.current === null) {
+    let init = {};
+    try { const raw = localStorage.getItem(bufKey); if (raw) init = JSON.parse(raw) || {}; } catch { /* egal */ }
+    optimisticRef.current = init;
+  }
+  const persistBuf = () => {
+    try { localStorage.setItem(bufKey, JSON.stringify(optimisticRef.current)); } catch { /* egal */ }
+  };
   const flushTimer = useRef(null);
   const [, setTick] = useState(0);
   const rerender = () => setTick(t => t + 1);
   const [celebrate, setCelebrate] = useState(null); // itemId mit „Anzahl erreicht"
+
+  // Puffer beim Athleten-/Tageswechsel neu laden; alte Tages-Puffer aufräumen
+  // (sie wurden tagsüber bereits in die DB geschrieben → „Reset am Tagesende").
+  useEffect(() => {
+    let init = {};
+    try { const raw = localStorage.getItem(bufKey); if (raw) init = JSON.parse(raw) || {}; } catch { /* egal */ }
+    optimisticRef.current = init;
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('artcyc:plantap:') && !k.endsWith(':' + today)) localStorage.removeItem(k);
+      }
+    } catch { /* egal */ }
+    // Falls die letzte DB-Schreibung beim Schließen abgebrochen wurde: aus dem
+    // Puffer wiederherstellen + erneut in die DB syncen.
+    if (Object.keys(init).length) { rerender(); scheduleFlush(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bufKey]);
 
   // Genau EINE Tages-Session pro Übung lesen (nicht über mehrere summieren —
   // das war Theresas Bug: Zahl schaukelte sich auf / war bei jedem Öffnen anders).
@@ -7696,31 +7726,45 @@ function TrainingsplanView({ data, setData, onBack }) {
   };
   const getEntries = (exId) => exId in optimisticRef.current ? optimisticRef.current[exId] : todayEntries(exId);
 
-  const flushAll = () => {
-    let sessions = (dataRef.current.sessions || []).slice();
-    let changed = false;
-    for (const exId of Object.keys(optimisticRef.current)) {
-      const entries = optimisticRef.current[exId];
-      const todays = sessions.filter(s => s.exerciseId === exId && s.date === today);
-      if (entries.length === 0) {
-        // Alle heutigen Sessions dieser Übung entfernen.
-        if (todays.length) { sessions = sessions.filter(s => !(s.exerciseId === exId && s.date === today)); changed = true; }
-      } else if (todays.length >= 1) {
-        // EINE behalten (mit den aktuellen Einträgen), eventuelle Duplikate löschen.
-        const keepId = todays[0].id;
-        sessions = sessions
-          .filter(s => !(s.exerciseId === exId && s.date === today && s.id !== keepId))
-          .map(s => (s.exerciseId === exId && s.date === today) ? { ...s, entries } : s);
-        changed = true;
-      } else {
-        const ex = activeExercises.find(e => e.id === exId);
-        sessions = [...sessions, { id: uid(), date: today, athleteId, exerciseId: exId, exerciseName: ex?.name || '', entries, notes: null, withRope: ex?.has_rope_variant ? true : null, created: new Date().toISOString() }];
-        changed = true;
+  // In-Flight-Schutz: bei schnellem Tippen würden sich mehrere (asynchrone)
+  // DB-Schreibungen überholen und Duplikat-Sessions anlegen. Daher serialisieren
+  // — läuft schon ein Flush, wird nur „dirty" markiert und danach erneut gefeuert.
+  const flushing = useRef(false);
+  const flushDirty = useRef(false);
+  const flushAll = async () => {
+    if (flushing.current) { flushDirty.current = true; return; }
+    flushing.current = true;
+    try {
+      let sessions = (dataRef.current.sessions || []).slice();
+      let changed = false;
+      for (const exId of Object.keys(optimisticRef.current)) {
+        const entries = optimisticRef.current[exId];
+        const todays = sessions.filter(s => s.exerciseId === exId && s.date === today);
+        if (entries.length === 0) {
+          // Alle heutigen Sessions dieser Übung entfernen.
+          if (todays.length) { sessions = sessions.filter(s => !(s.exerciseId === exId && s.date === today)); changed = true; }
+        } else if (todays.length >= 1) {
+          // EINE behalten (mit den aktuellen Einträgen), eventuelle Duplikate löschen.
+          const keepId = todays[0].id;
+          sessions = sessions
+            .filter(s => !(s.exerciseId === exId && s.date === today && s.id !== keepId))
+            .map(s => (s.exerciseId === exId && s.date === today) ? { ...s, entries } : s);
+          changed = true;
+        } else {
+          const ex = activeExercises.find(e => e.id === exId);
+          sessions = [...sessions, { id: uid(), date: today, athleteId, exerciseId: exId, exerciseName: ex?.name || '', entries, notes: null, withRope: ex?.has_rope_variant ? true : null, created: new Date().toISOString() }];
+          changed = true;
+        }
       }
+      if (changed) await setData({ ...dataRef.current, sessions });
+    } finally {
+      flushing.current = false;
+      if (flushDirty.current) { flushDirty.current = false; flushAll(); }
     }
-    if (changed) setData({ ...dataRef.current, sessions });
   };
-  const scheduleFlush = () => { clearTimeout(flushTimer.current); flushTimer.current = setTimeout(flushAll, 500); };
+  // Kurzer Debounce (200 ms) bündelt nur eine Tap-Salve, schreibt sonst quasi
+  // sofort in die DB — so steht jede Aktion fast unmittelbar in der Datenbank.
+  const scheduleFlush = () => { clearTimeout(flushTimer.current); flushTimer.current = setTimeout(flushAll, 200); };
   // Immer die aktuellste flushAll referenzieren (für Listener-Closures).
   const flushRef = useRef(flushAll); flushRef.current = flushAll;
   useEffect(() => () => { clearTimeout(flushTimer.current); flushRef.current(); }, []); // beim Verlassen sofort sichern
@@ -7739,7 +7783,7 @@ function TrainingsplanView({ data, setData, onBack }) {
 
   const logEntry = (it, exId, kind) => {
     optimisticRef.current[exId] = [...getEntries(exId), kind];
-    rerender(); scheduleFlush();
+    persistBuf(); rerender(); scheduleFlush();
     const reps = Number(it.reps || 0);
     if (reps > 0 && optimisticRef.current[exId].length === reps) {
       const ex = activeExercises.find(e => e.id === exId);
@@ -7752,7 +7796,7 @@ function TrainingsplanView({ data, setData, onBack }) {
     const cur = getEntries(exId);
     if (cur.length === 0) return;
     optimisticRef.current[exId] = cur.slice(0, -1);
-    rerender(); scheduleFlush();
+    persistBuf(); rerender(); scheduleFlush();
   };
 
   // Abhaken (nicht-verknüpfte Einträge): „erledigt heute" pro Eintrag, ohne in
