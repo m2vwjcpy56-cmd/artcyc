@@ -8956,14 +8956,6 @@ function FeedbackSection({ athleteId, exercise, defaultOpen = false }) {
         </div>
       )}
 
-      {/* Kompakt-Hinweis wenn eingeklappt + es gibt Einträge */}
-      {!open && entries.length > 0 && (
-        <button onClick={() => setOpen(true)}
-          className="w-full text-left text-[12px] text-[#8E8E93] px-4 active:opacity-60">
-          {entries.length} {entries.length === 1 ? 'Eintrag' : 'Einträge'} — zum Ansehen ausklappen
-        </button>
-      )}
-
       {open && (<>
 
       {!athleteId ? (
@@ -8990,28 +8982,17 @@ function FeedbackSection({ athleteId, exercise, defaultOpen = false }) {
                   <span className="text-[#34C759] font-medium">→ </span>{f.handlungsanweisung}
                 </div>
               )}
-              <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                {f.exercise_name && f.exercise_name.trim().toLowerCase() !== (exercise.name || '').trim().toLowerCase() && (
-                  <IOSTag color="orange">{f.exercise_name}</IOSTag>
-                )}
-                {f.context && <IOSTag color="gray">{f.context}</IOSTag>}
-                {f.given_by && <IOSTag color="purple">{f.given_by}</IOSTag>}
-                {f.feedback_type && <IOSTag color="blue">{f.feedback_type}</IOSTag>}
-                {f.dartfish_url && (
-                  <a href={f.dartfish_url} target="_blank" rel="noreferrer"
-                    className="text-[12px] text-[#007AFF] font-medium active:opacity-60">Dartfish ↗</a>
-                )}
-              </div>
-              {FB_RATINGS.some(r => f[r.key]) && (
-                <div className="flex items-center gap-2 flex-wrap mt-2">
-                  {FB_RATINGS.filter(r => f[r.key]).map(r => (
-                    <span key={r.key} className="inline-flex items-center gap-1 text-[11px] text-[#8E8E93]">
-                      <span className="w-2 h-2 rounded-full" style={{ background: fbColor(f[r.key]) }} />
-                      {r.label} {f[r.key]}
-                    </span>
-                  ))}
-                </div>
-              )}
+              {(() => {
+                const variant = (f.exercise_name && f.exercise_name.trim().toLowerCase() !== (exercise.name || '').trim().toLowerCase()) ? f.exercise_name.trim() : null;
+                const metaText = [variant, f.given_by, f.context, f.feedback_type].filter(Boolean).join(' · ');
+                if (!metaText && !f.dartfish_url) return null;
+                return (
+                  <div className="text-[12px] text-[#8E8E93] mt-1.5">
+                    {metaText}
+                    {f.dartfish_url && <>{metaText ? ' · ' : ''}<a href={f.dartfish_url} target="_blank" rel="noreferrer" className="text-[#007AFF] font-medium active:opacity-60">Dartfish ↗</a></>}
+                  </div>
+                );
+              })()}
               <div className="flex items-center justify-between mt-2">
                 <span className="text-[11px] text-[#C7C7CC]">{formatDateShort(f.created_at)}</span>
                 <div className="flex gap-1">
@@ -9361,8 +9342,9 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
             </div>
           )}
 
-          {/* Feedback — unter der Statistik, eingeklappt (außer ohne Trainingsdaten) */}
-          <FeedbackSection athleteId={data._viewingAthleteId || null} exercise={exercise} defaultOpen={!hasAnyData} />
+          {/* Feedback — unter der Statistik, immer eingeklappt: zeigt nur die
+              KI-Zusammenfassung; Einzel-Feedbacks erst auf Ausklappen. */}
+          <FeedbackSection athleteId={data._viewingAthleteId || null} exercise={exercise} />
 
           <IOSList>
             {onEdit && <IOSListRow onClick={onEdit} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Edit2 size={17} className="text-[#007AFF]" /> Bearbeiten</span></IOSListRow>}
