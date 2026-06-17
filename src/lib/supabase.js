@@ -211,6 +211,16 @@ export async function mergeAthlete(sourceId, targetId) {
   return { error };
 }
 
+// Feedback-Anzahl je Athlet (alle sichtbaren, RLS-gefiltert) — damit man in der
+// Sportler-Liste sieht, an welchem Athleten Feedback hängt (z. B. Platzhalter).
+export async function fetchFeedbackCounts() {
+  const { data, error } = await supabase.from('feedback_entries').select('athlete_id');
+  if (error) { console.warn('feedback counts fehlgeschlagen:', error.message); return {}; }
+  const counts = {};
+  for (const r of (data || [])) if (r.athlete_id) counts[r.athlete_id] = (counts[r.athlete_id] || 0) + 1;
+  return counts;
+}
+
 // =============================================================
 // FEEDBACK — Coaching-Feedback pro Übung (+ Sportler/Team).
 // Sichtbarkeit via RLS (can_access_athlete) — eigene + Trainer + Team.
