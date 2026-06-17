@@ -2129,6 +2129,36 @@ const UCI_DB_2026 = [
 {c:'4342d',n:'4er Stg. 2 Standdrehungen',p:10.1,d:'4er'},
 ];
 
+// ── Hauptübung/Varianten aus dem UCI-Reglement ───────────────────────────────
+// Die UCI-Nummerierung IST die Gruppierung: der Zahlenteil eines Codes ist die
+// Hauptübung, der Buchstabe die Variante. Beispiel: 1175a–e = Drehsprung
+// 1-/2-/3-/4-/5-fach. Deterministisch, keine KI-Raterei nötig.
+//   UCI_NUMGROUP['1175c'] === '1175'
+//   UCI_GROUP_NAME['1175'] === 'Drehsprung'  (gemeinsamer Wort-Präfix)
+const UCI_NUMGROUP = {};
+const UCI_GROUP_NAME = {};
+(() => {
+  const byGroup = new Map();
+  for (const r of UCI_DB_2026) {
+    const g = String(r.c).replace(/[a-z]+$/i, '');
+    UCI_NUMGROUP[r.c] = g;
+    if (!byGroup.has(g)) byGroup.set(g, []);
+    byGroup.get(g).push(r.n);
+  }
+  for (const [g, names] of byGroup) {
+    const split = names.map(n => String(n).trim().split(/\s+/));
+    const out = [];
+    for (let i = 0; ; i++) {
+      const w = split[0][i];
+      if (w === undefined) break;
+      if (split.every(a => a[i] === w)) out.push(w); else break;
+    }
+    let name = out.join(' ').replace(/[.,;:]+$/, '').trim();
+    if (!name) name = exerciseMainName(names[0]); // heterogene Gruppe → erster Variantenname
+    UCI_GROUP_NAME[g] = name;
+  }
+})();
+
 const DISCIPLINES = [
   { id: '1er', label: '1er Kunstradsport' },
   { id: '2er', label: '2er Kunstradsport' },
@@ -6803,9 +6833,20 @@ function TrainingView({ data, setData, setView }) {
   // Aktive vs. archivierte trainierte Übungen.
   const activeTrained = trainedExercises.filter(r => r.ex.active !== false);
   const archivedTrained = trainedExercises.filter(r => r.ex.active === false);
+  // Feedback-Anzahl für eine Übungs-Menge: vereint den Namens-Basisschlüssel
+  // mit dem Hauptübungs-Schlüssel (UCI-Brücke), dedupliziert über ein Set, damit
+  // gebündelte Varianten das Freitext-Feedback erben ohne Doppelzählung.
+  const fbCountForMany = (exs) => {
+    const keys = new Set();
+    for (const ex of exs) { keys.add(exerciseBaseKey(ex.name || '')); keys.add(groupFeedbackKey(ex)); }
+    let n = 0; for (const k of keys) if (k) n += fbByBase.get(k)?.count || 0;
+    return n;
+  };
+  const fbCountFor = (ex) => fbCountForMany([ex]);
   // Übungen, zu denen es NUR Feedback gibt (keine passende Übung) → einblenden.
   const feedbackOnlyRows = (() => {
-    const existing = new Set((data.exercises || []).map(e => exerciseBaseKey(e.name)));
+    const existing = new Set();
+    for (const e of (data.exercises || [])) { existing.add(exerciseBaseKey(e.name)); existing.add(groupFeedbackKey(e)); }
     const out = [];
     for (const [base, info] of fbByBase) {
       if (!base || existing.has(base)) continue;
@@ -6819,7 +6860,7 @@ function TrainingView({ data, setData, setView }) {
 
   const renderTrainedRow = ({ ex, sessions, total, rate }) => {
     const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 55 ? 'text-slate-600 dark:text-slate-200' : 'text-rose-600';
-    const fbCount = fbByBase.get(exerciseBaseKey(ex.name))?.count || 0;
+    const fbCount = fbCountFor(ex);
     // Kompakte Meta: kleine Icons + Zahl (Hantel = Sessions, Sprechblase =
     // Feedback) statt langem Text — weniger Platz, ruhiger (UI-Guide).
     return (
@@ -6920,11 +6961,11 @@ function TrainingView({ data, setData, setView }) {
 
         {/* ÜBUNGEN — kompakter, primärer Einstieg (keine Rohdaten) */}
         {activeExerciseRows.length > 0 && (() => {
-          // Phase 2: nach Hauptübung (Basis-Name) gruppieren. ≥2 Varianten →
-          // aufklappbare Hauptübung; sonst normale Zeile.
+          // Phase 2: nach Hauptübung gruppieren — UCI-Code (Reglement) als Anker,
+          // sonst Basis-Name. ≥2 Varianten → aufklappbare Hauptübung; sonst Zeile.
           const byBase = new Map();
           for (const row of activeExerciseRows) {
-            const base = exerciseBaseKey(row.ex.name) || row.ex.id;
+            const base = exerciseGroupKey(row.ex);
             const g = byBase.get(base) || { base, rows: [] };
             g.rows.push(row); byBase.set(base, g);
           }
@@ -6937,7 +6978,7 @@ function TrainingView({ data, setData, setView }) {
             const succ = g.rows.reduce((s, r) => s + Math.round((r.rate || 0) * (r.total || 0) / 100), 0);
             const rate = totalAtt > 0 ? Math.round((succ / totalAtt) * 100) : 0;
             const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 55 ? 'text-slate-600 dark:text-slate-200' : 'text-rose-600';
-            const fbCount = fbByBase.get(g.base)?.count || 0;
+            const fbCount = fbCountForMany(g.rows.map(r => r.ex));
             const isOpen = openGroups.has(g.base);
             els.push(
               <IOSListRow key={'g:' + g.base} onClick={() => toggleGroup(g.base)}
@@ -6946,7 +6987,7 @@ function TrainingView({ data, setData, setView }) {
                   <ChevronRight size={18} strokeWidth={2.4} className={'text-[#C7C7CC] transition-transform ' + (isOpen ? 'rotate-90' : '')} />
                 </div>}>
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-medium text-[15px] truncate">{exerciseMainName(g.rows[0].ex.name)}</span>
+                  <span className="font-medium text-[15px] truncate">{exerciseGroupName(g.rows[0].ex)}</span>
                   <IOSTag color="blue">{g.rows.length} Varianten</IOSTag>
                 </div>
                 <div className="text-[13px] text-[#8E8E93] mt-1 flex items-center gap-3 tabular-nums">
@@ -8978,6 +9019,28 @@ function exerciseMainName(name) {
   return s || (name || '').trim();
 }
 
+// Gruppen-Schlüssel einer Übung für die Hauptübung/Varianten-Bündelung.
+// UCI-Code (Reglement) hat Vorrang — z. B. bündelt 1175a–e alle Drehsprung-
+// Zähl­varianten zuverlässig, auch wenn die Namen („…2-fach T (7,5 - …)")
+// als reiner Text nicht sauber zusammenfallen. Sonst Text-Basisschlüssel.
+function exerciseGroupKey(ex) {
+  const code = ex && (ex.uci_code || ex.code);
+  if (code && UCI_NUMGROUP[code]) return 'uci:' + UCI_NUMGROUP[code];
+  return exerciseBaseKey((ex && ex.name) || '') || (ex && ex.id) || '';
+}
+// Anzeige-Name der Hauptübung einer Übung.
+function exerciseGroupName(ex) {
+  const code = ex && (ex.uci_code || ex.code);
+  const g = code && UCI_NUMGROUP[code];
+  if (g && UCI_GROUP_NAME[g]) return UCI_GROUP_NAME[g];
+  return exerciseMainName((ex && ex.name) || '');
+}
+// Text-Schlüssel, über den (Freitext-)Feedback einer Gruppe zugeordnet wird —
+// die Brücke zwischen UCI-gruppierten Übungen und namensbasiertem Feedback.
+function groupFeedbackKey(ex) {
+  return exerciseBaseKey(exerciseGroupName(ex));
+}
+
 // 1–4-Auswahl als vier Punkte.
 function RatingPicker({ value, onChange }) {
   return (
@@ -9130,11 +9193,14 @@ function FeedbackSection({ athleteId, exercise, defaultOpen = false }) {
     const all = await fetchFeedback(athleteId);
     const code = (exercise.uci_code || '').trim();
     const base = exerciseBaseKey(exercise.name);
-    const mine = all.filter(f =>
-      (exercise.id && f.exercise_ref === exercise.id)
-      || (code && f.exercise_code === code)
-      || (base && exerciseBaseKey(f.exercise_name) === base)   // Hauptübung-Gruppierung
-    );
+    const gkey = groupFeedbackKey(exercise);   // Hauptübungs-Name (UCI-Brücke)
+    const mine = all.filter(f => {
+      const fk = exerciseBaseKey(f.exercise_name);
+      return (exercise.id && f.exercise_ref === exercise.id)
+        || (code && f.exercise_code === code)
+        || (base && fk === base)                // Namens-Gruppierung
+        || (gkey && fk === gkey);               // Hauptübungs-Gruppierung (Varianten)
+    });
     setEntries(mine); setLoading(false);
   }, [athleteId, exercise.id, exercise.uci_code, exercise.name]);
   useEffect(() => { load(); }, [load]);
