@@ -13298,10 +13298,48 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     if (firstImg) {
       try {
         setImportMsg('KI liest das Bild …');
-        const dataUrl = await imageFileToDataUrl(firstImg, 1600, 0.82);
-        const { data, error } = await scanWertungsbogenVision(dataUrl);
-        if (!error && data) {
-          const num = (v) => v == null || v === '' ? undefined : (typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.')));
+        // Höhere Auflösung als früher (1600) — die feinen Fehlerzeichen brauchen Detail.
+        const dataUrl = await imageFileToDataUrl(firstImg, 2400, 0.9);
+        const num = (v) => v == null || v === '' ? undefined : (typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.')));
+        const c = (v) => { const x = num(v); return typeof x === 'number' && !isNaN(x) ? x : 0; };
+        // Anker: bekannte Punktfolge des gewählten Programms (hilft der Zeilen-Zuordnung).
+        const programPoints = (program && Array.isArray(program.exercises))
+          ? program.exercises.map(e => Number(e.points)).filter(n => Number.isFinite(n)) : null;
+        // KI-Zeilen → interne Zeilen (Symbole + Schw% je KG; T bewusst 0 aus Foto).
+        const toRows = (exs) => (exs || []).map(r => ({
+          points: num(r.points), conf: (typeof r.confidence === 'number' ? r.confidence : null),
+          kg1: { X: c(r.kg1?.x), W: c(r.kg1?.w), S: c(r.kg1?.s), K: c(r.kg1?.k), p: c(r.kg1?.schw), T: 0 },
+          kg2: { X: c(r.kg2?.x), W: c(r.kg2?.w), S: c(r.kg2?.s), K: c(r.kg2?.k), p: c(r.kg2?.schw), T: 0 },
+        }));
+        // Abzüge AUS den gezählten Zeichen — exakt der schwierige Teil, den der
+        // Footer als Soll nennt → Prüfsumme.
+        const deduct = (rows) => { let a1 = 0, s1 = 0, a2 = 0, s2 = 0; for (const r of rows) { a1 += r.kg1.X * 0.2 + r.kg1.W * 0.5 + r.kg1.S * 1 + r.kg1.K * 2; a2 += r.kg2.X * 0.2 + r.kg2.W * 0.5 + r.kg2.S * 1 + r.kg2.K * 2; s1 += (r.points || 0) * (r.kg1.p || 0) / 100; s2 += (r.points || 0) * (r.kg2.p || 0) / 100; } return { a1, s1, a2, s2 }; };
+
+        const first = await scanWertungsbogenVision(dataUrl, { programPoints });
+        if (!first.error && first.data) {
+          const data = first.data;
+          const a1Soll = num(data.kg1_ausfuehrung), a2Soll = num(data.kg2_ausfuehrung);
+          const s1Soll = num(data.kg1_schwierigkeit), s2Soll = num(data.kg2_schwierigkeit);
+          const tol = 0.1;
+          const errOf = (rows) => { const d = deduct(rows); let e = 0; if (typeof a1Soll === 'number') e += Math.abs(d.a1 - a1Soll); if (typeof a2Soll === 'number') e += Math.abs(d.a2 - a2Soll); if (typeof s1Soll === 'number') e += Math.abs(d.s1 - s1Soll); if (typeof s2Soll === 'number') e += Math.abs(d.s2 - s2Soll); return e; };
+          let best = toRows(data.exercises), bestErr = errOf(best);
+          // Footer-Prüfsumme: bei Abweichung bis zu 2× gezielt nachlesen lassen.
+          for (let attempt = 0; attempt < 2 && bestErr > tol && best.length > 0; attempt++) {
+            const d = deduct(best);
+            const parts = [];
+            if (typeof a1Soll === 'number' && Math.abs(d.a1 - a1Soll) > tol) parts.push(`KG1-Ausführungsabzug muss ${a1Soll.toFixed(1)} sein (du zähltest ${d.a1.toFixed(1)})`);
+            if (typeof a2Soll === 'number' && Math.abs(d.a2 - a2Soll) > tol) parts.push(`KG2-Ausführungsabzug muss ${a2Soll.toFixed(1)} sein (du zähltest ${d.a2.toFixed(1)})`);
+            if (typeof s1Soll === 'number' && Math.abs(d.s1 - s1Soll) > tol) parts.push(`KG1-Schwierigkeitsabzug muss ${s1Soll.toFixed(1)} sein (du zähltest ${d.s1.toFixed(1)})`);
+            if (typeof s2Soll === 'number' && Math.abs(d.s2 - s2Soll) > tol) parts.push(`KG2-Schwierigkeitsabzug muss ${s2Soll.toFixed(1)} sein (du zähltest ${d.s2.toFixed(1)})`);
+            if (parts.length === 0) break;
+            setImportMsg(`KI prüft nach (Durchlauf ${attempt + 2}) …`);
+            const corr = await scanWertungsbogenVision(dataUrl, { programPoints, tableOnly: true, correction: 'Laut Footer: ' + parts.join('; ') + '.' });
+            if (corr.error || !corr.data || !Array.isArray(corr.data.exercises) || corr.data.exercises.length === 0) break;
+            const cand = toRows(corr.data.exercises);
+            const candErr = errOf(cand);
+            if (candErr < bestErr) { best = cand; bestErr = candErr; }
+          }
+
           const parsed = {
             errors: [],
             wettbewerb: data.wettbewerb || null, ort: data.ort || null, ausrichter: data.ausrichter || null,
@@ -13311,20 +13349,9 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           for (const k of ['kg1_ausfuehrung', 'kg2_ausfuehrung', 'kg1_schwierigkeit', 'kg2_schwierigkeit', 'kg1_gesamtabzug', 'kg2_gesamtabzug', 'kg1_ausgefahren', 'kg2_ausgefahren', 'aufgestellt', 'endergebnis']) {
             const n = num(data[k]); if (typeof n === 'number' && !isNaN(n)) parsed[k] = n;
           }
-          // Pro-Übung-Werte (best effort) — werden in applyImport auf das aktive
-          // Programm nach Reihenfolge gemappt (kein Programm-Neuaufbau).
-          // WICHTIG: taktische Aufwertung (T) wird aus dem FOTO NICHT übernommen.
-          // Sie ist selten, bewusst gesetzt und sehr fehleranfällig beim Verlesen
-          // (die KI „erfand" 10.0-Aufwertungen für Übungen ohne T). Über das PDF
-          // bleibt die taktische Aufwertung exakt — beim Foto bei Bedarf manuell.
-          if (Array.isArray(data.exercises) && data.exercises.length > 0) {
-            const c = (v) => { const x = num(v); return typeof x === 'number' && !isNaN(x) ? x : 0; };
-            parsed._scanRows = data.exercises.map(r => ({
-              points: num(r.points),
-              kg1: { X: c(r.kg1?.x), W: c(r.kg1?.w), S: c(r.kg1?.s), K: c(r.kg1?.k), p: c(r.kg1?.schw), T: 0 },
-              kg2: { X: c(r.kg2?.x), W: c(r.kg2?.w), S: c(r.kg2?.s), K: c(r.kg2?.k), p: c(r.kg2?.schw), T: 0 },
-            }));
-          }
+          if (best.length > 0) parsed._scanRows = best;
+          parsed._scanChecksumOk = bestErr <= tol;
+          parsed._scanLowConf = best.filter(r => r.conf != null && r.conf < 0.6).length;
           if (data._exDebug) parsed._exDebug = String(data._exDebug);
           const hasAny = parsed.wettbewerb || parsed.starter || parsed.disziplin || parsed.datum
             || parsed.endergebnis != null || parsed.aufgestellt != null
@@ -13333,7 +13360,8 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           if (hasAny) {
             setImportPreview(parsed);
             setImportStatus('success');
-            setImportMsg((parsed._scanRows && parsed._scanRows.length > 0) ? 'Per KI erkannt (inkl. Übungen) — bitte prüfen' : 'Per KI erkannt — bitte Werte prüfen');
+            const tag = parsed._scanRows ? (parsed._scanChecksumOk ? ' ✓ Summen stimmen' : ' — Summen prüfen') : '';
+            setImportMsg((parsed._scanRows ? 'Per KI erkannt (inkl. Übungen)' : 'Per KI erkannt') + tag);
             return;
           }
         }
@@ -13666,6 +13694,16 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                   ⚠️ {importPreview._scanRows.length} Übungen erkannt, aber das Programm hat {program.exercises.length}.
                   Die <strong>Einzel-Abzüge pro Übung werden deshalb nicht übernommen</strong> — nur Stammdaten und die
                   Gesamt-Schwierigkeit. Für exakte Werte pro Übung bitte den <strong>PDF-Import</strong> nutzen.
+                </p>
+              )}
+              {importPreview._scanRows && importPreview._scanRows.length > 0 && (
+                <p className={'text-xs rounded-lg p-2 border ' + (importPreview._scanChecksumOk
+                  ? 'text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-900/60'
+                  : 'text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-900/60')}>
+                  {importPreview._scanChecksumOk
+                    ? '✓ Prüfsumme stimmt: Die gezählten Abzüge passen exakt zu den Summen auf dem Blatt.'
+                    : '⚠️ Prüfsumme weicht ab: Die gezählten Zeichen ergeben nicht ganz die Summen auf dem Blatt — bitte die Übungstabelle kurz gegenprüfen.'}
+                  {importPreview._scanLowConf > 0 && ` (${importPreview._scanLowConf} unsichere Zeile${importPreview._scanLowConf === 1 ? '' : 'n'})`}
                 </p>
               )}
               {importPreview._exDebug && !(importPreview._scanRows && importPreview._scanRows.length > 0) && (
