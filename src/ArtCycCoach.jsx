@@ -6450,6 +6450,13 @@ function TrainingView({ data, setData, setView }) {
   // „Erfassen"-Auswahl (Action-Sheet) + Übungs-Picker für Feedback.
   const [erfassenOpen, setErfassenOpen] = useState(false);
   const [fbPickerOpen, setFbPickerOpen] = useState(false);
+  // Aufgeklappte Hauptübungs-Gruppen (Phase 2: Variationen).
+  const [openGroups, setOpenGroups] = useState(() => new Set());
+  const toggleGroup = (base) => setOpenGroups(prev => {
+    const next = new Set(prev);
+    if (next.has(base)) next.delete(base); else next.add(base);
+    return next;
+  });
 
   const upsertExercise = (ex) => {
     const exists = (data.exercises || []).find(e => e.id === ex.id);
@@ -6864,11 +6871,54 @@ function TrainingView({ data, setData, setView }) {
         )}
 
         {/* ÜBUNGEN — kompakter, primärer Einstieg (keine Rohdaten) */}
-        {activeExerciseRows.length > 0 && (
-          <IOSList header={'Übungen (' + activeExerciseRows.length + ')'} footer="Tippen öffnet die Übungs-Detailseite.">
-            {activeExerciseRows.map(renderTrainedRow)}
-          </IOSList>
-        )}
+        {activeExerciseRows.length > 0 && (() => {
+          // Phase 2: nach Hauptübung (Basis-Name) gruppieren. ≥2 Varianten →
+          // aufklappbare Hauptübung; sonst normale Zeile.
+          const byBase = new Map();
+          for (const row of activeExerciseRows) {
+            const base = exerciseBaseKey(row.ex.name) || row.ex.id;
+            const g = byBase.get(base) || { base, rows: [] };
+            g.rows.push(row); byBase.set(base, g);
+          }
+          const groups = [...byBase.values()];
+          const els = [];
+          for (const g of groups) {
+            if (g.rows.length === 1) { els.push(renderTrainedRow(g.rows[0])); continue; }
+            const sessions = g.rows.reduce((s, r) => s + (r.sessions || 0), 0);
+            const totalAtt = g.rows.reduce((s, r) => s + (r.total || 0), 0);
+            const succ = g.rows.reduce((s, r) => s + Math.round((r.rate || 0) * (r.total || 0) / 100), 0);
+            const rate = totalAtt > 0 ? Math.round((succ / totalAtt) * 100) : 0;
+            const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 55 ? 'text-slate-600 dark:text-slate-200' : 'text-rose-600';
+            const fbCount = fbByBase.get(g.base)?.count || 0;
+            const isOpen = openGroups.has(g.base);
+            els.push(
+              <IOSListRow key={'g:' + g.base} onClick={() => toggleGroup(g.base)}
+                trailing={<div className="flex items-center gap-2 shrink-0">
+                  {totalAtt > 0 && <span className={'font-semibold text-[15px] tabular-nums ' + rateColor}>{rate}%</span>}
+                  <ChevronRight size={18} strokeWidth={2.4} className={'text-[#C7C7CC] transition-transform ' + (isOpen ? 'rotate-90' : '')} />
+                </div>}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium text-[15px] truncate">{exerciseMainName(g.rows[0].ex.name)}</span>
+                  <IOSTag color="blue">{g.rows.length} Varianten</IOSTag>
+                </div>
+                <div className="text-[13px] text-[#8E8E93] mt-1 flex items-center gap-3 tabular-nums">
+                  {sessions > 0 && <span className="inline-flex items-center gap-1"><Dumbbell size={13} strokeWidth={2} /> {sessions}</span>}
+                  {fbCount > 0 && <span className="inline-flex items-center gap-1"><MessageCircle size={13} strokeWidth={2} /> {fbCount}</span>}
+                </div>
+              </IOSListRow>
+            );
+            if (isOpen) {
+              for (const r of g.rows) {
+                els.push(<div key={'v:' + r.ex.id} className="pl-4 border-l-2 border-[#FF9500]/25 ml-2">{renderTrainedRow(r)}</div>);
+              }
+            }
+          }
+          return (
+            <IOSList header={'Übungen (' + groups.length + ')'} footer="Mehrere Varianten sind unter der Hauptübung gebündelt — tippen zum Aufklappen.">
+              {els}
+            </IOSList>
+          );
+        })()}
 
         {archivedTrained.length > 0 && (
           <div className="space-y-1.5">
@@ -8852,6 +8902,18 @@ function exerciseBaseKey(name) {
   s = s.replace(/drehspung/g, 'drehsprung').replace(/sattelenker/g, 'sattellenker');
   s = s.replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim();
   return s;
+}
+
+// Anzeigename der Hauptübung (Casing/Umlaute erhalten): entfernt nur die
+// Varianten-Zusätze am Ende (Zahlen, „1x", „…fach", „2.", „achtfach"…).
+function exerciseMainName(name) {
+  let s = (name || '').trim();
+  s = s.replace(/\b(einfach|zweifach|dreifach|vierfach|fünffach|fuenffach|sechsfach|siebenfach|achtfach|neunfach|zehnfach)\b/gi, ' ');
+  s = s.replace(/\b\d+\s*(?:x|fach)\b/gi, ' ');
+  s = s.replace(/\b\d+\s*\.\s*/g, ' ');
+  s = s.replace(/\s+\d+\b/g, ' ');           // hinten stehende Zahl wie „8"
+  s = s.replace(/\s{2,}/g, ' ').replace(/\s+([.,])/g, '$1').trim();
+  return s || (name || '').trim();
 }
 
 // 1–4-Auswahl als vier Punkte.
