@@ -6042,6 +6042,8 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
 
   const activeP = active != null ? svgPoints[active] : null;
   const leftPct = activeP ? Math.min(88, Math.max(12, (activeP.x / W) * 100)) : 0;
+  const xPct = activeP ? (activeP.x / W) * 100 : 0;
+  const yPct = activeP ? (activeP.y / H) * 100 : 0;
   const pick = (clientX) => {
     const el = wrapRef.current; if (!el) return;
     const rect = el.getBoundingClientRect();
@@ -6086,8 +6088,6 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
             <path d={areaPath} fill="rgba(255, 149, 0, 0.12)" />
             {/* Linie */}
             <path d={linePath} fill="none" stroke="#FF9500" strokeWidth="2.5" strokeLinejoin="round" />
-            {/* Crosshair beim Scrubben */}
-            {activeP && <line x1={activeP.x} y1={P - 8} x2={activeP.x} y2={H - P} stroke="#FF9500" strokeWidth="1.5" strokeDasharray="3 3" />}
             {/* Punkte */}
             {svgPoints.map((p, i) => {
               const isBest = bestPoint && p.id === bestPoint.id;
@@ -6102,12 +6102,21 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
                 </g>
               );
             })}
-            {/* aktiver (gescrubbter) Punkt hervorgehoben */}
-            {activeP && <circle cx={activeP.x} cy={activeP.y} r="6.5" fill="#FF9500" stroke="#fff" strokeWidth="2.5" />}
           </svg>
+          {/* Crosshair + aktiver Punkt als HTML-Overlay — gleitet weich zum
+              nächsten Datenpunkt (rastet ein) wie bei Scalable Capital. */}
+          {activeP && (
+            <div className="absolute top-0 bottom-0 w-px bg-[#FF9500]/45 pointer-events-none"
+              style={{ left: xPct + '%', transition: 'left 0.13s cubic-bezier(0.22,1,0.36,1)' }} />
+          )}
+          {activeP && (
+            <div className="absolute w-3.5 h-3.5 rounded-full bg-[#FF9500] border-2 border-white shadow pointer-events-none -translate-x-1/2 -translate-y-1/2"
+              style={{ left: xPct + '%', top: yPct + '%', transition: 'left 0.13s cubic-bezier(0.22,1,0.36,1), top 0.13s cubic-bezier(0.22,1,0.36,1)' }} />
+          )}
           {/* Werte-Tooltip an der Finger-Position */}
           {activeP && (
-            <div className="absolute -top-1 pointer-events-none z-10" style={{ left: leftPct + '%', transform: 'translateX(-50%)' }}>
+            <div className="absolute -top-1 pointer-events-none z-10"
+              style={{ left: leftPct + '%', transform: 'translateX(-50%)', transition: 'left 0.13s cubic-bezier(0.22,1,0.36,1)' }}>
               <div className="bg-[#1c1c1e] text-white rounded-lg px-2.5 py-1 text-center shadow-lg whitespace-nowrap">
                 <div className="text-[13px] font-bold tabular-nums leading-tight">{activeP.final.toFixed(2)}</div>
                 <div className="text-[10px] text-slate-300 leading-tight">{formatDateShort(activeP.date)}</div>
