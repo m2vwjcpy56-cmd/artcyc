@@ -4732,7 +4732,11 @@ export default function App() {
     // Sonst sähe ein Coach den lokalen Blob seines eigenen Profils statt
     // die echten Sportler-Daten.
     const coachView = !!selectedAthleteId && !isOwnAthlete;
-    if (!data.migrated_to_tables && !coachView) return data;
+    // Auch im nicht-migrierten Blob-Fall den Athleten-Bezug mitgeben, damit
+    // DB-Features (z. B. Feedback je Übung) den richtigen Sportler kennen.
+    if (!data.migrated_to_tables && !coachView) {
+      return { ...data, _viewingAthleteId: selectedAthleteId || myAthleteId || null };
+    }
     // Maute-Sprung: has_rope_variant auto-aktivieren falls in DB nicht gesetzt
     const exercises = dbExercises.map(e => {
       const blob = dbExerciseToBlob(e);
@@ -4762,7 +4766,7 @@ export default function App() {
       _viewingAthleteId: selectedAthleteId,
       _isReadOnly: isReadOnlyView,
     };
-  }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob, selectedAthleteId, isReadOnlyView]);
+  }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob, selectedAthleteId, myAthleteId, isReadOnlyView]);
 
   if (!authChecked || loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#F2F2F7] gap-5"
