@@ -6948,26 +6948,17 @@ function TrainingView({ data, setData, setView }) {
           </div>
         )}
 
-        {/* Übungs-Picker für „Feedback zu Übung" → öffnet die Übungs-Detailseite */}
-        {fbPickerOpen && (
-          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setFbPickerOpen(false)}>
-            <div className="bg-white dark:bg-[#1c1c1e] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-              <div className="sticky top-0 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl px-4 py-3 flex items-center justify-between border-b border-[#C6C6C8]/40">
-                <h3 className="font-semibold text-[17px]">Für welche Übung?</h3>
-                <button onClick={() => setFbPickerOpen(false)} className="p-1 text-[#8E8E93] active:opacity-60"><X size={20} /></button>
-              </div>
-              <div className="p-2">
-                {(data.exercises || []).filter(e => e.active !== false).map(ex => (
-                  <button key={ex.id} onClick={() => { setFbPickerOpen(false); setSelectedExercise(ex); }}
-                    className="w-full text-left px-4 py-3 rounded-xl flex items-center justify-between gap-2 active:bg-[#D1D1D6]/40">
-                    <span className="text-[15px] truncate">{localizedExerciseName(ex)}</span>
-                    <ChevronRight size={16} className="text-[#C7C7CC] shrink-0" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Übungs-Picker für „Feedback zu Übung" — suchbar (eigene + Reglement) */}
+        <ExercisePickerSheet
+          open={fbPickerOpen}
+          title="Feedback — für welche Übung?"
+          exercises={data.exercises || []}
+          onClose={() => setFbPickerOpen(false)}
+          onPick={(ex, isNew) => {
+            if (isNew) setData({ ...data, exercises: [...(data.exercises || []), ex] });
+            setSelectedExercise(ex);
+          }}
+        />
 
         {editing && <SessionEditModal session={editing} exercises={data.exercises || []} onSave={saveEdit} onDelete={() => setConfirmDelete(editing._origIdx)} onClose={() => setEditing(null)} />}
         {confirmDelete !== null && (
@@ -7478,6 +7469,7 @@ function TrainingsplanView({ data, setData, onBack }) {
   // (asynchronen) Store schreiben, sonst überholen sich Eingaben (verwürfelte
   // Buchstaben). Persistenz erst bei „Fertig".
   const [draft, setDraft] = useState(null);
+  const [pickerItemId, setPickerItemId] = useState(null); // Übungs-Picker für welchen Eintrag
   const plan = plans.find(p => p.id === selectedId) || null;
 
   // Protokoll: vergangene Trainingstage (≠ heute) aus den echten Sessions der
@@ -7672,13 +7664,18 @@ function TrainingsplanView({ data, setData, onBack }) {
                       <span className="text-[13px] text-slate-500">Übung verknüpfen</span>
                       <IOSToggle checked={!!it.loggable} onChange={() => toggleLoggable(it)} />
                     </div>
-                    {it.loggable && (
-                      <select value={it.exerciseId || ''} onChange={e => patchItem(it.id, { exerciseId: e.target.value || null })}
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-[14px] bg-white outline-none">
-                        <option value="">— Übung aus Reglement wählen —</option>
-                        {activeExercises.map(e => <option key={e.id} value={e.id}>{localizedExerciseName(e)}</option>)}
-                      </select>
-                    )}
+                    {it.loggable && (() => {
+                      const le = (data.exercises || []).find(e => e.id === it.exerciseId);
+                      return (
+                        <button type="button" onClick={() => setPickerItemId(it.id)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-[14px] bg-white outline-none flex items-center justify-between gap-2 active:opacity-70">
+                          <span className={'truncate ' + (le ? 'text-slate-800' : 'text-slate-400')}>
+                            {le ? localizedExerciseName(le) : 'Übung wählen (eigene + Reglement)'}
+                          </span>
+                          <Search size={15} className="text-slate-400 shrink-0" />
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}
@@ -7808,6 +7805,19 @@ function TrainingsplanView({ data, setData, onBack }) {
           </div>
         </div>
       )}
+
+      {/* Such-Picker zum Verknüpfen einer Übung (eigene + Reglement) */}
+      <ExercisePickerSheet
+        open={pickerItemId !== null}
+        title="Übung verknüpfen"
+        exercises={data.exercises || []}
+        onClose={() => setPickerItemId(null)}
+        onPick={(ex, isNew) => {
+          if (isNew) setData({ ...data, exercises: [...(data.exercises || []), ex] });
+          patchItem(pickerItemId, { exerciseId: ex.id });
+          setPickerItemId(null);
+        }}
+      />
     </div>
   );
 }
@@ -7860,7 +7870,6 @@ function deriveExerciseNames(programs) {
 
 function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, dbAthleteCoaches, refreshAthletes, theme, setTheme, langPref, setLangPref, rulesLangPref, setRulesLangPref, setView, onOpenFeedback }) {
   const { t } = useI18n();
-  const protoOn = useProtoFeatures();
   const roleLabel = profile?.role === 'admin' ? t('role.admin') : profile?.role === 'coach' ? t('role.coach') : t('role.athlete');
   const syncLabel = cloudStatus === 'syncing' ? t('settings.cloudSyncing') : cloudStatus === 'error' ? t('settings.cloudSyncError') : t('settings.cloudSynced');
   const syncTagColor = cloudStatus === 'syncing' ? 'orange' : cloudStatus === 'error' ? 'red' : 'green';
@@ -7981,20 +7990,6 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
             </span>
           </span>
         </IOSListRow>
-      </IOSList>
-
-      {/* Prototyp-Funktionen — vorab freischaltbare, experimentelle Features */}
-      <IOSList header="Prototyp" footer="Schaltet experimentelle Funktionen frei, die noch in Arbeit sind (z. B. die Feedback-Dokumentation). Kann jederzeit wieder ausgeschaltet werden.">
-        <div className="px-4 py-3 flex items-center gap-3">
-          <span className="w-9 h-9 rounded-full bg-[#AF52DE]/12 flex items-center justify-center shrink-0">
-            <FlaskConical size={18} className="text-[#AF52DE]" />
-          </span>
-          <span className="flex flex-col min-w-0 flex-1">
-            <span className="text-[15px] font-medium">Prototyp-Funktionen</span>
-            <span className="text-[12px] text-[#8E8E93]">Experimentelles vorab aktivieren</span>
-          </span>
-          <IOSToggle checked={protoOn} onChange={(v) => setProtoFeatures(v)} />
-        </div>
       </IOSList>
 
       {/* Erscheinungsbild */}
@@ -10311,6 +10306,77 @@ function IOSToggle({ checked, onChange }) {
 // =============================================================
 // UCI-PICKER mit Suche
 // =============================================================
+// Suchbarer Übungs-Picker: eigene Übungen zuerst + Suche im UCI-Reglement.
+// onPick(exercise, isNew) — isNew=true bei frisch aus dem Reglement erstellter Übung.
+function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung wählen' }) {
+  const [query, setQuery] = useState('');
+  useEffect(() => { if (open) setQuery(''); }, [open]);
+  if (!open) return null;
+  const q = query.trim().toLowerCase();
+  const mine = (exercises || [])
+    .filter(e => e.active !== false)
+    .filter(e => !q || (e.name || '').toLowerCase().includes(q) || (e.uci_code || '').toLowerCase().includes(q));
+  const myCodes = new Set((exercises || []).map(e => (e.uci_code || '').toLowerCase()).filter(Boolean));
+  const uci = q.length >= 2
+    ? getUciDb().filter(e => (e.n.toLowerCase().includes(q) || (e.c || '').toLowerCase().includes(q)) && !myCodes.has((e.c || '').toLowerCase())).slice(0, 30)
+    : [];
+  const fromUci = (u) => ({ id: uid(), name: u.n, uci_code: u.c, uci_disc: u.d, points: u.p, active: true, category_mode: 2, default_series: 10 });
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+      <div className="bg-[#F2F2F7] dark:bg-[#1c1c1e] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="px-4 py-3 flex items-center justify-between border-b border-[#C6C6C8]/40">
+          <h3 className="font-semibold text-[17px]">{title}</h3>
+          <button onClick={onClose} className="p-1 text-[#8E8E93] active:opacity-60"><X size={20} /></button>
+        </div>
+        <div className="px-4 py-2.5">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
+            <input value={query} onChange={e => setQuery(e.target.value)} autoFocus
+              placeholder="Übung suchen (Name oder UCI-Code)…"
+              className="w-full pl-9 pr-3 py-2.5 bg-white dark:bg-white/5 rounded-xl outline-none text-[15px] shadow-[0_1px_2px_rgba(0,0,0,0.04)]" />
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-4">
+          <div>
+            <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">Meine Übungen</div>
+            <div className="bg-white dark:bg-white/5 rounded-2xl overflow-hidden">
+              {mine.length === 0 ? (
+                <div className="px-4 py-3 text-[13px] text-[#8E8E93]">{q ? 'Keine Treffer.' : 'Noch keine Übungen.'}</div>
+              ) : mine.map((ex, i) => (
+                <button key={ex.id} onClick={() => { onPick(ex, false); onClose(); }}
+                  className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/40 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+                  <span className="text-[15px] truncate">{localizedExerciseName(ex)}</span>
+                  {ex.uci_code && <span className="text-[12px] text-[#8E8E93] shrink-0">UCI {ex.uci_code}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+          {q.length < 2 ? (
+            <div className="text-[12px] text-[#8E8E93] px-3">Tippe mind. 2 Zeichen, um im UCI-Reglement zu suchen.</div>
+          ) : uci.length > 0 && (
+            <div>
+              <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">Aus dem Reglement</div>
+              <div className="bg-white dark:bg-white/5 rounded-2xl overflow-hidden">
+                {uci.map((u, i) => (
+                  <button key={u.c} onClick={() => { onPick(fromUci(u), true); onClose(); }}
+                    className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/40 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+                    <span className="min-w-0">
+                      <span className="block text-[15px] truncate">{u.n}</span>
+                      <span className="block text-[12px] text-[#8E8E93]">UCI {u.c} · {u.d} · {u.p} Pkt</span>
+                    </span>
+                    <Plus size={16} className="text-[#FF9500] shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UciPicker({ discipline, onSelect, selectedCode }) {
   const [query, setQuery] = useState('');
 
