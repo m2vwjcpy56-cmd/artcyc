@@ -7650,7 +7650,21 @@ function TrainingsplanView({ data, setData, onBack }) {
     if (changed) setData({ ...dataRef.current, sessions });
   };
   const scheduleFlush = () => { clearTimeout(flushTimer.current); flushTimer.current = setTimeout(flushAll, 500); };
-  useEffect(() => () => { clearTimeout(flushTimer.current); flushAll(); }, []); // beim Verlassen sofort sichern
+  // Immer die aktuellste flushAll referenzieren (für Listener-Closures).
+  const flushRef = useRef(flushAll); flushRef.current = flushAll;
+  useEffect(() => () => { clearTimeout(flushTimer.current); flushRef.current(); }, []); // beim Verlassen sofort sichern
+  // Theresas Bug: beim App-Schließen/Hintergrund ging der letzte Zählerstand
+  // verloren (Debounce/Unmount feuert dann nicht). Daher hier sofort sichern.
+  useEffect(() => {
+    const flushNow = () => { clearTimeout(flushTimer.current); flushRef.current(); };
+    const onVis = () => { if (document.visibilityState === 'hidden') flushNow(); };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', flushNow);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', flushNow);
+    };
+  }, []);
 
   const logEntry = (it, exId, kind) => {
     optimisticRef.current[exId] = [...getEntries(exId), kind];
