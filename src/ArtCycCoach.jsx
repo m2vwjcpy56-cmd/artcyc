@@ -10478,31 +10478,50 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
   const [name, setName] = useState((exercise && exercise.name) || '');
   const [statusMode, setStatusMode] = useState((exercise && exercise.category_mode) || 2);
   const [thirdLabel, setThirdLabel] = useState((exercise && exercise.third_label) || 'Gefährlich');
-  const [targetRate, setTargetRate] = useState(
-    exercise && typeof exercise.target_rate === 'number' ? String(exercise.target_rate) : ''
-  );
+  const [uciPoints, setUciPoints] = useState(exercise && typeof exercise.points === 'number' ? exercise.points : null);
+  const [assignQ, setAssignQ] = useState(''); // UCI-Zuordnungssuche (custom mode)
   const [hasRopeVariant, setHasRopeVariant] = useState(
     exercise ? !!exercise.has_rope_variant : false
   );
 
+  // Aus UCI-Liste: setzt Code + Disziplin + Punkte + übernimmt den Namen.
   const handleUciSelect = (selected) => {
     setUciCode(selected.c);
     setUciDisc(selected.d);
+    setUciPoints(selected.p);
     setName(selected.n);
   };
+  // Zuordnen (eigene Übung): setzt Code + Disziplin + Punkte, BEHÄLT den Namen.
+  const handleUciAssign = (selected) => {
+    setUciCode(selected.c);
+    setUciDisc(selected.d);
+    setUciPoints(selected.p);
+    setAssignQ('');
+  };
+
+  // UCI-Treffer für die Zuordnungssuche (über alle Disziplinen, Name oder Code).
+  const assignMatches = (() => {
+    const q = assignQ.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return getUciDb()
+      .filter(e => e.n.toLowerCase().includes(q) || (e.c || '').toLowerCase().includes(q))
+      .slice(0, 20);
+  })();
 
   const save = () => {
     if (!name.trim()) return;
     onSave({
+      ...(exercise || {}),
       id: (exercise && exercise.id) || uid(),
       name: name.trim(),
-      uci_code: mode === 'uci' ? uciCode : null,
-      uci_disc: mode === 'uci' ? uciDisc : null,
+      uci_code: uciCode || null,
+      uci_disc: uciCode ? (uciDisc || null) : null,
       active: exercise ? exercise.active : true,
       category_mode: Number(statusMode),
       third_label: Number(statusMode) === 3 ? (thirdLabel.trim() || 'Dritte') : null,
       default_series: (exercise && exercise.default_series) || 10,
-      target_rate: targetRate.trim() === '' ? null : Math.max(0, Math.min(100, Number(targetRate) || 0)),
+      points: (uciCode && typeof uciPoints === 'number') ? uciPoints
+        : (exercise && typeof exercise.points === 'number' ? exercise.points : 0),
       has_rope_variant: hasRopeVariant
     });
   };
@@ -10531,7 +10550,7 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
               (mode === 'uci' ? 'ios-seg-active' : 'text-[#3C3C43]')}>
             Aus UCI-Liste
           </button>
-          <button onClick={() => { setMode('custom'); setUciCode(''); setUciDisc(null); }}
+          <button onClick={() => setMode('custom')}
             className={'flex-1 py-1.5 text-[13px] font-medium rounded-[10px] transition ' +
               (mode === 'custom' ? 'ios-seg-active' : 'text-[#3C3C43]')}>
             Eigene Übung
@@ -10564,6 +10583,53 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
           </div>
         </IOSList>
 
+        {/* UCI-Zuordnung (nur eigene Übung) — lose benannte Übung der richtigen
+            Reglement-Übung zuweisen, OHNE den eigenen Namen zu ändern. So werden
+            Statistik/Gruppierung/Feedback korrekt verknüpft. */}
+        {mode === 'custom' && (
+          <IOSList
+            header="UCI-Zuordnung (optional)"
+            footer="Ordne diese Übung der passenden Reglement-Übung zu — dein Name bleibt erhalten. Hilfreich, wenn der Name (z. B. aus Feedback) nicht exakt dem UCI-Namen entspricht.">
+            {uciCode ? (
+              <div className="px-4 py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[15px]">Zugeordnet: <span className="font-medium">UCI {uciCode}</span></div>
+                  <div className="text-[13px] text-[#8E8E93] truncate">
+                    {(() => { const u = getUciDb().find(e => e.c === uciCode); return u ? u.n : (uciDisc || ''); })()}
+                  </div>
+                </div>
+                <button onClick={() => { setUciCode(''); setUciDisc(null); setUciPoints(null); }}
+                  className="text-[13px] text-[#FF3B30] font-medium active:opacity-60 shrink-0">Entfernen</button>
+              </div>
+            ) : (
+              <div className="px-4 py-3 space-y-2">
+                <div className="relative">
+                  <Search size={16} className="absolute left-2 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
+                  <input value={assignQ} onChange={e => setAssignQ(e.target.value)}
+                    placeholder="UCI-Übung suchen (Name oder Code)…"
+                    className="w-full pl-8 pr-2 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
+                </div>
+                {assignQ.trim().length >= 2 && (
+                  <div className="bg-white dark:bg-white/5 rounded-xl overflow-hidden -mx-1">
+                    {assignMatches.length === 0 ? (
+                      <div className="px-3 py-2.5 text-[13px] text-[#8E8E93]">Keine Treffer im Reglement.</div>
+                    ) : assignMatches.map((u, i) => (
+                      <button key={u.c} onClick={() => handleUciAssign(u)}
+                        className={'w-full text-left px-3 py-2.5 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/40 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+                        <span className="min-w-0">
+                          <span className="block text-[14px] truncate">{u.n}</span>
+                          <span className="block text-[12px] text-[#8E8E93]">UCI {u.c} · {u.d} · {u.p} Pkt</span>
+                        </span>
+                        <Plus size={15} className="text-[#FF9500] shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </IOSList>
+        )}
+
         {/* Status-Modus */}
         <IOSList
           header="Status-Modus"
@@ -10588,22 +10654,6 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
                 className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC] text-right" />
             </div>
           )}
-        </IOSList>
-
-        {/* Standard-Wiederholungs-Anzahl + Ziel-Quote */}
-        <IOSList
-          header="Training"
-          footer="Dashboard markiert die Übung farblich, wenn deine Quote unter dem Ziel liegt — Trainings-Bedarf auf einen Blick.">
-          <div className="px-4 py-3 flex items-center gap-3">
-            <label className="text-[15px] text-[#3C3C43] flex-1 flex items-center gap-2">
-              <Target size={14} className="text-[#8E8E93]" /> Ziel-Quote <span className="text-[12px] text-[#8E8E93]">(optional)</span>
-            </label>
-            <input type="number" min="0" max="100" inputMode="numeric"
-              value={targetRate} onChange={e => setTargetRate(e.target.value)}
-              placeholder="z. B. 80"
-              className="w-20 bg-transparent text-[15px] outline-none text-right placeholder:text-[#C7C7CC]" />
-            <span className="text-[15px] text-[#8E8E93]">%</span>
-          </div>
         </IOSList>
 
         {/* Mit-Seil-Variante — iOS Toggle */}
