@@ -6000,7 +6000,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
 // =============================================================
 // Wettkampf-Verlauf-Chart — Linie der Endergebnisse über Zeit
 // =============================================================
-function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf }) {
+function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf, bare = false }) {
   const points = useMemo(() => {
     const programMap = new Map(programs.map(p => [p.id, p]));
     return competitions
@@ -6055,15 +6055,8 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
     setActive(bi);
   };
 
-  return (
-    <section>
-      <div className="flex items-center justify-between mb-2 px-4">
-        <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
-          Wettkampf-Verlauf
-        </div>
-        <button onClick={onTapWettkampf} className="text-[13px] text-[#007AFF] font-medium active:opacity-60">Alle ansehen ›</button>
-      </div>
-      <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3 py-3">
+  const chart = (
+    <>
         <div ref={wrapRef} data-no-swipe className="relative select-none" style={{ touchAction: 'pan-y' }}
           onPointerDown={(e) => { pressing.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* egal */ } pick(e.clientX); }}
           onPointerMove={(e) => { if (pressing.current) pick(e.clientX); }}
@@ -6108,11 +6101,11 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
           {/* Crosshair + aktiver Punkt als HTML-Overlay — gleitet weich zum
               nächsten Datenpunkt (rastet ein) wie bei Scalable Capital. */}
           {activeP && (
-            <div className="absolute top-0 bottom-0 w-px bg-[#FF9500]/45 pointer-events-none"
-              style={{ left: xPct + '%', transition: 'left 0.13s cubic-bezier(0.22,1,0.36,1)' }} />
+            <div className="absolute top-0 bottom-0 pointer-events-none"
+              style={{ left: xPct + '%', borderLeft: '1.5px dotted rgba(255,149,0,0.55)', transition: 'left 0.13s cubic-bezier(0.22,1,0.36,1)' }} />
           )}
           {activeP && (
-            <div className="absolute w-3.5 h-3.5 rounded-full bg-[#FF9500] border-2 border-white shadow pointer-events-none -translate-x-1/2 -translate-y-1/2"
+            <div className="absolute w-3.5 h-3.5 rounded-full bg-white border-[2.5px] border-[#FF9500] shadow pointer-events-none -translate-x-1/2 -translate-y-1/2"
               style={{ left: xPct + '%', top: yPct + '%', transition: 'left 0.13s cubic-bezier(0.22,1,0.36,1), top 0.13s cubic-bezier(0.22,1,0.36,1)' }} />
           )}
           {/* Werte-Tooltip an der Finger-Position */}
@@ -6133,7 +6126,16 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf })
           </span>
           <span>{formatDateShort(svgPoints[svgPoints.length - 1].date)}</span>
         </div>
+    </>
+  );
+  if (bare) return chart;
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-2 px-4">
+        <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">Wettkampf-Verlauf</div>
+        <button onClick={onTapWettkampf} className="text-[13px] text-[#007AFF] font-medium active:opacity-60">Alle ansehen ›</button>
       </div>
+      <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3 py-3">{chart}</div>
     </section>
   );
 }
@@ -12133,7 +12135,7 @@ function WettkampfView({ data, setData, dbAthletes }) {
           {withFinal.length >= 2 && (
             <div className="card-surface rounded-[22px] p-4 space-y-2">
               <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Verlauf</h2>
-              <CompetitionTrendChart competitions={competitions} programs={programs} best={stats.best ? { competition: stats.best.c, final: stats.best.final } : null} onTapWettkampf={() => { }} />
+              <CompetitionTrendChart competitions={competitions} programs={programs} best={stats.best ? { competition: stats.best.c, final: stats.best.final } : null} onTapWettkampf={() => { }} bare />
             </div>
           )}
 
