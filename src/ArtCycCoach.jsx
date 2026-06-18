@@ -13145,22 +13145,11 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
         activeProgram = newProg;
         createdNewProgram = newProg;
       }
-    } else {
-      // Fallback: kein detaillierter Parse → Disziplin-basiertes Matching wie bisher
-      // (aber nur als Lückenfüller — Aufgestellt wird ungenau sein)
-      if (parsed.disziplin && programs && programs.length > 0) {
-        const dText = parsed.disziplin.toLowerCase();
-        let match = programs.find(p => p.name && dText.includes(p.name.toLowerCase()));
-        if (!match) {
-          const discMatch = ['1er', '2er', '4er', '6er'].find(d => dText.includes(d));
-          if (discMatch) match = programs.find(p => p.discipline === discMatch);
-        }
-        if (match && match.id !== programId) {
-          setProgramId(match.id);
-          activeProgram = match;
-        }
-      }
     }
+    // Bewusst KEIN Disziplin-basiertes Matching auf vorhandene Programme mehr:
+    // Der Wertungsbogen ist die alleinige Quelle. Konnten keine Übungs-Zeilen
+    // gelesen werden, bleibt es bei Stammdaten + Pauschal-Schwierigkeit — wir
+    // verknüpfen aber nie ungefragt ein bereits angelegtes Programm.
 
     // Übungen ermitteln, die NEU sind — beim Speichern committen
     if (activeProgram && activeProgram.exercises) {
@@ -13392,7 +13381,12 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           const s1Soll = num(data.kg1_schwierigkeit), s2Soll = num(data.kg2_schwierigkeit);
           const tol = 0.1;
           const errOf = (rows) => { const d = deduct(rows); let e = 0; if (typeof a1Soll === 'number') e += Math.abs(d.a1 - a1Soll); if (typeof a2Soll === 'number') e += Math.abs(d.a2 - a2Soll); if (typeof s1Soll === 'number') e += Math.abs(d.s1 - s1Soll); if (typeof s2Soll === 'number') e += Math.abs(d.s2 - s2Soll); return e; };
-          let best = toRows(data.exercises), bestErr = errOf(best);
+          // Manche Modelle liefern die Tabelle unter "rows" statt "exercises" —
+          // beide akzeptieren, sonst bleibt die Programm-Erkennung leer und der
+          // Import würde fälschlich auf ein vorhandenes Programm zurückfallen.
+          const scanExs = Array.isArray(data.exercises) ? data.exercises
+            : (Array.isArray(data.rows) ? data.rows : []);
+          let best = toRows(scanExs), bestErr = errOf(best);
           // Footer-Prüfsumme: bei Abweichung bis zu 2× gezielt nachlesen lassen.
           for (let attempt = 0; attempt < 2 && bestErr > tol && best.length > 0; attempt++) {
             const d = deduct(best);
@@ -13794,21 +13788,10 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 {typeof importPreview.aufgestellt === 'number' && <div><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.tabled')}:</span> <strong>{importPreview.aufgestellt.toFixed(2)}</strong></div>}
                 {typeof importPreview.endergebnis === 'number' && <div className="col-span-2 text-amber-700 dark:text-amber-300"><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.finalScorePdf')}:</span> <strong>{importPreview.endergebnis.toFixed(2)}</strong></div>}
               </div>
-              {/* Programm-Mismatch nur, wenn KEINE Übungszeilen erkannt wurden (dann
-                  fällt der Import auf das gewählte Programm zurück). Mit erkannten
-                  Zeilen legt applyImport automatisch das passende Programm an. */}
-              {(() => {
-                const autoRows = (importPreview.exerciseRows && importPreview.exerciseRows.length > 0);
-                if (autoRows) return null;
-                if (typeof importPreview.aufgestellt !== 'number' || !program || !program.exercises || !program.exercises.length) return null;
-                const progSum = program.exercises.reduce((s, e) => s + Number(e.points || 0), 0);
-                if (Math.abs(progSum - importPreview.aufgestellt) <= 0.1) return null;
-                return (
-                  <p className="text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900/60 rounded-lg p-2">
-                    ⚠️ <strong>Programm passt nicht zum Bogen.</strong> Das gewählte Programm „{program.name}" ergibt {progSum.toFixed(2)} Pkt, der Bogen nennt aber <strong>aufgestellt {importPreview.aufgestellt.toFixed(2)}</strong>. Bitte oben das passende Programm wählen — sonst sind aufgestellte Punkte, Zuordnung und Abzüge falsch.
-                  </p>
-                );
-              })()}
+              {/* Der Wertungsbogen ist die alleinige Quelle für das Programm —
+                  es wird automatisch aus den erkannten Zeilen aufgebaut. Daher
+                  bewusst KEIN Mismatch-Hinweis und keine Aufforderung, ein
+                  vorhandenes Programm zu wählen. */}
               {((importPreview.exerciseRows && importPreview.exerciseRows.length > 0) || (importPreview._scanRows && importPreview._scanRows.length > 0)) ? (
                 <p className="text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 rounded-lg p-2">
                   ✓ <strong>{t('pdfImport.exercisesRecognized', { n: (importPreview.exerciseRows && importPreview.exerciseRows.length) || importPreview._scanRows.length })}</strong>
@@ -13816,13 +13799,6 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
               ) : (
                 <p className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-lg p-2">
                   {t('pdfImport.noExerciseRows')}
-                </p>
-              )}
-              {/* Mit erkannten Zeilen legt der Import automatisch das passende
-                  Programm an/erkennt es — Hinweis statt Warnung. */}
-              {importPreview.exerciseRows && importPreview.exerciseRows.length > 0 && (
-                <p className="text-xs text-sky-800 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-900/60 rounded-lg p-2">
-                  ℹ️ Das passende Programm ({importPreview.exerciseRows.length} Übungen) wird beim Übernehmen automatisch erkannt bzw. neu angelegt — du musst vorher kein Programm wählen.
                 </p>
               )}
               {importPreview._scanRows && importPreview._scanRows.length > 0 && (
