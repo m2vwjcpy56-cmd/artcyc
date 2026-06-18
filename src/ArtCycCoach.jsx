@@ -13366,15 +13366,16 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
         // der PDF-Parser. Fällt auf das alte kg1/kg2-Format zurück, falls vorhanden.
         const cell = (a, i) => { const n = Number(a && a[i]); return Number.isFinite(n) && n >= 0 ? n : 0; };
         const toRows = (exs) => (exs || []).map(r => {
+          const meta = { points: num(r.points), code: (r.code || null), name: (r.name || null), conf: (typeof r.confidence === 'number' ? r.confidence : null) };
           if (r && (r.X || r.P || r.W || r.S || r.K)) {
             return {
-              points: num(r.points), conf: (typeof r.confidence === 'number' ? r.confidence : null),
+              ...meta,
               kg1: { X: cell(r.X, 0), W: cell(r.W, 0), S: cell(r.S, 0), K: cell(r.K, 0), p: cell(r.P, 0), T: 0 },
               kg2: { X: cell(r.X, 1), W: cell(r.W, 1), S: cell(r.S, 1), K: cell(r.K, 1), p: cell(r.P, 1), T: 0 },
             };
           }
           return {
-            points: num(r.points), conf: (typeof r.confidence === 'number' ? r.confidence : null),
+            ...meta,
             kg1: { X: c(r.kg1?.x), W: c(r.kg1?.w), S: c(r.kg1?.s), K: c(r.kg1?.k), p: c(r.kg1?.schw), T: 0 },
             kg2: { X: c(r.kg2?.x), W: c(r.kg2?.w), S: c(r.kg2?.s), K: c(r.kg2?.k), p: c(r.kg2?.schw), T: 0 },
           };
@@ -13410,13 +13411,18 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           }
 
           // Inkrement 2 — Kachelung: wenn die Tabelle als Ganzes nicht (gut)
-          // gelesen wurde, das Bild in hochauflösende Bänder schneiden, jedes Band
-          // einzeln lesen und über die Punktwerte dem Programm zuordnen.
-          if (programPoints && programPoints.length && (best.length === 0 || bestErr > tol)) {
+          // gelesen wurde, das Bild in hochauflösende Bänder schneiden und jedes
+          // Band einzeln lesen. Anker = bekannte Programm-Punkte ODER (ohne
+          // Programm) die im Gesamt-Scan gelesene Punktfolge.
+          const anchorPoints = (programPoints && programPoints.length)
+            ? programPoints
+            : best.map(r => Number(r.points)).filter(n => Number.isFinite(n) && n > 0);
+          if (best.length === 0 || bestErr > tol) {
             try {
               setImportMsg('Tabelle wird in Ausschnitte geteilt …'); setScanTarget(0.5);
               const imgEl = await loadImageEl(dataUrl);
-              const bandCount = programPoints.length > 18 ? 5 : programPoints.length > 8 ? 4 : 3;
+              const n = anchorPoints.length || best.length || 24;
+              const bandCount = n > 18 ? 5 : n > 8 ? 4 : 3;
               const tiles = sliceImageBands(imgEl, { bands: bandCount, overlap: 0.2, maxW: 2000, quality: 0.9 });
               const tileRows = [];
               for (let ti = 0; ti < tiles.length; ti++) {
@@ -13424,10 +13430,13 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 setScanTarget(0.5 + 0.45 * ((ti + 1) / tiles.length));
                 // Kacheln mit dem schnelleren Flash-Modell (hohes Detail je Band) — spart Zeit.
                 const tr = await scanWertungsbogenVision(tiles[ti], { tableOnly: true, tableModel: 'google/gemini-2.5-flash' });
-                if (!tr.error && tr.data && Array.isArray(tr.data.exercises)) tileRows.push(...toRows(tr.data.exercises));
+                const rr = tr.data && (Array.isArray(tr.data.rows) ? tr.data.rows : (Array.isArray(tr.data.exercises) ? tr.data.exercises : null));
+                if (!tr.error && rr) tileRows.push(...toRows(rr));
               }
               if (tileRows.length > 0) {
-                const assembled = assembleScanRowsByPoints(programPoints, tileRows);
+                // Mit Anker: über Punktwerte sauber zuordnen. Ohne Anker: Zeilen in
+                // gelesener Reihenfolge übernehmen (dedupe grob per Punkt+Nachbar).
+                const assembled = anchorPoints.length ? assembleScanRowsByPoints(anchorPoints, tileRows) : tileRows;
                 const aErr = errOf(assembled);
                 if (best.length === 0 || aErr < bestErr) { best = assembled; bestErr = aErr; }
               }
@@ -13443,7 +13452,13 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           for (const k of ['kg1_ausfuehrung', 'kg2_ausfuehrung', 'kg1_schwierigkeit', 'kg2_schwierigkeit', 'kg1_gesamtabzug', 'kg2_gesamtabzug', 'kg1_ausgefahren', 'kg2_ausgefahren', 'aufgestellt', 'endergebnis']) {
             const n = num(data[k]); if (typeof n === 'number' && !isNaN(n)) parsed[k] = n;
           }
-          if (best.length > 0) parsed._scanRows = best;
+          if (best.length > 0) {
+            parsed._scanRows = best;
+            // exerciseRows treibt die AUTO-Programmerkennung in applyImport (Name/
+            // Code/Punkte → Programm finden, reparieren oder NEU anlegen — auch
+            // ohne vorhandenes Programm).
+            parsed.exerciseRows = best;
+          }
           parsed._scanChecksumOk = bestErr <= tol;
           parsed._scanLowConf = best.filter(r => r.conf != null && r.conf < 0.6).length;
           if (data._exDebug) parsed._exDebug = String(data._exDebug);
@@ -13780,8 +13795,12 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 {typeof importPreview.aufgestellt === 'number' && <div><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.tabled')}:</span> <strong>{importPreview.aufgestellt.toFixed(2)}</strong></div>}
                 {typeof importPreview.endergebnis === 'number' && <div className="col-span-2 text-amber-700 dark:text-amber-300"><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.finalScorePdf')}:</span> <strong>{importPreview.endergebnis.toFixed(2)}</strong></div>}
               </div>
-              {/* Programm-Mismatch: gewähltes Programm passt nicht zum Bogen (aufgestellte Punkte). */}
+              {/* Programm-Mismatch nur, wenn KEINE Übungszeilen erkannt wurden (dann
+                  fällt der Import auf das gewählte Programm zurück). Mit erkannten
+                  Zeilen legt applyImport automatisch das passende Programm an. */}
               {(() => {
+                const autoRows = (importPreview.exerciseRows && importPreview.exerciseRows.length > 0);
+                if (autoRows) return null;
                 if (typeof importPreview.aufgestellt !== 'number' || !program || !program.exercises || !program.exercises.length) return null;
                 const progSum = program.exercises.reduce((s, e) => s + Number(e.points || 0), 0);
                 if (Math.abs(progSum - importPreview.aufgestellt) <= 0.1) return null;
@@ -13800,14 +13819,11 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                   {t('pdfImport.noExerciseRows')}
                 </p>
               )}
-              {/* Foto-Scan: erkannte Übungs-Anzahl passt nicht zum Programm →
-                  pro-Übung-Abzüge können nicht zugeordnet werden. */}
-              {importPreview._scanRows && importPreview._scanRows.length > 0 && program && program.exercises
-                && importPreview._scanRows.length !== program.exercises.length && (
-                <p className="text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900/60 rounded-lg p-2">
-                  ⚠️ {importPreview._scanRows.length} Übungen erkannt, aber das Programm hat {program.exercises.length}.
-                  Die <strong>Einzel-Abzüge pro Übung werden deshalb nicht übernommen</strong> — nur Stammdaten und die
-                  Gesamt-Schwierigkeit. Für exakte Werte pro Übung bitte den <strong>PDF-Import</strong> nutzen.
+              {/* Mit erkannten Zeilen legt der Import automatisch das passende
+                  Programm an/erkennt es — Hinweis statt Warnung. */}
+              {importPreview.exerciseRows && importPreview.exerciseRows.length > 0 && (
+                <p className="text-xs text-sky-800 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-900/60 rounded-lg p-2">
+                  ℹ️ Das passende Programm ({importPreview.exerciseRows.length} Übungen) wird beim Übernehmen automatisch erkannt bzw. neu angelegt — du musst vorher kein Programm wählen.
                 </p>
               )}
               {importPreview._scanRows && importPreview._scanRows.length > 0 && (
