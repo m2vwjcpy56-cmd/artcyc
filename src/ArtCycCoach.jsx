@@ -2715,6 +2715,143 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
   return stats;
 }
 
+// =============================================================
+// DUPLIKAT-BEREINIGUNG — Programme & Übungen entdoppeln + vorbeugen
+// ---------------------------------------------------------------
+// Ursache des „Chaos": Scan/PDF lasen die Punkte je Übung minimal
+// unterschiedlich (190.40 vs 191.40 …), wodurch jeder Import ein neues,
+// fast identisches Programm anlegte; verstümmelte Namen (zwei Übungen
+// aneinandergeklebt) erzeugten doppelte Übungen trotz gleichem UCI-Code.
+// Quelle der Wahrheit ist der UCI-Code → Punkte + Name kanonisch daraus.
+// =============================================================
+
+// Punkte + Name eines Programm-Übungseintrags auf die UCI-Standardwerte ziehen
+// (nur wenn ein Code bekannt ist). Eigen-Übungen ohne Code bleiben unangetastet.
+function canonProgramExercise(ex) {
+  const code = ex && ex.code ? String(ex.code).trim() : '';
+  if (!code) return ex;
+  const u = activeUciByCode.get(code);
+  if (!u) return ex;
+  return { ...ex, code, name: (u.n || ex.name), points: Number(u.p) };
+}
+
+// Signatur eines Programms = Disziplin + Codefolge. Zwei Programme mit gleicher
+// Signatur SIND dasselbe Programm (Punkte ergeben sich aus dem Code). Nur bei
+// lückenlosen Codes verlässlich — sonst null (nicht zusammenführbar).
+function programDupSignature(p) {
+  const codes = (p.exercises || []).map(e => (e && e.code ? String(e.code).trim() : ''));
+  if (codes.length === 0 || codes.some(c => !c)) return null;
+  return (p.discipline || '').toLowerCase() + '|' + codes.join('>');
+}
+
+// Sauberster Name einer Übungs-Gruppe: kanonischer UCI-Name (per Code), sonst
+// der kürzeste vorhandene — verstümmelte (aneinandergeklebte) Namen sind länger.
+function cleanestExerciseName(group, code) {
+  const u = code ? activeUciByCode.get(code) : null;
+  if (u && u.n) return u.n;
+  const names = group.map(e => (e.name || '').trim()).filter(Boolean).sort((a, b) => a.length - b.length);
+  return names[0] || (group[0] && group[0].name) || '';
+}
+
+// Wie viele Programme/Übungen sind doppelt? Zähl-Vorschau für die Bestätigung.
+function analyzeDuplicates(data) {
+  const programs = data.programs || [];
+  const exercises = data.exercises || [];
+  const progGroups = new Map();
+  for (const p of programs) {
+    const sig = programDupSignature(p);
+    if (!sig) continue;
+    let arr = progGroups.get(sig); if (!arr) { arr = []; progGroups.set(sig, arr); }
+    arr.push(p);
+  }
+  let progDup = 0;
+  for (const g of progGroups.values()) if (g.length > 1) progDup += g.length - 1;
+  const exGroups = new Map();
+  for (const e of exercises) {
+    const code = e.uci_code ? String(e.uci_code).trim() : '';
+    if (!code) continue;
+    let arr = exGroups.get(code); if (!arr) { arr = []; exGroups.set(code, arr); }
+    arr.push(e);
+  }
+  let exDup = 0;
+  for (const g of exGroups.values()) if (g.length > 1) exDup += g.length - 1;
+  return {
+    programsBefore: programs.length, programsAfter: programs.length - progDup, programsRemoved: progDup,
+    exercisesBefore: exercises.length, exercisesAfter: exercises.length - exDup, exercisesRemoved: exDup,
+    hasWork: progDup > 0 || exDup > 0,
+  };
+}
+
+// Führt Duplikate zusammen und repariert ALLE Referenzen. Reine Funktion →
+// gibt ein neues data-Objekt zurück (kein Seiteneffekt). Wettkämpfe (positional
+// über den Index berechnet) und Sessions bleiben erhalten und korrekt verknüpft.
+function mergeDuplicates(data) {
+  const exercisesIn = data.exercises || [];
+  const sessionsIn = data.sessions || [];
+  const competitionsIn = data.competitions || [];
+
+  // Survivor-Wahl bei Übungen: die mit den meisten Sessions gewinnt.
+  const sessCount = new Map();
+  for (const s of sessionsIn) if (s.exerciseId) sessCount.set(s.exerciseId, (sessCount.get(s.exerciseId) || 0) + 1);
+
+  // 1) Übungen nach UCI-Code zusammenführen
+  const exByCode = new Map();
+  for (const e of exercisesIn) {
+    const code = e.uci_code ? String(e.uci_code).trim() : '';
+    if (!code) continue;
+    let arr = exByCode.get(code); if (!arr) { arr = []; exByCode.set(code, arr); }
+    arr.push(e);
+  }
+  const exIdMap = new Map();          // oldId -> survivorId
+  const removedEx = new Set();
+  const renameEx = new Map();         // survivorId -> sauberer Name
+  for (const [code, g] of exByCode) {
+    if (g.length < 2) continue;
+    const survivor = g.slice().sort((a, b) => (sessCount.get(b.id) || 0) - (sessCount.get(a.id) || 0))[0];
+    renameEx.set(survivor.id, cleanestExerciseName(g, code));
+    for (const e of g) if (e.id !== survivor.id) { exIdMap.set(e.id, survivor.id); removedEx.add(e.id); }
+  }
+  const exercises = exercisesIn
+    .filter(e => !removedEx.has(e.id))
+    .map(e => renameEx.has(e.id) ? { ...e, name: renameEx.get(e.id) } : e);
+  const sessions = sessionsIn.map(s => exIdMap.has(s.exerciseId) ? { ...s, exerciseId: exIdMap.get(s.exerciseId) } : s);
+  const remapTable = (tbl) => (tbl || []).map(row => (row && exIdMap.has(row.exerciseId)) ? { ...row, exerciseId: exIdMap.get(row.exerciseId) } : row);
+
+  // 2) Programme kanonisieren + nach Signatur zusammenführen
+  let programs = (data.programs || []).map(p => ({ ...p, exercises: (p.exercises || []).map(canonProgramExercise) }));
+  const compCountByProg = new Map();
+  for (const c of competitionsIn) if (c.program_id) compCountByProg.set(c.program_id, (compCountByProg.get(c.program_id) || 0) + 1);
+  const progBySig = new Map();
+  for (const p of programs) {
+    const sig = programDupSignature(p);
+    if (!sig) continue;
+    let arr = progBySig.get(sig); if (!arr) { arr = []; progBySig.set(sig, arr); }
+    arr.push(p);
+  }
+  const progIdMap = new Map();
+  const removedProg = new Set();
+  for (const [, g] of progBySig) {
+    if (g.length < 2) continue;
+    // Survivor: meiste verknüpfte Wettkämpfe, dann wenigste Platzhalter-Namen.
+    const placeholders = (p) => (p.exercises || []).filter(e => /^Übung\s*\d+$/.test((e.name || '').trim())).length;
+    const survivor = g.slice().sort((a, b) =>
+      (compCountByProg.get(b.id) || 0) - (compCountByProg.get(a.id) || 0)
+      || placeholders(a) - placeholders(b))[0];
+    for (const p of g) if (p.id !== survivor.id) { progIdMap.set(p.id, survivor.id); removedProg.add(p.id); }
+  }
+  programs = programs.filter(p => !removedProg.has(p.id));
+
+  const competitions = competitionsIn.map(c => ({
+    ...c,
+    program_id: progIdMap.has(c.program_id) ? progIdMap.get(c.program_id) : c.program_id,
+    table1: remapTable(c.table1),
+    table2: remapTable(c.table2),
+  }));
+
+  return { ...data, programs, exercises, sessions, competitions };
+}
+
+
 // Training-Statistik pro Übung — Quote aus Sessions
 // ropeFilter: null = alle Sessions, true = nur mit Seil, false = nur ohne Seil
 // =============================================================
@@ -11547,6 +11684,8 @@ function ProgrammeView({ data, setData }) {
 
   // „Alle Programme"-Sheet (iOS-Style Bottom-Sheet)
   const [showAllProgramsSheet, setShowAllProgramsSheet] = useState(false);
+  // Duplikat-Bereinigung (doppelte Programme/Übungen zusammenführen)
+  const [confirmCleanup, setConfirmCleanup] = useState(false);
 
   const upsert = (prog) => {
     const list = data.programs || [];
@@ -11639,6 +11778,9 @@ function ProgrammeView({ data, setData }) {
 
   const programs = data.programs || [];
   const competitions = data.competitions || [];
+
+  // Doppelte Programme/Übungen erkennen → „Bereinigen"-Hinweis anbieten.
+  const dupInfo = analyzeDuplicates(data);
 
   // Programm des letzten Wettkampfs (nach Datum) — wird oben prominent gezeigt.
   const lastCompetition = competitions.length
@@ -11755,6 +11897,23 @@ function ProgrammeView({ data, setData }) {
         </>
       )}
 
+      {dupInfo.hasWork && (
+        <button
+          onClick={() => setConfirmCleanup(true)}
+          className="w-full flex items-start gap-3 text-left bg-[#FF9500]/10 border border-[#FF9500]/30 rounded-2xl px-4 py-3 active:scale-[0.99] transition">
+          <Sparkles size={18} className="text-[#FF9500] shrink-0 mt-0.5" strokeWidth={2.2} />
+          <div className="min-w-0">
+            <div className="text-[15px] font-semibold text-[#000]">Doppelte aufräumen</div>
+            <div className="text-[13px] text-[#8E8E93] mt-0.5 leading-snug">
+              {dupInfo.programsRemoved > 0 && `${dupInfo.programsRemoved} doppelte Programme`}
+              {dupInfo.programsRemoved > 0 && dupInfo.exercisesRemoved > 0 && ' · '}
+              {dupInfo.exercisesRemoved > 0 && `${dupInfo.exercisesRemoved} doppelte Übungen`}
+              {' '}gefunden. Tippen zum Zusammenführen.
+            </div>
+          </div>
+        </button>
+      )}
+
       {exerciseList.length > 0 && (
         <IOSList
           header="Übungen mit Wettkampfdaten"
@@ -11859,6 +12018,16 @@ function ProgrammeView({ data, setData }) {
           />
         );
       })()}
+
+      {confirmCleanup && (
+        <DeleteConfirmModal
+          title="Doppelte zusammenführen?"
+          message={`${dupInfo.programsBefore} → ${dupInfo.programsAfter} Programme und ${dupInfo.exercisesBefore} → ${dupInfo.exercisesAfter} Übungen. Programme mit identischer Übungsfolge und Übungen mit gleichem UCI-Code werden zu jeweils einer zusammengeführt. Wettkämpfe, Ergebnisse und Trainings-Sessions bleiben erhalten und werden korrekt verknüpft.`}
+          confirmLabel="Zusammenführen"
+          onConfirm={() => { setConfirmCleanup(false); setTimeout(() => setData(mergeDuplicates(data)), 0); }}
+          onCancel={() => setConfirmCleanup(false)}
+        />
+      )}
     </div>
   );
 }
@@ -13112,11 +13281,27 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
       };
       const exactExisting = (programs || []).find(matchesExactly);
 
+      // Signatur-Match (Disziplin + Codefolge): dasselbe Programm wird auch dann
+      // wiedererkannt, wenn der Scan die Punkte minimal anders gelesen hat —
+      // verhindert den Wildwuchs fast identischer Programme. Nur bei lückenlosen
+      // Codes verlässlich.
+      const rowCodes = parsed.exerciseRows.map(r => (r.code ? String(r.code).trim() : ''));
+      const allRowsCoded = rowCodes.length > 0 && rowCodes.every(c => c);
+      const discKey = parsed.disziplin
+        ? (['1er', '2er', '4er', '6er'].find(d => parsed.disziplin.toLowerCase().includes(d)) || '')
+        : '';
+      const sigExisting = (!exactExisting && allRowsCoded) ? (programs || []).find(p => {
+        if (!p.exercises || p.exercises.length !== rowCodes.length) return false;
+        if (discKey && p.discipline && p.discipline !== discKey) return false;
+        return p.exercises.every((e, idx) => (e.code ? String(e.code).trim() : '') === rowCodes[idx]);
+      }) : null;
+      const reuseExisting = exactExisting || sigExisting;
+
       // Reparatur-Match: bestehendes Programm, dessen Übungen ALLE Platzhalter
       // ("Übung N") sind und dessen Punktfolge zum PDF passt → Namen/Codes aus
       // dem PDF in place ergänzen (kein Duplikat; alle Wettkämpfe mit diesem
       // Programm werden dadurch korrekt).
-      const placeholderBroken = !exactExisting && (programs || []).find(p =>
+      const placeholderBroken = !reuseExisting && (programs || []).find(p =>
         p.exercises && p.exercises.length === parsed.exerciseRows.length &&
         p.exercises.every((e, idx) =>
           /^Übung\s*\d+$/.test((e.name || '').trim()) &&
@@ -13124,10 +13309,10 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
         )
       );
 
-      if (exactExisting) {
-        // 100% Match → bestehendes Programm wiederverwenden
-        activeProgram = exactExisting;
-        if (exactExisting.id !== programId) setProgramId(exactExisting.id);
+      if (reuseExisting) {
+        // Match (exakt ODER gleiche Codefolge) → bestehendes Programm wiederverwenden
+        activeProgram = reuseExisting;
+        if (reuseExisting.id !== programId) setProgramId(reuseExisting.id);
       } else if (placeholderBroken) {
         const repaired = {
           ...placeholderBroken,
@@ -13153,21 +13338,26 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             : (parsed.wettbewerb || 'Programm') + ' (' + disc + ')',
           discipline: disc,
           exercises: parsed.exerciseRows.map((r, idx) => {
-            // UCI-DB-Lookup wenn Name fehlt: erst per Code, dann per Punkte+Disziplin
+            // UCI-Code ist die Quelle der Wahrheit: ist er bekannt, kommen Name UND
+            // Punkte kanonisch aus der UCI-DB (statt des verrauschten Scan-Werts) —
+            // das verhindert verstümmelte Namen und Punkt-Jitter (→ keine Dubletten).
             let resolvedName = r.name || null;
             let resolvedCode = r.code || null;
-            if (!resolvedName) {
-              if (resolvedCode) {
-                const hit = activeUciByCode.get(resolvedCode);
-                if (hit && hit.n) resolvedName = hit.n;
-              } else {
-                const pts = Number(r.points || 0);
-                if (pts > 0 && disc) {
-                  const cands = activeUciDb.filter(u => Math.abs(u.p - pts) < 0.001 && u.d === disc);
-                  if (cands.length === 1) {
-                    resolvedName = cands[0].n;
-                    resolvedCode = cands[0].c;
-                  }
+            let resolvedPts = Number(r.points || 0);
+            if (resolvedCode) {
+              const hit = activeUciByCode.get(resolvedCode);
+              if (hit) {
+                if (hit.n) resolvedName = hit.n;
+                if (hit.p != null) resolvedPts = Number(hit.p);
+              }
+            } else {
+              const pts = Number(r.points || 0);
+              if (pts > 0 && disc) {
+                const cands = activeUciDb.filter(u => Math.abs(u.p - pts) < 0.001 && u.d === disc);
+                if (cands.length === 1) {
+                  resolvedName = resolvedName || cands[0].n;
+                  resolvedCode = cands[0].c;
+                  resolvedPts = Number(cands[0].p);
                 }
               }
             }
@@ -13176,7 +13366,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
               nr: idx + 1,
               name: resolvedName || ('Übung ' + (idx + 1)),
               code: resolvedCode,
-              points: Number(r.points || 0)
+              points: resolvedPts
             };
           }),
           created: new Date().toISOString()
@@ -16688,7 +16878,7 @@ function ClubModal({ firstName, onSaved, onLater }) {
 // =============================================================
 // LÖSCH-BESTÄTIGUNG (zuverlässiger als window.confirm)
 // =============================================================
-function DeleteConfirmModal({ title, message, onConfirm, onCancel }) {
+function DeleteConfirmModal({ title, message, onConfirm, onCancel, confirmLabel = 'Löschen' }) {
   // iOS-Style Action Sheet — Bottom-Sheet auf Mobile, zentriert auf Desktop
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4 bg-black/40 backdrop-blur-sm"
@@ -16704,7 +16894,7 @@ function DeleteConfirmModal({ title, message, onConfirm, onCancel }) {
           <div className="border-t border-[#C6C6C8]/40" />
           <button onClick={onConfirm}
             className="w-full py-3.5 text-[17px] text-[#FF3B30] font-semibold active:bg-[#D1D1D6]/40 transition">
-            Löschen
+            {confirmLabel}
           </button>
         </div>
         {/* Cancel-Block — separater Card im iOS-Stil */}
