@@ -4,7 +4,7 @@ import {
   Search, Info, Archive, AlertTriangle, ListChecks,
   Home, BarChart3, Users, Download, Sparkles, FileText, Lock,
   Settings as SettingsIcon, LogOut, Shield, User, RotateCcw,
-  TrendingUp, Calendar, Target, Activity, FileSpreadsheet,
+  TrendingUp, TrendingDown, Minus, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
@@ -6856,21 +6856,35 @@ function TrainingView({ data, setData, setView }) {
   // Zählt Sessions pro Übung + ermittelt Erfolgsquote, damit wir
   // direkt sinnvoll sortieren + anzeigen können.
   const trainedExercises = (() => {
+    // Zeitfenster für „letzte 4 Wochen" + Trend (4 Wochen davor) als ISO-Datum.
+    const dayMs = 86400000;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const recentFrom = new Date(today.getTime() - 28 * dayMs).toISOString().slice(0, 10);
+    const prevFrom = new Date(today.getTime() - 56 * dayMs).toISOString().slice(0, 10);
     const byEx = new Map();
     for (const s of (data.sessions || [])) {
       if (!s.exerciseId) continue;
       let agg = byEx.get(s.exerciseId);
       if (!agg) {
-        agg = { sessions: 0, success: 0, fail: 0, third: 0, lastDate: '' };
+        agg = { sessions: 0, success: 0, fail: 0, third: 0, lastDate: '',
+          recSucc: 0, recTot: 0, prevSucc: 0, prevTot: 0 };
         byEx.set(s.exerciseId, agg);
       }
       agg.sessions += 1;
+      const d = s.date || '';
+      // In welches Fenster fällt die Session? recent = letzte 4 Wochen,
+      // prev = die 4 Wochen davor (für die Trend-Richtung).
+      const win = d >= recentFrom ? 'rec' : (d >= prevFrom ? 'prev' : null);
       for (const e of (s.entries || [])) {
         if (e === 'success') agg.success += 1;
         else if (e === 'fail') agg.fail += 1;
         else if (e === 'third') agg.third += 1;
+        if (win && (e === 'success' || e === 'fail' || e === 'third')) {
+          if (win === 'rec') { agg.recTot += 1; if (e === 'success') agg.recSucc += 1; }
+          else { agg.prevTot += 1; if (e === 'success') agg.prevSucc += 1; }
+        }
       }
-      if ((s.date || '') > agg.lastDate) agg.lastDate = s.date || '';
+      if (d > agg.lastDate) agg.lastDate = d;
     }
     const rows = [];
     for (const ex of (data.exercises || [])) {
@@ -6878,7 +6892,8 @@ function TrainingView({ data, setData, setView }) {
       if (!agg) continue;
       const total = agg.success + agg.fail + agg.third;
       const rate = total > 0 ? Math.round((agg.success / total) * 100) : 0;
-      rows.push({ ex, sessions: agg.sessions, total, rate, lastDate: agg.lastDate });
+      rows.push({ ex, sessions: agg.sessions, total, rate, lastDate: agg.lastDate,
+        recSucc: agg.recSucc, recTot: agg.recTot, prevSucc: agg.prevSucc, prevTot: agg.prevTot });
     }
     rows.sort((a, b) => {
       // Erst nach Aktualität (zuletzt trainiert oben), dann nach Session-Anzahl
@@ -6916,14 +6931,36 @@ function TrainingView({ data, setData, setView }) {
   })();
   const activeExerciseRows = [...activeTrained, ...feedbackOnlyRows];
 
-  const renderTrainedRow = ({ ex, sessions, total, rate }) => {
-    const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 55 ? 'text-slate-600 dark:text-slate-200' : 'text-rose-600';
+  // Trailing-Quote: primär die Quote der LETZTEN 4 WOCHEN + Trend-Pfeil
+  // (Vergleich zu den 4 Wochen davor). Ohne Training in den letzten 4 Wochen
+  // fällt es auf die Gesamtquote zurück — gedämpft, damit klar ist: nicht aktuell.
+  const renderRateTrend = ({ recSucc, recTot, prevSucc, prevTot, allRate, allTotal }) => {
+    if (recTot > 0) {
+      const recRate = Math.round((recSucc / recTot) * 100);
+      const color = recRate >= 80 ? 'text-[#34C759]' : recRate >= 55 ? 'text-slate-600 dark:text-slate-200' : 'text-rose-600';
+      let arrow = null;
+      if (prevTot > 0) {
+        const delta = recRate - Math.round((prevSucc / prevTot) * 100);
+        if (delta >= 5) arrow = <TrendingUp size={15} strokeWidth={2.4} className="text-[#34C759]" />;
+        else if (delta <= -5) arrow = <TrendingDown size={15} strokeWidth={2.4} className="text-rose-600" />;
+        else arrow = <Minus size={15} strokeWidth={2.4} className="text-[#8E8E93]" />;
+      }
+      return <span className="flex items-center gap-1">{arrow}<span className={'font-semibold text-[15px] tabular-nums ' + color}>{recRate}%</span></span>;
+    }
+    if (allTotal > 0) {
+      // Keine Sessions in den letzten 4 Wochen → Gesamtquote gedämpft als Fallback.
+      return <span className="font-semibold text-[15px] tabular-nums text-[#C7C7CC] dark:text-slate-500">{allRate}%</span>;
+    }
+    return null;
+  };
+
+  const renderTrainedRow = ({ ex, sessions, total, rate, recSucc = 0, recTot = 0, prevSucc = 0, prevTot = 0 }) => {
     const fbCount = fbCountFor(ex);
     // Kompakte Meta: kleine Icons + Zahl (Hantel = Sessions, Sprechblase =
     // Feedback) statt langem Text — weniger Platz, ruhiger (UI-Guide).
     return (
       <IOSListRow key={ex.id} onClick={() => setSelectedExercise(ex)}
-        trailing={<div className="flex items-center gap-2 shrink-0">{!ex._feedbackOnly && total > 0 && <span className={'font-semibold text-[15px] tabular-nums ' + rateColor}>{rate}%</span>}<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" /></div>}>
+        trailing={<div className="flex items-center gap-2 shrink-0">{!ex._feedbackOnly && total > 0 && renderRateTrend({ recSucc, recTot, prevSucc, prevTot, allRate: rate, allTotal: total })}<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" /></div>}>
         <div className="flex items-center gap-2 min-w-0">
           <span className="font-medium text-[15px] truncate">{localizedExerciseName(ex)}</span>
           {ex.active === false && <IOSTag color="gray">archiviert</IOSTag>}
@@ -7036,13 +7073,17 @@ function TrainingView({ data, setData, setView }) {
             const totalAtt = g.rows.reduce((s, r) => s + (r.total || 0), 0);
             const succ = g.rows.reduce((s, r) => s + Math.round((r.rate || 0) * (r.total || 0) / 100), 0);
             const rate = totalAtt > 0 ? Math.round((succ / totalAtt) * 100) : 0;
-            const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 55 ? 'text-slate-600 dark:text-slate-200' : 'text-rose-600';
+            // Trend-Fenster über alle Varianten der Hauptübung summieren.
+            const recSucc = g.rows.reduce((s, r) => s + (r.recSucc || 0), 0);
+            const recTot = g.rows.reduce((s, r) => s + (r.recTot || 0), 0);
+            const prevSucc = g.rows.reduce((s, r) => s + (r.prevSucc || 0), 0);
+            const prevTot = g.rows.reduce((s, r) => s + (r.prevTot || 0), 0);
             const fbCount = fbCountForMany(g.rows.map(r => r.ex));
             const isOpen = openGroups.has(g.base);
             els.push(
               <IOSListRow key={'g:' + g.base} onClick={() => toggleGroup(g.base)}
                 trailing={<div className="flex items-center gap-2 shrink-0">
-                  {totalAtt > 0 && <span className={'font-semibold text-[15px] tabular-nums ' + rateColor}>{rate}%</span>}
+                  {totalAtt > 0 && renderRateTrend({ recSucc, recTot, prevSucc, prevTot, allRate: rate, allTotal: totalAtt })}
                   <ChevronRight size={18} strokeWidth={2.4} className={'text-[#C7C7CC] transition-transform ' + (isOpen ? 'rotate-90' : '')} />
                 </div>}>
                 <div className="flex items-center gap-2 min-w-0">
@@ -7062,7 +7103,7 @@ function TrainingView({ data, setData, setView }) {
             }
           }
           return (
-            <IOSList header={'Übungen (' + groups.length + ')'} footer="Mehrere Varianten sind unter der Hauptübung gebündelt — tippen zum Aufklappen.">
+            <IOSList header={'Übungen (' + groups.length + ')'} footer="Quote = letzte 4 Wochen, Pfeil = Trend zu den 4 Wochen davor. Gedämpfte Werte sind die Gesamtquote (länger nicht trainiert). Varianten sind gebündelt — tippen zum Aufklappen.">
               {els}
             </IOSList>
           );
