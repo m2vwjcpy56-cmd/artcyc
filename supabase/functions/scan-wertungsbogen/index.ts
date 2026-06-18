@@ -19,9 +19,10 @@
 const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY") ?? "";
 // @ts-ignore Deno-Runtime
 const VISION_MODEL = Deno.env.get("OPENROUTER_VISION_MODEL") ?? Deno.env.get("OPENROUTER_MODEL") ?? "google/gemini-2.5-flash";
-// Stärkeres Modell für die schwierige Übungstabelle (Markierungen zählen).
+// Modell für die Übungstabelle. Standard = schnelles Flash (Pro war zu langsam
+// → Edge-Timeouts/Totalausfall). Bei Bedarf per Env auf ein stärkeres Modell.
 // @ts-ignore Deno-Runtime
-const VISION_TABLE_MODEL = Deno.env.get("OPENROUTER_VISION_TABLE_MODEL") ?? "google/gemini-2.5-pro";
+const VISION_TABLE_MODEL = Deno.env.get("OPENROUTER_VISION_TABLE_MODEL") ?? "google/gemini-2.5-flash";
 // @ts-ignore Deno-Runtime
 const APP_REFERER = Deno.env.get("APP_REFERER") ?? "https://artcyc.vercel.app";
 // @ts-ignore Deno-Runtime
