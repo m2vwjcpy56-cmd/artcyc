@@ -196,14 +196,25 @@ Deno.serve(async (req: Request) => {
     // 2) Übungstabelle — stärkeres Modell, mit Anker + optionaler Korrektur.
     let exercises: any[] = [];
     let exDebug: string | null = null;
+    let usedModel = tableModel;
     try {
-      const ex = await callVision(buildExPrompt(programPoints, correction), dataUrl, 6000, tableModel);
-      const rawRows = ex.data && (Array.isArray(ex.data.rows) ? ex.data.rows : (Array.isArray(ex.data.exercises) ? ex.data.exercises : null));
+      const prompt = buildExPrompt(programPoints, correction);
+      const readRows = (d: any) => d && (Array.isArray(d.rows) ? d.rows : (Array.isArray(d.exercises) ? d.exercises : null));
+      let ex = await callVision(prompt, dataUrl, 6000, tableModel);
+      let rawRows = readRows(ex.data);
+      // Fallback: wenn das gewählte Modell nichts/Fehler liefert, mit dem
+      // Standard-Modell (flash) erneut versuchen.
+      if ((!rawRows || rawRows.length === 0) && tableModel !== VISION_MODEL) {
+        const fb = await callVision(prompt, dataUrl, 6000, VISION_MODEL);
+        const fbRows = readRows(fb.data);
+        if (fbRows && fbRows.length) { ex = fb; rawRows = fbRows; usedModel = VISION_MODEL; }
+        else if (!exDebug) exDebug = "PRO: " + (ex.error || ex.raw || "leer").slice(0, 280) + " | FLASH: " + (fb.error || fb.raw || "leer").slice(0, 280);
+      }
       if (rawRows) exercises = rawRows.map(sanitizeExerciseRow);
-      if (exercises.length === 0) exDebug = (ex.error || ex.raw || "").slice(0, 600);
+      if (exercises.length === 0 && !exDebug) exDebug = (ex.error || ex.raw || "").slice(0, 600);
     } catch (e) { exDebug = "Ausnahme: " + String((e as Error)?.message || e); }
 
-    return new Response(JSON.stringify({ ok: true, data: { ...stammData, exercises, _exDebug: exDebug, _tableModel: tableModel } }), { status: 200, headers: jsonHeaders(req) });
+    return new Response(JSON.stringify({ ok: true, data: { ...stammData, exercises, _exDebug: exDebug, _tableModel: usedModel } }), { status: 200, headers: jsonHeaders(req) });
   } catch (e) {
     return new Response(JSON.stringify({ ok: false, error: String((e as Error)?.message || e) }), { status: 500, headers: jsonHeaders(req) });
   }
