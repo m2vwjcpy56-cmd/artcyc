@@ -13410,14 +13410,13 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             if (candErr < bestErr) { best = cand; bestErr = candErr; }
           }
 
-          // Inkrement 2 — Kachelung: wenn die Tabelle als Ganzes nicht (gut)
-          // gelesen wurde, das Bild in hochauflösende Bänder schneiden und jedes
-          // Band einzeln lesen. Anker = bekannte Programm-Punkte ODER (ohne
-          // Programm) die im Gesamt-Scan gelesene Punktfolge.
+          // Kachelung NUR zum Verfeinern, wenn das Gesamtbild bereits Zeilen lieferte,
+          // die Prüfsumme aber abweicht. Liefert das Gesamtbild gar nichts, brechen wir
+          // zügig ab (Kacheln wären dann auch leer und nur langsam).
           const anchorPoints = (programPoints && programPoints.length)
             ? programPoints
             : best.map(r => Number(r.points)).filter(n => Number.isFinite(n) && n > 0);
-          if (best.length === 0 || bestErr > tol) {
+          if (best.length > 0 && bestErr > tol) {
             try {
               setImportMsg('Tabelle wird in Ausschnitte geteilt …'); setScanTarget(0.5);
               const imgEl = await loadImageEl(dataUrl);
@@ -13837,9 +13836,9 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 </p>
               )}
               {importPreview._exDebug && !(importPreview._scanRows && importPreview._scanRows.length > 0) && (
-                <details className="text-[11px] text-violet-900/70 dark:text-violet-200/70 bg-white/50 dark:bg-white/5 border border-violet-200/60 dark:border-violet-800/40 rounded-lg p-2">
-                  <summary className="cursor-pointer font-medium select-none">Diagnose: KI-Tabellen-Antwort anzeigen</summary>
-                  <pre className="mt-1.5 whitespace-pre-wrap break-words font-mono text-[10px] leading-snug max-h-44 overflow-auto opacity-90">{importPreview._exDebug}</pre>
+                <details open className="text-[11px] text-violet-900/70 dark:text-violet-200/70 bg-white/50 dark:bg-white/5 border border-violet-200/60 dark:border-violet-800/40 rounded-lg p-2">
+                  <summary className="cursor-pointer font-medium select-none">Diagnose: KI-Antwort (bitte an den Entwickler schicken)</summary>
+                  <pre className="mt-1.5 whitespace-pre-wrap break-words font-mono text-[10px] leading-snug max-h-56 overflow-auto opacity-90">{importPreview._exDebug}</pre>
                 </details>
               )}
               {importPreview.warnings && importPreview.warnings.length > 0 && (
