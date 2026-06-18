@@ -57,10 +57,12 @@ Die Datenspalten stehen in Dreiergruppen — je Gruppe EINE Spalte pro Kampfgeri
   P = Schwierigkeit in % , X = Kreuze, W = Wellen (~), S = Striche (|), K = Kreise/Sturz (○).
 In JEDER Zelle steht eine ZAHL (die Anzahl bzw. der %-Wert) ODER die Zelle ist leer (= 0). Lies die EINGETRAGENE ZAHL ab — du zählst NICHTS und erfindest NICHTS.
 Gib AUSSCHLIESSLICH dieses JSON zurück (kein Text, keine Code-Fences):
-{ "rows": [ { "points": number|null, "confidence": number,
+{ "rows": [ { "points": number|null, "code": string|null, "name": string|null, "confidence": number,
               "P":[kg1,kg2,kg3], "X":[kg1,kg2,kg3], "W":[kg1,kg2,kg3], "S":[kg1,kg2,kg3], "K":[kg1,kg2,kg3] } ] }
 REGELN:
 - Eine Zeile pro Übung, von oben nach unten. "points" = Punktwert aus der Pkte-Spalte (z. B. 5,8).
+- "code" = der gedruckte Übungs-Code aus der Code-Spalte (Überschrift ACA/CBMC o. ä.), z. B. "1175c" (vier Ziffern, evtl. mit Kleinbuchstabe). Wenn nicht lesbar: null.
+- "name" = der Übungstext aus der linken Spalte (z. B. "Drehsprung"). Wenn nicht lesbar: null.
 - Leere Zelle = 0. X/W/S/K sind kleine ganze Zahlen (0–9). P ist 0, 10, 50 oder 100.
 - Jede Gruppe hat GENAU 3 Werte (KG1, KG2, KG3) — fehlt eine Spalte, trage 0 ein.
 - Verwechsle die Spaltengruppen NICHT: % (Schwierigkeit) ≠ X (Kreuze). Punktwerte gehören NUR in "points".
@@ -139,8 +141,11 @@ function sanitizeExerciseRow(row: any): any {
   const triple = (a: any, f: (v: any) => number) => { const arr = Array.isArray(a) ? a : []; return [f(arr[0]), f(arr[1]), f(arr[2])]; };
   const pts = Number(row?.points);
   const conf = Number(row?.confidence);
+  const str = (v: any) => (typeof v === "string" && v.trim()) ? v.trim().slice(0, 80) : null;
   return {
     points: Number.isFinite(pts) ? pts : null,
+    code: str(row?.code),
+    name: str(row?.name),
     confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf)) : null,
     P: triple(row?.P, pct),
     X: triple(row?.X, cnt),
