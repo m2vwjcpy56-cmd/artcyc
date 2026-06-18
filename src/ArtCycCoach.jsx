@@ -12980,6 +12980,18 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
   const [importMsg, setImportMsg] = useState(() => initVal('importMsg', ''));
   const [importPreview, setImportPreview] = useState(() => initVal('importPreview', null));
   const [scanProgress, setScanProgress] = useState(0); // 0..1 für die Foto-Erkennung (bestimmt)
+  // Sanfter „kriechender" Fortschritt: ein Timer schiebt den Balken kontinuierlich
+  // in kleinen Schritten Richtung Ziel, statt nur bei Phasenwechseln zu springen.
+  const scanAnim = useRef({ target: 0, timer: null });
+  const startScanAnim = () => {
+    if (scanAnim.current.timer) return;
+    scanAnim.current.timer = setInterval(() => {
+      setScanProgress(p => { const t = scanAnim.current.target; return p >= t ? p : Math.min(t, p + Math.max(0.004, (t - p) * 0.06)); });
+    }, 120);
+  };
+  const stopScanAnim = () => { if (scanAnim.current.timer) { clearInterval(scanAnim.current.timer); scanAnim.current.timer = null; } };
+  const setScanTarget = (t) => { scanAnim.current.target = t; };
+  useEffect(() => () => stopScanAnim(), []);
   const [showPasteArea, setShowPasteArea] = useState(false);
   const [pasteText, setPasteText] = useState('');
 
@@ -13334,16 +13346,16 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     const list = Array.from(files || []);
     if (list.length === 0) return;
     setImportStatus('parsing');
-    setScanProgress(0.04);
+    setScanProgress(0); setScanTarget(0.12); startScanAnim();
 
     // 1) Primär: KI-Bilderkennung (Vision-LLM) — robust bei Fotos.
     const firstImg = list.find(f => /^image\//.test(f.type));
     if (firstImg) {
       try {
-        setImportMsg('Bild wird vorbereitet …'); setScanProgress(0.1);
+        setImportMsg('Bild wird vorbereitet …'); setScanTarget(0.2);
         // Höhere Auflösung als früher (1600) — die feinen Fehlerzeichen brauchen Detail.
         const dataUrl = await imageFileToDataUrl(firstImg, 2400, 0.9);
-        setImportMsg('KI liest Stammdaten & Tabelle …'); setScanProgress(0.18);
+        setImportMsg('KI liest Stammdaten & Tabelle …'); setScanTarget(0.4);
         const num = (v) => v == null || v === '' ? undefined : (typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.')));
         const c = (v) => { const x = num(v); return typeof x === 'number' && !isNaN(x) ? x : 0; };
         // Anker: bekannte Punktfolge des gewählten Programms (hilft der Zeilen-Zuordnung).
@@ -13372,7 +13384,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
         const deduct = (rows) => { let a1 = 0, s1 = 0, a2 = 0, s2 = 0; for (const r of rows) { a1 += r.kg1.X * 0.2 + r.kg1.W * 0.5 + r.kg1.S * 1 + r.kg1.K * 2; a2 += r.kg2.X * 0.2 + r.kg2.W * 0.5 + r.kg2.S * 1 + r.kg2.K * 2; s1 += (r.points || 0) * (r.kg1.p || 0) / 100; s2 += (r.points || 0) * (r.kg2.p || 0) / 100; } return { a1, s1, a2, s2 }; };
 
         const first = await scanWertungsbogenVision(dataUrl, { programPoints });
-        setScanProgress(0.35);
+        setScanTarget(0.46);
         if (!first.error && first.data) {
           const data = first.data;
           const a1Soll = num(data.kg1_ausfuehrung), a2Soll = num(data.kg2_ausfuehrung);
@@ -13389,7 +13401,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             if (typeof s1Soll === 'number' && Math.abs(d.s1 - s1Soll) > tol) parts.push(`KG1-Schwierigkeitsabzug muss ${s1Soll.toFixed(1)} sein (du zähltest ${d.s1.toFixed(1)})`);
             if (typeof s2Soll === 'number' && Math.abs(d.s2 - s2Soll) > tol) parts.push(`KG2-Schwierigkeitsabzug muss ${s2Soll.toFixed(1)} sein (du zähltest ${d.s2.toFixed(1)})`);
             if (parts.length === 0) break;
-            setImportMsg(`KI prüft die Summen nach (Durchlauf ${attempt + 2}) …`); setScanProgress(0.35 + 0.03 * (attempt + 1));
+            setImportMsg(`KI prüft die Summen nach (Durchlauf ${attempt + 2}) …`); setScanTarget(0.46 + 0.02 * (attempt + 1));
             const corr = await scanWertungsbogenVision(dataUrl, { programPoints, tableOnly: true, correction: 'Laut Footer: ' + parts.join('; ') + '.' });
             if (corr.error || !corr.data || !Array.isArray(corr.data.exercises) || corr.data.exercises.length === 0) break;
             const cand = toRows(corr.data.exercises);
@@ -13402,15 +13414,16 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           // einzeln lesen und über die Punktwerte dem Programm zuordnen.
           if (programPoints && programPoints.length && (best.length === 0 || bestErr > tol)) {
             try {
-              setImportMsg('Tabelle wird in Ausschnitte geteilt …'); setScanProgress(0.42);
+              setImportMsg('Tabelle wird in Ausschnitte geteilt …'); setScanTarget(0.5);
               const imgEl = await loadImageEl(dataUrl);
               const bandCount = programPoints.length > 18 ? 5 : programPoints.length > 8 ? 4 : 3;
               const tiles = sliceImageBands(imgEl, { bands: bandCount, overlap: 0.2, maxW: 2000, quality: 0.9 });
               const tileRows = [];
               for (let ti = 0; ti < tiles.length; ti++) {
                 setImportMsg(`KI liest Ausschnitt ${ti + 1} von ${tiles.length} …`);
-                setScanProgress(0.45 + 0.5 * ((ti + 1) / tiles.length));
-                const tr = await scanWertungsbogenVision(tiles[ti], { tableOnly: true });
+                setScanTarget(0.5 + 0.45 * ((ti + 1) / tiles.length));
+                // Kacheln mit dem schnelleren Flash-Modell (hohes Detail je Band) — spart Zeit.
+                const tr = await scanWertungsbogenVision(tiles[ti], { tableOnly: true, tableModel: 'google/gemini-2.5-flash' });
                 if (!tr.error && tr.data && Array.isArray(tr.data.exercises)) tileRows.push(...toRows(tr.data.exercises));
               }
               if (tileRows.length > 0) {
@@ -13439,7 +13452,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             || parsed.kg1_gesamtabzug != null || parsed.kg1_schwierigkeit != null || parsed.kg1_ausfuehrung != null || parsed.kg1_ausgefahren != null
             || (parsed._scanRows && parsed._scanRows.length > 0);
           if (hasAny) {
-            setScanProgress(1);
+            stopScanAnim(); setScanProgress(1);
             setImportPreview(parsed);
             setImportStatus('success');
             const tag = parsed._scanRows ? (parsed._scanChecksumOk ? ' ✓ Summen stimmen' : ' — Summen prüfen') : '';
@@ -13516,10 +13529,12 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
       }
       parsed.errors = []; // teilweise OK — fehlende Felder füllst du im Editor
       const solide = parsed.wettbewerb || parsed.starter;
+      stopScanAnim(); setScanProgress(1);
       setImportPreview(parsed);
       setImportStatus('success');
       setImportMsg(solide ? 'Scan erkannt — bitte Werte prüfen' : 'Teilweise erkannt — bitte Werte prüfen/ergänzen');
     } catch (err) {
+      stopScanAnim();
       setImportStatus('error');
       setImportMsg('Scan fehlgeschlagen: ' + (err.message || 'unbekannt') + '. Tipp: in der Dateien-App scannen → als PDF sichern → „PDF auswählen".');
     }
@@ -13765,6 +13780,17 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 {typeof importPreview.aufgestellt === 'number' && <div><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.tabled')}:</span> <strong>{importPreview.aufgestellt.toFixed(2)}</strong></div>}
                 {typeof importPreview.endergebnis === 'number' && <div className="col-span-2 text-amber-700 dark:text-amber-300"><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.finalScorePdf')}:</span> <strong>{importPreview.endergebnis.toFixed(2)}</strong></div>}
               </div>
+              {/* Programm-Mismatch: gewähltes Programm passt nicht zum Bogen (aufgestellte Punkte). */}
+              {(() => {
+                if (typeof importPreview.aufgestellt !== 'number' || !program || !program.exercises || !program.exercises.length) return null;
+                const progSum = program.exercises.reduce((s, e) => s + Number(e.points || 0), 0);
+                if (Math.abs(progSum - importPreview.aufgestellt) <= 0.1) return null;
+                return (
+                  <p className="text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900/60 rounded-lg p-2">
+                    ⚠️ <strong>Programm passt nicht zum Bogen.</strong> Das gewählte Programm „{program.name}" ergibt {progSum.toFixed(2)} Pkt, der Bogen nennt aber <strong>aufgestellt {importPreview.aufgestellt.toFixed(2)}</strong>. Bitte oben das passende Programm wählen — sonst sind aufgestellte Punkte, Zuordnung und Abzüge falsch.
+                  </p>
+                );
+              })()}
               {((importPreview.exerciseRows && importPreview.exerciseRows.length > 0) || (importPreview._scanRows && importPreview._scanRows.length > 0)) ? (
                 <p className="text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 rounded-lg p-2">
                   ✓ <strong>{t('pdfImport.exercisesRecognized', { n: (importPreview.exerciseRows && importPreview.exerciseRows.length) || importPreview._scanRows.length })}</strong>
