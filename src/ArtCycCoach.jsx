@@ -5757,6 +5757,9 @@ function Dashboard({ data, setView, onOpenFeedback }) {
   const [dashShowHit, setDashShowHit] = useState(false);
   const [dashShowDanger, setDashShowDanger] = useState(false);
   const [dashNeglectOpen, setDashNeglectOpen] = useState(false);
+  // Erfassen-Auswahl (Action-Sheet) — im Dashboard bewusst MIT Auswahl
+  // (im Training-Tab geht der Button direkt ins Protokollieren).
+  const [erfassenOpen, setErfassenOpen] = useState(false);
   const [dashFocusExId, setDashFocusExId] = useState(null); // „Übung im Fokus" (Default: zuletzt trainiert)
   const seasonRange = useMemo(() => {
     const today = new Date();
@@ -5954,12 +5957,24 @@ function Dashboard({ data, setView, onOpenFeedback }) {
             <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('dashboard.title')}</h1>
             <p className="text-[#8E8E93] text-[15px] mt-1">{t('dashboard.subtitle')}</p>
           </div>
-          {/* Quick-Action: kompakt nahe dem Kontext; volle Erfassung bleibt im Training */}
-          <button onClick={() => setView('erfassen')}
+          {/* Quick-Action: im Dashboard mit Auswahl, was erfasst werden soll. */}
+          <button onClick={() => setErfassenOpen(true)}
             className="shrink-0 mt-1 px-3 py-1.5 rounded-full bg-[#FF9500] text-white text-[13px] font-semibold flex items-center gap-1 active:scale-95 transition shadow-[0_2px_8px_rgba(255,149,0,0.25)]">
             <Plus size={14} strokeWidth={2.6} /> Erfassen
           </button>
         </header>
+
+        {/* „Was möchtest du erfassen?"-Auswahl (nur im Dashboard) */}
+        <ActionSheet
+          open={erfassenOpen}
+          onClose={() => setErfassenOpen(false)}
+          message="Was möchtest du erfassen?"
+          actions={[
+            { icon: Dumbbell, label: 'Serie protokollieren', sublabel: 'Geklappt / nicht — fürs Training', onClick: () => setView('erfassen') },
+            { icon: Trophy, label: 'Wertungsbogen erfassen', sublabel: 'Wettkampf (PDF/Foto/manuell)', onClick: () => setView('wettkampf') },
+            ...(onOpenFeedback ? [{ icon: MessageCircle, label: 'Feedback zu Übung', sublabel: 'Fehlerbild + Handlungsanweisung', onClick: () => onOpenFeedback() }] : []),
+          ]}
+        />
         {seasonPills}
 
         {/* OVERVIEW — Cockpit: mehrere starke Infos (Training + Wettkampf gemeinsam) */}
