@@ -2722,18 +2722,11 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
 // unterschiedlich (190.40 vs 191.40 …), wodurch jeder Import ein neues,
 // fast identisches Programm anlegte; verstümmelte Namen (zwei Übungen
 // aneinandergeklebt) erzeugten doppelte Übungen trotz gleichem UCI-Code.
-// Quelle der Wahrheit ist der UCI-Code → Punkte + Name kanonisch daraus.
+// Dedup-Schlüssel ist daher die CODEFOLGE (nicht die Punkte). Die gelesenen
+// Punktwerte bleiben unangetastet — sie summieren sich zur „Aufgestellt"-Zahl
+// des Bogens; ein UCI-Override würde bei fehl-erkannten Codes genau die
+// verfälschen. Übungs-Dubletten werden über den UCI-Code zusammengeführt.
 // =============================================================
-
-// Punkte + Name eines Programm-Übungseintrags auf die UCI-Standardwerte ziehen
-// (nur wenn ein Code bekannt ist). Eigen-Übungen ohne Code bleiben unangetastet.
-function canonProgramExercise(ex) {
-  const code = ex && ex.code ? String(ex.code).trim() : '';
-  if (!code) return ex;
-  const u = activeUciByCode.get(code);
-  if (!u) return ex;
-  return { ...ex, code, name: (u.n || ex.name), points: Number(u.p) };
-}
 
 // Signatur eines Programms = Disziplin + Codefolge. Zwei Programme mit gleicher
 // Signatur SIND dasselbe Programm (Punkte ergeben sich aus dem Code). Nur bei
@@ -2834,12 +2827,10 @@ function mergeDuplicates(data, myUserId) {
   const sessions = sessionsIn.map(s => exIdMap.has(s.exerciseId) ? { ...s, exerciseId: exIdMap.get(s.exerciseId) } : s);
   const remapTable = (tbl) => (tbl || []).map(row => (row && exIdMap.has(row.exerciseId)) ? { ...row, exerciseId: exIdMap.get(row.exerciseId) } : row);
 
-  // 2) EIGENE Programme kanonisieren + nach Signatur zusammenführen.
-  //    Fremde Programme bleiben unverändert (1:1 durchgereicht).
-  let programs = (data.programs || []).map(p =>
-    ownsProgramForWrite(p, myUserId)
-      ? { ...p, exercises: (p.exercises || []).map(canonProgramExercise) }
-      : p);
+  // 2) EIGENE Programme nach Signatur zusammenführen. Punkte/Namen der
+  //    Programm-Übungen werden NICHT verändert (der gelesene Punktwert ist
+  //    maßgeblich für „Aufgestellt"). Fremde Programme 1:1 durchgereicht.
+  let programs = (data.programs || []);
   const compCountByProg = new Map();
   for (const c of competitionsIn) if (c.program_id) compCountByProg.set(c.program_id, (compCountByProg.get(c.program_id) || 0) + 1);
   const progBySig = new Map();
@@ -13378,27 +13369,26 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             : (parsed.wettbewerb || 'Programm') + ' (' + disc + ')',
           discipline: disc,
           exercises: parsed.exerciseRows.map((r, idx) => {
-            // UCI-Code ist die Quelle der Wahrheit: ist er bekannt, kommen Name UND
-            // Punkte kanonisch aus der UCI-DB (statt des verrauschten Scan-Werts) —
-            // das verhindert verstümmelte Namen und Punkt-Jitter (→ keine Dubletten).
+            // Punkte: der vom Bogen GELESENE Wert ist maßgeblich — er summiert sich
+            // zur offiziellen „Aufgestellt"-Zahl. Den UCI-Katalog NUR als Lücken-
+            // füller nutzen, wenn der Bogen keinen Punktwert lieferte (sonst würde
+            // ein fehl-erkannter Code die Aufgestellt-Summe verfälschen). Name analog:
+            // gelesener Name zuerst, UCI nur wenn keiner da ist.
             let resolvedName = r.name || null;
             let resolvedCode = r.code || null;
             let resolvedPts = Number(r.points || 0);
-            if (resolvedCode) {
+            if (resolvedCode && (!resolvedName || resolvedPts <= 0)) {
               const hit = activeUciByCode.get(resolvedCode);
               if (hit) {
-                if (hit.n) resolvedName = hit.n;
-                if (hit.p != null) resolvedPts = Number(hit.p);
+                if (!resolvedName && hit.n) resolvedName = hit.n;
+                if (resolvedPts <= 0 && hit.p != null) resolvedPts = Number(hit.p);
               }
-            } else {
-              const pts = Number(r.points || 0);
-              if (pts > 0 && disc) {
-                const cands = activeUciDb.filter(u => Math.abs(u.p - pts) < 0.001 && u.d === disc);
-                if (cands.length === 1) {
-                  resolvedName = resolvedName || cands[0].n;
-                  resolvedCode = cands[0].c;
-                  resolvedPts = Number(cands[0].p);
-                }
+            }
+            if (!resolvedCode && resolvedPts > 0 && disc) {
+              const cands = activeUciDb.filter(u => Math.abs(u.p - resolvedPts) < 0.001 && u.d === disc);
+              if (cands.length === 1) {
+                resolvedName = resolvedName || cands[0].n;
+                resolvedCode = cands[0].c;
               }
             }
             return {
