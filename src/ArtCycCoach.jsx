@@ -2728,22 +2728,64 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
 // verfälschen. Übungs-Dubletten werden über den UCI-Code zusammengeführt.
 // =============================================================
 
-// Signatur eines Programms = Disziplin + Folge aus Code (oder, wenn kein Code,
-// Punktwert) je Übung. Zwei Programme mit gleicher Signatur SIND dasselbe
-// Programm in identischer Reihenfolge — nur dann ist das Zusammenführen sicher
-// (Wettkampf-Tabellen rechnen positionsbasiert). Fehlt bei einer Übung Code UND
-// Punktwert, ist zu wenig Info da → null (nicht zusammenführbar).
-function programDupSignature(p) {
+// Gruppen-Schlüssel = das, was der Nutzer als „dasselbe Programm" sieht:
+// Disziplin + Name + Übungszahl + Gesamtpunktzahl. Ohne Namen fällt es auf die
+// Code-/Punktfolge zurück. So werden auch Programme als doppelt erkannt, die
+// der Scan minimal unterschiedlich gelesen hat (z. B. 3× „1er Elite Frauen ·
+// 30 Übungen · 187.60").
+function programGroupKey(p) {
   const ex = p.exercises || [];
   if (ex.length === 0) return null;
-  const parts = ex.map(e => {
-    const code = e && e.code ? String(e.code).trim() : '';
-    if (code) return code;
-    const pts = Number(e && e.points);
-    return (Number.isFinite(pts) && pts > 0) ? 'p' + pts.toFixed(1) : '?';
-  });
+  const disc = (p.discipline || '').toLowerCase();
+  const total = ex.reduce((s, e) => s + Number(e.points || 0), 0).toFixed(1);
+  const name = (p.name || '').trim().toLowerCase();
+  if (name) return 'n|' + disc + '|' + name + '|' + ex.length + '|' + total;
+  const parts = ex.map(e => (e && e.code ? String(e.code).trim()
+    : (Number.isFinite(Number(e && e.points)) && Number(e.points) > 0 ? 'p' + Number(e.points).toFixed(1) : '?')));
   if (parts.some(x => x === '?')) return null;
-  return (p.discipline || '').toLowerCase() + '|' + parts.join('>');
+  return 's|' + disc + '|' + parts.join('>');
+}
+
+// Punktfolge (positionsbasiert) — Wettkampf-Tabellen rechnen über den Index,
+// daher ist Umhängen eines BENUTZTEN Programms nur sicher, wenn die Punktfolge
+// identisch ist.
+function programPointSeq(p) {
+  return (p.exercises || []).map(e => Number(e.points || 0).toFixed(2)).join('>');
+}
+
+// Plant das Entdoppeln der EIGENEN Programme:
+//  • unbenutzte Duplikate (kein Wettkampf hängt dran) → sicher entfernen.
+//  • benutzte Duplikate → nur umhängen, wenn die Punktfolge zum Survivor passt
+//    (sonst würden historische Ergebnisse verfälscht → bleiben unangetastet).
+// Liefert { idMap (entfernt→Survivor, nur umzuhängende), removeIds }.
+function planProgramDedup(programs, competitions, myUserId) {
+  const compCount = new Map();
+  for (const c of (competitions || [])) if (c.program_id) compCount.set(c.program_id, (compCount.get(c.program_id) || 0) + 1);
+  const ph = (p) => (p.exercises || []).filter(e => /^Übung\s*\d+$/.test((e.name || '').trim())).length;
+  const groups = new Map();
+  for (const p of (programs || [])) {
+    if (!ownsProgramForWrite(p, myUserId)) continue;
+    const key = programGroupKey(p);
+    if (!key) continue;
+    let a = groups.get(key); if (!a) { a = []; groups.set(key, a); }
+    a.push(p);
+  }
+  const idMap = new Map();
+  const removeIds = new Set();
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    const survivor = g.slice().sort((a, b) =>
+      ((compCount.get(b.id) || 0) - (compCount.get(a.id) || 0)) || (ph(a) - ph(b)))[0];
+    const sseq = programPointSeq(survivor);
+    for (const p of g) {
+      if (p.id === survivor.id) continue;
+      const used = (compCount.get(p.id) || 0) > 0;
+      if (!used) removeIds.add(p.id);
+      else if (programPointSeq(p) === sseq) { idMap.set(p.id, survivor.id); removeIds.add(p.id); }
+      // benutzt + andere Punktfolge → NICHT anfassen (unsicher)
+    }
+  }
+  return { idMap, removeIds };
 }
 
 // Sauberster Name einer Übungs-Gruppe: kanonischer UCI-Name (per Code), sonst
@@ -2773,15 +2815,8 @@ function ownsExerciseForWrite(e, myUserId) {
 function analyzeDuplicates(data, myUserId) {
   const programs = (data.programs || []).filter(p => ownsProgramForWrite(p, myUserId));
   const exercises = (data.exercises || []).filter(e => ownsExerciseForWrite(e, myUserId));
-  const progGroups = new Map();
-  for (const p of programs) {
-    const sig = programDupSignature(p);
-    if (!sig) continue;
-    let arr = progGroups.get(sig); if (!arr) { arr = []; progGroups.set(sig, arr); }
-    arr.push(p);
-  }
-  let progDup = 0;
-  for (const g of progGroups.values()) if (g.length > 1) progDup += g.length - 1;
+  const { removeIds } = planProgramDedup(data.programs || [], data.competitions || [], myUserId);
+  const progDup = removeIds.size;
   const exGroups = new Map();
   for (const e of exercises) {
     const code = e.uci_code ? String(e.uci_code).trim() : '';
@@ -2836,32 +2871,11 @@ function mergeDuplicates(data, myUserId) {
   const sessions = sessionsIn.map(s => exIdMap.has(s.exerciseId) ? { ...s, exerciseId: exIdMap.get(s.exerciseId) } : s);
   const remapTable = (tbl) => (tbl || []).map(row => (row && exIdMap.has(row.exerciseId)) ? { ...row, exerciseId: exIdMap.get(row.exerciseId) } : row);
 
-  // 2) EIGENE Programme nach Signatur zusammenführen. Punkte/Namen der
-  //    Programm-Übungen werden NICHT verändert (der gelesene Punktwert ist
-  //    maßgeblich für „Aufgestellt"). Fremde Programme 1:1 durchgereicht.
-  let programs = (data.programs || []);
-  const compCountByProg = new Map();
-  for (const c of competitionsIn) if (c.program_id) compCountByProg.set(c.program_id, (compCountByProg.get(c.program_id) || 0) + 1);
-  const progBySig = new Map();
-  for (const p of programs) {
-    if (!ownsProgramForWrite(p, myUserId)) continue;
-    const sig = programDupSignature(p);
-    if (!sig) continue;
-    let arr = progBySig.get(sig); if (!arr) { arr = []; progBySig.set(sig, arr); }
-    arr.push(p);
-  }
-  const progIdMap = new Map();
-  const removedProg = new Set();
-  for (const [, g] of progBySig) {
-    if (g.length < 2) continue;
-    // Survivor: meiste verknüpfte Wettkämpfe, dann wenigste Platzhalter-Namen.
-    const placeholders = (p) => (p.exercises || []).filter(e => /^Übung\s*\d+$/.test((e.name || '').trim())).length;
-    const survivor = g.slice().sort((a, b) =>
-      (compCountByProg.get(b.id) || 0) - (compCountByProg.get(a.id) || 0)
-      || placeholders(a) - placeholders(b))[0];
-    for (const p of g) if (p.id !== survivor.id) { progIdMap.set(p.id, survivor.id); removedProg.add(p.id); }
-  }
-  programs = programs.filter(p => !removedProg.has(p.id));
+  // 2) EIGENE Programme entdoppeln (Plan: unbenutzte entfernen, benutzte nur bei
+  //    gleicher Punktfolge umhängen). Punkte/Namen bleiben unangetastet. Fremde
+  //    Programme 1:1 durchgereicht.
+  const { idMap: progIdMap, removeIds: removedProg } = planProgramDedup(data.programs || [], competitionsIn, myUserId);
+  const programs = (data.programs || []).filter(p => !removedProg.has(p.id));
 
   const competitions = competitionsIn.map(c => ({
     ...c,
@@ -12101,26 +12115,6 @@ function ProgrammeView({ data, setData, myUserId = null }) {
                   );
                 })}
               </IOSList>
-              {/* Bereinigung IMMER erreichbar (auch ohne Auto-Banner) — mit Live-Status. */}
-              {dupInfo.hasWork ? (
-                <button
-                  onClick={() => { setShowAllProgramsSheet(false); setConfirmCleanup(true); }}
-                  className="w-full flex items-center gap-3 text-left bg-[#FF9500]/10 border border-[#FF9500]/30 rounded-xl px-4 py-3 active:scale-[0.99] transition">
-                  <Sparkles size={18} className="text-[#FF9500] shrink-0" strokeWidth={2.2} />
-                  <div className="min-w-0">
-                    <div className="text-[15px] font-semibold text-[#000]">Doppelte zusammenführen</div>
-                    <div className="text-[13px] text-[#8E8E93] mt-0.5">
-                      {dupInfo.programsRemoved > 0 && `${dupInfo.programsRemoved} Programme`}
-                      {dupInfo.programsRemoved > 0 && dupInfo.exercisesRemoved > 0 && ' · '}
-                      {dupInfo.exercisesRemoved > 0 && `${dupInfo.exercisesRemoved} Übungen`}
-                    </div>
-                  </div>
-                </button>
-              ) : (
-                <div className="w-full flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-[14px] text-emerald-900">
-                  <Check size={16} className="text-emerald-600 shrink-0" /> Keine Doppelten gefunden — alles sauber.
-                </div>
-              )}
               <button
                 onClick={() => { setShowAllProgramsSheet(false); setShowNew(true); }}
                 className="w-full bg-[#FF9500] text-white px-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition">
