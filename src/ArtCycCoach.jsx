@@ -2728,13 +2728,22 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
 // verfälschen. Übungs-Dubletten werden über den UCI-Code zusammengeführt.
 // =============================================================
 
-// Signatur eines Programms = Disziplin + Codefolge. Zwei Programme mit gleicher
-// Signatur SIND dasselbe Programm (Punkte ergeben sich aus dem Code). Nur bei
-// lückenlosen Codes verlässlich — sonst null (nicht zusammenführbar).
+// Signatur eines Programms = Disziplin + Folge aus Code (oder, wenn kein Code,
+// Punktwert) je Übung. Zwei Programme mit gleicher Signatur SIND dasselbe
+// Programm in identischer Reihenfolge — nur dann ist das Zusammenführen sicher
+// (Wettkampf-Tabellen rechnen positionsbasiert). Fehlt bei einer Übung Code UND
+// Punktwert, ist zu wenig Info da → null (nicht zusammenführbar).
 function programDupSignature(p) {
-  const codes = (p.exercises || []).map(e => (e && e.code ? String(e.code).trim() : ''));
-  if (codes.length === 0 || codes.some(c => !c)) return null;
-  return (p.discipline || '').toLowerCase() + '|' + codes.join('>');
+  const ex = p.exercises || [];
+  if (ex.length === 0) return null;
+  const parts = ex.map(e => {
+    const code = e && e.code ? String(e.code).trim() : '';
+    if (code) return code;
+    const pts = Number(e && e.points);
+    return (Number.isFinite(pts) && pts > 0) ? 'p' + pts.toFixed(1) : '?';
+  });
+  if (parts.some(x => x === '?')) return null;
+  return (p.discipline || '').toLowerCase() + '|' + parts.join('>');
 }
 
 // Sauberster Name einer Übungs-Gruppe: kanonischer UCI-Name (per Code), sonst
@@ -12027,7 +12036,7 @@ function ProgrammeView({ data, setData, myUserId = null }) {
             const positions = stats.count || 0;
             const meta = (ex.uci_code ? ('UCI ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : ''));
             const statsLine = stats.wettkaempfe > 0
-              ? (stats.wettkaempfe + ' Wettk' + (stats.wettkaempfe === 1 ? '' : 'ä') + 'mpf' + (stats.wettkaempfe === 1 ? '' : 'e') + ' · ' + positions + ' Stellungen')
+              ? (stats.wettkaempfe + ' Wettk' + (stats.wettkaempfe === 1 ? '' : 'ä') + 'mpf' + (stats.wettkaempfe === 1 ? '' : 'e') + ' · ' + positions + (positions === 1 ? ' Wertung' : ' Wertungen'))
               : (inCurrent ? 'Noch keine Daten' : '');
             return (
               <IOSListRow
