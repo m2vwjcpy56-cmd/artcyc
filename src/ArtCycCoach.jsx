@@ -13092,38 +13092,73 @@ async function parsePdfFully(file) {
 // =============================================================
 function ValidationCheck({ pdfRef, t1, t2 }) {
   const TOL = 0.01; // Toleranz wegen Rundungen
+  const has = (v) => typeof v === 'number' && !isNaN(v);
+  const f = (n) => Number(n).toFixed(2);
 
-  // Pro KG: Ist (berechnet) vs. Soll (aus PDF)
-  const checks = [
-    { label: 'Kampfgericht 1 Ausführung', ist: t1.abzugAusfuehrung, soll: pdfRef.kg1_ausfuehrung },
-    { label: 'Kampfgericht 1 Schwierigkeit', ist: t1.abzugSchwierigkeit, soll: pdfRef.kg1_schwierigkeit },
-    { label: 'Kampfgericht 1 Gesamt', ist: t1.abzugGesamt, soll: pdfRef.kg1_gesamt },
-    { label: 'Kampfgericht 2 Ausführung', ist: t2.abzugAusfuehrung, soll: pdfRef.kg2_ausfuehrung },
-    { label: 'Kampfgericht 2 Schwierigkeit', ist: t2.abzugSchwierigkeit, soll: pdfRef.kg2_schwierigkeit },
-    { label: 'Kampfgericht 2 Gesamt', ist: t2.abzugGesamt, soll: pdfRef.kg2_gesamt }
-  ];
-
-  // Endergebnis berechnet vs. PDF
+  // 1) ERGEBNIS-VERGLEICH je Kampfgericht: laut Bogen (ausgefahrene Punkte)
+  //    vs. aktuell berechnet (aus den übernommenen/eingetippten Abzügen).
   const endIst = Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100;
-  if (typeof pdfRef.endergebnis === 'number') {
-    checks.push({ label: 'Endergebnis (Ø)', ist: endIst, soll: pdfRef.endergebnis });
-  }
+  const resultRows = [
+    { label: 'Kampfgericht 1', ist: t1.ergebnis, soll: pdfRef.kg1_ausgefahren },
+    { label: 'Kampfgericht 2', ist: t2.ergebnis, soll: pdfRef.kg2_ausgefahren },
+    { label: 'Endergebnis (Ø)', ist: endIst, soll: pdfRef.endergebnis, strong: true },
+  ].filter(r => has(r.soll));
 
-  const compared = checks.filter(c => typeof c.soll === 'number');
-  const mismatches = compared.filter(c => Math.abs(c.ist - c.soll) > TOL);
-  const allOk = mismatches.length === 0 && compared.length > 0;
+  // 2) KLARTEXT-HINWEISE: woher die Abweichung kommt (Ausführung vs.
+  //    Schwierigkeit, je KG, mit Richtung „zu viel / zu wenig").
+  const hints = [];
+  const addHints = (n, tt, sollAus, sollSchw) => {
+    if (has(sollAus)) {
+      const d = tt.abzugAusfuehrung - sollAus;
+      if (Math.abs(d) > TOL) hints.push(d > 0
+        ? `Kampfgericht ${n}: ${f(Math.abs(d))} Pkt zu viel Ausführungsabzug — vermutlich ein Fehlerzeichen (x ~ | ○) zu viel gezählt. Zeichen-Felder in KG${n} prüfen.`
+        : `Kampfgericht ${n}: ${f(Math.abs(d))} Pkt zu wenig Ausführungsabzug — vermutlich ein Fehlerzeichen übersehen. Zeichen-Felder in KG${n} prüfen.`);
+    }
+    if (has(sollSchw)) {
+      const d = tt.abzugSchwierigkeit - sollSchw;
+      if (Math.abs(d) > TOL) hints.push(d > 0
+        ? `Kampfgericht ${n}: ${f(Math.abs(d))} Pkt zu viel Schwierigkeitsabzug — ein %-Abzug zu hoch. %-Auswahl in KG${n} prüfen.`
+        : `Kampfgericht ${n}: ${f(Math.abs(d))} Pkt zu wenig Schwierigkeitsabzug — ein %-Abzug fehlt oder zu niedrig. %-Auswahl in KG${n} prüfen.`);
+    }
+  };
+  addHints(1, t1, pdfRef.kg1_ausfuehrung, pdfRef.kg1_schwierigkeit);
+  addHints(2, t2, pdfRef.kg2_ausfuehrung, pdfRef.kg2_schwierigkeit);
 
-  if (compared.length === 0) return null;
+  const endMismatch = has(pdfRef.endergebnis) && Math.abs(endIst - pdfRef.endergebnis) > TOL;
+  const allOk = hints.length === 0 && !endMismatch && resultRows.length > 0;
+
+  if (resultRows.length === 0 && hints.length === 0) return null;
+
+  // Ergebnis-Vergleichs-Tabelle (immer zeigen, wenn Bogen-Werte da sind)
+  const comparison = resultRows.length > 0 && (
+    <div className="rounded-lg overflow-hidden border border-black/5 mb-2">
+      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1.5 text-[10px] uppercase tracking-wide text-slate-500 bg-black/[0.03]">
+        <span></span><span className="text-right">laut Bogen</span><span className="text-right">aktuell</span><span className="text-right">Δ</span>
+      </div>
+      {resultRows.map((r, i) => {
+        const d = r.ist - r.soll;
+        const ok = Math.abs(d) <= TOL;
+        return (
+          <div key={i} className={'grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1.5 text-xs items-baseline ' + (r.strong ? 'bg-black/[0.02] font-semibold' : '')}>
+            <span className="text-slate-700">{r.label}</span>
+            <span className="text-right font-mono text-slate-700">{f(r.soll)}</span>
+            <span className="text-right font-mono text-slate-900">{f(r.ist)}</span>
+            <span className={'text-right font-mono font-bold ' + (ok ? 'text-emerald-600' : (d > 0 ? 'text-emerald-700' : 'text-rose-600'))}>
+              {ok ? '✓' : (d > 0 ? '+' : '') + f(d)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
 
   if (allOk) {
     return (
-      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm flex items-start gap-2">
-        <Check size={18} className="text-emerald-600 shrink-0 mt-0.5" />
-        <div className="text-emerald-900">
-          <strong>Validierung OK:</strong> Alle Einzelabzüge stimmen mit PDF-Soll überein.
-          <span className="text-xs text-emerald-700 ml-1">
-            (Endergebnis {endIst.toFixed(2)} = PDF-Soll {pdfRef.endergebnis.toFixed(2)})
-          </span>
+      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm">
+        {comparison}
+        <div className="flex items-start gap-2 text-emerald-900">
+          <Check size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+          <span><strong>Passt:</strong> Ergebnis stimmt mit dem Bogen überein.</span>
         </div>
       </div>
     );
@@ -13131,28 +13166,18 @@ function ValidationCheck({ pdfRef, t1, t2 }) {
 
   return (
     <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-sm">
-      <div className="flex items-start gap-2 mb-2">
-        <AlertTriangle size={18} className="text-amber-700 shrink-0 mt-0.5" />
-        <div className="text-amber-900">
-          <strong>Abweichung zum PDF</strong> — {mismatches.length} {mismatches.length === 1 ? 'Wert' : 'Werte'} stimmen nicht überein:
-        </div>
+      {comparison}
+      <div className="flex items-start gap-2 mb-1.5 text-amber-900">
+        <AlertTriangle size={16} className="text-amber-700 shrink-0 mt-0.5" />
+        <strong>{hints.length > 0 ? 'Das passt noch nicht zum Bogen:' : 'Ergebnis weicht vom Bogen ab'}</strong>
       </div>
-      <div className="space-y-1 ml-6 text-xs">
-        {mismatches.map((c, i) => {
-          const diff = c.ist - c.soll;
-          return (
-            <div key={i} className="flex justify-between gap-2">
-              <span className="text-amber-900">{c.label}:</span>
-              <span className="font-mono text-amber-900">
-                Ist {c.ist.toFixed(2)} · PDF {c.soll.toFixed(2)} ·
-                <span className={'ml-1 font-bold ' + (diff > 0 ? 'text-rose-700' : 'text-blue-700')}>
-                  {diff > 0 ? '+' : ''}{diff.toFixed(2)}
-                </span>
-              </span>
-            </div>
-          );
-        })}
-      </div>
+      {hints.length > 0 && (
+        <ul className="space-y-1 ml-1 text-xs text-amber-900 list-none">
+          {hints.map((h, i) => (
+            <li key={i} className="flex gap-1.5"><span className="text-amber-700">•</span><span>{h}</span></li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -13448,6 +13473,9 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
       ? parsed.exerciseRows
       : (parsed._scanRows && parsed._scanRows.length > 0 && activeProgram && parsed._scanRows.length === activeProgram.exercises.length ? parsed._scanRows : null);
     if (tableRows && activeProgram) {
+      // Konfidenz je Zeile aus dem Scan (falls vorhanden) mitführen → die
+      // unsicher gelesenen Übungen können im Editor markiert werden.
+      const confOf = (r) => (r && typeof r.conf === 'number') ? r.conf : null;
       const newT1 = activeProgram.exercises.map((ex, idx) => {
         const r = tableRows[idx];
         const kg1 = (r && r.kg1) || {};
@@ -13459,7 +13487,8 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           bar: Number(kg1.S || 0),
           circle: Number(kg1.K || 0),
           schwPct: Number(kg1.p || 0),
-          taktischePunkte: Number(kg1.T || 0)
+          taktischePunkte: Number(kg1.T || 0),
+          _conf: confOf(r)
         };
       });
       const newT2 = activeProgram.exercises.map((ex, idx) => {
@@ -13473,7 +13502,8 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           bar: Number(kg2.S || 0),
           circle: Number(kg2.K || 0),
           schwPct: Number(kg2.p || 0),
-          taktischePunkte: Number(kg2.T || 0)
+          taktischePunkte: Number(kg2.T || 0),
+          _conf: confOf(r)
         };
       });
       setTable1(newT1);
@@ -14231,6 +14261,13 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
           const schw = calcExerciseSchwierigkeit(e, ex);
           const total = exec + schw;
           const isTaktisch = Number(e.taktischePunkte || 0) > 0 && Number(e.taktischePunkte) !== Number(ex.points);
+          // Aufschlüsselung der Ausführungs-Fehlerzeichen → zeigt, WOHER der Abzug kommt.
+          const execParts = [];
+          if (Number(e.circle || 0) > 0) execParts.push(`${e.circle}× ○ = ${(e.circle * 2).toFixed(1)}`);
+          if (Number(e.bar || 0) > 0)    execParts.push(`${e.bar}× | = ${(e.bar * 1).toFixed(1)}`);
+          if (Number(e.wave || 0) > 0)   execParts.push(`${e.wave}× ~ = ${(e.wave * 0.5).toFixed(1)}`);
+          if (Number(e.cross || 0) > 0)  execParts.push(`${e.cross}× x = ${(e.cross * 0.2).toFixed(1)}`);
+          const unsicher = typeof e._conf === 'number' && e._conf < 0.6;
           return (
             <div key={ex.id} className="bg-slate-50 rounded-xl p-3">
               <div className="flex items-start justify-between gap-2 mb-2">
@@ -14250,12 +14287,17 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                     )}
                   </div>
                   <div className="font-medium text-sm leading-tight mt-0.5">{localizedExerciseName(ex)}</div>
+                  {unsicher && (
+                    <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-800 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded">
+                      <AlertTriangle size={10} /> KI unsicher gelesen — bitte prüfen
+                    </div>
+                  )}
                 </div>
                 <div className={'text-sm font-bold shrink-0 ' + (total > 0 ? 'text-rose-600' : 'text-slate-400')}>
                   {total > 0 ? '-' + total.toFixed(2) : '0'}
                 </div>
               </div>
-              <div className="grid grid-cols-4 gap-1.5 mb-2">
+              <div className="grid grid-cols-4 gap-1.5 mb-1">
                 {[
                   { k: 'cross',  label: 'x', title: 'Kreuz (0,2)' },
                   { k: 'wave',   label: '~', title: 'Welle (0,5)' },
@@ -14271,6 +14313,11 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                   </div>
                 ))}
               </div>
+              {exec > 0 && (
+                <div className="text-[10px] text-slate-500 mb-2">
+                  Fehlerzeichen: {execParts.join(' · ')} = <span className="text-rose-600 font-medium">-{exec.toFixed(2)} Pkt</span>
+                </div>
+              )}
               {/* Schwierigkeitsabzug pro Übung */}
               <div>
                 <div className="text-[10px] text-slate-500 mb-1">Schwierigkeit (% Abzug):</div>
