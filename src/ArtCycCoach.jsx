@@ -9870,6 +9870,20 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
   const [showComp, setShowComp] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  // Sessions im Nachhinein bearbeiten/löschen (aus „Letzte Sessions").
+  // Nur in eigener (beschreibbarer) Sicht — fremde Sportler nicht editierbar.
+  const canEditSessions = !data._isReadOnly;
+  const [editingSession, setEditingSession] = useState(null);
+  const [confirmDeleteSession, setConfirmDeleteSession] = useState(null);
+  const saveSession = (updated) => {
+    setData({ ...data, sessions: (data.sessions || []).map(s => s.id === updated.id ? { ...updated } : s) });
+    setEditingSession(null);
+  };
+  const deleteSession = (id) => {
+    setData({ ...data, sessions: (data.sessions || []).filter(s => s.id !== id) });
+    setConfirmDeleteSession(null);
+    setEditingSession(null);
+  };
 
   // STATE CONTRACT — selectedMode (all|rope|noRope) leitet ALLE Werte ab:
   // KPIs, Trend-Serien, Breakdown und letzte Sessions kommen aus EINEM vm.
@@ -10013,7 +10027,9 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
             {/* 07 — LETZTE SESSIONS */}
             <IOSList header="Letzte Sessions">
               {(showAll ? vm.allSessions : vm.recentSessionsLimited).map((s, i) => (
-                <div key={i} className="px-4 py-3 flex items-center justify-between gap-3">
+                <button key={s.session.id || i} type="button"
+                  onClick={canEditSessions ? () => setEditingSession(s.session) : undefined}
+                  className={'w-full text-left px-4 py-3 flex items-center justify-between gap-3 ' + (canEditSessions ? 'active:bg-black/[0.03]' : '')}>
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-[15px] text-slate-700 tabular-nums">{formatDateShort(s.date)}</span>
                     {exercise.has_rope_variant && s.session.withRope === true && <IOSTag color="orange">Seil</IOSTag>}
@@ -10022,8 +10038,9 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                   <div className="flex items-center gap-3 shrink-0">
                     <span className="text-[13px] text-slate-400 tabular-nums">{s.success}/{s.total}</span>
                     <span className={'text-[15px] font-semibold tabular-nums w-11 text-right ' + (s.rate >= 80 ? 'text-emerald-700' : 'text-slate-700')}>{s.rate}%</span>
+                    {canEditSessions && <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC]" />}
                   </div>
-                </div>
+                </button>
               ))}
             </IOSList>
             {vm.allSessions.length > 5 && (
@@ -10169,6 +10186,24 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
         </div>
 
       </div>
+
+      {editingSession && (
+        <SessionEditModal
+          session={editingSession}
+          exercises={data.exercises || []}
+          onSave={saveSession}
+          onDelete={() => setConfirmDeleteSession(editingSession.id)}
+          onClose={() => setEditingSession(null)}
+        />
+      )}
+      {confirmDeleteSession && (
+        <DeleteConfirmModal
+          title="Session löschen?"
+          message="Diese Trainings-Session wird gelöscht. Das kann nicht rückgängig gemacht werden."
+          onConfirm={() => deleteSession(confirmDeleteSession)}
+          onCancel={() => setConfirmDeleteSession(null)}
+        />
+      )}
     </div>
   );
 }
