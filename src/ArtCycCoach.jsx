@@ -2746,11 +2746,14 @@ function programGroupKey(p) {
   return 's|' + disc + '|' + parts.join('>');
 }
 
-// Punktfolge (positionsbasiert) — Wettkampf-Tabellen rechnen über den Index,
-// daher ist Umhängen eines BENUTZTEN Programms nur sicher, wenn die Punktfolge
-// identisch ist.
-function programPointSeq(p) {
-  return (p.exercises || []).map(e => Number(e.points || 0).toFixed(2)).join('>');
+// Positions-Sicherheitsschlüssel — Wettkampf-Tabellen rechnen über den Index,
+// daher ist das Umhängen eines BENUTZTEN Programms nur sicher, wenn jede Position
+// dieselbe Übung trägt. Pro Position bevorzugt der UCI-Code (immun gegen Punkt-
+// Leserauschen), sonst der Punktwert als Rückfall.
+function programSafetyKey(p) {
+  return (p.exercises || []).map(e =>
+    (e && e.code ? 'c' + String(e.code).trim() : 'p' + Number(e.points || 0).toFixed(2))
+  ).join('>');
 }
 
 // Plant das Entdoppeln der EIGENEN Programme:
@@ -2776,13 +2779,13 @@ function planProgramDedup(programs, competitions, myUserId) {
     if (g.length < 2) continue;
     const survivor = g.slice().sort((a, b) =>
       ((compCount.get(b.id) || 0) - (compCount.get(a.id) || 0)) || (ph(a) - ph(b)))[0];
-    const sseq = programPointSeq(survivor);
+    const sseq = programSafetyKey(survivor);
     for (const p of g) {
       if (p.id === survivor.id) continue;
       const used = (compCount.get(p.id) || 0) > 0;
       if (!used) removeIds.add(p.id);
-      else if (programPointSeq(p) === sseq) { idMap.set(p.id, survivor.id); removeIds.add(p.id); }
-      // benutzt + andere Punktfolge → NICHT anfassen (unsicher)
+      else if (programSafetyKey(p) === sseq) { idMap.set(p.id, survivor.id); removeIds.add(p.id); }
+      // benutzt + andere Übungsfolge → NICHT anfassen (unsicher)
     }
   }
   return { idMap, removeIds };
