@@ -11695,7 +11695,7 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
 // =============================================================
 // PROGRAMME
 // =============================================================
-function ProgrammeView({ data, setData }) {
+function ProgrammeView({ data, setData, myUserId = null }) {
   const { t } = useI18n();
   const [editId, setEditId] = useState(null);
   const [showNew, setShowNew] = useState(false);
@@ -12665,7 +12665,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
             {t('competition.programs')}
           </button>
         </div>
-        <ProgrammeView data={data} setData={setData} />
+        <ProgrammeView data={data} setData={setData} myUserId={myUserId} />
       </div>
     );
   }
