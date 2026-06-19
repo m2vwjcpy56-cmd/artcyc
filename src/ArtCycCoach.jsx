@@ -4689,6 +4689,29 @@ export default function App() {
         if (error) console.warn('Session bulk insert:', error.message);
       }
     }
+    // UPDATES — vorhandene Sessions, deren Inhalt sich geändert hat
+    // (z. B. nachträglich bearbeitet: Datum, Geklappt/Nicht, Seil, Notiz).
+    for (const s of (newSessions || [])) {
+      if (!s || !s.id) continue;
+      const old = oldById.get(s.id);
+      if (!old) continue; // war ein Insert (oben behandelt)
+      const wr = (v) => (typeof v?.withRope === 'boolean' ? v.withRope : (typeof v?.with_rope === 'boolean' ? v.with_rope : null));
+      const changed =
+        (old.date || '') !== (s.date || '') ||
+        JSON.stringify(old.entries || []) !== JSON.stringify(s.entries || []) ||
+        (old.notes || '') !== (s.notes || '') ||
+        (old.exerciseId || old.exercise_id || '') !== (s.exerciseId || s.exercise_id || '') ||
+        wr(old) !== wr(s);
+      if (!changed) continue;
+      const { error } = await updateSession(s.id, {
+        date: s.date,
+        entries: s.entries || [],
+        notes: s.notes || '',
+        exercise_id: s.exerciseId || s.exercise_id,
+        with_rope: wr(s)
+      });
+      if (error) console.warn('Session update:', error.message);
+    }
     for (const o of (oldSessions || [])) {
       if (o && o.id && !newById.has(o.id)) {
         const { error } = await deleteSession(o.id);
