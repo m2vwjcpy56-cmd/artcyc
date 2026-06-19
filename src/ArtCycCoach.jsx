@@ -12092,6 +12092,26 @@ function ProgrammeView({ data, setData, myUserId = null }) {
                   );
                 })}
               </IOSList>
+              {/* Bereinigung IMMER erreichbar (auch ohne Auto-Banner) — mit Live-Status. */}
+              {dupInfo.hasWork ? (
+                <button
+                  onClick={() => { setShowAllProgramsSheet(false); setConfirmCleanup(true); }}
+                  className="w-full flex items-center gap-3 text-left bg-[#FF9500]/10 border border-[#FF9500]/30 rounded-xl px-4 py-3 active:scale-[0.99] transition">
+                  <Sparkles size={18} className="text-[#FF9500] shrink-0" strokeWidth={2.2} />
+                  <div className="min-w-0">
+                    <div className="text-[15px] font-semibold text-[#000]">Doppelte zusammenführen</div>
+                    <div className="text-[13px] text-[#8E8E93] mt-0.5">
+                      {dupInfo.programsRemoved > 0 && `${dupInfo.programsRemoved} Programme`}
+                      {dupInfo.programsRemoved > 0 && dupInfo.exercisesRemoved > 0 && ' · '}
+                      {dupInfo.exercisesRemoved > 0 && `${dupInfo.exercisesRemoved} Übungen`}
+                    </div>
+                  </div>
+                </button>
+              ) : (
+                <div className="w-full flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-[14px] text-emerald-900">
+                  <Check size={16} className="text-emerald-600 shrink-0" /> Keine Doppelten gefunden — alles sauber.
+                </div>
+              )}
               <button
                 onClick={() => { setShowAllProgramsSheet(false); setShowNew(true); }}
                 className="w-full bg-[#FF9500] text-white px-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition">
