@@ -68,7 +68,12 @@ REGELN:
 - Jede Gruppe hat GENAU 3 Werte (KG1, KG2, KG3) — fehlt eine Spalte, trage 0 ein.
 - Verwechsle die Spaltengruppen NICHT: % (Schwierigkeit) ≠ X (Kreuze). Punktwerte gehören NUR in "points".
 - confidence: 0.0 (geraten) bis 1.0 (eindeutig) für diese Zeile.
-- Gib so viele Zeilen aus, wie du erkennst (im Zweifel Werte 0, aber Zeile trotzdem ausgeben). NUR das JSON.`;
+- Gib so viele Zeilen aus, wie du erkennst (im Zweifel Werte 0, aber Zeile trotzdem ausgeben). NUR das JSON.
+
+FORMAT-BEISPIEL (nur zur Veranschaulichung der Spalten-Zuordnung — NICHT abschreiben, immer die echten Zahlen vom Foto lesen):
+Eine Zeile mit Code „1175c", Übung „Drehsprung", Punktwert 5,8 — im Foto steht in der %-Gruppe (Schwierigkeit) bei KG2 eine 10, in der X-Gruppe (Kreuze) bei KG1 eine 1, sonst alle Zellen leer → so wird sie ausgegeben:
+{ "points":5.8, "code":"1175c", "name":"Drehsprung", "confidence":0.9, "P":[0,10,0], "X":[1,0,0], "W":[0,0,0], "S":[0,0,0], "K":[0,0,0] }
+Beachte: Die %-Zahl (10/50/100) gehört in "P", NICHT in "X". Eine kleine Anzahl-Ziffer (1, 2 …) gehört in X/W/S/K. KG3 (dritter Wert) ist meist 0.`;
 
 // Baut den Tabellen-Prompt mit optionalen Ankern: bekannte Punktfolge (Anzahl +
 // Reihenfolge der Übungen) und ein Korrektur-Hinweis aus der Footer-Prüfsumme.
