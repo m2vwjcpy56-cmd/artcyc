@@ -5026,16 +5026,27 @@ export default function App() {
       ? dbCompetitions.filter(c => c.athlete_id === filterId)
       : dbCompetitions
     ).map(dbCompetitionToBlob);
+    // Programme sind OWNER-basiert (kein athlete_id). Die RLS erlaubt einem Coach
+    // zwar das LESEN der Sportler-Programme — in der EIGENEN Liste haben sie aber
+    // nichts verloren. Daher auf den Besitzer scopen:
+    //  • Coach-Sicht (fremder Athlet) → nur dessen Programme (owner = auth_user_id).
+    //  • eigene Sicht → nur eigene (owner = ich) + verwaiste (owner null).
+    const viewerUid = session?.user?.id || null;
+    const targetAthlete = coachView ? (dbAthletes || []).find(a => a.id === selectedAthleteId) : null;
+    const programOwner = (targetAthlete && targetAthlete.auth_user_id) || viewerUid;
+    const programs = dbPrograms
+      .filter(p => p.owner_id === programOwner || (!coachView && p.owner_id == null))
+      .map(dbProgramToBlob);
     return {
       ...data,
       sessions,
       competitions,
-      programs: dbPrograms.map(dbProgramToBlob),
+      programs,
       exercises,
       _viewingAthleteId: selectedAthleteId,
       _isReadOnly: isReadOnlyView,
     };
-  }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob, selectedAthleteId, myAthleteId, isReadOnlyView]);
+  }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob, selectedAthleteId, myAthleteId, isReadOnlyView, isOwnAthlete, dbAthletes, session?.user?.id]);
 
   if (!authChecked || loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#F2F2F7] gap-5"
