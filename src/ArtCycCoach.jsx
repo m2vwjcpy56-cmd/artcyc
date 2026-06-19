@@ -2753,10 +2753,24 @@ function cleanestExerciseName(group, code) {
   return names[0] || (group[0] && group[0].name) || '';
 }
 
+// Besitz-Prädikate: NUR eigene Daten dürfen verändert/geschrieben werden.
+// Ein Coach SIEHT die Programme seiner Sportler (RLS-SELECT), darf sie aber
+// nicht schreiben — daher beim Bereinigen strikt ausklammern.
+//  • Programme: owner_id fehlt (lokaler Blob) ODER null (verwaist, übernehmbar)
+//    ODER = ich.  • Übungen: owner_id fehlt (Blob) ODER = ich — explizit null
+//    ist der globale UCI-Katalog und bleibt tabu.
+function ownsProgramForWrite(p, myUserId) {
+  return p.owner_id == null || p.owner_id === myUserId;
+}
+function ownsExerciseForWrite(e, myUserId) {
+  return e.owner_id === undefined || e.owner_id === myUserId;
+}
+
 // Wie viele Programme/Übungen sind doppelt? Zähl-Vorschau für die Bestätigung.
-function analyzeDuplicates(data) {
-  const programs = data.programs || [];
-  const exercises = data.exercises || [];
+// Zählt ausschließlich EIGENE (schreibbare) Einträge.
+function analyzeDuplicates(data, myUserId) {
+  const programs = (data.programs || []).filter(p => ownsProgramForWrite(p, myUserId));
+  const exercises = (data.exercises || []).filter(e => ownsExerciseForWrite(e, myUserId));
   const progGroups = new Map();
   for (const p of programs) {
     const sig = programDupSignature(p);
@@ -2785,7 +2799,9 @@ function analyzeDuplicates(data) {
 // Führt Duplikate zusammen und repariert ALLE Referenzen. Reine Funktion →
 // gibt ein neues data-Objekt zurück (kein Seiteneffekt). Wettkämpfe (positional
 // über den Index berechnet) und Sessions bleiben erhalten und korrekt verknüpft.
-function mergeDuplicates(data) {
+// Fremde (nicht schreibbare) Programme/Übungen werden komplett unangetastet
+// durchgereicht — nur EIGENE werden kanonisiert/zusammengeführt.
+function mergeDuplicates(data, myUserId) {
   const exercisesIn = data.exercises || [];
   const sessionsIn = data.sessions || [];
   const competitionsIn = data.competitions || [];
@@ -2794,9 +2810,10 @@ function mergeDuplicates(data) {
   const sessCount = new Map();
   for (const s of sessionsIn) if (s.exerciseId) sessCount.set(s.exerciseId, (sessCount.get(s.exerciseId) || 0) + 1);
 
-  // 1) Übungen nach UCI-Code zusammenführen
+  // 1) EIGENE Übungen nach UCI-Code zusammenführen
   const exByCode = new Map();
   for (const e of exercisesIn) {
+    if (!ownsExerciseForWrite(e, myUserId)) continue;
     const code = e.uci_code ? String(e.uci_code).trim() : '';
     if (!code) continue;
     let arr = exByCode.get(code); if (!arr) { arr = []; exByCode.set(code, arr); }
@@ -2817,12 +2834,17 @@ function mergeDuplicates(data) {
   const sessions = sessionsIn.map(s => exIdMap.has(s.exerciseId) ? { ...s, exerciseId: exIdMap.get(s.exerciseId) } : s);
   const remapTable = (tbl) => (tbl || []).map(row => (row && exIdMap.has(row.exerciseId)) ? { ...row, exerciseId: exIdMap.get(row.exerciseId) } : row);
 
-  // 2) Programme kanonisieren + nach Signatur zusammenführen
-  let programs = (data.programs || []).map(p => ({ ...p, exercises: (p.exercises || []).map(canonProgramExercise) }));
+  // 2) EIGENE Programme kanonisieren + nach Signatur zusammenführen.
+  //    Fremde Programme bleiben unverändert (1:1 durchgereicht).
+  let programs = (data.programs || []).map(p =>
+    ownsProgramForWrite(p, myUserId)
+      ? { ...p, exercises: (p.exercises || []).map(canonProgramExercise) }
+      : p);
   const compCountByProg = new Map();
   for (const c of competitionsIn) if (c.program_id) compCountByProg.set(c.program_id, (compCountByProg.get(c.program_id) || 0) + 1);
   const progBySig = new Map();
   for (const p of programs) {
+    if (!ownsProgramForWrite(p, myUserId)) continue;
     const sig = programDupSignature(p);
     if (!sig) continue;
     let arr = progBySig.get(sig); if (!arr) { arr = []; progBySig.set(sig, arr); }
@@ -4634,6 +4656,7 @@ export default function App() {
     name: p.name,
     discipline: p.discipline,
     exercises: p.exercises || [],
+    owner_id: p.owner_id,
     created: p.created_at
   }), []);
   const dbExerciseToBlob = useCallback((e) => ({
@@ -4649,6 +4672,7 @@ export default function App() {
     fail_label: e.fail_label,
     default_series: e.default_series,
     target_rate: e.target_rate,
+    owner_id: e.owner_id,
     has_rope_variant: !!e.has_rope_variant
   }), []);
 
@@ -5041,7 +5065,7 @@ export default function App() {
   else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
   else if (view === 'trainingsplan') viewEl = <TrainingsplanView data={effectiveData} setData={save} onBack={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
-  else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} />;
+  else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} myUserId={session?.user?.id || null} />;
   else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} dbAthleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={openFeedback} />;
   else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} athleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { setSelectedAthleteId(id); setView('dashboard'); }} myAthleteId={myAthleteId} setView={setView} />;
   else if (view === 'export') viewEl = <ExportView data={effectiveData} setView={setView} />;
@@ -11780,7 +11804,7 @@ function ProgrammeView({ data, setData }) {
   const competitions = data.competitions || [];
 
   // Doppelte Programme/Übungen erkennen → „Bereinigen"-Hinweis anbieten.
-  const dupInfo = analyzeDuplicates(data);
+  const dupInfo = analyzeDuplicates(data, myUserId);
 
   // „Zuletzt verwendet" je Programm = jüngstes Wettkampf-Datum mit diesem Programm.
   const lastUsedByProgram = (() => {
@@ -12040,7 +12064,7 @@ function ProgrammeView({ data, setData }) {
           title="Doppelte zusammenführen?"
           message={`${dupInfo.programsBefore} → ${dupInfo.programsAfter} Programme und ${dupInfo.exercisesBefore} → ${dupInfo.exercisesAfter} Übungen. Programme mit identischer Übungsfolge und Übungen mit gleichem UCI-Code werden zu jeweils einer zusammengeführt. Wettkämpfe, Ergebnisse und Trainings-Sessions bleiben erhalten und werden korrekt verknüpft.`}
           confirmLabel="Zusammenführen"
-          onConfirm={() => { setConfirmCleanup(false); setTimeout(() => setData(mergeDuplicates(data)), 0); }}
+          onConfirm={() => { setConfirmCleanup(false); setTimeout(() => setData(mergeDuplicates(data, myUserId)), 0); }}
           onCancel={() => setConfirmCleanup(false)}
         />
       )}
@@ -12601,7 +12625,7 @@ function BulkImportModal({ data, athletes, onApply, onClose }) {
   );
 }
 
-function WettkampfView({ data, setData, dbAthletes }) {
+function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
   const { t } = useI18n();
   const [tab, setTab] = useState('wettkaempfe'); // 'wettkaempfe' | 'programme'
 
