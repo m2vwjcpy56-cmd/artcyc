@@ -7639,7 +7639,7 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
         <div className="sticky top-0 bg-white/90 backdrop-blur-xl border-b border-slate-200/60 px-5 py-3 flex items-center justify-between">
           <button onClick={onClose} className="text-amber-500 font-medium text-[15px]">Abbrechen</button>
           <h3 className="font-semibold text-[15px]">Session bearbeiten</h3>
-          <button onClick={handleSave} className="text-amber-500 font-semibold text-[15px]">Fertig</button>
+          <button onClick={handleSave} className="text-amber-500 font-semibold text-[15px]">Speichern</button>
         </div>
 
         <div className="p-5 space-y-4">
