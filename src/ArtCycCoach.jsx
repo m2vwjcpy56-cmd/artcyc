@@ -11782,6 +11782,20 @@ function ProgrammeView({ data, setData }) {
   // Doppelte Programme/Übungen erkennen → „Bereinigen"-Hinweis anbieten.
   const dupInfo = analyzeDuplicates(data);
 
+  // „Zuletzt verwendet" je Programm = jüngstes Wettkampf-Datum mit diesem Programm.
+  const lastUsedByProgram = (() => {
+    const m = new Map();
+    for (const c of competitions) {
+      if (!c.program_id || !c.date) continue;
+      const prev = m.get(c.program_id);
+      if (!prev || c.date > prev) m.set(c.program_id, c.date);
+    }
+    return m;
+  })();
+  const lastUsedLine = (id) => {
+    const d = lastUsedByProgram.get(id);
+    return d ? 'Zuletzt verwendet: ' + formatDateShort(d) : 'Noch nicht verwendet';
+  };
   // Programm des letzten Wettkampfs (nach Datum) — wird oben prominent gezeigt.
   const lastCompetition = competitions.length
     ? [...competitions].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0]
@@ -11855,6 +11869,7 @@ function ProgrammeView({ data, setData }) {
         <div className="text-[13px] text-[#8E8E93] mt-0.5">
           {p.discipline || '—'} · {(p.exercises || []).length} Übungen · {total.toFixed(2)} Pkt
         </div>
+        <div className="text-[12px] text-[#8E8E93] mt-0.5">{lastUsedLine(p.id)}</div>
       </IOSListRow>
     );
   };
@@ -11965,7 +11980,7 @@ function ProgrammeView({ data, setData }) {
             </div>
             <div className="overflow-y-auto px-4 pb-3 space-y-3 flex-1">
               <IOSList>
-                {programs.map(p => {
+                {[...programs].sort((a, b) => (lastUsedByProgram.get(b.id) || '').localeCompare(lastUsedByProgram.get(a.id) || '')).map(p => {
                   const total = (p.exercises || []).reduce((s, ex) => s + Number(ex.points || 0), 0);
                   return (
                     <IOSListRow
@@ -11984,6 +11999,7 @@ function ProgrammeView({ data, setData }) {
                       <div className="text-[13px] text-[#8E8E93] mt-0.5">
                         {p.discipline || '—'} · {(p.exercises || []).length} Übungen · {total.toFixed(2)} Pkt
                       </div>
+                      <div className="text-[12px] text-[#8E8E93] mt-0.5">{lastUsedLine(p.id)}</div>
                     </IOSListRow>
                   );
                 })}
