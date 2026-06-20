@@ -4377,6 +4377,11 @@ export default function App() {
   const [recoveryLinkError, setRecoveryLinkError] = useState(null); // abgelaufener/ungültiger Reset-Link
   const [chatOpen, setChatOpen] = useState(false);
 
+  // Systemweit: bei jedem Seitenwechsel (Tab/Unterseite) nach ganz oben scrollen,
+  // damit eine neu geöffnete Seite nicht die Scroll-Position der vorigen erbt
+  // (z. B. Einstellungen → Export öffnete sonst mittendrin).
+  useEffect(() => { try { window.scrollTo(0, 0); } catch { /* ignore */ } }, [view]);
+
   // Reglement-Sprache: separat von App-Sprache wählbar. 'auto' = App-Sprache spiegeln
   // mit Fallback auf 'en' falls App-Sprache keine UCI-Sprache ist.
   const [rulesLangPref, setRulesLangPrefState] = useState(() => {
