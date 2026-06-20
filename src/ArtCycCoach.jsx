@@ -17,6 +17,7 @@ import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attach
 import { useProtoFeatures, setProtoFeatures } from './lib/featureFlags.js';
 import { suggestClubs, normClub, CLUBS, COUNTRY_FLAG } from './lib/clubs.js';
 import { parseProgramFile } from './lib/programImport.js';
+import { exportMauteVorlage } from './lib/mauteExport.js';
 import { loadUciExercisesFromDb, getRulesLanguage, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram } from './lib/uciRules.js';
 
 // =============================================================
@@ -16562,6 +16563,20 @@ function ExportWettkampf({ data }) {
     xlsx.writeFile(wb, baseFilename() + '.xlsx');
   };
 
+  const [vorlageBusy, setVorlageBusy] = useState(false);
+  const [vorlageErr, setVorlageErr] = useState('');
+  const exportVorlage = async () => {
+    if (!program || selected.length === 0) return;
+    setVorlageBusy(true); setVorlageErr('');
+    try {
+      await exportMauteVorlage({ program, competitions: selected, athleteName: ath ? ath.name : '' });
+    } catch (e) {
+      setVorlageErr(e && e.message ? e.message : 'Export fehlgeschlagen');
+    } finally {
+      setVorlageBusy(false);
+    }
+  };
+
   if (programs.length === 0) {
     return (
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-amber-900 text-sm">
@@ -16641,18 +16656,25 @@ function ExportWettkampf({ data }) {
         </div>
 
         <div className="flex flex-col gap-2">
+          <button onClick={exportVorlage}
+            disabled={selected.length === 0 || !program || vorlageBusy}
+            className="w-full bg-amber-500 text-slate-900 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 rounded-xl font-semibold flex items-center gap-2 justify-center">
+            {vorlageBusy ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+            {vorlageBusy ? 'Erstelle …' : 'Offizielle Maute-Vorlage (.xlsm)'}
+          </button>
           <button onClick={exportMauteXLSX}
             disabled={selected.length === 0 || !program}
-            className="w-full bg-amber-500 text-slate-900 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 rounded-xl font-semibold flex items-center gap-2 justify-center">
-            <Download size={18} /> Excel exportieren (.xlsx)
+            className="w-full bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 rounded-xl font-medium text-sm flex items-center gap-2 justify-center">
+            <Download size={16} /> Einfache Tabelle (.xlsx)
           </button>
           <button onClick={exportMauteCSV}
             disabled={selected.length === 0 || !program}
             className="w-full bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 rounded-xl font-medium text-sm flex items-center gap-2 justify-center">
-            <Download size={16} /> Als CSV exportieren
+            <Download size={16} /> Als CSV
           </button>
         </div>
 
+        {vorlageErr && <p className="text-sm text-rose-600 mt-3 text-center">{vorlageErr}</p>}
         {selected.length === 0 && (
           <p className="text-sm text-slate-500 mt-3 text-center">
             Wähle oben mindestens einen Wettkampf aus.
@@ -16660,11 +16682,11 @@ function ExportWettkampf({ data }) {
         )}
       </div>
 
-      <div className="bg-slate-50 rounded-xl p-4 text-xs text-slate-600 space-y-1">
-        <div><strong>Format:</strong> Maute-Standard (Programm-Sheet)</div>
-        <div><strong>2 Blöcke pro Wettkampf:</strong> Kampfgericht 1 + Kampfgericht 2</div>
-        <div><strong>Footer:</strong> Aufgestellt, Abzüge, Endergebnis (Ø KG1+KG2)</div>
-        <div className="mt-2 text-slate-500">💡 .xlsx öffnet direkt in Excel/Numbers; CSV als Fallback (UTF-8 mit BOM für Umlaute).</div>
+      <div className="bg-slate-50 rounded-xl p-4 text-xs text-slate-600 space-y-1.5">
+        <div><strong>Offizielle Maute-Vorlage (.xlsm):</strong> befüllt die echte Statistik-Vorlage — mit Diagrammen, Makros und allen Berechnungen. Genau das, was du dem Trainer schickst.</div>
+        <div className="text-slate-500">Abwertungen werden als Gesamtsumme beider Kampfgerichte eingetragen (wie in der Maute-Anleitung). Max. 15 Wettkämpfe · 30 Übungen pro Datei.</div>
+        <div className="mt-1 pt-1 border-t border-slate-200"><strong>Einfache Tabelle / CSV:</strong> schlichter Werte-Export ohne Formeln/Diagramme — als Fallback.</div>
+        <div className="text-amber-700">⚠️ Beta: Bitte die erste Datei einmal in Excel gegenprüfen. Beim Öffnen ggf. „Makros aktivieren / Bearbeitung aktivieren" bestätigen.</div>
       </div>
     </div>
   );
