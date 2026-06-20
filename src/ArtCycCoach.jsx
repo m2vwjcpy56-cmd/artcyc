@@ -2746,14 +2746,26 @@ function programGroupKey(p) {
   return 's|' + disc + '|' + parts.join('>');
 }
 
-// Positions-Sicherheitsschlüssel — Wettkampf-Tabellen rechnen über den Index,
-// daher ist das Umhängen eines BENUTZTEN Programms nur sicher, wenn jede Position
-// dieselbe Übung trägt. Pro Position bevorzugt der UCI-Code (immun gegen Punkt-
-// Leserauschen), sonst der Punktwert als Rückfall.
-function programSafetyKey(p) {
-  return (p.exercises || []).map(e =>
-    (e && e.code ? 'c' + String(e.code).trim() : 'p' + Number(e.points || 0).toFixed(2))
-  ).join('>');
+// Sicheres Umhängen eines BENUTZTEN Programms auf einen Survivor ist erlaubt,
+// wenn ENTWEDER die Punktfolge ODER die Code-Folge identisch ist — beides
+// garantiert je für sich Korrektheit:
+//  • gleiche Punktfolge → calcTableResult ist positionsweise identisch (nutzt
+//    Punkte je Index) → Ergebnisse ändern sich GAR NICHT, egal welche Codes.
+//  • gleiche Code-Folge → exakt dieselben Übungen in gleicher Reihenfolge
+//    (immun gegen Punkt-Leserauschen).
+function programPointSeq(p) {
+  return (p.exercises || []).map(e => Number(e.points || 0).toFixed(2)).join('>');
+}
+function programCodeSeq(p) {
+  const ex = p.exercises || [];
+  if (ex.length === 0) return null;
+  const codes = ex.map(e => (e && e.code ? String(e.code).trim() : ''));
+  return codes.some(c => !c) ? null : codes.join('>');
+}
+function programMergeSafe(a, b) {
+  if (programPointSeq(a) === programPointSeq(b)) return true;
+  const ca = programCodeSeq(a), cb = programCodeSeq(b);
+  return !!ca && ca === cb;
 }
 
 // Plant das Entdoppeln der EIGENEN Programme:
@@ -2779,13 +2791,12 @@ function planProgramDedup(programs, competitions, myUserId) {
     if (g.length < 2) continue;
     const survivor = g.slice().sort((a, b) =>
       ((compCount.get(b.id) || 0) - (compCount.get(a.id) || 0)) || (ph(a) - ph(b)))[0];
-    const sseq = programSafetyKey(survivor);
     for (const p of g) {
       if (p.id === survivor.id) continue;
       const used = (compCount.get(p.id) || 0) > 0;
       if (!used) removeIds.add(p.id);
-      else if (programSafetyKey(p) === sseq) { idMap.set(p.id, survivor.id); removeIds.add(p.id); }
-      // benutzt + andere Übungsfolge → NICHT anfassen (unsicher)
+      else if (programMergeSafe(p, survivor)) { idMap.set(p.id, survivor.id); removeIds.add(p.id); }
+      // benutzt + andere Übungsfolge (Punkte UND Codes verschieden) → NICHT anfassen
     }
   }
   return { idMap, removeIds };
@@ -11860,6 +11871,7 @@ function ProgrammeView({ data, setData, myUserId = null }) {
       program={editing}
       onSave={(p) => { upsert(p); setShowNew(false); setEditId(null); }}
       onCancel={() => { setShowNew(false); setEditId(null); }}
+      onDelete={editId ? () => { const id = editId; setShowNew(false); setEditId(null); setTimeout(() => remove(id), 0); } : undefined}
     />;
   }
 
@@ -12176,8 +12188,9 @@ function ProgrammeView({ data, setData, myUserId = null }) {
 // =============================================================
 // PROGRAMM-EDITOR
 // =============================================================
-function ProgrammEditor({ program, onSave, onCancel }) {
+function ProgrammEditor({ program, onSave, onCancel, onDelete }) {
   const { t } = useI18n();
+  const [confirmDel, setConfirmDel] = useState(false);
   const [name, setName] = useState((program && program.name) || '');
   const [discipline, setDiscipline] = useState((program && program.discipline) || '1er');
   const [exercises, setExercises] = useState((program && program.exercises) || []);
@@ -12418,8 +12431,26 @@ function ProgrammEditor({ program, onSave, onCancel }) {
               <span className="text-[15px] text-[#FF9500] font-medium">Übung hinzufügen</span>
             </IOSListRow>
           </div>
+
+          {/* Programm löschen — nur bei bestehendem Programm, ganz unten. */}
+          {program && onDelete && (
+            <button
+              onClick={() => setConfirmDel(true)}
+              className="w-full mt-2 py-3 rounded-2xl text-[15px] font-medium text-[#FF3B30] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:bg-[#D1D1D6]/30 flex items-center justify-center gap-2">
+              <Trash2 size={16} /> Programm löschen
+            </button>
+          )}
         </div>
       </div>
+
+      {confirmDel && (
+        <DeleteConfirmModal
+          title="Programm löschen?"
+          message="Das Programm wird gelöscht. Zugehörige Wettkämpfe behalten ihre Ergebnisse über den gespeicherten Schnappschuss."
+          onConfirm={() => { setConfirmDel(false); onDelete(); }}
+          onCancel={() => setConfirmDel(false)}
+        />
+      )}
     </div>
   );
 }
