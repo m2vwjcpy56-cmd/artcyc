@@ -16488,66 +16488,48 @@ function ExportWettkampf({ data }) {
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }, [competitions, programId, athleteFilter]);
 
-  const exportMauteCSV = () => {
-    if (!program) return;
+  const ath = athleteFilter ? athletes.find(a => a.id === athleteFilter) : null;
+  // Auswahl, welche Wettkämpfe exportiert werden (Default: alle des Programms).
+  const [chosen, setChosen] = useState(() => new Set());
+  useEffect(() => { setChosen(new Set(filtered.map(c => c.id))); }, [programId, athleteFilter, filtered.length]);
+  const selected = useMemo(() => filtered.filter(c => chosen.has(c.id)), [filtered, chosen]);
+  const toggleChosen = (id) => setChosen(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const baseFilename = () => 'Wettkampfstatistik' + (ath ? '_' + ath.name.replace(/\s+/g, '_') : '') + '_' + new Date().getFullYear();
 
+  // Baut die Maute-Layout-Zeilen (Programm-Sheet) für die AUSGEWÄHLTEN Wettkämpfe.
+  const buildMauteRows = () => {
     const rows = [];
-    const ath = athleteFilter ? athletes.find(a => a.id === athleteFilter) : null;
-
-    // Header-Zeilen wie Maute-Format
     const r0 = ['Name', '', 'Kampfg.'];
     const r1 = ['', '', 'Anz.'];
     const r2 = ['ArtCyc Coach' + (ath ? ' · ' + ath.name : ''), 'Pkt.', 'i.P.'];
-
-    // Pro Wettkampf 2 Blöcke (KG1 + KG2) à 9 Spalten
-    filtered.forEach(c => {
-      [1, 2].forEach(t => {
-        r0.push('', c.name + ' (KG' + t + ')', '', '', '', '', '', '', '');
+    selected.forEach(c => {
+      [1, 2].forEach(tn => {
+        r0.push('', c.name + ' (KG' + tn + ')', '', '', '', '', '', '', '');
         r1.push('', c.date || '', '', '', '', '', '', '', '');
         r2.push('x', '~', '|', '○', '', '', '', '', '');
       });
     });
     rows.push(r0, r1, r2);
-
-    // Übungs-Zeilen
     program.exercises.forEach(ex => {
       const row = [ex.nr + '. ' + ex.name, Number(ex.points).toFixed(1), ''];
-      filtered.forEach(c => {
+      selected.forEach(c => {
         [1, 2].forEach(tNum => {
           const tableEntries = (tNum === 1 ? c.table1 : c.table2) || [];
-          const e = tableEntries.find(en => en.exerciseId === ex.id) ||
-            { included: 0, cross: 0, wave: 0, bar: 0, circle: 0 };
-          row.push(
-            e.included ? 1 : 0,
-            e.cross || '',
-            e.wave || '',
-            e.bar || '',
-            e.circle || '',
-            '',
-            '',
-            '',
-            ''
-          );
+          const e = tableEntries.find(en => en.exerciseId === ex.id) || { included: 0, cross: 0, wave: 0, bar: 0, circle: 0 };
+          row.push(e.included ? 1 : 0, e.cross || '', e.wave || '', e.bar || '', e.circle || '', '', '', '', '');
         });
       });
       rows.push(row);
     });
-
-    // Footer (Summen)
     const totalPoints = program.exercises.reduce((s, e) => s + Number(e.points), 0);
     const fAuf = ['Aufgestellte Punkte', totalPoints.toFixed(2), ''];
     const fSchw = ['Abzug Schwierigkeit', '', ''];
     const fAusf = ['Abzug Ausführung', '', ''];
     const fGes = ['Gesamtabzug', '', ''];
     const fEnd = ['Endergebnis', '', ''];
-
-    filtered.forEach(c => {
+    selected.forEach(c => {
       [1, 2].forEach(tNum => {
-        const r = calcTableResult(
-          program,
-          tNum === 1 ? c.table1 : c.table2,
-          tNum === 1 ? c.t1_schwierigkeit : c.t2_schwierigkeit
-        );
+        const r = calcTableResult(program, tNum === 1 ? c.table1 : c.table2, tNum === 1 ? c.t1_schwierigkeit : c.t2_schwierigkeit);
         fAuf.push(totalPoints.toFixed(2), '', '', '', '', '', '', '', '');
         fSchw.push(r.abzugSchwierigkeit.toFixed(2), '', '', '', '', '', '', '', '');
         fAusf.push(r.abzugAusfuehrung.toFixed(2), '', '', '', '', '', '', '', '');
@@ -16555,24 +16537,29 @@ function ExportWettkampf({ data }) {
         fEnd.push(r.ergebnis.toFixed(2), '', '', '', '', '', '', '', '');
       });
     });
-
-    // Endergebnis-Zeile als Mittelwert pro Wettkampf
     const fFinal = ['Endergebnis (Ø KG1+KG2)', '', ''];
-    filtered.forEach(c => {
+    selected.forEach(c => {
       const t1 = calcTableResult(program, c.table1, c.t1_schwierigkeit);
       const t2 = calcTableResult(program, c.table2, c.t2_schwierigkeit);
-      const final = ((t1.ergebnis + t2.ergebnis) / 2).toFixed(2);
-      // Über beide Blöcke gespannt
-      fFinal.push(final, '', '', '', '', '', '', '', '');
+      fFinal.push(((t1.ergebnis + t2.ergebnis) / 2).toFixed(2), '', '', '', '', '', '', '', '');
       fFinal.push('', '', '', '', '', '', '', '', '');
     });
-
     rows.push([], fAuf, fSchw, fAusf, fGes, fEnd, fFinal);
+    return rows;
+  };
 
-    const filename = 'Wettkampfstatistik' +
-      (ath ? '_' + ath.name.replace(/\s+/g, '_') : '') +
-      '_' + new Date().getFullYear() + '.csv';
-    downloadCSV(rows, filename);
+  const exportMauteCSV = () => {
+    if (!program || selected.length === 0) return;
+    downloadCSV(buildMauteRows(), baseFilename() + '.csv');
+  };
+
+  const exportMauteXLSX = async () => {
+    if (!program || selected.length === 0) return;
+    const xlsx = await import('xlsx');
+    const ws = xlsx.utils.aoa_to_sheet(buildMauteRows());
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, 'Wettkampfstatistik');
+    xlsx.writeFile(wb, baseFilename() + '.xlsx');
   };
 
   if (programs.length === 0) {
@@ -16606,38 +16593,78 @@ function ExportWettkampf({ data }) {
         )}
       </div>
 
+      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-medium text-slate-500">Wettkämpfe auswählen ({selected.length}/{filtered.length})</label>
+          {filtered.length > 0 && (
+            <div className="flex gap-2 text-[13px] font-medium">
+              <button onClick={() => setChosen(new Set(filtered.map(c => c.id)))} className="text-[#007AFF] active:opacity-60">Alle</button>
+              <span className="text-slate-300">·</span>
+              <button onClick={() => setChosen(new Set())} className="text-[#007AFF] active:opacity-60">Keine</button>
+            </div>
+          )}
+        </div>
+        {filtered.length === 0 ? (
+          <p className="text-sm text-slate-500">Keine Wettkämpfe für dieses Programm{athleteFilter ? ' und diesen Sportler' : ''}.</p>
+        ) : (
+          <div className="max-h-64 overflow-y-auto -mx-1 px-1 divide-y divide-slate-100">
+            {filtered.map(c => {
+              const on = chosen.has(c.id);
+              return (
+                <button key={c.id} onClick={() => toggleChosen(c.id)}
+                  className="w-full flex items-center gap-3 py-2.5 text-left active:opacity-60">
+                  <span className={'w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ' + (on ? 'bg-amber-500 border-amber-500' : 'border-slate-300 bg-white')}>
+                    {on && <Check size={14} className="text-white" strokeWidth={3} />}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[15px] text-slate-900 truncate">{c.name || 'Wettkampf'}</span>
+                    <span className="block text-[12px] text-slate-500">{c.date ? formatDateShort(c.date) : '—'}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
             <FileSpreadsheet size={20} className="text-amber-700" />
           </div>
           <div className="flex-1">
-            <div className="font-semibold">Maute-Format CSV</div>
+            <div className="font-semibold">Maute-Format</div>
             <div className="text-xs text-slate-500">
-              {filtered.length} Wettkämpfe · 1:1 Maute-Layout
+              {selected.length} Wettkämpfe · Kampfgericht 1 + 2
             </div>
           </div>
         </div>
 
-        <button onClick={exportMauteCSV}
-          disabled={filtered.length === 0 || !program}
-          className="w-full bg-amber-500 text-slate-900 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 rounded-xl font-semibold flex items-center gap-2 justify-center">
-          <Download size={18} /> CSV exportieren
-        </button>
+        <div className="flex flex-col gap-2">
+          <button onClick={exportMauteXLSX}
+            disabled={selected.length === 0 || !program}
+            className="w-full bg-amber-500 text-slate-900 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 rounded-xl font-semibold flex items-center gap-2 justify-center">
+            <Download size={18} /> Excel exportieren (.xlsx)
+          </button>
+          <button onClick={exportMauteCSV}
+            disabled={selected.length === 0 || !program}
+            className="w-full bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 rounded-xl font-medium text-sm flex items-center gap-2 justify-center">
+            <Download size={16} /> Als CSV exportieren
+          </button>
+        </div>
 
-        {filtered.length === 0 && (
+        {selected.length === 0 && (
           <p className="text-sm text-slate-500 mt-3 text-center">
-            Keine Wettkämpfe für dieses Programm{athleteFilter ? ' und diesen Sportler' : ''}.
+            Wähle oben mindestens einen Wettkampf aus.
           </p>
         )}
       </div>
 
       <div className="bg-slate-50 rounded-xl p-4 text-xs text-slate-600 space-y-1">
         <div><strong>Format:</strong> Maute-Standard (Programm-Sheet)</div>
-        <div><strong>Spalten pro Wettkampf:</strong> i.P. · T · X · ~ · | · 0.0 · 0.1 · 0.5 · 1.0</div>
         <div><strong>2 Blöcke pro Wettkampf:</strong> Kampfgericht 1 + Kampfgericht 2</div>
         <div><strong>Footer:</strong> Aufgestellt, Abzüge, Endergebnis (Ø KG1+KG2)</div>
-        <div className="mt-2 text-slate-500">💡 In Excel/Numbers öffnen: Doppelklick auf Datei. UTF-8 BOM ist enthalten für Umlaute.</div>
+        <div className="mt-2 text-slate-500">💡 .xlsx öffnet direkt in Excel/Numbers; CSV als Fallback (UTF-8 mit BOM für Umlaute).</div>
       </div>
     </div>
   );
