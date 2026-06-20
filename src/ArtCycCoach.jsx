@@ -5136,7 +5136,7 @@ export default function App() {
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} myUserId={session?.user?.id || null} />;
   else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} dbAthleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={openFeedback} />;
   else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} athleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { setSelectedAthleteId(id); setView('dashboard'); }} myAthleteId={myAthleteId} setView={setView} />;
-  else if (view === 'export') viewEl = <ExportView data={effectiveData} setView={setView} />;
+  else if (view === 'export') viewEl = <ExportView data={effectiveData} setView={setView} defaultName={[profile?.display_name, profile?.last_name].filter(Boolean).join(' ')} />;
   else if (view === 'kuer' || view === 'video') {
     viewEl = <ComingSoon viewId={view} />;
   } else {
@@ -16417,7 +16417,7 @@ function InviteModal({ open, athlete, onClose, onInvite }) {
 // =============================================================
 // EXPORT
 // =============================================================
-function ExportView({ data, setView }) {
+function ExportView({ data, setView, defaultName = '' }) {
   const { t } = useI18n();
   const [tab, setTab] = useState('wettkampf');
   return (
@@ -16452,7 +16452,7 @@ function ExportView({ data, setView }) {
       </div>
 
       {tab === 'wettkampf'
-        ? <ExportWettkampf data={data} />
+        ? <ExportWettkampf data={data} defaultName={defaultName} />
         : <ExportTraining data={data} />}
     </div>
   );
@@ -16478,7 +16478,7 @@ function downloadCSV(rows, filename) {
 // =============================================================
 // EXPORT WETTKAMPF (Maute-Format)
 // =============================================================
-function ExportWettkampf({ data }) {
+function ExportWettkampf({ data, defaultName = '' }) {
   const [athleteFilter, setAthleteFilter] = useState('');
   const [programId, setProgramId] = useState((data.programs && data.programs[0] && data.programs[0].id) || '');
 
@@ -16502,8 +16502,8 @@ function ExportWettkampf({ data }) {
   const toggleChosen = (id) => setChosen(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   // Dateiname frei festlegbar (Konvention: Name_Wettkampfstatistik_Jahr).
   const exportYear = (selected[0] && (selected[0].date || '').slice(0, 4)) || new Date().getFullYear();
-  const [fileLabel, setFileLabel] = useState('');
-  useEffect(() => { setFileLabel(ath ? ath.name : ''); }, [athleteFilter]);
+  const [fileLabel, setFileLabel] = useState(defaultName || '');
+  useEffect(() => { setFileLabel(ath ? ath.name : (defaultName || '')); }, [athleteFilter, defaultName]);
   const baseFilename = () => {
     const nm = (fileLabel || '').trim().replace(/\s+/g, '_');
     return (nm ? nm + '_' : '') + 'Wettkampfstatistik_' + exportYear;
