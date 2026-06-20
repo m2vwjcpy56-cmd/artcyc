@@ -105,7 +105,7 @@ function applyCells(xml, cellMap) {
 }
 
 // Hauptfunktion (Browser): Vorlage holen, befüllen, .xlsm zum Download geben.
-export async function exportMauteVorlage({ program, competitions, athleteName }) {
+export async function exportMauteVorlage({ program, competitions, athleteName, filename }) {
   if (!program || !(program.exercises || []).length) throw new Error('Kein Programm');
   const resp = await fetch(VORLAGE_URL);
   if (!resp.ok) throw new Error('Vorlage nicht gefunden (' + resp.status + ')');
@@ -129,8 +129,11 @@ export async function exportMauteVorlage({ program, competitions, athleteName })
 
   const out = zipSync(files, { level: 6 });
   const blob = new Blob([out], { type: 'application/vnd.ms-excel.sheet.macroEnabled.12' });
-  const year = (competitions[0] && (competitions[0].date || '').slice(0, 4)) || new Date().getFullYear();
-  const fname = 'Wettkampfstatistik' + (athleteName ? '_' + String(athleteName).replace(/\s+/g, '_') : '') + '_' + year + '.xlsm';
+  let base = (filename && String(filename).trim())
+    || ('Wettkampfstatistik' + (athleteName ? '_' + String(athleteName).replace(/\s+/g, '_') : '')
+        + '_' + ((competitions[0] && (competitions[0].date || '').slice(0, 4)) || new Date().getFullYear()));
+  base = base.replace(/[\\/:*?"<>|]+/g, '').replace(/\.xlsm$/i, '');
+  const fname = base + '.xlsm';
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = fname;

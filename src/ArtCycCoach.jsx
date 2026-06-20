@@ -16495,7 +16495,14 @@ function ExportWettkampf({ data }) {
   useEffect(() => { setChosen(new Set(filtered.map(c => c.id))); }, [programId, athleteFilter, filtered.length]);
   const selected = useMemo(() => filtered.filter(c => chosen.has(c.id)), [filtered, chosen]);
   const toggleChosen = (id) => setChosen(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const baseFilename = () => 'Wettkampfstatistik' + (ath ? '_' + ath.name.replace(/\s+/g, '_') : '') + '_' + new Date().getFullYear();
+  // Dateiname frei festlegbar (Konvention: Name_Wettkampfstatistik_Jahr).
+  const exportYear = (selected[0] && (selected[0].date || '').slice(0, 4)) || new Date().getFullYear();
+  const [fileLabel, setFileLabel] = useState('');
+  useEffect(() => { setFileLabel(ath ? ath.name : ''); }, [athleteFilter]);
+  const baseFilename = () => {
+    const nm = (fileLabel || '').trim().replace(/\s+/g, '_');
+    return (nm ? nm + '_' : '') + 'Wettkampfstatistik_' + exportYear;
+  };
 
   // Baut die Maute-Layout-Zeilen (Programm-Sheet) für die AUSGEWÄHLTEN Wettkämpfe.
   const buildMauteRows = () => {
@@ -16569,7 +16576,7 @@ function ExportWettkampf({ data }) {
     if (!program || selected.length === 0) return;
     setVorlageBusy(true); setVorlageErr('');
     try {
-      await exportMauteVorlage({ program, competitions: selected, athleteName: ath ? ath.name : '' });
+      await exportMauteVorlage({ program, competitions: selected, athleteName: ath ? ath.name : '', filename: baseFilename() });
     } catch (e) {
       setVorlageErr(e && e.message ? e.message : 'Export fehlgeschlagen');
     } finally {
@@ -16653,6 +16660,14 @@ function ExportWettkampf({ data }) {
               {selected.length} Wettkämpfe · Kampfgericht 1 + 2
             </div>
           </div>
+        </div>
+
+        <div className="mb-3">
+          <label className="text-xs font-medium text-slate-500 block mb-1.5">Name (für den Dateinamen)</label>
+          <input value={fileLabel} onChange={e => setFileLabel(e.target.value)}
+            placeholder="z. B. Ruben Geyer"
+            className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500 text-[15px]" />
+          <div className="text-[12px] text-slate-500 mt-1 truncate">Datei: <span className="font-medium text-slate-700">{baseFilename()}.xlsm</span></div>
         </div>
 
         <div className="flex flex-col gap-2">
