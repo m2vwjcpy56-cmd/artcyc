@@ -3305,6 +3305,39 @@ function migrateExerciseLabels(data) {
 
 const CHAT_HISTORY_KEY = 'artcyc:chat:v1';
 
+// Schlanker app_data-Payload für den KI-Coach: NUR die Felder, die die
+// Edge-Function nutzt. Vermeidet das 256-kB-Limit (413) — vor allem werden
+// die schweren competitions-Felder (table1/table2/pdf_ref) NICHT mitgesendet.
+function buildChatAppData(appData) {
+  return {
+    exercises: (appData?.exercises || []).map(e => ({
+      id: e.id, name: e.name, uci_code: e.uci_code, uci_disc: e.uci_disc,
+      category_mode: e.category_mode, third_label: e.third_label,
+      has_rope_variant: !!e.has_rope_variant, active: e.active !== false,
+      points: e.points, target_rate: e.target_rate,
+    })),
+    sessions: (appData?.sessions || [])
+      .slice()
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .slice(0, 1500)
+      .map(s => ({
+        id: s.id, date: s.date, exerciseId: s.exerciseId,
+        exerciseName: s.exerciseName, entries: s.entries,
+        withRope: s.withRope, notes: s.notes,
+      })),
+    competitions: (appData?.competitions || []).map(c => ({
+      id: c.id, name: c.name, date: c.date, athlete_id: c.athlete_id,
+      program_id: c.program_id, location: c.location, host: c.host,
+      t1_schwierigkeit: c.t1_schwierigkeit, t2_schwierigkeit: c.t2_schwierigkeit,
+      target_score: c.target_score,
+    })),
+    programs: (appData?.programs || []).map(p => ({
+      id: p.id, name: p.name, discipline: p.discipline,
+      exercises: (p.exercises || []).map(x => ({ name: x.name, points: x.points, code: x.code })),
+    })),
+  };
+}
+
 async function callChatApi(messages, appData, userName, lang) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
@@ -3318,12 +3351,7 @@ async function callChatApi(messages, appData, userName, lang) {
     },
     body: JSON.stringify({
       messages: sanitizeMessagesForApi(messages),
-      app_data: {
-        exercises: appData?.exercises || [],
-        sessions: appData?.sessions || [],
-        competitions: appData?.competitions || [],
-        programs: appData?.programs || [],
-      },
+      app_data: buildChatAppData(appData),
       user_name: userName || null,
       lang: lang || 'de',
     }),
@@ -3382,12 +3410,7 @@ async function callChatApiStream(messages, appData, userName, lang, callbacks) {
     },
     body: JSON.stringify({
       messages: sanitizeMessagesForApi(messages),
-      app_data: {
-        exercises: appData?.exercises || [],
-        sessions: appData?.sessions || [],
-        competitions: appData?.competitions || [],
-        programs: appData?.programs || [],
-      },
+      app_data: buildChatAppData(appData),
       user_name: userName || null,
       lang: lang || 'de',
     }),
