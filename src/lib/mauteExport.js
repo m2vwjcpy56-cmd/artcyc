@@ -76,7 +76,11 @@ function buildCellMap(program, comps) {
         return (tp > 0 && tp !== Number(ex.points || 0)) ? (tp - Number(ex.points || 0)) : 0;
       };
       const setN = (col, v) => { if (v) map.set(col + r, { kind: 'n', val: Math.round(v * 1000) / 1000 }); };
-      setN(D, bonus(e1) + bonus(e2));   // T (taktische Zusatzpunkte, Summe beider KG)
+      // T (taktische Zusatzpunkte): die Vorlage addiert T DIREKT zu den Punkten
+      // ((B+T)*i.P.), NICHT geteilt durch die Kampfgericht-Anzahl. Daher NUR
+      // EINMAL eintragen (nicht über KG1+KG2 summieren — beide KG bewerten
+      // dieselbe Aufwertung). max() falls nur ein KG sie erfasst hat.
+      setN(D, Math.max(bonus(e1), bonus(e2)));
       setN(E, sum(e1.cross, e2.cross)); // X
       setN(F, sum(e1.wave, e2.wave));   // ~
       setN(G, sum(e1.bar, e2.bar));     // |
