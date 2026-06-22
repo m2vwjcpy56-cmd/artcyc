@@ -3219,7 +3219,7 @@ function TrainingRecapCard({ data }) {
         <span className="text-[13px] text-[#8E8E93]">{formatDateShort(recap.lastDate)} · {rel}</span>
       </div>
       <div className="flex items-baseline gap-7">
-        <div><div className="text-xl font-bold">{recap.sessionCount}</div><div className="text-[11px] text-[#8E8E93]">Erfassungen</div></div>
+        <div><div className="text-xl font-bold">{recap.sessionCount}</div><div className="text-[11px] text-[#8E8E93]">Wiederholungen</div></div>
         <div><div className="text-xl font-bold">{recap.exercises.length}</div><div className="text-[11px] text-[#8E8E93]">Übungen</div></div>
         <div><div className="text-xl font-bold">{recap.totalReps}</div><div className="text-[11px] text-[#8E8E93]">Versuche</div></div>
       </div>
