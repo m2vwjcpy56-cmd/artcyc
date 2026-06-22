@@ -5146,7 +5146,7 @@ export default function App() {
     { id: 'dashboard', label: t('nav.dashboard'), icon: Home },
     { id: 'training', label: t('nav.training'), icon: Dumbbell },
     { id: 'wettkampf', label: t('nav.wettkampf'), icon: Trophy },
-    ...(isCoach ? [{ id: 'sportler', label: t('nav.sportler'), icon: Users }] : [])
+    { id: 'uebungen', label: t('nav.uebungen'), icon: ListChecks },
   ];
 
   // View dispatcher
@@ -8961,6 +8961,18 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
             ✗ Fehler: {migrateResult.error}
           </div>
         )}
+      </IOSList>
+
+      {/* Sportler verwalten (früher eigener Tab) */}
+      <IOSList header={t('nav.sportler')}>
+        <IOSListRow
+          onClick={() => setView && setView('sportler')}
+          trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
+          <span className="flex items-center gap-3">
+            <Users size={18} className="text-[#007AFF]" />
+            <span className="text-[15px] font-medium">{t('nav.sportler')}</span>
+          </span>
+        </IOSListRow>
       </IOSList>
 
       {/* Export */}
