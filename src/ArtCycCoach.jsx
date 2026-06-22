@@ -3171,6 +3171,71 @@ function statusLabel(ex, status) {
 }
 
 // =============================================================
+// Trainings-Rückblick — Kachel mit Zusammenfassung des letzten
+// Trainings (nur wenn höchstens 3 Tage her). Quoten je Übung.
+// =============================================================
+function computeLastTrainingRecap(data, maxDaysAgo = 3) {
+  const sess = (data.sessions || []).filter(s => s.date);
+  if (!sess.length) return null;
+  const lastDate = sess.map(s => String(s.date).slice(0, 10)).sort().pop();
+  const d = new Date(lastDate + 'T00:00:00');
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const daysAgo = Math.round((today - d) / 86400000);
+  if (daysAgo < 0 || daysAgo > maxDaysAgo) return null;
+  const exMap = new Map((data.exercises || []).map(e => [e.id, e]));
+  const byEx = new Map();
+  for (const s of sess) {
+    if (String(s.date).slice(0, 10) !== lastDate) continue;
+    const id = s.exerciseId || s.exerciseName || '?';
+    const name = (exMap.get(s.exerciseId) || {}).name || s.exerciseName || 'Übung';
+    const r = byEx.get(id) || { id, name, total: 0, success: 0, ropeTotal: 0, ropeSuccess: 0, noRopeTotal: 0, noRopeSuccess: 0 };
+    for (const e of (s.entries || [])) {
+      r.total++; const ok = e === 'success'; if (ok) r.success++;
+      if (s.withRope === true) { r.ropeTotal++; if (ok) r.ropeSuccess++; }
+      else if (s.withRope === false) { r.noRopeTotal++; if (ok) r.noRopeSuccess++; }
+    }
+    byEx.set(id, r);
+  }
+  const exercises = [...byEx.values()].filter(r => r.total > 0).sort((a, b) => b.total - a.total);
+  if (!exercises.length) return null;
+  const totalReps = exercises.reduce((s, r) => s + r.total, 0);
+  const totalSuccess = exercises.reduce((s, r) => s + r.success, 0);
+  return { lastDate, daysAgo, exercises, totalReps, totalSuccess, rate: totalReps ? Math.round(totalSuccess / totalReps * 100) : 0 };
+}
+
+function TrainingRecapCard({ data }) {
+  const recap = useMemo(() => computeLastTrainingRecap(data), [data.sessions, data.exercises]);
+  if (!recap) return null;
+  const rel = recap.daysAgo === 0 ? 'heute' : recap.daysAgo === 1 ? 'gestern' : `vor ${recap.daysAgo} Tagen`;
+  const rc = r => r >= 80 ? 'text-emerald-600' : r >= 50 ? 'text-[#FF9500]' : 'text-red-500';
+  const pct = r => r.total ? Math.round(r.success / r.total * 100) : 0;
+  return (
+    <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold flex items-center gap-2 text-[#FF9500]"><Activity size={16} /> Letztes Training</span>
+        <span className="text-[13px] text-[#8E8E93]">{formatDateShort(recap.lastDate)} · {rel}</span>
+      </div>
+      <div className="flex items-baseline gap-6">
+        <div><div className={'text-2xl font-bold ' + rc(recap.rate)}>{recap.rate}%</div><div className="text-[11px] text-[#8E8E93]">Quote</div></div>
+        <div><div className="text-xl font-bold">{recap.exercises.length}</div><div className="text-[11px] text-[#8E8E93]">Übungen</div></div>
+        <div><div className="text-xl font-bold">{recap.totalReps}</div><div className="text-[11px] text-[#8E8E93]">Versuche</div></div>
+      </div>
+      <div className="space-y-2 pt-2 border-t border-slate-100">
+        {recap.exercises.slice(0, 5).map(r => (
+          <div key={r.id} className="flex items-center justify-between text-[14px]">
+            <span className="truncate pr-2">{r.name}{(r.ropeTotal > 0 && r.noRopeTotal > 0) ? <span className="text-[11px] text-[#8E8E93]"> · mit {Math.round(r.ropeSuccess / r.ropeTotal * 100)}% / ohne {Math.round(r.noRopeSuccess / r.noRopeTotal * 100)}%</span> : null}</span>
+            <span className="flex items-center gap-2 shrink-0">
+              <span className={'font-semibold ' + rc(pct(r))}>{pct(r)}%</span>
+              <span className="text-[#8E8E93] text-[12px] tabular-nums">{r.success}/{r.total}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================
 // XLSX-Import: Maute-Sprung-Statistik
 // =============================================================
 // Erwartetes Format: Spalten "Datum", "Geklappt", "Getroffen", "Gefährlich"
@@ -6075,6 +6140,8 @@ function Dashboard({ data, setView, onOpenFeedback }) {
             ...(onOpenFeedback ? [{ icon: MessageCircle, label: 'Feedback zu Übung', sublabel: 'Fehlerbild + Handlungsanweisung', onClick: () => onOpenFeedback() }] : []),
           ]}
         />
+
+        <TrainingRecapCard data={data} />
         {seasonPills}
 
         {/* OVERVIEW — Cockpit: mehrere starke Infos (Training + Wettkampf gemeinsam) */}
