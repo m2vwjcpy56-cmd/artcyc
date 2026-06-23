@@ -4472,7 +4472,16 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [recoveryMode, setRecoveryMode] = useState(false); // Passwort-Reset-Link geklickt → neues Passwort setzen
+  // Reset-Link erkannt? Synchron beim ersten Render aus der URL lesen (Query ODER Hash),
+  // BEVOR Supabase die Auth-Parameter aus der URL entfernt. Deckt PKCE (?type=recovery)
+  // und Implicit (#…type=recovery) ab → „Neues Passwort setzen"-Screen statt nur Login.
+  const [recoveryMode, setRecoveryMode] = useState(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const hp = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+      return sp.get('type') === 'recovery' || hp.get('type') === 'recovery';
+    } catch { return false; }
+  }); // Passwort-Reset-Link geklickt → neues Passwort setzen
   const [recoveryLinkError, setRecoveryLinkError] = useState(null); // abgelaufener/ungültiger Reset-Link
   const [chatOpen, setChatOpen] = useState(false);
 
@@ -5185,7 +5194,10 @@ export default function App() {
   );
 
   // Passwort-Reset-Link geklickt → neues Passwort setzen (vor allem anderen)
-  if (recoveryMode) return <SetNewPasswordScreen onDone={() => setRecoveryMode(false)} />;
+  if (recoveryMode) return <SetNewPasswordScreen onDone={() => {
+    setRecoveryMode(false);
+    try { window.history.replaceState({}, document.title, window.location.pathname); } catch { /* egal */ }
+  }} />;
 
   // Nicht eingeloggt → AuthScreen
   if (!session) return <AuthScreen linkError={recoveryLinkError} onClearLinkError={() => setRecoveryLinkError(null)} />;
@@ -5596,7 +5608,10 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
     if (!validEmail) { setErr(t('validation.invalidEmail')); return; }
     setBusy(true); setErr(''); setInfo('');
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+      // Marker `type=recovery` an redirectTo hängen: im PKCE-Flow kommt der Link
+      // als ?code=… zurück (ohne Hash/`type`), sonst erkennt die App den Reset nicht
+      // und loggt nur ein. Mit dem Marker wird der „Neues Passwort"-Screen erzwungen.
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin + '/?type=recovery' });
       if (error) throw error;
       setInfo(t('validation.resetSent'));
     } catch (e) {
