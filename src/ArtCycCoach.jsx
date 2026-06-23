@@ -8760,6 +8760,51 @@ function deriveExerciseNames(programs) {
   return { programs: out, fixed };
 }
 
+/** Passwort direkt im Profil ändern – ohne den Reset-Mail-Umweg (hilft eingeloggten Nutzern). */
+function ChangePasswordRow() {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [p1, setP1] = useState('');
+  const [p2, setP2] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const save = async () => {
+    setErr(null); setMsg(null);
+    if (p1.length < 10) { setErr(t('pw.tooShort')); return; }
+    if (p1 !== p2) { setErr(t('pw.mismatch')); return; }
+    setBusy(true);
+    const { error } = await supabase.auth.updateUser({ password: p1 });
+    setBusy(false);
+    if (error) { setErr(error.message || t('pw.failed')); return; }
+    setMsg(t('pw.changed')); setP1(''); setP2('');
+    setTimeout(() => { setOpen(false); setMsg(null); }, 1800);
+  };
+  return (
+    <>
+      <IOSListRow onClick={() => setOpen(o => !o)} trailing={<KeyRound size={18} className="text-[#8E8E93]" />}>
+        <span className="text-[15px]">{t('settings.changePassword')}</span>
+      </IOSListRow>
+      {open && (
+        <div className="px-4 py-3 space-y-2 bg-[#F2F2F7] dark:bg-[#1C1C1E]">
+          <input type="password" autoComplete="new-password" value={p1} onChange={e => setP1(e.target.value)}
+            placeholder={t('pw.new')}
+            className="w-full px-3 py-2.5 rounded-xl border border-[#D1D1D6] bg-white dark:bg-[#2C2C2E] dark:border-[#3A3A3C] text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]" />
+          <input type="password" autoComplete="new-password" value={p2} onChange={e => setP2(e.target.value)}
+            placeholder={t('pw.confirm')}
+            className="w-full px-3 py-2.5 rounded-xl border border-[#D1D1D6] bg-white dark:bg-[#2C2C2E] dark:border-[#3A3A3C] text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]" />
+          {err && <div className="text-[13px] text-[#FF3B30]">{err}</div>}
+          {msg && <div className="text-[13px] text-[#34C759]">{msg}</div>}
+          <button onClick={save} disabled={busy || !p1 || !p2}
+            className="w-full bg-[#FF9500] text-white py-2.5 rounded-full font-semibold active:scale-95 transition disabled:opacity-40">
+            {busy ? '…' : t('pw.save')}
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
 function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, dbAthleteCoaches, refreshAthletes, theme, setTheme, langPref, setLangPref, rulesLangPref, setRulesLangPref, setView, onOpenFeedback }) {
   const { t } = useI18n();
   const roleLabel = profile?.role === 'admin' ? t('role.admin') : profile?.role === 'coach' ? t('role.coach') : t('role.athlete');
@@ -8899,6 +8944,7 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
             <span className="text-[15px] text-[#3C3C43]">{t('settings.cloudSync')}</span>
             <IOSTag color={syncTagColor}>{syncLabel}</IOSTag>
           </div>
+          <ChangePasswordRow />
           <IOSListRow onClick={onLogout} trailing={<LogOut size={18} className="text-[#FF3B30]" />}>
             <span className="text-[15px] text-[#FF3B30] font-medium">{t('settings.signOut')}</span>
           </IOSListRow>
