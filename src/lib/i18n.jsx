@@ -100,11 +100,11 @@ const dict = {
     'dashboard.competitions': 'Wettkämpfe',
     'dashboard.trainingDays': 'Trainingstage',
     'dashboard.sessions': 'Sessions',
-    'dashboard.logSession': 'Wiederholung protokollieren',
+    'dashboard.logSession': 'Serie protokollieren',
     'dashboard.manageExercises': 'Übungen verwalten',
     'dashboard.progressByExercise': 'Fortschritt pro Übung',
     'dashboard.noTrainingData': 'Noch keine Trainings-Daten',
-    'dashboard.noTrainingHint': 'Protokolliere deine erste Wiederholung, um den Fortschritt zu sehen.',
+    'dashboard.noTrainingHint': 'Protokolliere deine erste Serie, um den Fortschritt zu sehen.',
     'dashboard.competitionHistory': 'Wettkampf-Verlauf',
     'dashboard.trainingActivity': 'Trainings-Aktivität',
     'dashboard.viewAll': 'Alle ansehen ›',
@@ -117,7 +117,7 @@ const dict = {
     // Training-View
     'training.title': 'Training',
     'training.totalSessions': '{n} Sessions insgesamt',
-    'training.logButton': 'Wiederholung protokollieren',
+    'training.logButton': 'Serie protokollieren',
     'training.sortByDate': 'Nach Datum',
     'training.sortByExercise': 'Nach Übung',
     'training.today': 'Heute',
@@ -136,7 +136,7 @@ const dict = {
     'training.noMatches': 'Keine Treffer für deinen Filter.',
 
     // Erfassen / Session anlegen
-    'log.title': 'Wiederholung protokollieren',
+    'log.title': 'Serie protokollieren',
     'log.date': 'Datum',
     'log.athlete': 'Sportler / Team',
     'log.athleteNone': '— Kein Sportler —',
@@ -147,7 +147,7 @@ const dict = {
     'log.variant': 'Variante',
     'log.withRope': 'Mit Seil',
     'log.withoutRope': 'Ohne Seil',
-    'log.series': 'Wiederholungen',
+    'log.series': 'Serien',
     'log.success': 'Geklappt',
     'log.fail': 'Nicht geklappt',
     'log.note': 'Notiz (optional)',
@@ -269,7 +269,7 @@ const dict = {
     'uci.jsonBackup': 'Backup als JSON',
     'uci.activeDb': 'Aktive Datenbank:',
 
-    'dashboard.activityFooter': '{n} Tage · {series} Wiederholungen',
+    'dashboard.activityFooter': '{n} Tage · {series} Serien',
 
     'detail.successRate': 'Erfolgsquote',
     'detail.attempts': 'Versuche',
@@ -463,7 +463,7 @@ const dict = {
     'aiInsight.targetFar': '{gap}% unter Ziel ({target}%) — fokussiere diese Übung im nächsten Plan.',
     'aiInsight.freqHigh': 'Frequenz: rund {perWeek}× pro Woche — hohe Konsistenz.',
     'aiInsight.freqMedium': 'Frequenz: rund {perWeek}× pro Woche.',
-    'aiInsight.freqLow': 'Frequenz: nur {perWeek}× pro Woche — mehr Wiederholung würde helfen.',
+    'aiInsight.freqLow': 'Frequenz: nur {perWeek}× pro Woche — mehr Serien würden helfen.',
     'aiInsight.staleDays': 'Zuletzt vor {days} Tagen trainiert — Zeit für eine neue Session.',
     'aiInsight.veryStale': 'Seit {days} Tagen nicht mehr trainiert — diese Übung droht aus dem Repertoire zu fallen.',
     'aiInsight.riskHigh': 'Risiko-Profil: {pct}% deiner nicht-geklappten Versuche waren {label} — Schutzmaßnahmen prüfen.',

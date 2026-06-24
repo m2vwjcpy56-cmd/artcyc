@@ -3219,7 +3219,7 @@ function TrainingRecapCard({ data }) {
         <span className="text-[13px] text-[#8E8E93]">{formatDateShort(recap.lastDate)} · {rel}</span>
       </div>
       <div className="flex items-baseline gap-7">
-        <div><div className="text-xl font-bold">{recap.sessionCount}</div><div className="text-[11px] text-[#8E8E93]">Wiederholungen</div></div>
+        <div><div className="text-xl font-bold">{recap.sessionCount}</div><div className="text-[11px] text-[#8E8E93]">Serien</div></div>
         <div><div className="text-xl font-bold">{recap.exercises.length}</div><div className="text-[11px] text-[#8E8E93]">Übungen</div></div>
         <div><div className="text-xl font-bold">{recap.totalReps}</div><div className="text-[11px] text-[#8E8E93]">Versuche</div></div>
       </div>
@@ -3742,7 +3742,7 @@ async function applyChatAction(action, data, setData, refreshers) {
       });
       if (error) return '⚠ DB-Fehler: ' + error.message;
       if (refreshers && refreshers.sessions) await refreshers.sessions();
-      return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Wiederholungen (' + succ + ' geklappt)' + ropeTag;
+      return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Serien (' + succ + ' geklappt)' + ropeTag;
     }
     const newSession = {
       id: uid(),
@@ -3755,7 +3755,7 @@ async function applyChatAction(action, data, setData, refreshers) {
       athleteId: null,
     };
     setData({ ...data, sessions: [...(data.sessions || []), newSession] });
-    return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Wiederholungen (' + succ + ' geklappt)' + ropeTag;
+    return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Serien (' + succ + ' geklappt)' + ropeTag;
   }
   if (action.tool === 'propose_update_session') {
     const fields = p.fields || {};
@@ -6128,7 +6128,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
     // Aktuelle Trainings-Serie: aufeinanderfolgende Tage bis heute/gestern.
     // Aktuelle Serie in Wochen (aufeinanderfolgende Trainingswochen).
     const streak = trainingWeekStreak(data.sessions);
-    // „Übung im Fokus": Default = datenreichste Übung (meiste Wiederholungen),
+    // „Übung im Fokus": Default = datenreichste Übung (meiste Serien),
     // damit immer eine sinnvolle Übung mit Trend vorausgewählt ist. Frei änderbar.
     const cntByEx = new Map();
     for (const s of (data.sessions || [])) {
@@ -6591,7 +6591,7 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf, b
 // Trainings-Heatmap — GitHub-Style Aktivitäts-Kalender
 // =============================================================
 // Zeigt die letzten 26 Wochen (≈6 Monate) als 7×26-Grid.
-// Jede Zelle ein Tag, gefärbt nach Anzahl Sessions/Wiederholungen.
+// Jede Zelle ein Tag, gefärbt nach Anzahl Sessions/Serien.
 function TrainingHeatmap({ sessions }) {
   const { t } = useI18n();
   const { weeks, monthLabels, totalDaysActive, totalSeries } = useMemo(() => {
@@ -6647,7 +6647,7 @@ function TrainingHeatmap({ sessions }) {
     return { weeks, monthLabels, totalDaysActive, totalSeries };
   }, [sessions]);
 
-  // Farbskala: 0 / 1-9 / 10-19 / 20-29 / 30+ Wiederholungen
+  // Farbskala: 0 / 1-9 / 10-19 / 20-29 / 30+ Serien
   const colorFor = (entries) => {
     if (entries === 0) return '#F2F2F7';
     if (entries < 10) return '#FED7AA';
@@ -6695,7 +6695,7 @@ function TrainingHeatmap({ sessions }) {
                 opacity={day.future ? 0.3 : 1}
                 stroke={day.future ? '#E5E5EA' : 'none'}
                 strokeWidth={day.future ? 1 : 0}>
-                <title>{day.date}{day.entries > 0 ? ' — ' + day.sessions + ' Session(s), ' + day.entries + ' Wiederholungen' : ''}</title>
+                <title>{day.date}{day.entries > 0 ? ' — ' + day.sessions + ' Session(s), ' + day.entries + ' Serien' : ''}</title>
               </rect>
             ))
           )}
@@ -6776,7 +6776,7 @@ function ExerciseStatsCard({ ex, total, success, fail, third, rate, riskRate, se
             )}
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
-            {sessions} Sessions · {total} Wiederholungen
+            {sessions} Sessions · {total} Serien
           </div>
         </div>
         <div className="text-right shrink-0">
@@ -6901,7 +6901,7 @@ function groupSessionsByDate(sessions) {
   return { today, yesterday, week, months };
 }
 
-// Sessions nach Übung gruppieren — pro Übung: Anzahl Wiederholungen, Quote, Trend.
+// Sessions nach Übung gruppieren — pro Übung: Anzahl Serien, Quote, Trend.
 function groupSessionsByExercise(sessions) {
   const byEx = new Map();
   for (const s of sessions) {
@@ -7090,7 +7090,7 @@ function TrainingView({ data, setData, setView }) {
             )}
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
-            {formatDateShort(s.date)}{s.created ? ' · ' + new Date(s.created).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr' : ''} · {total} Wiederholungen
+            {formatDateShort(s.date)}{s.created ? ' · ' + new Date(s.created).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr' : ''} · {total} Serien
           </div>
           {s.notes && (
             <div className="text-xs text-slate-500 italic mt-1 line-clamp-1 border-l-2 border-amber-200 pl-2">
@@ -7133,7 +7133,7 @@ function TrainingView({ data, setData, setView }) {
           <div className="min-w-0 flex-1">
             <div className="font-medium text-[15px] truncate">{g.exerciseName}</div>
             <div className="text-[12px] text-[#8E8E93] mt-0.5">
-              {g.items.length} Sessions · {g.totalEntries} Wiederholungen · zuletzt {formatDateShort(g.lastDate)}
+              {g.items.length} Sessions · {g.totalEntries} Serien · zuletzt {formatDateShort(g.lastDate)}
             </div>
           </div>
           <div className={'font-semibold text-[17px] ' + rateColor}>{rate}%</div>
@@ -7631,7 +7631,7 @@ function TrainingView({ data, setData, setView }) {
           {trainedExercises.map(({ ex, sessions, total, rate, lastDate }) => {
             const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 60 ? 'text-[#FF9500]' : 'text-[#FF3B30]';
             const meta = (ex.uci_code ? ('UCI ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : ''));
-            const subtitle = (meta ? meta + ' · ' : '') + sessions + ' Sessions · ' + total + ' Wiederholungen';
+            const subtitle = (meta ? meta + ' · ' : '') + sessions + ' Sessions · ' + total + ' Serien';
             return (
               <IOSListRow
                 key={ex.id}
@@ -7845,7 +7845,7 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
 
           {/* Entries — identisches 3-Spalten-Layout wie in Erfassen */}
           <div>
-            <label className="text-sm font-medium block mb-2">Wiederholungen · {entries.length}</label>
+            <label className="text-sm font-medium block mb-2">Serien · {entries.length}</label>
             <div className={'grid gap-3 mb-3 ' + (use3 ? 'grid-cols-3' : 'grid-cols-2')}>
               <button onClick={(ev) => { pressFeedback(ev, 'success'); setEntries(prev => [...prev, 'success']); }}
                 className="bg-emerald-50 border border-emerald-100 text-emerald-700 py-3.5 rounded-[20px] font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
@@ -8555,7 +8555,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                               </button>
                             </div>
                           )}
-                          {/* Gleiche Kacheln wie „Wiederholungen erfassen". */}
+                          {/* Gleiche Kacheln wie „Serien erfassen". */}
                           <div className={'grid gap-3 ' + (use3 ? 'grid-cols-3' : 'grid-cols-2')}>
                             <button onClick={(ev) => { pressFeedback(ev, 'success'); logEntry(it, ex.id, 'success'); }}
                               className="bg-emerald-50 border border-emerald-100 text-emerald-700 py-3.5 rounded-[20px] font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
@@ -14929,7 +14929,7 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
                     <div className="min-w-0 flex-1">
                       <div className="font-medium text-[15px] truncate">{localizedExerciseName(ex) || t('nav.uebungen')}</div>
                       <div className="text-[13px] text-slate-500">
-                        {ex.total} Wiederholungen · {ex.success} geklappt
+                        {ex.total} Serien · {ex.success} geklappt
                       </div>
                     </div>
                     <div className={'text-xl font-bold ' + (ex.rate >= 80 ? 'text-emerald-600' : ex.rate >= 60 ? 'text-amber-600' : 'text-rose-600')}>
@@ -16946,7 +16946,7 @@ function ExportTraining({ data }) {
           <div className="flex-1">
             <div className="font-semibold">Trainings-Daten CSV</div>
             <div className="text-xs text-slate-500">
-              {sessions.length} Sessions · {totalSeries} Wiederholungen
+              {sessions.length} Sessions · {totalSeries} Serien
               {ath ? ' · ' + ath.name : ''}
             </div>
           </div>
