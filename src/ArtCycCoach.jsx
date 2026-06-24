@@ -6162,7 +6162,6 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           message="Was möchtest du erfassen?"
           actions={[
             { icon: Dumbbell, label: 'Serie protokollieren', sublabel: 'Geklappt / nicht — fürs Training', onClick: () => setView('erfassen') },
-            { icon: Trophy, label: 'Wertungsbogen erfassen', sublabel: 'Wettkampf (PDF/Foto/manuell)', onClick: () => setView('wettkampf') },
             ...(onOpenFeedback ? [{ icon: MessageCircle, label: 'Feedback zu Übung', sublabel: 'Fehlerbild + Handlungsanweisung', onClick: () => onOpenFeedback() }] : []),
           ]}
         />
@@ -7526,7 +7525,6 @@ function TrainingView({ data, setData, setView }) {
           message="Was möchtest du erfassen?"
           actions={[
             { icon: Dumbbell, label: 'Serie protokollieren', sublabel: 'Geklappt / nicht — fürs Training', onClick: () => setView('erfassen') },
-            { icon: Trophy, label: 'Wertungsbogen erfassen', sublabel: 'Wettkampf (PDF/Foto/manuell)', onClick: () => setView('wettkampf') },
             { icon: MessageCircle, label: 'Feedback zu Übung', sublabel: 'Fehlerbild + Handlungsanweisung', onClick: () => setFbPickerOpen(true) },
             { icon: Plus, label: 'Neue Übung anlegen', sublabel: 'Übung zur Liste hinzufügen', onClick: () => setNewExercise(true) },
           ]}
