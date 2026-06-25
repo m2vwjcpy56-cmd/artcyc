@@ -14690,6 +14690,18 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                   </div>
                 )}
               </div>
+              {/* Anerkannt (taktische Aufwertung) – Standard = Übungspunkte */}
+              <div className={'mt-2 rounded-lg p-2 ' + (isTaktisch ? 'bg-amber-100/60 ring-1 ring-amber-300' : '')}>
+                <div className="text-[10px] text-slate-500 mb-1">Anerkannt (taktische Aufwertung):</div>
+                <div className="flex items-center gap-2">
+                  <input type="number" min="0" step="0.1" inputMode="decimal"
+                    value={e.taktischePunkte || ''}
+                    placeholder={Number(ex.points).toFixed(1)}
+                    onChange={ev => onUpdate(idx, 'taktischePunkte', ev.target.value)}
+                    className="w-20 px-2 py-1.5 text-center border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-amber-500 text-sm" />
+                  <span className="text-[10px] text-slate-400">Pkt · Standard {Number(ex.points).toFixed(1)}</span>
+                </div>
+              </div>
             </div>
           );
         })}
@@ -14708,6 +14720,7 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
               <th className="py-2 px-1 font-medium w-10" title="Strich (1,0)">|</th>
               <th className="py-2 px-1 font-medium w-10" title="Kreis/Sturz (2,0)">○</th>
               <th className="py-2 px-1 font-medium w-16" title="Schwierigkeit %">Schw</th>
+              <th className="py-2 px-1 font-medium w-16" title="Anerkannt (taktische Aufwertung)">Anerk.</th>
               <th className="py-2 px-1 font-medium w-12 text-right">Σ</th>
             </tr>
           </thead>
@@ -14750,6 +14763,13 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                       <option value={50}>50%</option>
                       <option value={100}>100%</option>
                     </select>
+                  </td>
+                  <td className="py-1 px-0.5">
+                    <input type="number" min="0" step="0.1" value={e.taktischePunkte || ''}
+                      placeholder={Number(ex.points).toFixed(1)}
+                      onChange={ev => onUpdate(idx, 'taktischePunkte', ev.target.value)}
+                      className={'w-full px-1 py-1 text-center border rounded outline-none focus:ring-1 focus:ring-amber-500 text-xs ' +
+                        (Number(e.taktischePunkte||0) > 0 && Number(e.taktischePunkte) !== Number(ex.points) ? 'border-amber-400 text-amber-700 font-semibold' : 'border-slate-200')} />
                   </td>
                   <td className="py-1.5 px-1 text-right font-semibold text-slate-700">
                     {total > 0 ? '-' + total.toFixed(2) : '0'}
