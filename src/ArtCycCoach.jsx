@@ -13579,6 +13579,10 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
   useEffect(() => () => stopScanAnim(), []);
   const [showPasteArea, setShowPasteArea] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  // Duplikat-Erkennung beim (Re-)Import: vorhandenen Eintrag ersetzen statt
+  // einen zweiten anzulegen. replaceTargetId = ID des zu überschreibenden Wettkampfs.
+  const [replaceTargetId, setReplaceTargetId] = useState(null);
+  const [dupModal, setDupModal] = useState(null);
 
   // Draft schreiben sobald sich etwas ändert (nach allen useStates!).
   // importPreview kann groß sein (mit exerciseRows) — passt aber locker
@@ -14184,7 +14188,8 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     clearDraft(); // erfolgreich gespeichert → Draft entsorgen
     onSave({
       competition: {
-        id: (competition && competition.id) || uid(),
+        // replaceTargetId gesetzt → vorhandenen Eintrag überschreiben (Parent upsertet nach ID).
+        id: replaceTargetId || (competition && competition.id) || uid(),
         name: name.trim(),
         date, location, host,
         start_nr: startNr,
@@ -14225,32 +14230,32 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
   // Duplikats-Erkennung: prüft, ob der aktuell geöffnete Import-Preview bereits
   // als Wettkampf existiert (gleicher Name + Datum, optional auch Startnummer).
   // Beim Bearbeiten (competition gesetzt) ignorieren wir den Wettkampf selbst.
+  // Duplikat: gleicher Name ODER gleiches Datum (Wunsch des Nutzers — erkennt den
+  // erneut hochgeladenen Bogen auch bei leicht abweichendem OCR-Namen/-Datum).
   const duplicateCompetition = (() => {
     if (!importPreview) return null;
-    if (!importPreview.wettbewerb || !importPreview.datum) return null;
+    const nm = (importPreview.wettbewerb || '').trim().toLowerCase();
+    const dt = (importPreview.datum || '');
+    if (!nm && !dt) return null;
     const list = existingCompetitions || [];
     return list.find(c => {
       if (competition && c.id === competition.id) return false;
-      if ((c.name || '').trim() !== (importPreview.wettbewerb || '').trim()) return false;
-      if ((c.date || '') !== (importPreview.datum || '')) return false;
-      // Zusätzlich Startnummer matchen, falls beide gesetzt
-      if (importPreview.startnr && c.start_nr) {
-        return String(c.start_nr).trim() === String(importPreview.startnr).trim();
-      }
-      return true;
+      const sameName = nm && (c.name || '').trim().toLowerCase() === nm;
+      const sameDate = dt && (c.date || '') === dt;
+      return sameName || sameDate;
     }) || null;
   })();
 
-  // Übernehmen mit Duplikat-Confirm
+  // Übernehmen: bei Duplikat den 3-Wege-Dialog (Ersetzen / Zusätzlich / Verwerfen)
+  // öffnen, sonst direkt als neuen Eintrag übernehmen.
   const handleApplyImport = () => {
-    if (duplicateCompetition) {
-      const msg = 'Es existiert bereits ein Wettkampf mit gleichem Namen und Datum:\n\n„' +
-        duplicateCompetition.name + '" am ' + formatDateShort(duplicateCompetition.date) +
-        '\n\nTrotzdem übernehmen? Es wird ein zweiter Wettkampf-Eintrag angelegt.';
-      if (!window.confirm(msg)) return;
-    }
+    if (duplicateCompetition) { setDupModal(duplicateCompetition); return; }
+    setReplaceTargetId(null);
     applyImport(importPreview);
   };
+
+  const applyAsReplacement = () => { if (dupModal) setReplaceTargetId(dupModal.id); setDupModal(null); applyImport(importPreview); };
+  const applyAsAdditional  = () => { setReplaceTargetId(null); setDupModal(null); applyImport(importPreview); };
 
   return (
     <div className="-mx-3 sm:mx-0">
@@ -14265,6 +14270,33 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           {t('common.save')}
         </button>
       </div>
+
+      {replaceTargetId && (
+        <div className="mx-3 mt-2 text-xs bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900/60 rounded-xl px-3 py-2 flex items-center gap-2 text-amber-900 dark:text-amber-200">
+          <AlertTriangle size={14} className="shrink-0 text-amber-700 dark:text-amber-300" />
+          <span>Ersetzt beim Speichern den vorhandenen Eintrag.</span>
+          <button onClick={() => setReplaceTargetId(null)} className="ml-auto underline font-medium shrink-0">Rückgängig</button>
+        </div>
+      )}
+
+      {dupModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setDupModal(null)}>
+          <div className="bg-white dark:bg-slate-900 rounded-3xl sm:rounded-2xl w-full max-w-sm p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0"><AlertTriangle size={18} className="text-amber-600 dark:text-amber-300" /></div>
+              <div><h3 className="font-semibold dark:text-white">Wettkampf existiert bereits</h3></div>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
+              „{dupModal.name}" am {formatDateShort(dupModal.date)} ist schon angelegt. Was möchtest du tun?
+            </p>
+            <div className="space-y-2">
+              <button onClick={applyAsReplacement} className="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-medium text-sm">Ersetzen</button>
+              <button onClick={applyAsAdditional} className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-white/10 dark:text-slate-100 font-medium text-sm">Zusätzlich anlegen</button>
+              <button onClick={() => setDupModal(null)} className="w-full py-2.5 rounded-xl text-slate-500 dark:text-slate-400 font-medium text-sm">Verwerfen</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sticky-Bereich direkt unter dem Header.
           Drei mögliche Zustände:
@@ -14588,7 +14620,7 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
           if (Number(e.cross || 0) > 0)  execParts.push(`${e.cross}× x = ${(e.cross * 0.2).toFixed(1)}`);
           const unsicher = typeof e._conf === 'number' && e._conf < 0.6;
           return (
-            <div key={ex.id} className="bg-slate-50 rounded-xl p-3">
+            <div key={ex.id} className={'rounded-xl p-3 ' + (total > 0 ? 'bg-amber-50 ring-1 ring-amber-300' : 'bg-slate-50')}>
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 text-xs flex-wrap">
@@ -14686,7 +14718,7 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
               const schw = calcExerciseSchwierigkeit(e, ex);
               const total = exec + schw;
               return (
-                <tr key={ex.id} className="border-b border-slate-100">
+                <tr key={ex.id} className={'border-b border-slate-100 ' + (total > 0 ? 'bg-amber-50' : '')}>
                   <td className="py-1.5 px-1 text-slate-500">{ex.nr}</td>
                   <td className="py-1.5 px-1">
                     <div className="font-medium leading-tight line-clamp-2">{localizedExerciseName(ex)}</div>
