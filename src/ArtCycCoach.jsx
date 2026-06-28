@@ -8206,9 +8206,14 @@ function TrainingsplanView({ data, setData, onBack }) {
     return s ? (s.entries || []) : [];
   };
   const getEntries = (exId) => exId in optimisticRef.current ? optimisticRef.current[exId] : todayEntries(exId);
-  // Seil-Wahl für heute je Übung (nur relevant bei Seil-Übungen). Default: mit Seil.
+  // Seil-Wahl kommt aus dem PLAN-Eintrag (im Editor festgelegt), NICHT im Logging
+  // umschaltbar — sonst ändert man es versehentlich. Default: mit Seil.
   const ropeRef = useRef({});
-  const getRope = (ex) => ex?.has_rope_variant ? (ropeRef.current[ex.id] !== false) : null;
+  const getRope = (ex) => {
+    if (!ex?.has_rope_variant) return null;
+    const it = (plan?.items || []).find(i => i.exerciseId === ex.id);
+    return it ? !!it.hasRope : true;
+  };
 
   // --- Abhaken-Zähler (Modus „Abhaken") ---------------------------------------
   // Wie oft wurde der Eintrag HEUTE gemacht (kann über/unter der Plan-Anzahl
@@ -8542,17 +8547,13 @@ function TrainingsplanView({ data, setData, onBack }) {
                       </div>
                       {it.loggable && ex && (
                         <div className="mt-2.5">
-                          {/* Mit-Seil-Wahl (nur bei Seil-Übungen) — wie im SessionEditor. */}
+                          {/* Seil-Variante aus dem Plan-Eintrag (im Editor festgelegt) —
+                              hier nur Anzeige, nicht änderbar (sonst versehentlich). */}
                           {ex.has_rope_variant && (
-                            <div className="grid grid-cols-2 gap-2 mb-2.5">
-                              <button type="button" onClick={() => setRope(ex.id, true)}
-                                className={'py-2 rounded-xl text-[13px] font-medium border transition active:scale-95 ' + (ropeOn ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-700 border-slate-300')}>
-                                Mit Seil
-                              </button>
-                              <button type="button" onClick={() => setRope(ex.id, false)}
-                                className={'py-2 rounded-xl text-[13px] font-medium border transition active:scale-95 ' + (!ropeOn ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-700 border-slate-300')}>
-                                Ohne Seil
-                              </button>
+                            <div className="mb-2.5">
+                              <span className={'inline-block px-2.5 py-1 rounded-full text-[12px] font-medium ' + (ropeOn ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800')}>
+                                {ropeOn ? 'Mit Seil' : 'Ohne Seil'}
+                              </span>
                             </div>
                           )}
                           {/* Gleiche Kacheln wie „Serien erfassen". */}
