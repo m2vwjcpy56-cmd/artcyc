@@ -13763,10 +13763,15 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
 
     // Übungen ermitteln, die NEU sind — beim Speichern committen
     if (activeProgram && activeProgram.exercises) {
+      // Vergleich: zuerst über UCI-Code (wenn IRGENDeine Seite einen hat und sie
+      // gleich sind). Sonst über NORMALISIERTEN Namen (Bindestriche/Leerzeichen/
+      // Groß-Klein egal) + Punkte — so erzeugt „Maute Sprung" vs „Maute-Sprung"
+      // keine Dublette mehr.
+      const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
       const isMatch = (ex, dbEx) => {
-        if (ex.code && dbEx.uci_code) return ex.code === dbEx.uci_code;
-        return (dbEx.name || '').trim().toLowerCase() === (ex.name || '').trim().toLowerCase()
-          && Number(dbEx.points || 0) === Number(ex.points || 0);
+        const ec = (ex.code || '').trim(), dc = (dbEx.uci_code || '').trim();
+        if (ec && dc) return ec === dc;
+        return norm(dbEx.name) === norm(ex.name) && Number(dbEx.points || 0) === Number(ex.points || 0);
       };
       const newOnes = [];
       const dbExes = existingExercises || [];
