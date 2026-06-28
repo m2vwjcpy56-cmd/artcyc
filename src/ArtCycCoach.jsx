@@ -2899,7 +2899,15 @@ function mergeDuplicates(data, myUserId) {
     table2: remapTable(c.table2),
   }));
 
-  return { ...data, programs, exercises, sessions, competitions };
+  // Trainingsplan-Verknüpfungen mitumhängen, sonst zeigt ein Plan-Eintrag nach dem
+  // Zusammenführen auf eine gelöschte Übung (toter Link).
+  const trainingPlans = (data.trainingPlans || []).map(p => ({
+    ...p,
+    items: (p.items || []).map(it => (it.exerciseId && exIdMap.has(it.exerciseId))
+      ? { ...it, exerciseId: exIdMap.get(it.exerciseId) } : it),
+  }));
+
+  return { ...data, programs, exercises, sessions, competitions, trainingPlans };
 }
 
 
