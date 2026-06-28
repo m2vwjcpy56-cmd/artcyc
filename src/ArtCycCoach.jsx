@@ -2627,6 +2627,18 @@ function getAnerkanntePunkte(w, exercise) {
   return t > 0 ? t : Number(exercise.points || 0);
 }
 
+// Taktische Punkte-Skala aus dem Übungstext lesen, z. B. Lenkerdrehungen
+// "… T (7,8 - 8,3 - 8,8 - 9,3)" → [7.8, 8.3, 8.8, 9.3]. Leer bei < 2 Werten.
+function parseTacticalScale(text) {
+  if (!text) return [];
+  const s = String(text);
+  const open = s.lastIndexOf('('), close = s.lastIndexOf(')');
+  if (open < 0 || close <= open) return [];
+  const vals = s.slice(open + 1, close).split(/[-–—]/)
+    .map(p => parseFloat(p.trim().replace(',', '.'))).filter(v => v > 0);
+  return vals.length >= 2 ? vals : [];
+}
+
 function calcTableResult(program, entries, schwierigkeit = 0) {
   // Aufgestellt = STRENG die Summe der Programm-Standardpunkte.
   // Taktische Aufwertung (T = "Retusche") ist KEINE aufgestellte Schwierigkeit,
@@ -8103,6 +8115,57 @@ function TrainingsplanView({ data, setData, onBack }) {
     return [...byDate.values()].map(r => ({ ...r, exIds: [...r.exIds] })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [plan, data.sessions, data.exercises, today]);
 
+  // Protokoll über ALLE Pläne (Übersicht): vereinigt die verknüpften Übungen aller Pläne.
+  const allPlansLog = useMemo(() => {
+    const exIds = new Set();
+    for (const p of plans) for (const it of (p.items || [])) if (it.loggable && it.exerciseId) exIds.add(it.exerciseId);
+    if (exIds.size === 0) return [];
+    const exName = (id) => { const ex = (data.exercises || []).find(e => e.id === id); return ex ? localizedExerciseName(ex) : 'Übung'; };
+    const byDate = new Map();
+    for (const s of (data.sessions || [])) {
+      if (!exIds.has(s.exerciseId) || s.date === today) continue;
+      const entries = s.entries || []; if (entries.length === 0) continue;
+      const succ = entries.filter(e => e === 'success').length;
+      const rec = byDate.get(s.date) || { date: s.date, total: 0, succ: 0, items: [], exIds: new Set() };
+      rec.total += entries.length; rec.succ += succ; rec.exIds.add(s.exerciseId);
+      rec.items.push({ name: exName(s.exerciseId), total: entries.length, succ, fail: entries.length - succ });
+      byDate.set(s.date, rec);
+    }
+    return [...byDate.values()].map(r => ({ ...r, exIds: [...r.exIds] })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }, [plans, data.sessions, data.exercises, today]);
+
+  // Einheitliche Protokoll-Liste: pro Tag Datum + Quote% + Treffer/Gesamt + Aufschlüsselung.
+  const renderProtocolList = (log) => (
+    <div className="bg-white rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+      {log.map((d, idx) => {
+        const rate = d.total > 0 ? Math.round(d.succ / d.total * 100) : 0;
+        const rc = rate >= 80 ? 'text-emerald-600' : (rate >= 50 ? 'text-[#FF9500]' : 'text-rose-500');
+        return (
+          <div key={d.date} className={'px-4 py-3 ' + (idx > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[15px] font-medium text-black">{formatDateShort(d.date)}</span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={'text-[15px] font-semibold tabular-nums ' + rc}>{d.total > 0 ? rate + '%' : ''}</span>
+                <span className="text-[12px] text-slate-400 tabular-nums">{d.succ}/{d.total}</span>
+                <button onClick={() => setDeleteProtocol(d)}
+                  className="p-1.5 -mr-1 text-[#FF3B30] active:bg-[#D1D1D6]/40 rounded-full" aria-label="Protokoll löschen">
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+            <div className="text-[12px] text-[#8E8E93] mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5">
+              {d.items.map((it, i) => (
+                <span key={i} className="tabular-nums">
+                  {it.name} {it.succ}/{it.total}{i < d.items.length - 1 ? ' ·' : ''}
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   const writePlans = (next) => setData({ ...data, trainingPlans: next });
   const upsertPlan = (p) => writePlans(plans.some(x => x.id === p.id) ? plans.map(x => x.id === p.id ? p : x) : [...plans, p]);
   const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -8431,6 +8494,12 @@ function TrainingsplanView({ data, setData, onBack }) {
               className="w-full bg-[#FF9500] text-white py-3 rounded-full font-semibold active:scale-95 transition flex items-center justify-center gap-1.5">
               <Plus size={18} strokeWidth={2.5} /> Neuer Plan
             </button>
+            {allPlansLog.length > 0 && (
+              <div className="space-y-1.5 pt-3">
+                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-4 font-medium">Alle Protokolle</div>
+                {renderProtocolList(allPlansLog)}
+              </div>
+            )}
           </>
         ) : (editing && draft) ? (
           <>
@@ -8644,33 +8713,7 @@ function TrainingsplanView({ data, setData, onBack }) {
             {planLog.length > 0 && (
               <div className="space-y-1.5 pt-2">
                 <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-4 font-medium">Protokoll</div>
-                <div className="bg-white rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                  {planLog.map((d, idx) => (
-                    <div key={d.date} className={'px-4 py-3 ' + (idx > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[15px] font-medium text-black">{formatDateShort(d.date)}</span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-[12px] tabular-nums">
-                            <span className="text-slate-400">{d.total}×</span>
-                            {' · '}<span className="text-emerald-600">{d.succ}✓</span>
-                            {' '}<span className="text-rose-500">{d.total - d.succ}✗</span>
-                          </span>
-                          <button onClick={() => setDeleteProtocol(d)}
-                            className="p-1.5 -mr-1 text-[#FF3B30] active:bg-[#D1D1D6]/40 rounded-full" aria-label="Protokoll löschen">
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="text-[12px] text-[#8E8E93] mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5">
-                        {d.items.map((it, i) => (
-                          <span key={i} className="tabular-nums">
-                            {it.name} {it.succ}/{it.total}{i < d.items.length - 1 ? ' ·' : ''}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                {renderProtocolList(planLog)}
               </div>
             )}
           </>
@@ -14715,6 +14758,26 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                     className="w-20 px-2 py-1.5 text-center border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-amber-500 text-sm" />
                   <span className="text-[10px] text-slate-400">Pkt · Standard {Number(ex.points).toFixed(1)}</span>
                 </div>
+                {/* Taktische Skala (z. B. Lenkerdrehungen) – Stufen direkt antippbar */}
+                {(() => {
+                  const scale = parseTacticalScale(ex.name);
+                  if (scale.length === 0) return null;
+                  return (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {scale.map(v => {
+                        const sel = Math.abs(Number(e.taktischePunkte || 0) - v) < 0.001;
+                        return (
+                          <button key={v} type="button"
+                            onClick={() => onUpdate(idx, 'taktischePunkte', String(Math.abs(v - Number(ex.points)) < 0.001 ? '' : v))}
+                            className={'text-xs px-3 py-1.5 rounded-full font-medium border tabular-nums ' +
+                              (sel ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100')}>
+                            {v.toFixed(1).replace('.', ',')}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           );
