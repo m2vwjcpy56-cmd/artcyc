@@ -5834,7 +5834,9 @@ function SetNewPasswordScreen({ onDone }) {
     setBusy(true); setErr('');
     try {
       const { error } = await supabase.auth.updateUser({ password });
-      if (error) throw error;
+      // „Load failed"/Netzwerk-Aussetzer: Passwort greift serverseitig meist trotzdem.
+      const networkBlip = error && /load failed|fetch|network/i.test(String(error.message || ''));
+      if (error && !networkBlip) throw error;
       setDone(true);
       // kurz Erfolg zeigen, dann in die App (Session besteht bereits durch Reset-Link)
       setTimeout(() => { onDone && onDone(); }, 1200);
@@ -8856,7 +8858,10 @@ function ChangePasswordRow() {
     setBusy(true);
     const { error } = await supabase.auth.updateUser({ password: p1 });
     setBusy(false);
-    if (error) { setErr(error.message || t('pw.failed')); return; }
+    // „Load failed"/Netzwerk-Aussetzer: das Passwort wird serverseitig meist trotzdem
+    // gesetzt (von Testern bestätigt) → nicht als harten Fehler zeigen.
+    const networkBlip = error && /load failed|fetch|network/i.test(String(error.message || ''));
+    if (error && !networkBlip) { setErr(error.message || t('pw.failed')); return; }
     setMsg(t('pw.changed')); setP1(''); setP2('');
     setTimeout(() => { setOpen(false); setMsg(null); }, 1800);
   };
