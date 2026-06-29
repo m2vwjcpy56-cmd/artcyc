@@ -109,7 +109,7 @@ function Home() {
     <>
       <Section className="pt-14 pb-16 sm:pt-20 sm:pb-24 text-center">
         <div className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 bg-slate-100 rounded-full px-3 py-1 mb-6">
-          <span className="w-2 h-2 rounded-full" style={{ background: ACCENT }} /> Für Kunstrad & Hallenradsport
+          <span className="w-2 h-2 rounded-full" style={{ background: ACCENT }} /> Für Kunstradsport
         </div>
         <h1 className="text-[40px] sm:text-[56px] font-bold tracking-tight leading-[1.05]">
           Dein Training.<br /><span style={{ color: ACCENT }}>Sauber im Blick.</span>
