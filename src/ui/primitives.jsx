@@ -147,7 +147,7 @@ export function TrendChart({ comp, is3 = false, showHit = false, showDanger = fa
 // Hero-KPI — eine dominante Kennzahl. A/B: 'number' (Default) | 'ring'.
 // Zahl bleibt in beiden Varianten primär lesbar; Ring tritt semantisch zurück.
 export function HeroKPI({
-  eyebrow = 'Erfolgsquote', value, unit = '%', totalLine, delta,
+  eyebrow = 'Erfolgsquote', value, unit = '%', totalLine, delta, deltaLabel = '4 Wochen',
   footerLeft, footerRight, variant = 'number', onVariantChange,
 }) {
   const v = value || 0;
@@ -155,7 +155,7 @@ export function HeroKPI({
   const deltaChip = delta == null ? null : (
     <span className={'inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-1 rounded-full tabular-nums ' +
       (delta > 0 ? 'bg-emerald-50 text-emerald-700' : delta < 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500')}>
-      {delta > 0 ? '↑' : delta < 0 ? '↓' : '·'} {Math.abs(delta)} % · 4 Wochen
+      {delta > 0 ? '↑' : delta < 0 ? '↓' : '·'} {delta > 0 ? '+' : delta < 0 ? '−' : ''}{Math.abs(delta)} % · ggü. {deltaLabel} davor
     </span>
   );
   const footer = (footerLeft || footerRight) && (
