@@ -9743,15 +9743,24 @@ function buildExerciseScreenModel(exercise, data, ropeFilter = null, period = '6
   const hitRate = totalAttempts > 0 ? Math.round((totalHit / totalAttempts) * 100) : 0;
   const dangerRate = totalAttempts > 0 ? Math.round((totalDanger / totalAttempts) * 100) : 0;
 
-  // Richtung: letzte 4 Wochen vs. die 4 Wochen davor (fix, unabhängig von der Periode).
-  const cut4 = new Date(now - 28 * 86400000).toISOString().slice(0, 10);
-  const cut8 = new Date(now - 56 * 86400000).toISOString().slice(0, 10);
   const agg = (arr) => arr.reduce((a, s) => ({ success: a.success + s.success, total: a.total + s.total }), { success: 0, total: 0 });
+  // "4 Wochen"-Kennzahl (eigene Karte) — bleibt fix auf 28 Tage.
+  const cut4 = new Date(now - 28 * 86400000).toISOString().slice(0, 10);
   const w4 = agg(perSession.filter(s => s.date >= cut4));
-  const wPrev = agg(perSession.filter(s => s.date >= cut8 && s.date < cut4));
   const successRateLast4Weeks = w4.total > 0 ? Math.round((w4.success / w4.total) * 100) : null;
-  const prevRate = wPrev.total > 0 ? Math.round((wPrev.success / wPrev.total) * 100) : null;
-  const successDelta = (successRateLast4Weeks != null && prevRate != null) ? successRateLast4Weeks - prevRate : null;
+  // Trend-Richtung: gewählte Periode vs. der gleich lange Zeitraum davor (wie native).
+  //   z. B. „4 Wo." → letzte 28 Tage vs. die 28 Tage davor. „Gesamt" hat keinen Vergleich.
+  let successDelta = null, prevPeriodRate = null;
+  if (PERIOD_DAYS[period]) {
+    const pd = PERIOD_DAYS[period];
+    const cutCur = new Date(now - pd * 86400000).toISOString().slice(0, 10);
+    const cutPrev = new Date(now - pd * 2 * 86400000).toISOString().slice(0, 10);
+    const curAgg = agg(perSession.filter(s => s.date >= cutCur));
+    const prevAgg = agg(perSession.filter(s => s.date >= cutPrev && s.date < cutCur));
+    const curRate = curAgg.total > 0 ? Math.round((curAgg.success / curAgg.total) * 100) : null;
+    prevPeriodRate = prevAgg.total > 0 ? Math.round((prevAgg.success / prevAgg.total) * 100) : null;
+    successDelta = (curRate != null && prevPeriodRate != null) ? curRate - prevPeriodRate : null;
+  }
 
   // Letzte Session
   const last = desc[0];
@@ -9815,7 +9824,7 @@ function buildExerciseScreenModel(exercise, data, ropeFilter = null, period = '6
   }
 
   return {
-    successRateCurrent, successRateLast4Weeks, successDelta,
+    successRateCurrent, successRateLast4Weeks, successDelta, prevPeriodRate,
     lastSessionDate, lastSessionRate, lastSessionFraction,
     sessionsCount: windowed.length, periodHasData, totalAttempts, totalSuccess, totalHit, totalDanger,
     hitRate, dangerRate,
@@ -10201,8 +10210,10 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
   const [mode, setMode] = useState('all'); // all | rope | noRope — steuert den GESAMTEN Screen
   const [kpiVariant, setKpiVariant] = useState(() => { try { return localStorage.getItem('artcyc:exDetailKpi') || 'number'; } catch { return 'number'; } });
   const changeKpi = (v) => { setKpiVariant(v); try { localStorage.setItem('artcyc:exDetailKpi', v); } catch { /* ignore */ } };
-  const [showHit, setShowHit] = useState(true);
-  const [showDanger, setShowDanger] = useState(true);
+  // Trend-Chart standardmäßig nur die Erfolgsquote-Linie (klar lesbar, wie native);
+  // Getroffen/Gefährlich sind über die Legende zuschaltbar.
+  const [showHit, setShowHit] = useState(false);
+  const [showDanger, setShowDanger] = useState(false);
   const [showComp, setShowComp] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -10310,7 +10321,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
             <EmptyState title={`Keine Daten${modeLabel} in den letzten ${periodLabel}.`} hint={`Zeitraum${exercise.has_rope_variant ? ' oder Modus' : ''} oben anpassen.`} />
           ) : (<>
             {/* 02 — HERO: eine dominante KPI (A/B: Zahl Default, Ring optional) */}
-            <HeroKPI value={rate} delta={delta} variant={kpiVariant} onVariantChange={changeKpi}
+            <HeroKPI value={rate} delta={delta} deltaLabel={periodLabel} variant={kpiVariant} onVariantChange={changeKpi}
               totalLine={`${vm.totalSuccess} / ${vm.totalAttempts} Versuche${kpiVariant === 'number' ? ' · ' + periodLabel : ''}`}
               footerLeft={`Zuletzt ${formatDateShort(vm.lastSessionDate)}`}
               footerRight={`${vm.lastSessionRate} %${kpiVariant === 'number' ? ' · ' + vm.lastSessionFraction : ''}`} />
