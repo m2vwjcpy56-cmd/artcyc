@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './ArtCycCoach.jsx';
+import Landing from './Landing.jsx';
 import { I18nProvider } from './lib/i18n.jsx';
 import { initErrorReporter } from './lib/errorReporter.js';
 import { ErrorBoundary } from './lib/ErrorBoundary.jsx';
@@ -69,11 +70,22 @@ registerSW({
   }
 });
 
+// Routing: Web-App unter /web (und /app), sowie bei Auth-Rückleitungen
+// (Passwort-Reset/Magic-Link landen mit ?type=recovery / ?code / #access_token —
+// die MUSS die App rendern, nicht die Landingpage). Sonst: öffentliche Landingpage.
+const _p = window.location.pathname;
+const _s = window.location.search;
+const _h = window.location.hash;
+const _isApp = /^\/(web|app)(\/|$)/.test(_p)
+  || /[?&](code|type)=/.test(_s)
+  || /(access_token|type=recovery)/.test(_h);
+const Root = _isApp ? App : Landing;
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
       <I18nProvider>
-        <App />
+        <Root />
       </I18nProvider>
     </ErrorBoundary>
   </React.StrictMode>,
