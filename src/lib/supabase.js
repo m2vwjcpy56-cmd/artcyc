@@ -6,6 +6,20 @@ import { normClub } from './clubs.js';
 const SUPABASE_URL = 'https://cpxsfctijcsezkspjlxy.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNweHNmY3RpamNzZXprc3BqbHh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4MjA0NzUsImV4cCI6MjA5MzM5NjQ3NX0.kbEF8fYUUoznrQMdmAKvoGQ03kSTCh3qN505Af9yNS4';
 
+// Recovery-Marker SYNCHRON beim Modul-Load festhalten — BEVOR createClient mit
+// detectSessionInUrl die Auth-Parameter aus der URL entfernt. Sonst gibt es ein
+// Race: ein Passwort-Reset-Link (?type=recovery&code=…) wird teils als normaler
+// Login verarbeitet und der Nutzer landet auf der Startseite statt im
+// „Neues Passwort setzen"-Screen. Dieses Flag ist die zuverlässige Quelle.
+export const RECOVERY_FROM_URL = (() => {
+  try {
+    if (typeof window === 'undefined') return false;
+    const sp = new URLSearchParams(window.location.search || '');
+    const hp = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+    return sp.get('type') === 'recovery' || hp.get('type') === 'recovery';
+  } catch { return false; }
+})();
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,

@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
+import { supabase, RECOVERY_FROM_URL, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -4495,13 +4495,9 @@ export default function App() {
   // Reset-Link erkannt? Synchron beim ersten Render aus der URL lesen (Query ODER Hash),
   // BEVOR Supabase die Auth-Parameter aus der URL entfernt. Deckt PKCE (?type=recovery)
   // und Implicit (#…type=recovery) ab → „Neues Passwort setzen"-Screen statt nur Login.
-  const [recoveryMode, setRecoveryMode] = useState(() => {
-    try {
-      const sp = new URLSearchParams(window.location.search);
-      const hp = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
-      return sp.get('type') === 'recovery' || hp.get('type') === 'recovery';
-    } catch { return false; }
-  }); // Passwort-Reset-Link geklickt → neues Passwort setzen
+  // Reset-Link erkannt? Aus dem beim Modul-Load (vor dem URL-Stripping durch den
+  // Supabase-Client) festgehaltenen Flag — zuverlässig, kein Render-Race mehr.
+  const [recoveryMode, setRecoveryMode] = useState(RECOVERY_FROM_URL); // Passwort-Reset-Link geklickt → neues Passwort setzen
   const [recoveryLinkError, setRecoveryLinkError] = useState(null); // abgelaufener/ungültiger Reset-Link
   const [chatOpen, setChatOpen] = useState(false);
 
@@ -5832,18 +5828,29 @@ function SetNewPasswordScreen({ onDone }) {
     e.preventDefault();
     if (!canSubmit) return;
     setBusy(true); setErr('');
-    try {
+    // Bei Netzwerk-Aussetzer ERNEUT versuchen (idempotent) statt Erfolg vorzutäuschen.
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
       const { error } = await supabase.auth.updateUser({ password });
-      // „Load failed"/Netzwerk-Aussetzer: Passwort greift serverseitig meist trotzdem.
-      const networkBlip = error && /load failed|fetch|network/i.test(String(error.message || ''));
-      if (error && !networkBlip) throw error;
-      setDone(true);
-      // kurz Erfolg zeigen, dann in die App (Session besteht bereits durch Reset-Link)
-      setTimeout(() => { onDone && onDone(); }, 1200);
-    } catch (e) {
-      setErr(e.message || t('validation.genericError'));
-      setBusy(false);
+      if (!error) { lastErr = null; break; }
+      lastErr = error;
+      const networkBlip = /load failed|fetch|network|timeout/i.test(String(error.message || ''));
+      if (!networkBlip) break;
+      await new Promise(r => setTimeout(r, 700 * (attempt + 1)));
     }
+    if (lastErr) {
+      // Kein gültiger Session-Aufbau durch den Reset-Link (z. B. Link in einem
+      // anderen Browser/Gerät geöffnet → PKCE-Verifier fehlt). Klar erklären.
+      const noSession = /session|auth|jwt|token|not.*authenticated|missing|unauthor/i.test(String(lastErr.message || ''));
+      setErr(noSession
+        ? 'Der Reset-Link konnte nicht verarbeitet werden — bitte öffne ihn auf demselben Gerät/Browser, auf dem du ihn angefordert hast, oder fordere einen neuen an.'
+        : (lastErr.message || t('validation.genericError')));
+      setBusy(false);
+      return;
+    }
+    setDone(true);
+    // kurz Erfolg zeigen, dann in die App (Session besteht bereits durch Reset-Link)
+    setTimeout(() => { onDone && onDone(); }, 1200);
   };
 
   return (
@@ -8856,12 +8863,20 @@ function ChangePasswordRow() {
     if (p1.length < 10) { setErr(t('pw.tooShort')); return; }
     if (p1 !== p2) { setErr(t('pw.mismatch')); return; }
     setBusy(true);
-    const { error } = await supabase.auth.updateUser({ password: p1 });
+    // Bei Netzwerk-Aussetzer ERNEUT versuchen (Passwort-Setzen ist idempotent) statt
+    // fälschlich „geändert" zu melden — sonst denkt der Nutzer, das neue Passwort
+    // gelte, obwohl es serverseitig nie ankam (führte zu Login-Aussperrungen).
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { error } = await supabase.auth.updateUser({ password: p1 });
+      if (!error) { lastErr = null; break; }
+      lastErr = error;
+      const networkBlip = /load failed|fetch|network|timeout/i.test(String(error.message || ''));
+      if (!networkBlip) break; // echter Fehler (z. B. zu schwach) → sofort zeigen
+      await new Promise(r => setTimeout(r, 700 * (attempt + 1)));
+    }
     setBusy(false);
-    // „Load failed"/Netzwerk-Aussetzer: das Passwort wird serverseitig meist trotzdem
-    // gesetzt (von Testern bestätigt) → nicht als harten Fehler zeigen.
-    const networkBlip = error && /load failed|fetch|network/i.test(String(error.message || ''));
-    if (error && !networkBlip) { setErr(error.message || t('pw.failed')); return; }
+    if (lastErr) { setErr(lastErr.message || t('pw.failed')); return; }
     setMsg(t('pw.changed')); setP1(''); setP2('');
     setTimeout(() => { setOpen(false); setMsg(null); }, 1800);
   };
