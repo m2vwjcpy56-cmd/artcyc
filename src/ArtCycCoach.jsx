@@ -8077,61 +8077,52 @@ function TrainingsplanView({ data, setData, onBack }) {
 
   // Protokoll-Tag löschen: entweder nur diesen Tag oder ALLE Trainingsdaten
   // der beteiligten Einzelübungen.
-  const doDeleteProtocol = (d, alsoAll) => {
-    const exIds = new Set(d.exIds || []);
-    const sessions = (data.sessions || []).filter(s => {
-      if (!exIds.has(s.exerciseId)) return true;       // andere Übungen behalten
-      if (alsoAll) return false;                       // alle Daten dieser Übungen weg
-      return s.date !== d.date;                         // nur diesen Tag entfernen
+  const doDeleteProtocol = (d) => {
+    const ids = new Set(d.sessionIds || []);
+    const sessions = (data.sessions || []).filter(s => !ids.has(s.id));
+    // Plan-Markierungen dieses Tages aus ALLEN Plänen entfernen.
+    const prefix = d.date + '|';
+    const trainingPlans = (data.trainingPlans || []).map(p => {
+      if (!p.logged) return p;
+      const logged = {};
+      for (const k of Object.keys(p.logged)) if (!k.startsWith(prefix)) logged[k] = p.logged[k];
+      return { ...p, logged };
     });
-    setData({ ...data, sessions });
+    setData({ ...data, sessions, trainingPlans });
     setDeleteProtocol(null);
   };
 
   // Protokoll: vergangene Trainingstage (≠ heute) aus den echten Sessions der
   // im Plan verknüpften Übungen. Pro Tag: je Übung Anzahl + ✓/✗. So ist der
   // Plan ein stehender Plan, darunter die Historie „wann wie oft geklappt".
-  const planLog = useMemo(() => {
-    if (!plan) return [];
-    const exIds = new Set((plan.items || []).filter(it => it.loggable && it.exerciseId).map(it => it.exerciseId));
-    if (exIds.size === 0) return [];
-    const exName = (id) => {
-      const ex = (data.exercises || []).find(e => e.id === id);
-      return ex ? localizedExerciseName(ex) : 'Übung';
-    };
-    const byDate = new Map();
-    for (const s of (data.sessions || [])) {
-      if (!exIds.has(s.exerciseId) || s.date === today) continue;
-      const entries = s.entries || [];
-      if (entries.length === 0) continue;
-      const succ = entries.filter(e => e === 'success').length;
-      const rec = byDate.get(s.date) || { date: s.date, total: 0, succ: 0, items: [], exIds: new Set() };
-      rec.total += entries.length;
-      rec.succ += succ;
-      rec.exIds.add(s.exerciseId);
-      rec.items.push({ name: exName(s.exerciseId), total: entries.length, succ, fail: entries.length - succ });
-      byDate.set(s.date, rec);
-    }
-    return [...byDate.values()].map(r => ({ ...r, exIds: [...r.exIds] })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  }, [plan, data.sessions, data.exercises, today]);
-
-  // Protokoll über ALLE Pläne (Übersicht): vereinigt die verknüpften Übungen aller Pläne.
-  const allPlansLog = useMemo(() => {
-    const exIds = new Set();
-    for (const p of plans) for (const it of (p.items || [])) if (it.loggable && it.exerciseId) exIds.add(it.exerciseId);
-    if (exIds.size === 0) return [];
+  // Protokoll baut NUR auf Trainings, die über einen Plan erfasst wurden (markiert
+  // in plan.logged, Schlüssel "YYYY-MM-DD|exerciseId|0/1(Seil)"). Normales Training
+  // zählt nicht. Gleiches Format/Feld wie die native App (geteilter Snapshot-Blob).
+  const logFromMarks = (marks) => {
+    if (!marks || Object.keys(marks).length === 0) return [];
     const exName = (id) => { const ex = (data.exercises || []).find(e => e.id === id); return ex ? localizedExerciseName(ex) : 'Übung'; };
     const byDate = new Map();
     for (const s of (data.sessions || [])) {
-      if (!exIds.has(s.exerciseId) || s.date === today) continue;
-      const entries = s.entries || []; if (entries.length === 0) continue;
+      if (s.date === today) continue;
+      const mark = marks[s.date + '|' + s.exerciseId + '|' + (s.withRope ? 1 : 0)];
+      if (!mark) continue;
+      const entries = s.entries || [];
+      if (entries.length === 0) continue;
       const succ = entries.filter(e => e === 'success').length;
-      const rec = byDate.get(s.date) || { date: s.date, total: 0, succ: 0, items: [], exIds: new Set() };
-      rec.total += entries.length; rec.succ += succ; rec.exIds.add(s.exerciseId);
-      rec.items.push({ name: exName(s.exerciseId), total: entries.length, succ, fail: entries.length - succ });
+      const rec = byDate.get(s.date) || { date: s.date, total: 0, succ: 0, items: [], sessionIds: [] };
+      rec.total += entries.length; rec.succ += succ; rec.sessionIds.push(s.id);
+      rec.items.push({ name: exName(s.exerciseId), total: entries.length, succ, fail: entries.length - succ, repCount: mark.repCount });
       byDate.set(s.date, rec);
     }
-    return [...byDate.values()].map(r => ({ ...r, exIds: [...r.exIds] })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    return [...byDate.values()].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  };
+  const planLog = useMemo(() => plan ? logFromMarks(plan.logged) : [], [plan, data.sessions, data.exercises, today]);
+
+  // Protokoll über ALLE Pläne (Übersicht): vereinigt die Plan-Markierungen aller Pläne.
+  const allPlansLog = useMemo(() => {
+    const merged = {};
+    for (const p of plans) Object.assign(merged, p.logged || {});
+    return logFromMarks(merged);
   }, [plans, data.sessions, data.exercises, today]);
 
   // Einheitliche Protokoll-Liste: pro Tag Datum + Quote% + Treffer/Gesamt + Aufschlüsselung.
@@ -8156,7 +8147,7 @@ function TrainingsplanView({ data, setData, onBack }) {
             <div className="text-[12px] text-[#8E8E93] mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5">
               {d.items.map((it, i) => (
                 <span key={i} className="tabular-nums">
-                  {it.name} {it.succ}/{it.total}{i < d.items.length - 1 ? ' ·' : ''}
+                  {it.name} {it.succ}/{it.total}{it.repCount ? ` (${it.repCount}↻)` : ''}{i < d.items.length - 1 ? ' ·' : ''}
                 </span>
               ))}
             </div>
@@ -8286,6 +8277,17 @@ function TrainingsplanView({ data, setData, onBack }) {
     return it ? !!it.hasRope : true;
   };
 
+  // Lenkerdrehung & Co.: zusätzlich zur Geklappt/Nicht-Wertung die erreichte Anzahl.
+  const isRotation = (it, ex) => /drehung|fach/.test(((it?.label || '') + ' ' + (ex?.name || '')).toLowerCase());
+  const repKeyFor = (ex) => today + '|' + ex.id + '|' + (getRope(ex) ? 1 : 0);
+  const planRepCount = (ex) => (plan && ex) ? Number(plan.logged?.[repKeyFor(ex)]?.repCount || 0) : 0;
+  const setPlanRepCount = (ex, n) => {
+    if (!plan || !ex) return;
+    const logged = { ...(plan.logged || {}) };
+    logged[repKeyFor(ex)] = { ...(logged[repKeyFor(ex)] || {}), repCount: Math.max(0, n) };
+    setData({ ...data, trainingPlans: (data.trainingPlans || []).map(p => p.id === plan.id ? { ...p, logged } : p) });
+  };
+
   // --- Abhaken-Zähler (Modus „Abhaken") ---------------------------------------
   // Wie oft wurde der Eintrag HEUTE gemacht (kann über/unter der Plan-Anzahl
   // liegen). Synchroner localStorage-Puffer wie beim Session-Zähler, damit der
@@ -8358,6 +8360,10 @@ function TrainingsplanView({ data, setData, onBack }) {
     try {
       let sessions = (dataRef.current.sessions || []).slice();
       let changed = false;
+      // Plan-Markierungen für den aktuell offenen Plan mitführen (über diesen Plan erfasst).
+      const curPlan = (dataRef.current.trainingPlans || []).find(p => p.id === selectedId);
+      let logged = curPlan ? { ...(curPlan.logged || {}) } : null;
+      let logChanged = false;
       for (const exId of Object.keys(optimisticRef.current)) {
         const entries = optimisticRef.current[exId];
         const todays = sessions.filter(s => s.exerciseId === exId && s.date === today);
@@ -8378,8 +8384,20 @@ function TrainingsplanView({ data, setData, onBack }) {
           sessions = [...sessions, { id: uid(), date: today, athleteId, exerciseId: exId, exerciseName: ex?.name || '', entries, notes: null, withRope: getRope(ex), created: new Date().toISOString() }];
           changed = true;
         }
+        // Markieren/entmarkieren (gleiches Schlüssel-Format wie native).
+        if (logged) {
+          const ex = activeExercises.find(e => e.id === exId);
+          const key = today + '|' + exId + '|' + (getRope(ex) ? 1 : 0);
+          if (entries.length === 0) { if (key in logged) { delete logged[key]; logChanged = true; } }
+          else if (!(key in logged)) { logged[key] = {}; logChanged = true; }
+        }
       }
-      if (changed) await setData({ ...dataRef.current, sessions });
+      let next = dataRef.current;
+      if (changed) next = { ...next, sessions };
+      if (logChanged && curPlan) {
+        next = { ...next, trainingPlans: (next.trainingPlans || []).map(p => p.id === curPlan.id ? { ...p, logged } : p) };
+      }
+      if (changed || logChanged) await setData(next);
     } finally {
       flushing.current = false;
       if (flushDirty.current) { flushDirty.current = false; flushAll(); }
@@ -8656,6 +8674,19 @@ function TrainingsplanView({ data, setData, onBack }) {
                               <span className="text-xs opacity-80 tabular-nums">{fail}</span>
                             </button>
                           </div>
+                          {/* Erreichte Anzahl (z. B. Lenkerdrehungen) – zusätzlich zu Geklappt/Nicht. */}
+                          {isRotation(it, ex) && (
+                            <div className="mt-3 flex items-center justify-between gap-2 bg-amber-50/70 border border-amber-100 rounded-xl px-3 py-2">
+                              <span className="text-[13px] text-slate-600">Erreichte Drehungen</span>
+                              <div className="flex items-center gap-2">
+                                <button onClick={() => setPlanRepCount(ex, planRepCount(ex) - 1)}
+                                  className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-700 text-lg leading-none active:scale-90">−</button>
+                                <span className="text-[15px] font-bold tabular-nums w-7 text-center text-[#FF9500]">{planRepCount(ex)}</span>
+                                <button onClick={() => setPlanRepCount(ex, planRepCount(ex) + 1)}
+                                  className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-700 text-lg leading-none active:scale-90">+</button>
+                              </div>
+                            </div>
+                          )}
                           {/* Versuche als nummerierte Chips (1, 2, 3 …) — tippen schaltet um. */}
                           {entries.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 mt-3">
@@ -8737,10 +8768,9 @@ function TrainingsplanView({ data, setData, onBack }) {
         open={!!deleteProtocol}
         onClose={() => setDeleteProtocol(null)}
         title={deleteProtocol ? `Protokoll vom ${formatDateShort(deleteProtocol.date)} löschen?` : ''}
-        message="Was soll gelöscht werden?"
+        message="Das Protokoll dieses Tages wird entfernt."
         actions={[
-          { label: 'Nur dieses Protokoll', sublabel: 'Nur die Trainingsdaten dieses Tages', destructive: true, onClick: () => doDeleteProtocol(deleteProtocol, false) },
-          { label: 'Auch alle Trainingsdaten dieser Übungen', sublabel: 'Komplette Trainings-Historie der beteiligten Übungen', destructive: true, onClick: () => doDeleteProtocol(deleteProtocol, true) },
+          { label: 'Protokoll löschen', sublabel: 'Die Trainingsdaten dieses Tages', destructive: true, onClick: () => doDeleteProtocol(deleteProtocol) },
         ]}
       />
 
