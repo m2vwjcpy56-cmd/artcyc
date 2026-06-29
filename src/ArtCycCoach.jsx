@@ -14758,23 +14758,30 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                     className="w-20 px-2 py-1.5 text-center border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-amber-500 text-sm" />
                   <span className="text-[10px] text-slate-400">Pkt · Standard {Number(ex.points).toFixed(1)}</span>
                 </div>
-                {/* Taktische Skala (z. B. Lenkerdrehungen) – Stufen direkt antippbar */}
+                {/* Taktische Auswahl (z. B. Lenkerdrehungen): Punktstufen antippen statt
+                    tippen. Skala aus dem Text, sonst Standard + 0,5er-Stufen. */}
                 {(() => {
+                  const std = Number(ex.points || 0);
                   const scale = parseTacticalScale(ex.name);
-                  if (scale.length === 0) return null;
+                  const nm = (ex.name || '').toLowerCase();
+                  const isTactical = scale.length > 0 || nm.includes('drehung') || nm.includes('fach');
+                  if (!isTactical || std <= 0) return null;
+                  const opts = scale.length > 0 ? scale : [0.5, 1.0, 1.5, 2.0].map(d => std + d);
+                  const cur = Number(e.taktischePunkte || 0);
+                  const chip = (key, label, sel, onClick) => (
+                    <button key={key} type="button" onClick={onClick}
+                      className={'text-xs px-3 py-1.5 rounded-full font-medium border tabular-nums ' +
+                        (sel ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100')}>
+                      {label}
+                    </button>
+                  );
                   return (
                     <div className="flex flex-wrap gap-1.5 mt-2">
-                      {scale.map(v => {
-                        const sel = Math.abs(Number(e.taktischePunkte || 0) - v) < 0.001;
-                        return (
-                          <button key={v} type="button"
-                            onClick={() => onUpdate(idx, 'taktischePunkte', String(Math.abs(v - Number(ex.points)) < 0.001 ? '' : v))}
-                            className={'text-xs px-3 py-1.5 rounded-full font-medium border tabular-nums ' +
-                              (sel ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100')}>
-                            {v.toFixed(1).replace('.', ',')}
-                          </button>
-                        );
-                      })}
+                      {chip('std', 'Standard', cur <= 0 || Math.abs(cur - std) < 0.001,
+                        () => onUpdate(idx, 'taktischePunkte', ''))}
+                      {opts.map(v => chip(v, v.toFixed(1).replace('.', ','),
+                        cur > 0 && Math.abs(cur - v) < 0.001,
+                        () => onUpdate(idx, 'taktischePunkte', String(Math.abs(v - std) < 0.001 ? '' : v))))}
                     </div>
                   );
                 })()}
