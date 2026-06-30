@@ -76,9 +76,20 @@ registerSW({
 const _p = window.location.pathname;
 const _s = window.location.search;
 const _h = window.location.hash;
-const _isApp = /^\/(web|app)(\/|$)/.test(_p)
-  || /[?&](code|type)=/.test(_s)
-  || /(access_token|type=recovery)/.test(_h);
+const _appPath = /^\/(web|app)(\/|$)/.test(_p);
+const _authCb = /[?&](code|type)=/.test(_s) || /(access_token|type=recovery)/.test(_h);
+
+// Installierte PWA (Homescreen-App) IMMER in die App leiten, nie auf die
+// Landingpage. Bereits installierte PWAs haben start_url '/' gecacht — daher
+// hier zur Laufzeit umleiten, sonst öffnet die App-Kachel die Landingpage.
+const _standalone = (typeof window.matchMedia === 'function'
+    && window.matchMedia('(display-mode: standalone)').matches)
+  || window.navigator.standalone === true;
+if (_standalone && !_appPath && !_authCb) {
+  window.location.replace('/web');
+}
+
+const _isApp = _appPath || _authCb;
 const Root = _isApp ? App : Landing;
 
 ReactDOM.createRoot(document.getElementById('root')).render(
