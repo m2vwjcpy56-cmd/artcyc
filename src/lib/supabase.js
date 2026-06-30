@@ -20,6 +20,17 @@ export const RECOVERY_FROM_URL = (() => {
   } catch { return false; }
 })();
 
+// Token-Hash eines token-basierten Recovery-Links (?token_hash=…&type=recovery).
+// Dieser Flow funktioniert in JEDEM Browser/jeder App, weil verifyOtp KEINEN
+// PKCE-Verifier braucht (im Gegensatz zum ?code=-Flow) — also auch, wenn der
+// Reset in der PWA/TestFlight angefordert und der Mail-Link woanders geöffnet wird.
+export const RECOVERY_TOKEN_HASH = (() => {
+  try {
+    if (typeof window === 'undefined') return null;
+    return new URLSearchParams(window.location.search || '').get('token_hash');
+  } catch { return null; }
+})();
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
