@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, scanWertungsbogenVision } from './lib/supabase';
+import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, scanWertungsbogenVision } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -5017,10 +5017,18 @@ export default function App() {
     [dbAthletes, selectedAthleteId]
   );
   const isOwnAthlete = !selectedAthlete || selectedAthlete.auth_user_id === session?.user?.id;
+  // Darf der aktuelle Nutzer die Daten des gewählten Sportlers VOLL verwalten
+  // (ändern/löschen)? = App-Owner ODER der Sportler selbst ODER (bei kontenlosen
+  // Platzhaltern) der anlegende Trainer ODER ein vom Sportler freigeschalteter
+  // Trainer (athlete_coaches.is_admin). Spiegelt can_manage_athlete in der DB.
+  const canManageSelected = isAppOwner(session)
+    || isOwnAthlete
+    || (selectedAthlete && !selectedAthlete.auth_user_id && selectedAthlete.created_by_coach_id === session?.user?.id)
+    || (dbAthleteCoaches || []).some(ac => ac.athlete_id === selectedAthleteId && ac.coach_id === session?.user?.id && ac.is_admin);
   // Team-Subjekte sind für alle sichtbaren (= RLS-erlaubten) Nutzer beschreibbar:
   // can_access_athlete lässt Mitglieder/Ersteller/Trainer schreiben. Daher nicht
   // als Read-Only behandeln, obwohl auth_user_id (Team) ≠ eigener User ist.
-  const isReadOnlyView = !!selectedAthleteId && !isOwnAthlete && selectedAthlete?.type !== 'team';
+  const isReadOnlyView = !!selectedAthleteId && !canManageSelected && selectedAthlete?.type !== 'team';
   const [showAthletePicker, setShowAthletePicker] = useState(false);
 
   // Nachname-Nachtrag: Bestands-User ohne profiles.last_name werden einmal pro
@@ -8005,6 +8013,16 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
     setBusy(false);
   };
 
+  const onToggleAdmin = async (coachId, next, name) => {
+    if (next && !confirm('„' + name + '" volle Rechte geben? Der Trainer darf dann ALLE Daten dieses Sportlers ändern und löschen — nicht nur eigene Einträge.')) return;
+    setBusy(true); setErr(''); setInfo('');
+    const { error } = await setCoachAdmin(athlete.id, coachId, next);
+    if (error) setErr(error.message);
+    else setInfo(next ? 'Volle Rechte erteilt.' : 'Volle Rechte entzogen.');
+    await reload();
+    setBusy(false);
+  };
+
   const onDeleteInvite = async (id) => {
     if (!confirm('Code zurückziehen? Wer ihn hat, kann sich dann nicht mehr verknüpfen.')) return;
     setBusy(true); setErr(''); setInfo('');
@@ -8033,15 +8051,27 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
         const p = profilesById.get(c.coach_id);
         const name = p?.display_name || 'Trainer';
         return (
-          <div key={c.coach_id} className="px-4 py-3 flex items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="font-medium text-[15px] truncate">{name}</div>
-              <div className="text-[11px] text-[#8E8E93]">verknüpft seit {fmtDateTime(c.added_at)}</div>
+          <div key={c.coach_id} className="px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium text-[15px] truncate">{name}</div>
+                <div className="text-[11px] text-[#8E8E93]">verknüpft seit {fmtDateTime(c.added_at)}</div>
+              </div>
+              <button onClick={() => onRemoveCoach(c.coach_id, name)} disabled={busy}
+                className="text-[14px] text-[#FF3B30] px-3 py-1.5 rounded-full font-medium active:opacity-50 disabled:opacity-40 shrink-0">
+                Entfernen
+              </button>
             </div>
-            <button onClick={() => onRemoveCoach(c.coach_id, name)} disabled={busy}
-              className="text-[14px] text-[#FF3B30] px-3 py-1.5 rounded-full font-medium active:opacity-50 disabled:opacity-40 shrink-0">
-              Entfernen
-            </button>
+            <div className="mt-2.5 flex items-center justify-between gap-3">
+              <span className="text-[13px] text-[#8E8E93]">
+                {c.is_admin ? 'Volle Rechte — darf alles ändern/löschen' : 'Darf nur neu erfassen + Eigenes (24 h)'}
+              </span>
+              <button onClick={() => onToggleAdmin(c.coach_id, !c.is_admin, name)} disabled={busy}
+                className={'text-[13px] px-3 py-1.5 rounded-full font-medium active:opacity-60 disabled:opacity-40 shrink-0 ' +
+                  (c.is_admin ? 'bg-[#FF9500] text-white' : 'bg-[#E5E5EA] dark:bg-[#3A3A3C] text-[#3A3A3C] dark:text-white')}>
+                {c.is_admin ? '✓ Volle Rechte' : 'Volle Rechte geben'}
+              </button>
+            </div>
           </div>
         );
       })}
@@ -13138,8 +13168,8 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
           program={programs.find(p => p.id === c.program_id)}
           athlete={athletes.find(a => a.id === c.athlete_id)}
           onBack={() => setViewId(null)}
-          onEdit={() => { setEditId(viewId); setViewId(null); }}
-          onDelete={() => setConfirmDeleteId(viewId)}
+          onEdit={data._isReadOnly ? undefined : () => { setEditId(viewId); setViewId(null); }}
+          onDelete={data._isReadOnly ? undefined : () => setConfirmDeleteId(viewId)}
         />
         {confirmDeleteId && (
           <DeleteConfirmModal
@@ -17224,14 +17254,18 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
             {competition.date}{competition.location ? ' · ' + competition.location : ''}
           </p>
         </div>
-        <button onClick={onEdit}
-          className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg" title="Bearbeiten">
-          <Edit2 size={18} />
-        </button>
-        <button onClick={onDelete}
-          className="p-2 text-slate-500 hover:text-rose-600 hover:bg-slate-100 rounded-lg" title="Löschen">
-          <Trash2 size={18} />
-        </button>
+        {onEdit && (
+          <button onClick={onEdit}
+            className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg" title="Bearbeiten">
+            <Edit2 size={18} />
+          </button>
+        )}
+        {onDelete && (
+          <button onClick={onDelete}
+            className="p-2 text-slate-500 hover:text-rose-600 hover:bg-slate-100 rounded-lg" title="Löschen">
+            <Trash2 size={18} />
+          </button>
+        )}
       </header>
 
       {/* Stammdaten */}

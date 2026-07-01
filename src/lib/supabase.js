@@ -473,7 +473,7 @@ export async function clearClaimCodeForAthlete(athleteId) {
 export async function fetchSessions() {
   const { data, error } = await supabase
     .from('sessions')
-    .select('id, athlete_id, exercise_id, date, entries, notes, exercise_name, with_rope, created_at')
+    .select('id, athlete_id, exercise_id, date, entries, notes, exercise_name, with_rope, created_at, created_by')
     .order('date', { ascending: false });
   if (error) { console.warn('Sessions fetch:', error.message); return []; }
   return data || [];
@@ -526,7 +526,7 @@ export async function bulkUpdateSessions(filter = {}, fields = {}) {
 export async function fetchCompetitions() {
   const { data, error } = await supabase
     .from('competitions')
-    .select('id, athlete_id, program_id, name, date, location, host, start_nr, table1, table2, t1_schwierigkeit, t2_schwierigkeit, pdf_ref, target_score, created_at')
+    .select('id, athlete_id, program_id, name, date, location, host, start_nr, table1, table2, t1_schwierigkeit, t2_schwierigkeit, pdf_ref, target_score, created_at, created_by')
     .order('date', { ascending: false });
   if (error) { console.warn('Competitions fetch:', error.message); return []; }
   return data || [];
@@ -644,12 +644,22 @@ export async function deleteCoachInvite(id) {
 
 export async function fetchAthleteCoaches(athleteId = null) {
   let q = supabase.from('athlete_coaches')
-    .select('athlete_id, coach_id, added_at')
+    .select('athlete_id, coach_id, added_at, is_admin')
     .order('added_at', { ascending: true });
   if (athleteId) q = q.eq('athlete_id', athleteId);
   const { data, error } = await q;
   if (error) { console.warn('athlete_coaches fetch:', error.message); return []; }
   return data || [];
+}
+
+// Sportler schaltet einem Trainer volle Rechte frei (oder entzieht sie) —
+// setzt athlete_coaches.is_admin. Nur der Sportler/Owner darf das (RLS).
+export async function setCoachAdmin(athleteId, coachId, isAdmin) {
+  const { error } = await supabase.from('athlete_coaches')
+    .update({ is_admin: isAdmin })
+    .eq('athlete_id', athleteId)
+    .eq('coach_id', coachId);
+  return { error };
 }
 
 export async function removeAthleteCoach(athleteId, coachId) {
