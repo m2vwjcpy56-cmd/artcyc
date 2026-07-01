@@ -104,6 +104,13 @@ const FEATURES = [
   { icon: Trophy, title: 'Wettkämpfe & Export', text: 'Wettkämpfe erfassen, taktische Aufwertungen, und Excel-Exporte erstellen.' },
 ];
 
+const PREVIEWS = [
+  { img: 'dashboard', label: 'Dashboard' },
+  { img: 'trend', label: 'Übungs-Trend' },
+  { img: 'wettkampf', label: 'Wettkämpfe' },
+  { img: 'uebungen', label: 'Übungen' },
+];
+
 function Home() {
   return (
     <>
@@ -128,6 +135,19 @@ function Home() {
           </a>
         </div>
         <p className="mt-3 text-[12px] text-slate-400">iPhone-App derzeit in der Beta (TestFlight) — App-Store-Release in Kürze.</p>
+      </Section>
+
+      <Section className="pb-16 sm:pb-24">
+        <h2 className="text-center text-[13px] font-semibold uppercase tracking-wider text-slate-400 mb-8">Ein Blick in die App</h2>
+        <div className="flex gap-5 overflow-x-auto snap-x snap-mandatory pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible sm:flex-wrap sm:justify-center">
+          {PREVIEWS.map((p) => (
+            <figure key={p.img} className="snap-center shrink-0 w-[210px] sm:w-[200px]">
+              <img src={`/previews/${p.img}.jpg`} alt={`${APP_NAME} – ${p.label}`} loading="lazy" width="497" height="1080"
+                className="w-full rounded-[2rem] border border-slate-200/70 shadow-[0_12px_45px_rgba(0,0,0,0.14)]" />
+              <figcaption className="mt-3 text-center text-[13px] font-medium text-slate-500">{p.label}</figcaption>
+            </figure>
+          ))}
+        </div>
       </Section>
 
       <Section className="pb-20">
