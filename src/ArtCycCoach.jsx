@@ -10513,9 +10513,9 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
           <div className="text-[12px] uppercase tracking-wide text-slate-400 px-4 font-medium">Verwalten</div>
 
           <IOSList>
-            {onEdit && <IOSListRow onClick={onEdit} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Edit2 size={17} className="text-[#007AFF]" /> Bearbeiten</span></IOSListRow>}
-            {onArchive && <IOSListRow onClick={onArchive} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Lock size={17} className="text-[#FF9500]" /> {exercise.active ? 'Archivieren' : 'Reaktivieren'}</span></IOSListRow>}
-            {onDelete && <IOSListRow onClick={onDelete}><span className="flex items-center gap-3 text-[#FF3B30]"><Trash2 size={17} /> Löschen</span></IOSListRow>}
+            {onEdit && !data._isReadOnly && <IOSListRow onClick={onEdit} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Edit2 size={17} className="text-[#007AFF]" /> Bearbeiten</span></IOSListRow>}
+            {onArchive && !data._isReadOnly && <IOSListRow onClick={onArchive} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Lock size={17} className="text-[#FF9500]" /> {exercise.active ? 'Archivieren' : 'Reaktivieren'}</span></IOSListRow>}
+            {onDelete && !data._isReadOnly && <IOSListRow onClick={onDelete}><span className="flex items-center gap-3 text-[#FF3B30]"><Trash2 size={17} /> Löschen</span></IOSListRow>}
           </IOSList>
 
           {/* XLSX-Import — sekundär/utility (nur 3-Status), ganz unten */}
