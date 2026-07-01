@@ -2941,7 +2941,6 @@ function generateExerciseInsight(exercise, sessions, t, programs, competitions) 
   const fail    = entries.filter(e => e === 'fail').length;
   const third   = entries.filter(e => e === 'third').length;
   const rate = total > 0 ? Math.round((success / total) * 100) : 0;
-  const target = typeof exercise.target_rate === 'number' ? exercise.target_rate : null;
 
   // Edge cases — sehr wenig Daten
   // Edge-Cases: wenige/keine Trainingsdaten — aber falls Wettkampf-Daten
@@ -3040,13 +3039,6 @@ function generateExerciseInsight(exercise, sessions, t, programs, competitions) 
     if (daysSinceLast != null) {
       if      (daysSinceLast > 60) lines.push(t('aiInsight.veryStale', { days: daysSinceLast }));
       else if (daysSinceLast > 14) lines.push(t('aiInsight.staleDays', { days: daysSinceLast }));
-    }
-
-    // 6) Ziel-Quote
-    if (target != null) {
-      if      (rate >= target)          lines.push(t('aiInsight.targetReached', { target }));
-      else if (target - rate <= 5)      lines.push(t('aiInsight.targetClose',   { gap: target - rate, target }));
-      else                              lines.push(t('aiInsight.targetFar',     { gap: target - rate, target }));
     }
 
     // 7) Risiko-Profil bei 3-Kategorien-Übungen
@@ -6799,11 +6791,7 @@ function StatCard({ icon: Icon, label, value, sub, color = 'sky', size = 'normal
 }
 
 function ExerciseStatsCard({ ex, total, success, fail, third, rate, riskRate, sessions, trend }) {
-  const target = typeof ex.target_rate === 'number' ? ex.target_rate : null;
-  const belowTarget = target !== null && rate < target;
-  const aboveTarget = target !== null && rate >= target;
-  const cardClass = 'bg-white rounded-2xl border shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 ' +
-    (belowTarget ? 'border-rose-200 ring-1 ring-rose-100' : 'border-slate-200/60');
+  const cardClass = 'bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5';
   return (
     <div className={cardClass}>
       <div className="flex items-start justify-between gap-3 mb-4">
@@ -6820,24 +6808,14 @@ function ExerciseStatsCard({ ex, total, success, fail, third, rate, riskRate, se
                 3-Status: {ex.third_label}
               </span>
             )}
-            {target !== null && (
-              <span className={'text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ' +
-                (aboveTarget ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700')}>
-                <Target size={11} /> Ziel {target}%
-              </span>
-            )}
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
             {sessions} Sessions · {total} Serien
           </div>
         </div>
         <div className="text-right shrink-0">
-          <div className={'text-3xl font-bold ' + (belowTarget ? 'text-rose-700' : aboveTarget ? 'text-emerald-700' : 'text-slate-900')}>{rate}%</div>
-          <div className="text-xs text-slate-500">
-            {target !== null
-              ? (rate >= target ? 'über Ziel ✓' : (target - rate) + '% unter Ziel')
-              : 'Quote'}
-          </div>
+          <div className="text-3xl font-bold text-slate-900">{rate}%</div>
+          <div className="text-xs text-slate-500">Quote</div>
         </div>
       </div>
 

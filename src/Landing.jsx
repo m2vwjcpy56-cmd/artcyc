@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Trophy, ClipboardList, ScanLine, BarChart3, Users, ListChecks,
-  Check, ChevronRight, X, Menu, Smartphone, ShieldCheck, Globe,
+  Check, ChevronRight, X, Menu, Smartphone, ShieldCheck, Globe, BookOpen,
 } from 'lucide-react';
 
 // =============================================================
@@ -102,6 +102,17 @@ const FEATURES = [
   { icon: ListChecks, title: 'Trainingspläne', text: 'Stehende Pläne mit verknüpften Übungen — direkt protokollieren, mit Verlaufs-Protokoll je Plan.' },
   { icon: Users, title: 'Mehrere Trainer & Sportler', text: 'Sportler per Code einladen, Co-Trainer verwalten — alle sehen dieselben Daten in Echtzeit.' },
   { icon: Trophy, title: 'Wettkämpfe & Export', text: 'Wettkämpfe erfassen, taktische Aufwertungen, und Excel-Exporte erstellen.' },
+  { icon: BookOpen, title: 'Komplettes Reglement', text: 'Alle offiziellen Kunstrad-Figuren mit UCI-Code und Punkten sind hinterlegt — Übung suchen, antippen, fertig.' },
+];
+
+// Beispiel-Figuren aus dem hinterlegten UCI-Reglement (Code · Name · Punkte).
+const REGLEMENT_SAMPLE = [
+  { c: '1104a', n: 'Frontlenkerstand HR.', p: '4,0' },
+  { c: '1124c', n: 'Lenkerstand', p: '8,8' },
+  { c: '1186a', n: 'Maute-Sprung', p: '7,3' },
+  { c: '1249a', n: 'Kehrstandsteiger rw. HR.', p: '5,5' },
+  { c: '1237a', n: 'Steiger rw.', p: '4,4' },
+  { c: '1217b', n: 'Dornstandsteiger rw.', p: '6,0' },
 ];
 
 const PREVIEWS = [
@@ -213,6 +224,25 @@ function Home() {
               <p className="text-[14px] text-slate-600 leading-relaxed">{f.text}</p>
             </div>
           ))}
+        </div>
+      </Section>
+
+      <Section className="pb-16 sm:pb-24">
+        <div className="bg-white rounded-3xl border border-slate-200/70 p-6 sm:p-8 shadow-[0_1px_3px_rgba(0,0,0,0.04)] grid md:grid-cols-2 gap-8 items-center">
+          <div>
+            <div className="inline-flex items-center gap-2 text-[12px] font-semibold text-white rounded-full px-3 py-1 mb-4" style={{ background: ACCENT }}>2000+ Figuren</div>
+            <h2 className="text-[26px] sm:text-[32px] font-bold tracking-tight leading-tight">Das komplette Reglement — schon drin.</h2>
+            <p className="mt-3 text-[15px] sm:text-[16px] text-slate-600 leading-relaxed">Alle offiziellen Kunstrad-Figuren mit UCI-Code und Punktzahl sind hinterlegt. Übung suchen, antippen — fertig. Kein manuelles Anlegen, kein Punkte-Tabellen-Wälzen.</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200/70 overflow-hidden bg-slate-50/50">
+            {REGLEMENT_SAMPLE.map((f, i) => (
+              <div key={f.c} className={'flex items-center gap-3 px-4 py-3 ' + (i > 0 ? 'border-t border-slate-200/60' : '')}>
+                <span className="text-[12px] font-mono text-slate-400 tabular-nums w-14 shrink-0">{f.c}</span>
+                <span className="flex-1 text-[14px] font-medium truncate">{f.n}</span>
+                <span className="text-[13px] font-semibold tabular-nums shrink-0" style={{ color: ACCENT }}>{f.p}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </Section>
 
