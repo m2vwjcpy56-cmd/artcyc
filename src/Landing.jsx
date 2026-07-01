@@ -101,7 +101,7 @@ const FEATURES = [
   { icon: BarChart3, title: 'Statistik & Trends', text: 'Erfolgsquoten pro Übung, Verlauf über Wochen/Monate, Ø-Punktabzug pro Wettkampf und Bestleistungen.' },
   { icon: ListChecks, title: 'Trainingspläne', text: 'Stehende Pläne mit verknüpften Übungen — direkt protokollieren, mit Verlaufs-Protokoll je Plan.' },
   { icon: Users, title: 'Mehrere Trainer & Sportler', text: 'Sportler per Code einladen, Co-Trainer verwalten — alle sehen dieselben Daten in Echtzeit.' },
-  { icon: Trophy, title: 'Wettkämpfe & Maute', text: 'Wettkämpfe erfassen, taktische Aufwertungen, und Export im Maute-Statistik-Format.' },
+  { icon: Trophy, title: 'Wettkämpfe & Export', text: 'Wettkämpfe erfassen, taktische Aufwertungen, und Excel-Exporte erstellen.' },
 ];
 
 function Home() {
