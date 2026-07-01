@@ -377,8 +377,7 @@ function Kontakt() {
       </p>
       <div className="mt-6 bg-white rounded-3xl border border-slate-200/70 p-6">
         <div className="text-[13px] uppercase tracking-wide text-slate-400 font-medium mb-2">E-Mail</div>
-        {/* PLATZHALTER — durch echte Kontakt-Adresse ersetzen */}
-        <div className="text-[16px] font-medium">kontakt@artcyc.app <span className="text-[12px] text-amber-600">(Platzhalter)</span></div>
+        <a href="mailto:info@artcyc.app" className="text-[16px] font-medium" style={{ color: ACCENT }}>info@artcyc.app</a>
       </div>
     </Section>
   );
@@ -400,7 +399,7 @@ function Impressum() {
         </div>
         <div>
           <div className="font-semibold">Kontakt</div>
-          <p>E-Mail: [kontakt@artcyc.app]</p>
+          <p>E-Mail: info@artcyc.app</p>
         </div>
         <div>
           <div className="font-semibold">Verantwortlich für den Inhalt</div>
