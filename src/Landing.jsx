@@ -150,6 +150,58 @@ function Home() {
         </div>
       </Section>
 
+      <Section className="pb-16 sm:pb-24">
+        <h2 className="text-center text-[13px] font-semibold uppercase tracking-wider text-slate-400 mb-8">Einblicke, die zählen</h2>
+        <div className="grid sm:grid-cols-3 gap-4">
+
+          {/* Erfolgsquote */}
+          <div className="bg-white rounded-3xl border border-slate-200/70 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            <div className="text-[13px] text-slate-500 font-medium mb-1">Trainings-Erfolgsquote</div>
+            <div className="text-[40px] font-bold tracking-tight leading-none">83<span className="text-[24px] text-slate-400"> %</span></div>
+            <div className="mt-4 flex h-2.5 rounded-full overflow-hidden">
+              <div style={{ width: '83%', background: '#34C759' }} />
+              <div style={{ width: '9%', background: '#FF9F0A' }} />
+              <div style={{ width: '8%', background: '#FF453A' }} />
+            </div>
+            <div className="mt-3 flex items-center gap-3 text-[12px] text-slate-500 flex-wrap">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#34C759' }} />Geklappt</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#FF9F0A' }} />Getroffen</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#FF453A' }} />Gefährlich</span>
+            </div>
+          </div>
+
+          {/* Übungs-Trend */}
+          <div className="bg-white rounded-3xl border border-slate-200/70 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            <div className="text-[13px] text-slate-500 font-medium mb-1">Übungs-Trend</div>
+            <div className="text-[22px] font-bold tracking-tight">75 % → 83 %</div>
+            <div className="text-[13px] font-semibold text-emerald-600 mt-0.5">↗ +8 % ggü. Vorzeitraum</div>
+            <svg viewBox="0 0 240 70" className="w-full mt-3" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <linearGradient id="artcyc-trend" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stopColor="#34C759" stopOpacity="0.25" />
+                  <stop offset="1" stopColor="#34C759" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <path d="M0,52 L60,50 L120,42 L180,30 L240,18 L240,70 L0,70 Z" fill="url(#artcyc-trend)" />
+              <path d="M0,52 L60,50 L120,42 L180,30 L240,18" fill="none" stroke="#34C759" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+
+          {/* Bestleistung */}
+          <div className="bg-white rounded-3xl border border-slate-200/70 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            <div className="text-[13px] text-slate-500 font-medium mb-1">Wettkampf-Bestleistung</div>
+            <div className="text-[40px] font-bold tracking-tight leading-none">179,45</div>
+            <div className="text-[13px] text-slate-500 mt-0.5">Punkte · Saison-Verlauf ↑</div>
+            <svg viewBox="0 0 240 70" className="w-full mt-4" aria-hidden="true">
+              {[30, 42, 52, 64].map((h, i) => (
+                <rect key={i} x={12 + i * 58} y={70 - h} width="34" height={h} rx="6" fill={ACCENT} opacity={0.4 + i * 0.2} />
+              ))}
+            </svg>
+          </div>
+
+        </div>
+      </Section>
+
       <Section className="pb-20">
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {FEATURES.map((f, i) => (
