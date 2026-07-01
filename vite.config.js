@@ -26,7 +26,7 @@ export default defineConfig({
         short_name: 'ArtCyc',
         description: 'Trainings- und Wettkampf-Tool für Kunstradsport',
         lang: 'de',
-        start_url: '/',
+        start_url: '/web',
         scope: '/',
         display: 'standalone',
         orientation: 'portrait',

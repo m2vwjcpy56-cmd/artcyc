@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './ArtCycCoach.jsx';
+import Landing from './Landing.jsx';
 import { I18nProvider } from './lib/i18n.jsx';
 import { initErrorReporter } from './lib/errorReporter.js';
 import { ErrorBoundary } from './lib/ErrorBoundary.jsx';
@@ -69,11 +70,33 @@ registerSW({
   }
 });
 
+// Routing: Web-App unter /web (und /app), sowie bei Auth-Rückleitungen
+// (Passwort-Reset/Magic-Link landen mit ?type=recovery / ?code / #access_token —
+// die MUSS die App rendern, nicht die Landingpage). Sonst: öffentliche Landingpage.
+const _p = window.location.pathname;
+const _s = window.location.search;
+const _h = window.location.hash;
+const _appPath = /^\/(web|app)(\/|$)/.test(_p);
+const _authCb = /[?&](code|type)=/.test(_s) || /(access_token|type=recovery)/.test(_h);
+
+// Installierte PWA (Homescreen-App) IMMER in die App leiten, nie auf die
+// Landingpage. Bereits installierte PWAs haben start_url '/' gecacht — daher
+// hier zur Laufzeit umleiten, sonst öffnet die App-Kachel die Landingpage.
+const _standalone = (typeof window.matchMedia === 'function'
+    && window.matchMedia('(display-mode: standalone)').matches)
+  || window.navigator.standalone === true;
+if (_standalone && !_appPath && !_authCb) {
+  window.location.replace('/web');
+}
+
+const _isApp = _appPath || _authCb;
+const Root = _isApp ? App : Landing;
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
       <I18nProvider>
-        <App />
+        <Root />
       </I18nProvider>
     </ErrorBoundary>
   </React.StrictMode>,
