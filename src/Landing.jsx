@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Trophy, ClipboardList, ScanLine, BarChart3, Users, ListChecks,
   Check, ChevronRight, X, Menu, Smartphone, ShieldCheck, Globe,
@@ -318,6 +318,26 @@ const PAGES = {
 export default function Landing() {
   const path = (typeof window !== 'undefined' ? window.location.pathname : '/').replace(/\/+$/, '') || '/';
   const Page = PAGES[path] || Home;
+
+  // Dark Mode: der App-Bereich setzt html[data-theme] selbst — die Landingpage
+  // nicht. Deshalb hier spiegeln: folgt dem System (prefers-color-scheme) bzw.
+  // einer im App gesetzten Theme-Präferenz (localStorage 'artcyc:theme').
+  // Die vorhandenen Dark-Regeln in index.css greifen dann automatisch.
+  useEffect(() => {
+    const KEY = 'artcyc:theme'; // identisch zu THEME_KEY in ArtCycCoach.jsx
+    const apply = () => {
+      let pref = 'system';
+      try { const v = localStorage.getItem(KEY); if (v === 'light' || v === 'dark') pref = v; } catch { /* ignore */ }
+      const dark = pref === 'dark'
+        || (pref === 'system' && typeof window.matchMedia === 'function'
+            && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    };
+    apply();
+    const mq = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    if (mq?.addEventListener) { mq.addEventListener('change', apply); return () => mq.removeEventListener('change', apply); }
+    if (mq?.addListener) { mq.addListener(apply); return () => mq.removeListener(apply); }
+  }, []);
   return (
     <div className="min-h-screen bg-white text-slate-900" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif' }}>
       <AppBanner />
