@@ -103,10 +103,10 @@ const FEATURES = [
   { icon: ListChecks, title: 'Trainingspläne', text: 'Stehende Pläne mit verknüpften Übungen — direkt protokollieren, mit Verlaufs-Protokoll je Plan.' },
   { icon: Users, title: 'Mehrere Trainer & Sportler', text: 'Sportler per Code einladen, Co-Trainer verwalten — alle sehen dieselben Daten in Echtzeit.' },
   { icon: Trophy, title: 'Wettkämpfe & Export', text: 'Wettkämpfe erfassen, taktische Aufwertungen, und Excel-Exporte erstellen.' },
-  { icon: BookOpen, title: 'Komplettes Reglement', text: 'Alle offiziellen Kunstrad-Figuren mit UCI-Code und Punkten sind hinterlegt — Übung suchen, antippen, fertig.' },
+  { icon: BookOpen, title: 'Komplettes Reglement', text: 'Alle offiziellen Kunstrad-Übungen mit Übungsnummer und Punkten sind hinterlegt — Übung suchen, antippen, fertig.' },
 ];
 
-// Beispiel-Figuren aus dem hinterlegten UCI-Reglement (Code · Name · Punkte).
+// Beispiel-Übungen aus dem hinterlegten UCI-Reglement (Nummer · Name · Punkte).
 const REGLEMENT_SAMPLE = [
   { c: '1104a', n: 'Frontlenkerstand HR.', p: '4,0' },
   { c: '1124c', n: 'Lenkerstand', p: '8,8' },
@@ -231,9 +231,9 @@ function Home() {
       <Section className="pb-16 sm:pb-24">
         <div className="bg-white rounded-3xl border border-slate-200/70 p-6 sm:p-8 shadow-[0_1px_3px_rgba(0,0,0,0.04)] grid md:grid-cols-2 gap-8 items-center">
           <div>
-            <div className="inline-flex items-center gap-2 text-[12px] font-semibold text-white rounded-full px-3 py-1 mb-4" style={{ background: ACCENT }}>2000+ Figuren</div>
+            <div className="inline-flex items-center gap-2 text-[12px] font-semibold text-white rounded-full px-3 py-1 mb-4" style={{ background: ACCENT }}>2000+ Übungen</div>
             <h2 className="text-[26px] sm:text-[32px] font-bold tracking-tight leading-tight">Das komplette Reglement — schon drin.</h2>
-            <p className="mt-3 text-[15px] sm:text-[16px] text-slate-600 leading-relaxed">Alle offiziellen Kunstrad-Figuren mit UCI-Code und Punktzahl sind hinterlegt. Übung suchen, antippen — fertig. Kein manuelles Anlegen, kein Punkte-Tabellen-Wälzen.</p>
+            <p className="mt-3 text-[15px] sm:text-[16px] text-slate-600 leading-relaxed">Alle offiziellen Kunstrad-Übungen mit Übungsnummer und Punktzahl sind hinterlegt. Übung suchen, antippen — fertig. Kein manuelles Anlegen, kein Punkte-Tabellen-Wälzen.</p>
           </div>
           <div className="rounded-2xl border border-slate-200/70 overflow-hidden bg-slate-50/50">
             {REGLEMENT_SAMPLE.map((f, i) => (

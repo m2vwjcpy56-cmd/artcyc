@@ -7660,7 +7660,7 @@ function TrainingView({ data, setData, setView }) {
           footer="Sortiert nach zuletzt trainiert. Klick öffnet die Übungs-Detail-Seite.">
           {trainedExercises.map(({ ex, sessions, total, rate, lastDate }) => {
             const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 60 ? 'text-[#FF9500]' : 'text-[#FF3B30]';
-            const meta = (ex.uci_code ? ('UCI ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : ''));
+            const meta = (ex.uci_code ? ('Nr. ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : ''));
             const subtitle = (meta ? meta + ' · ' : '') + sessions + ' Sessions · ' + total + ' Serien';
             return (
               <IOSListRow
@@ -10438,7 +10438,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
           <div className="flex-1 min-w-0">
             <h1 className="text-[22px] font-bold tracking-tight leading-tight truncate">{localizedExerciseName(exercise)}</h1>
             <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-              {exercise.uci_code && <IOSTag color="blue">UCI {exercise.uci_code}</IOSTag>}
+              {exercise.uci_code && <IOSTag color="blue">Nr. {exercise.uci_code}</IOSTag>}
               {Number(exercise.points) > 0 && <span className="text-[12px] text-slate-500 font-medium tabular-nums">{Number(exercise.points).toFixed(1)} Pkt</span>}
               {!exercise.active && <IOSTag color="gray">archiviert</IOSTag>}
             </div>
@@ -10807,7 +10807,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
           <div className="flex-1 min-w-0">
             <h1 className="text-[22px] font-bold tracking-tight leading-tight truncate">{localizedExerciseName(exercise)}</h1>
             <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-              {exercise.uci_code && <IOSTag color="blue">UCI {exercise.uci_code}</IOSTag>}
+              {exercise.uci_code && <IOSTag color="blue">Nr. {exercise.uci_code}</IOSTag>}
               {Number(exercise.points) > 0 && <span className="text-[12px] text-slate-500 font-medium tabular-nums">{Number(exercise.points).toFixed(1)} Pkt</span>}
               {is3 && <IOSTag color="orange">{exercise.third_label}</IOSTag>}
               {!exercise.active && <IOSTag color="gray">archiviert</IOSTag>}
@@ -11562,7 +11562,7 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
             {uciCode ? (
               <div className="px-4 py-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[15px]">Zugeordnet: <span className="font-medium">UCI {uciCode}</span></div>
+                  <div className="text-[15px]">Zugeordnet: <span className="font-medium">Nr. {uciCode}</span></div>
                   <div className="text-[13px] text-[#8E8E93] truncate">
                     {(() => { const u = getUciDb().find(e => e.c === uciCode); return u ? u.n : (uciDisc || ''); })()}
                   </div>
@@ -11575,7 +11575,7 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
                 <div className="relative">
                   <Search size={16} className="absolute left-2 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
                   <input value={assignQ} onChange={e => setAssignQ(e.target.value)}
-                    placeholder="UCI-Übung suchen (Name oder Code)…"
+                    placeholder="UCI-Übung suchen (Name oder Nummer)…"
                     className="w-full pl-8 pr-2 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
                 </div>
                 {assignQ.trim().length >= 2 && (
@@ -11587,7 +11587,7 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
                         className={'w-full text-left px-3 py-2.5 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/40 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
                         <span className="min-w-0">
                           <span className="block text-[14px] truncate">{u.n}</span>
-                          <span className="block text-[12px] text-[#8E8E93]">UCI {u.c} · {u.d} · {u.p} Pkt</span>
+                          <span className="block text-[12px] text-[#8E8E93]">Nr. {u.c} · {u.d} · {u.p} Pkt</span>
                         </span>
                         <Plus size={15} className="text-[#FF9500] shrink-0" />
                       </button>
@@ -11701,7 +11701,7 @@ function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
             <input value={query} onChange={e => setQuery(e.target.value)} autoFocus
-              placeholder="Übung suchen (Name oder UCI-Code)…"
+              placeholder="Übung suchen (Name oder Übungsnummer)…"
               className="w-full pl-9 pr-3 py-2.5 bg-white dark:bg-white/5 rounded-xl outline-none text-[15px] shadow-[0_1px_2px_rgba(0,0,0,0.04)]" />
           </div>
         </div>
@@ -11715,7 +11715,7 @@ function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung
                 <button key={ex.id} onClick={() => { onPick(ex, false); onClose(); }}
                   className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/40 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
                   <span className="text-[15px] truncate">{localizedExerciseName(ex)}</span>
-                  {ex.uci_code && <span className="text-[12px] text-[#8E8E93] shrink-0">UCI {ex.uci_code}</span>}
+                  {ex.uci_code && <span className="text-[12px] text-[#8E8E93] shrink-0">Nr. {ex.uci_code}</span>}
                 </button>
               ))}
             </div>
@@ -11731,7 +11731,7 @@ function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung
                     className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/40 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
                     <span className="min-w-0">
                       <span className="block text-[15px] truncate">{u.n}</span>
-                      <span className="block text-[12px] text-[#8E8E93]">UCI {u.c} · {u.d} · {u.p} Pkt</span>
+                      <span className="block text-[12px] text-[#8E8E93]">Nr. {u.c} · {u.d} · {u.p} Pkt</span>
                     </span>
                     <Plus size={16} className="text-[#FF9500] shrink-0" />
                   </button>
@@ -11770,7 +11770,7 @@ function UciPicker({ discipline, onSelect, selectedCode }) {
       {selected && (
         <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm">
           <div className="font-medium text-emerald-900">✓ Ausgewählt: {selected.n}</div>
-          <div className="text-xs text-emerald-700">UCI {selected.c} · {selected.p} Pkt.</div>
+          <div className="text-xs text-emerald-700">Nr. {selected.c} · {selected.p} Pkt.</div>
         </div>
       )}
 
@@ -11785,7 +11785,7 @@ function UciPicker({ discipline, onSelect, selectedCode }) {
               <div className="flex items-center justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">{e.n}</div>
-                  <div className="text-xs text-slate-500">UCI {e.c}</div>
+                  <div className="text-xs text-slate-500">Nr. {e.c}</div>
                 </div>
                 <span className="bg-sky-100 text-sky-700 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">
                   {e.p} Pkt
@@ -12488,7 +12488,7 @@ function ProgrammeView({ data, setData, myUserId = null }) {
             : null}>
           {exerciseList.map(({ ex, stats, inCurrent }) => {
             const positions = stats.count || 0;
-            const meta = (ex.uci_code ? ('UCI ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : ''));
+            const meta = (ex.uci_code ? ('Nr. ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : ''));
             const statsLine = stats.wettkaempfe > 0
               ? (stats.wettkaempfe + ' Wettk' + (stats.wettkaempfe === 1 ? '' : 'ä') + 'mpf' + (stats.wettkaempfe === 1 ? '' : 'e') + ' · ' + positions + (positions === 1 ? ' Wertung' : ' Wertungen'))
               : (inCurrent ? 'Noch keine Daten' : '');
@@ -12589,7 +12589,7 @@ function ProgrammeView({ data, setData, myUserId = null }) {
       {confirmCleanup && (
         <DeleteConfirmModal
           title="Doppelte zusammenführen?"
-          message={`${dupInfo.programsBefore} → ${dupInfo.programsAfter} Programme und ${dupInfo.exercisesBefore} → ${dupInfo.exercisesAfter} Übungen. Programme mit identischer Übungsfolge und Übungen mit gleichem UCI-Code werden zu jeweils einer zusammengeführt. Wettkämpfe, Ergebnisse und Trainings-Sessions bleiben erhalten und werden korrekt verknüpft.`}
+          message={`${dupInfo.programsBefore} → ${dupInfo.programsAfter} Programme und ${dupInfo.exercisesBefore} → ${dupInfo.exercisesAfter} Übungen. Programme mit identischer Übungsfolge und Übungen mit gleicher Übungsnummer werden zu jeweils einer zusammengeführt. Wettkämpfe, Ergebnisse und Trainings-Sessions bleiben erhalten und werden korrekt verknüpft.`}
           confirmLabel="Zusammenführen"
           onConfirm={() => { setConfirmCleanup(false); setTimeout(() => setData(mergeDuplicates(data, myUserId)), 0); }}
           onCancel={() => setConfirmCleanup(false)}
@@ -12881,7 +12881,7 @@ function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onRemove }) {
             <>
               <div className="font-medium text-[15px] truncate">{localizedExerciseName(ex)}</div>
               <div className="text-[12px] text-[#8E8E93]">
-                {ex.code ? 'UCI ' + ex.code : 'Eigene'} · {Number(ex.points).toFixed(1)} Pkt.
+                {ex.code ? 'Nr. ' + ex.code : 'Eigene'} · {Number(ex.points).toFixed(1)} Pkt.
               </div>
             </>
           ) : (
