@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Trophy, ClipboardList, ScanLine, BarChart3, Users, ListChecks,
   Check, ChevronRight, X, Menu, Smartphone, ShieldCheck, Globe, BookOpen,
+  User, UserCog,
 } from 'lucide-react';
 
 // =============================================================
@@ -246,6 +247,52 @@ function Home() {
         </div>
       </Section>
 
+      <Section className="pb-16 sm:pb-24">
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 text-[12px] font-semibold text-white rounded-full px-3 py-1 mb-4" style={{ background: ACCENT }}>Zusammen trainieren</div>
+          <h2 className="text-[26px] sm:text-[32px] font-bold tracking-tight leading-tight">Sportler, Trainer & Teams — ein Datenstand</h2>
+          <p className="mt-3 text-[15px] sm:text-[16px] text-slate-600 max-w-2xl mx-auto leading-relaxed">
+            Ob Einzelsportler, Trainer mit mehreren Schützlingen oder ganzer Verein: Alle arbeiten mit
+            denselben Daten in Echtzeit — jeder mit den passenden Rechten.
+          </p>
+        </div>
+        <div className="grid sm:grid-cols-3 gap-4">
+          {[
+            { icon: User, title: 'Sportler', text: 'Protokolliere dein eigenes Training und deine Wettkämpfe. Deine Daten gehören dir — du entscheidest, welche Trainer sie sehen.',
+              points: ['Eigener Fortschritt & Trends', 'Wettkämpfe & Bestleistungen', 'Trainer per Code freischalten'] },
+            { icon: UserCog, title: 'Trainer', text: 'Betreue mehrere Sportler an einem Ort. Trage Trainings & Wettkämpfe ein und verfolge Quoten und Trends jedes Sportlers.',
+              points: ['Mehrere Sportler im Blick', 'Co-Trainer teilen sich einen Sportler', 'Platzhalter-Sportler ohne eigenen Account'] },
+            { icon: Users, title: 'Teams & Verein', text: 'Bündle Sportler und Trainer in einem Team. Neue Mitglieder treten per Beitritts-Code bei — ohne Zettelwirtschaft.',
+              points: ['Team per Code beitreten', 'Mitglieder & Rollen verwalten', 'Gemeinsamer Überblick'] },
+          ].map((r) => (
+            <div key={r.title} className="bg-white rounded-3xl border border-slate-200/70 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <div className="w-11 h-11 rounded-2xl flex items-center justify-center mb-4" style={{ background: ACCENT + '22' }}>
+                <r.icon size={22} style={{ color: ACCENT }} />
+              </div>
+              <h3 className="font-semibold text-[18px] mb-1.5">{r.title}</h3>
+              <p className="text-[14px] text-slate-600 leading-relaxed">{r.text}</p>
+              <ul className="mt-4 space-y-2">
+                {r.points.map((p) => (
+                  <li key={p} className="flex items-start gap-2 text-[13.5px] text-slate-700">
+                    <Check size={16} className="mt-0.5 shrink-0" style={{ color: ACCENT }} /> {p}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex items-start gap-3 bg-slate-50 rounded-2xl border border-slate-200/70 p-5">
+          <ShieldCheck size={22} className="shrink-0" style={{ color: ACCENT }} />
+          <div>
+            <div className="font-semibold text-[15px]">Feine Rechte-Kontrolle & Papierkorb</div>
+            <p className="text-[14px] text-slate-600 leading-relaxed mt-0.5">
+              Jeder Sportler legt pro Trainer fest, ob dieser nur eintragen oder auch bearbeiten und löschen darf
+              („Volle Rechte"). Gelöschtes landet 30 Tage im Papierkorb und lässt sich jederzeit wiederherstellen.
+            </p>
+          </div>
+        </div>
+      </Section>
+
       <div className="bg-slate-900 text-white">
         <Section className="py-16 text-center">
           <h2 className="text-[28px] sm:text-[34px] font-bold tracking-tight">Bereit loszulegen?</h2>
@@ -291,6 +338,8 @@ const FAQS = [
   { q: 'Brauche ich die App oder reicht der Browser?', a: 'Beides geht. Die Web-App läuft im Browser unter artcyc.app/web. Die iPhone-App bietet zusätzlich Foto-Scan und Push-Erinnerungen.' },
   { q: 'Was kostet ArtCyc?', a: 'Aktuell befindet sich ArtCyc im Aufbau. Details zu Preisen folgen.' },
   { q: 'Wie lade ich Sportler oder Co-Trainer ein?', a: 'In der App über einen Einlade-Code: Du erstellst pro Sportler bzw. Trainer einen Code, der einmalig eingelöst wird.' },
+  { q: 'Können mehrere Trainer denselben Sportler betreuen?', a: 'Ja. Ein Sportler kann mehrere (Co-)Trainer freischalten — alle sehen dieselben Daten in Echtzeit. Jeder Sportler legt dabei pro Trainer fest, ob dieser nur eintragen oder auch bearbeiten und löschen darf.' },
+  { q: 'Gibt es eine Team-/Vereinsfunktion?', a: 'Ja. Sportler und Trainer lassen sich in Teams bündeln; neue Mitglieder treten per Beitritts-Code bei. So behält ein Verein alle Aktiven an einem Ort im Blick.' },
   { q: 'Sind meine Daten sicher?', a: 'Die Daten liegen verschlüsselt in der Cloud. Nur du und die von dir freigegebenen Trainer haben Zugriff.' },
   { q: 'Funktioniert der Wertungsbogen-Scan zuverlässig?', a: 'Die Erkennung prüft sich selbst gegen die Prüfsumme des Bogens und liest bei Bedarf nach, um Abzüge und Endergebnis korrekt zu übernehmen.' },
 ];
