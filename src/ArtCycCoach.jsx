@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, scanWertungsbogenVision } from './lib/supabase';
+import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, scanWertungsbogenVision, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -8928,6 +8928,103 @@ function ChangePasswordRow() {
   );
 }
 
+// Papierkorb — „zuletzt gelöscht". Zeigt soft-gelöschte Einträge (30 Tage) und
+// erlaubt Wiederherstellen bzw. endgültiges Löschen. Nach dem Wiederherstellen
+// wird neu geladen, damit der Eintrag überall wieder auftaucht.
+function TrashSettings() {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setItems(await fetchTrash()); }
+    catch (e) { console.warn('Papierkorb laden fehlgeschlagen:', e); setItems([]); }
+    setLoading(false);
+  }, []);
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && items === null) load();
+  };
+
+  const relTime = (iso) => {
+    if (!iso) return '';
+    const d = (Date.now() - new Date(iso).getTime()) / 86400000;
+    if (d < 1) return 'heute';
+    if (d < 2) return 'gestern';
+    return 'vor ' + Math.floor(d) + ' Tagen';
+  };
+
+  const restore = async (it) => {
+    setBusyId(it.table + it.id);
+    const { error } = await restoreTrashItem(it.table, it.id);
+    setBusyId(null);
+    if (error) { alert('Wiederherstellen fehlgeschlagen: ' + error.message); return; }
+    window.location.reload();
+  };
+
+  const purge = async (it) => {
+    if (!confirm('Diesen Eintrag endgültig löschen?\n\nDas kann NICHT rückgängig gemacht werden.')) return;
+    setBusyId(it.table + it.id);
+    const { error } = await purgeTrashItem(it.table, it.id);
+    setBusyId(null);
+    if (error) { alert('Löschen fehlgeschlagen: ' + error.message); return; }
+    setItems((items || []).filter(x => !(x.table === it.table && x.id === it.id)));
+  };
+
+  return (
+    <IOSList
+      header="Papierkorb"
+      footer={`Gelöschte Einträge bleiben ${TRASH_RETENTION_DAYS} Tage wiederherstellbar und werden danach endgültig entfernt.`}>
+      <IOSListRow
+        onClick={toggle}
+        trailing={<ChevronRight size={18} strokeWidth={2.4} className={'text-[#C7C7CC] transition-transform ' + (open ? 'rotate-90' : '')} />}>
+        <span className="flex items-center gap-3">
+          <Trash2 size={18} className="text-[#FF9500]" />
+          <span className="text-[15px] font-medium">Zuletzt gelöscht</span>
+          {items && items.length > 0 && (
+            <span className="text-[12px] font-semibold text-white bg-[#FF9500] rounded-full px-2 py-0.5">{items.length}</span>
+          )}
+        </span>
+      </IOSListRow>
+      {open && (
+        loading ? (
+          <div className="px-4 py-4 flex items-center gap-2 text-[14px] text-[#8E8E93] border-t border-[#E5E5EA]/60">
+            <Loader2 size={16} className="animate-spin" /> Lade …
+          </div>
+        ) : (items && items.length === 0 ? (
+          <div className="px-4 py-4 text-[14px] text-[#8E8E93] border-t border-[#E5E5EA]/60">Papierkorb ist leer.</div>
+        ) : (items || []).map(it => {
+          const busy = busyId === (it.table + it.id);
+          return (
+            <div key={it.table + it.id} className="px-4 py-2.5 flex items-center gap-2.5 border-t border-[#E5E5EA]/60">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#8E8E93] bg-[#8E8E93]/12 rounded px-1.5 py-0.5 shrink-0 w-[74px] text-center">{it.kindLabel}</span>
+              <span className="flex flex-col min-w-0 flex-1">
+                <span className="text-[14px] text-[#1C1C1E] truncate">{it.label}</span>
+                <span className="text-[11px] text-[#8E8E93]">gelöscht {relTime(it.deleted_at)}</span>
+              </span>
+              <button
+                onClick={() => restore(it)} disabled={busy}
+                className="text-[13px] font-medium text-[#007AFF] px-2 py-1 rounded hover:bg-[#007AFF]/10 disabled:opacity-40 shrink-0 flex items-center gap-1">
+                {busy ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />} Wiederherstellen
+              </button>
+              <button
+                onClick={() => purge(it)} disabled={busy}
+                title="Endgültig löschen"
+                className="text-[#FF3B30] p-1 rounded hover:bg-[#FF3B30]/10 disabled:opacity-40 shrink-0">
+                <Trash2 size={15} />
+              </button>
+            </div>
+          );
+        }))
+      )}
+    </IOSList>
+  );
+}
+
 function SettingsView({ data, setData, onResetAll, profile, session, onLogout, cloudStatus, dbAthletes, dbProfiles, dbAthleteCoaches, refreshAthletes, theme, setTheme, langPref, setLangPref, rulesLangPref, setRulesLangPref, setView, onOpenFeedback }) {
   const { t } = useI18n();
   const roleLabel = profile?.role === 'admin' ? t('role.admin') : profile?.role === 'coach' ? t('role.coach') : t('role.athlete');
@@ -9250,6 +9347,9 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
       </IOSList>
 
       <BackupSettings data={data} setData={setData} />
+
+      {/* Papierkorb — zuletzt gelöschte Einträge (30 Tage) wiederherstellen */}
+      <TrashSettings />
 
       {/* App-Cache + Diagnose */}
       <IOSList header="Diagnose" footer={'Falls Sportler-Daten nicht angezeigt werden, hilft meistens „Cache leeren + neu laden". Die Diagnose-Info zeigt, welche Verknüpfungen die App lokal kennt.'}>

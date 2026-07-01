@@ -259,6 +259,7 @@ export async function fetchFeedback(athleteId) {
     .from('feedback_entries')
     .select('*')
     .eq('athlete_id', athleteId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false });
   if (error) { console.warn('feedback fetch fehlgeschlagen:', error.message); return []; }
   return data || [];
@@ -280,7 +281,7 @@ export async function updateFeedback(id, fields) {
 }
 
 export async function deleteFeedback(id) {
-  const { error } = await supabase.from('feedback_entries').delete().eq('id', id);
+  const { error } = await supabase.from('feedback_entries').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   return { error };
 }
 
@@ -474,6 +475,7 @@ export async function fetchSessions() {
   const { data, error } = await supabase
     .from('sessions')
     .select('id, athlete_id, exercise_id, date, entries, notes, exercise_name, with_rope, created_at, created_by')
+    .is('deleted_at', null)
     .order('date', { ascending: false });
   if (error) { console.warn('Sessions fetch:', error.message); return []; }
   return data || [];
@@ -494,7 +496,7 @@ export async function updateSession(id, fields) {
 }
 
 export async function deleteSession(id) {
-  const { error } = await supabase.from('sessions').delete().eq('id', id);
+  const { error } = await supabase.from('sessions').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   return { error };
 }
 
@@ -505,7 +507,7 @@ export async function bulkInsertSessions(sessions) {
 }
 
 export async function deleteSessionsByExercise(exerciseId) {
-  const { error } = await supabase.from('sessions').delete().eq('exercise_id', exerciseId);
+  const { error } = await supabase.from('sessions').update({ deleted_at: new Date().toISOString() }).eq('exercise_id', exerciseId);
   return { error };
 }
 
@@ -527,6 +529,7 @@ export async function fetchCompetitions() {
   const { data, error } = await supabase
     .from('competitions')
     .select('id, athlete_id, program_id, name, date, location, host, start_nr, table1, table2, t1_schwierigkeit, t2_schwierigkeit, pdf_ref, target_score, created_at, created_by')
+    .is('deleted_at', null)
     .order('date', { ascending: false });
   if (error) { console.warn('Competitions fetch:', error.message); return []; }
   return data || [];
@@ -539,7 +542,7 @@ export async function upsertCompetition(comp) {
   return { data, error };
 }
 export async function deleteCompetition(id) {
-  const { error } = await supabase.from('competitions').delete().eq('id', id);
+  const { error } = await supabase.from('competitions').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   return { error };
 }
 
@@ -548,6 +551,7 @@ export async function fetchPrograms() {
   const { data, error } = await supabase
     .from('programs')
     .select('id, owner_id, name, discipline, exercises, created_at')
+    .is('deleted_at', null)
     .order('created_at', { ascending: true });
   if (error) { console.warn('Programs fetch:', error.message); return []; }
   return data || [];
@@ -567,7 +571,7 @@ export async function upsertProgram(prog) {
   return { data, error };
 }
 export async function deleteProgram(id) {
-  const { error } = await supabase.from('programs').delete().eq('id', id);
+  const { error } = await supabase.from('programs').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   return { error };
 }
 
@@ -576,6 +580,7 @@ export async function fetchExercises() {
   const { data, error } = await supabase
     .from('exercises')
     .select('id, owner_id, name, uci_code, uci_disc, points, active, category_mode, third_label, success_label, fail_label, default_series, target_rate, has_rope_variant, created_at')
+    .is('deleted_at', null)
     .order('created_at', { ascending: true });
   if (error) { console.warn('Exercises fetch:', error.message); return []; }
   return data || [];
@@ -594,7 +599,52 @@ export async function upsertExercise(ex) {
   return { data, error };
 }
 export async function deleteExercise(id) {
-  const { error } = await supabase.from('exercises').delete().eq('id', id);
+  const { error } = await supabase.from('exercises').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+  return { error };
+}
+
+// =============================================================
+// Papierkorb / Soft-Delete (zuletzt gelöscht — 30 Tage)
+// =============================================================
+// Gelöschte Datensätze bekommen deleted_at gesetzt und werden aus den normalen
+// Abfragen ausgeblendet (.is('deleted_at', null)). Hier holen wir genau diese
+// „gelöschten" Einträge der letzten 30 Tage zum Wiederherstellen zurück.
+export const TRASH_RETENTION_DAYS = 30;
+
+export async function fetchTrash() {
+  const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 3600 * 1000).toISOString();
+  const q = (table, sel) => supabase
+    .from(table).select(sel)
+    .not('deleted_at', 'is', null)
+    .gte('deleted_at', cutoff)
+    .order('deleted_at', { ascending: false });
+  const [se, co, ex, pr, fb] = await Promise.all([
+    q('sessions', 'id, athlete_id, exercise_name, date, deleted_at'),
+    q('competitions', 'id, athlete_id, name, date, deleted_at'),
+    q('exercises', 'id, owner_id, name, uci_code, deleted_at'),
+    q('programs', 'id, owner_id, name, deleted_at'),
+    q('feedback_entries', 'id, athlete_id, deleted_at'),
+  ]);
+  const items = [];
+  (se.data || []).forEach(r => items.push({ kind: 'session', kindLabel: 'Training', table: 'sessions', id: r.id, label: (r.exercise_name || 'Training') + (r.date ? ' · ' + r.date : ''), deleted_at: r.deleted_at }));
+  (co.data || []).forEach(r => items.push({ kind: 'competition', kindLabel: 'Wettkampf', table: 'competitions', id: r.id, label: (r.name || 'Wettkampf') + (r.date ? ' · ' + r.date : ''), deleted_at: r.deleted_at }));
+  (ex.data || []).forEach(r => items.push({ kind: 'exercise', kindLabel: 'Übung', table: 'exercises', id: r.id, label: r.name || (r.uci_code || 'Übung'), deleted_at: r.deleted_at }));
+  (pr.data || []).forEach(r => items.push({ kind: 'program', kindLabel: 'Programm', table: 'programs', id: r.id, label: r.name || 'Programm', deleted_at: r.deleted_at }));
+  (fb.data || []).forEach(r => items.push({ kind: 'feedback', kindLabel: 'Feedback', table: 'feedback_entries', id: r.id, label: 'Feedback-Eintrag', deleted_at: r.deleted_at }));
+  items.sort((a, b) => (b.deleted_at || '').localeCompare(a.deleted_at || ''));
+  return items;
+}
+
+// Stellt einen gelöschten Eintrag wieder her (deleted_at → null). RLS erlaubt das
+// Update nur, wenn der Nutzer die Daten verwalten darf.
+export async function restoreTrashItem(table, id) {
+  const { error } = await supabase.from(table).update({ deleted_at: null }).eq('id', id);
+  return { error };
+}
+
+// Endgültig löschen (echtes DELETE) — für „unwiderruflich entfernen".
+export async function purgeTrashItem(table, id) {
+  const { error } = await supabase.from(table).delete().eq('id', id);
   return { error };
 }
 
