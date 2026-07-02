@@ -655,6 +655,15 @@ export async function migrateBlobToTables() {
   return { data, error };
 }
 
+// Self-Service-Kontolöschung (Apple-Pflicht 5.1.1(v)): der eingeloggte Nutzer
+// löscht sein EIGENES Konto samt aller Daten (ON DELETE CASCADE). Danach wird
+// die Session beendet. Unwiderruflich.
+export async function deleteMyAccount() {
+  const { error } = await supabase.rpc('delete_my_account');
+  if (!error) { try { await supabase.auth.signOut(); } catch { /* egal */ } }
+  return { error };
+}
+
 // =============================================================
 // Multi-Trainer (Phase 11) — athlete_coaches + coach_invites
 // =============================================================

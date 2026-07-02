@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, scanWertungsbogenVision, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS } from './lib/supabase';
+import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, scanWertungsbogenVision, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -9409,6 +9409,25 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
           <span className="flex items-center gap-3">
             <RotateCcw size={18} className="text-[#FF3B30]" />
             <span className="text-[15px] text-[#FF3B30] font-medium">{t('settings.resetButton')}</span>
+          </span>
+        </IOSListRow>
+      </IOSList>
+
+      {/* Konto löschen — Self-Service (Apple-Pflicht 5.1.1(v)): unwiderruflich */}
+      <IOSList footer="Löscht dein Konto und ALLE deine Daten (Trainings, Wettkämpfe, Übungen, Programme, Feedback) unwiderruflich. Das kann nicht rückgängig gemacht werden.">
+        <IOSListRow
+          onClick={async () => {
+            if (!confirm('Dein Konto und ALLE deine Daten werden unwiderruflich gelöscht.\n\nFortfahren?')) return;
+            if (!confirm('Wirklich löschen? Das kann NICHT rückgängig gemacht werden.')) return;
+            const { error } = await deleteMyAccount();
+            if (error) { alert('Löschen fehlgeschlagen: ' + error.message); return; }
+            alert('Dein Konto wurde gelöscht.');
+            window.location.assign('/web');
+          }}
+          trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
+          <span className="flex items-center gap-3">
+            <Trash2 size={18} className="text-[#FF3B30]" />
+            <span className="text-[15px] text-[#FF3B30] font-medium">Konto löschen</span>
           </span>
         </IOSListRow>
       </IOSList>
