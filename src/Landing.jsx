@@ -42,7 +42,7 @@ function AppBanner() {
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-[13px] font-semibold leading-tight truncate">{APP_NAME}</div>
-          <div className="text-[11px] text-white/60 leading-tight truncate">Kunstrad-Coaching für iPhone</div>
+          <div className="text-[11px] text-white/60 leading-tight truncate">Kunstrad-Coaching für iOS</div>
         </div>
         <a href={APP_STORE_URL} target="_blank" rel="noreferrer"
           className="shrink-0 text-[13px] font-semibold px-4 py-1.5 rounded-full"
@@ -135,7 +135,7 @@ function Home() {
         </h1>
         <p className="mt-5 text-[17px] sm:text-[19px] text-slate-600 max-w-2xl mx-auto">
           {APP_NAME} ist das Coaching-Tool für Kunstradsport: Training protokollieren, Wertungsbögen scannen,
-          Fortschritt sehen — auf dem iPhone und im Web.
+          Fortschritt sehen — auf iOS und im Web.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <a href="/web" className="px-6 py-3 rounded-full text-white font-semibold active:scale-95 transition" style={{ background: ACCENT }}>
@@ -146,7 +146,7 @@ function Home() {
             <Smartphone size={18} /> Im App Store
           </a>
         </div>
-        <p className="mt-3 text-[12px] text-slate-400">iPhone-App derzeit in der Beta (TestFlight) — App-Store-Release in Kürze.</p>
+        <p className="mt-3 text-[12px] text-slate-400">iOS-App derzeit in der Beta (TestFlight) — App-Store-Release in Kürze.</p>
       </Section>
 
       <Section className="pb-16 sm:pb-24">
@@ -296,7 +296,7 @@ function Home() {
       <div className="bg-slate-900 text-white">
         <Section className="py-16 text-center">
           <h2 className="text-[28px] sm:text-[34px] font-bold tracking-tight">Bereit loszulegen?</h2>
-          <p className="mt-3 text-white/70 max-w-xl mx-auto">Im Browser sofort starten oder die iPhone-App holen.</p>
+          <p className="mt-3 text-white/70 max-w-xl mx-auto">Im Browser sofort starten oder die iOS-App holen.</p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
             <a href="/web" className="px-6 py-3 rounded-full font-semibold text-white active:scale-95 transition" style={{ background: ACCENT }}>Web-App öffnen</a>
             <a href={APP_STORE_URL} target="_blank" rel="noreferrer" className="px-6 py-3 rounded-full font-semibold bg-white/10 hover:bg-white/15 transition">Im App Store</a>
@@ -326,7 +326,7 @@ function Funktionen() {
         ))}
       </div>
       <div className="mt-10 flex items-center gap-3 text-[14px] text-slate-500">
-        <ShieldCheck size={18} style={{ color: ACCENT }} /> Daten sicher in der Cloud · <Globe size={16} /> Web & iPhone synchron
+        <ShieldCheck size={18} style={{ color: ACCENT }} /> Daten sicher in der Cloud · <Globe size={16} /> Web & iOS synchron
       </div>
     </Section>
   );
@@ -335,7 +335,7 @@ function Funktionen() {
 // ---- FAQ -----------------------------------------------------------------
 const FAQS = [
   { q: 'Was ist ArtCyc?', a: 'Ein Coaching-Tool speziell für Kunstradsport: Training protokollieren, Wettkampf-Wertungsbögen auswerten und den Fortschritt von Sportlern verfolgen.' },
-  { q: 'Brauche ich die App oder reicht der Browser?', a: 'Beides geht. Die Web-App läuft im Browser unter artcyc.app/web. Die iPhone-App bietet zusätzlich Foto-Scan und Push-Erinnerungen.' },
+  { q: 'Brauche ich die App oder reicht der Browser?', a: 'Beides geht. Die Web-App läuft im Browser unter artcyc.app/web. Die iOS-App bietet zusätzlich Foto-Scan und Push-Erinnerungen.' },
   { q: 'Was kostet ArtCyc?', a: 'Aktuell befindet sich ArtCyc im Aufbau. Details zu Preisen folgen.' },
   { q: 'Wie lade ich Sportler oder Co-Trainer ein?', a: 'In der App über einen Einlade-Code: Du erstellst pro Sportler bzw. Trainer einen Code, der einmalig eingelöst wird.' },
   { q: 'Können mehrere Trainer denselben Sportler betreuen?', a: 'Ja. Ein Sportler kann mehrere (Co-)Trainer freischalten — alle sehen dieselben Daten in Echtzeit. Jeder Sportler legt dabei pro Trainer fest, ob dieser nur eintragen oder auch bearbeiten und löschen darf.' },
@@ -442,7 +442,7 @@ function Footer() {
             </span>
             ArtCyc
           </div>
-          <p className="text-[13px] text-slate-500 mt-2 max-w-xs">Coaching-Tool für Kunstradsport — Web & iPhone.</p>
+          <p className="text-[13px] text-slate-500 mt-2 max-w-xs">Coaching-Tool für Kunstradsport — Web & iOS.</p>
         </div>
         <div className="flex flex-col gap-1.5 text-[14px]">
           <a href="/funktionen" className="text-slate-600 hover:text-slate-900">Funktionen</a>
