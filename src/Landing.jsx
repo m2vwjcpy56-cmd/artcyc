@@ -231,14 +231,22 @@ function Home() {
       <Section className="pb-16 sm:pb-24">
         <div className="bg-white rounded-3xl border border-slate-200/70 p-6 sm:p-8 shadow-[0_1px_3px_rgba(0,0,0,0.04)] grid md:grid-cols-2 gap-8 items-center">
           <div>
-            <div className="inline-flex items-center gap-2 text-[12px] font-semibold text-white rounded-full px-3 py-1 mb-4" style={{ background: ACCENT }}>2000+ Übungen</div>
+            <div className="inline-flex items-center gap-2 text-[12px] font-semibold text-white rounded-full px-3 py-1 mb-4" style={{ background: ACCENT }}>Komplettes Reglement</div>
             <h2 className="text-[26px] sm:text-[32px] font-bold tracking-tight leading-tight">Das komplette Reglement — schon drin.</h2>
             <p className="mt-3 text-[15px] sm:text-[16px] text-slate-600 leading-relaxed">Alle offiziellen Kunstrad-Übungen mit Übungsnummer und Punktzahl sind hinterlegt. Übung suchen, antippen — fertig. Kein manuelles Anlegen, kein Punkte-Tabellen-Wälzen.</p>
+            {/* Großer Zähler-Effekt für die Menge der hinterlegten Übungen */}
+            <div className="mt-6 flex items-center gap-4">
+              <span className="font-black leading-none tracking-tighter text-[64px] sm:text-[80px]"
+                style={{ backgroundImage: `linear-gradient(135deg, ${ACCENT}, #FF3B30)`, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
+                2.000+
+              </span>
+              <span className="text-[14px] font-semibold text-slate-500 leading-tight">offizielle<br />Übungen<br />sofort parat</span>
+            </div>
           </div>
-          <div className="rounded-2xl border border-slate-200/70 overflow-hidden bg-slate-50/50">
+          <div className="rounded-2xl border border-slate-200/70 overflow-hidden bg-slate-50">
             {REGLEMENT_SAMPLE.map((f, i) => (
               <div key={f.c} className={'flex items-center gap-3 px-4 py-3 ' + (i > 0 ? 'border-t border-slate-200/60' : '')}>
-                <span className="text-[12px] font-mono text-slate-400 tabular-nums w-14 shrink-0">{f.c}</span>
+                <span className="text-[12px] font-mono text-slate-500 tabular-nums w-14 shrink-0">{f.c}</span>
                 <span className="flex-1 text-[14px] font-medium truncate">{f.n}</span>
                 <span className="text-[13px] font-semibold tabular-nums shrink-0" style={{ color: ACCENT }}>{f.p}</span>
               </div>
@@ -408,14 +416,6 @@ function Impressum() {
         <div>
           <div className="font-semibold">Kontakt</div>
           <p>E-Mail: info@artcyc.app<br />Telefon: +49 160 8280306</p>
-        </div>
-        <div>
-          <div className="font-semibold">Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV</div>
-          <p>Hermann Alber, Anschrift wie oben</p>
-        </div>
-        <div>
-          <div className="font-semibold">Haftung für Inhalte &amp; Links</div>
-          <p>Für eigene Inhalte auf diesen Seiten sind wir nach den allgemeinen Gesetzen verantwortlich. Für Inhalte externer Links sind ausschließlich deren Betreiber verantwortlich; zum Zeitpunkt der Verlinkung waren keine Rechtsverstöße erkennbar.</p>
         </div>
       </div>
     </Section>
