@@ -2831,7 +2831,11 @@ function cleanestExerciseName(group, code) {
 //    ODER = ich.  • Übungen: owner_id fehlt (Blob) ODER = ich — explizit null
 //    ist der globale UCI-Katalog und bleibt tabu.
 function ownsProgramForWrite(p, myUserId) {
-  return p.owner_id == null || p.owner_id === myUserId;
+  // undefined = lokaler Blob (noch nie in der Cloud) → gehört mir.
+  // null = verwaistes DB-Programm (Alt-Import, oft von Wettkämpfen referenziert) →
+  // NICHT als eigen behandeln, sonst löscht die Duplikat-Bereinigung ein echtes
+  // eigenes Programm zugunsten des referenzierten verwaisten „Duplikats" (Datenverlust).
+  return p.owner_id === undefined || p.owner_id === myUserId;
 }
 function ownsExerciseForWrite(e, myUserId) {
   return e.owner_id === undefined || e.owner_id === myUserId;
