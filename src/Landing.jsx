@@ -383,27 +383,39 @@ function Kontakt() {
   );
 }
 
-// ---- Impressum (PLATZHALTER) --------------------------------------------
+// ---- Impressum ----------------------------------------------------------
 function Impressum() {
   return (
     <Section className="py-14 max-w-3xl">
       <h1 className="text-[34px] font-bold tracking-tight mb-6">Impressum</h1>
-      <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 text-[14px] mb-6">
-        ⚠️ Platzhalter — vor Veröffentlichung mit den gesetzlich erforderlichen Angaben (§ 5 DDG) füllen:
-        ladungsfähige Anschrift, Name, Kontakt. Eine reine Postfach-/Fantasieadresse genügt rechtlich nicht.
-      </div>
-      <div className="space-y-4 text-[15px] text-slate-700 leading-relaxed">
+      <div className="space-y-5 text-[15px] text-slate-700 leading-relaxed">
         <div>
           <div className="font-semibold">Angaben gemäß § 5 DDG</div>
-          <p>[Name / Verantwortliche Person]<br />[Straße &amp; Hausnummer]<br />[PLZ Ort]</p>
+          <p>Rad- und Kraftfahrerverein Denkendorf 1909 e.&nbsp;V.<br />
+            Löcherhaldenstraße 36<br />
+            73770 Denkendorf</p>
+        </div>
+        <div>
+          <div className="font-semibold">Vertreten durch den Vorstand</div>
+          <p>Hermann Alber (1. Vorsitzender)<br />
+            Dagmar Staudinger (stellvertretende Vorsitzende)<br />
+            Jasmin Wörner (Vorstand Finanzen)</p>
+        </div>
+        <div>
+          <div className="font-semibold">Registereintrag</div>
+          <p>Vereinsregister – Amtsgericht Stuttgart<br />Registernummer: VR 210271</p>
         </div>
         <div>
           <div className="font-semibold">Kontakt</div>
-          <p>E-Mail: info@artcyc.app</p>
+          <p>E-Mail: info@artcyc.app<br />Telefon: +49 160 8280306</p>
         </div>
         <div>
-          <div className="font-semibold">Verantwortlich für den Inhalt</div>
-          <p>[Name]</p>
+          <div className="font-semibold">Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV</div>
+          <p>Hermann Alber, Anschrift wie oben</p>
+        </div>
+        <div>
+          <div className="font-semibold">Haftung für Inhalte &amp; Links</div>
+          <p>Für eigene Inhalte auf diesen Seiten sind wir nach den allgemeinen Gesetzen verantwortlich. Für Inhalte externer Links sind ausschließlich deren Betreiber verantwortlich; zum Zeitpunkt der Verlinkung waren keine Rechtsverstöße erkennbar.</p>
         </div>
       </div>
     </Section>
@@ -415,16 +427,14 @@ function Datenschutz() {
   return (
     <Section className="py-14 max-w-3xl">
       <h1 className="text-[34px] font-bold tracking-tight mb-6">Datenschutzerklärung</h1>
-      <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 text-[14px] mb-6">
-        ⚠️ Vorlage — bitte vor Veröffentlichung prüfen/ergänzen (Verantwortlicher, konkrete Dienste, Aufbewahrung).
-      </div>
       <div className="space-y-5 text-[15px] text-slate-700 leading-relaxed">
-        <div><div className="font-semibold">1. Verantwortlicher</div><p>Siehe Impressum.</p></div>
-        <div><div className="font-semibold">2. Welche Daten wir verarbeiten</div><p>Konto-Daten (Name, E-Mail), sowie die von dir eingegebenen Trainings-, Wettkampf- und Sportlerdaten. Diese sind nötig, um die App-Funktionen bereitzustellen.</p></div>
-        <div><div className="font-semibold">3. Hosting & Speicherung</div><p>Die App wird über Vercel ausgeliefert; Daten werden bei Supabase (EU) gespeichert. Mit diesen Anbietern bestehen entsprechende Verträge zur Auftragsverarbeitung.</p></div>
-        <div><div className="font-semibold">4. Zweck & Rechtsgrundlage</div><p>Die Verarbeitung erfolgt zur Vertragserfüllung (Art. 6 Abs. 1 lit. b DSGVO) bzw. auf Grundlage deiner Einwilligung.</p></div>
-        <div><div className="font-semibold">5. Deine Rechte</div><p>Du hast das Recht auf Auskunft, Berichtigung, Löschung und Datenübertragbarkeit. Konto und Daten können in der App gelöscht werden.</p></div>
-        <div><div className="font-semibold">6. Kontakt</div><p>Bei Datenschutz-Fragen: siehe Impressum/Kontakt.</p></div>
+        <div><div className="font-semibold">1. Verantwortlicher</div><p>Rad- und Kraftfahrerverein Denkendorf 1909 e.&nbsp;V., Löcherhaldenstraße 36, 73770 Denkendorf. Kontakt: info@artcyc.app (weitere Angaben im Impressum).</p></div>
+        <div><div className="font-semibold">2. Welche Daten wir verarbeiten</div><p>Konto-Daten (Name, E-Mail) sowie die von dir eingegebenen Trainings-, Wettkampf- und Sportlerdaten. Diese sind nötig, um die App-Funktionen bereitzustellen.</p></div>
+        <div><div className="font-semibold">3. Hosting & Speicherung</div><p>Die App wird über Vercel ausgeliefert; Daten werden bei Supabase (Rechenzentrum EU) gespeichert. Mit diesen Anbietern bestehen Verträge zur Auftragsverarbeitung.</p></div>
+        <div><div className="font-semibold">4. Wertungsbogen-Scan (KI)</div><p>Nutzt du die optionale Scan-Funktion, wird das aufgenommene Foto des Wertungsbogens zur automatischen Texterkennung an den KI-Dienst Google Gemini (Google, auch USA) übertragen und dort verarbeitet. Die Funktion ist freiwillig; Rechtsgrundlage ist deine Einwilligung bzw. die Vertragserfüllung (Art. 6 Abs. 1 lit. a/b DSGVO). Ohne Nutzung des Scans findet diese Übermittlung nicht statt.</p></div>
+        <div><div className="font-semibold">5. Zweck & Rechtsgrundlage</div><p>Die Verarbeitung erfolgt zur Vertragserfüllung (Art. 6 Abs. 1 lit. b DSGVO) bzw. auf Grundlage deiner Einwilligung.</p></div>
+        <div><div className="font-semibold">6. Deine Rechte</div><p>Du hast das Recht auf Auskunft, Berichtigung, Löschung und Datenübertragbarkeit. Konto und Daten kannst du jederzeit in der App löschen (Einstellungen → Konto löschen).</p></div>
+        <div><div className="font-semibold">7. Kontakt</div><p>Bei Datenschutz-Fragen: info@artcyc.app.</p></div>
       </div>
     </Section>
   );
