@@ -12346,7 +12346,11 @@ function ProgrammeView({ data, setData, myUserId = null }) {
     );
   }
 
-  const programs = data.programs || [];
+  // Verwaiste Programme (owner_id = null, aus Alt-Importen/Scans) NICHT in der Liste
+  // zeigen — sie gehören niemandem und tauchten sonst bei jedem Nutzer als „random
+  // andere" auf. Sie bleiben in data.programs (Wettkampf-Scoring via programMap),
+  // erscheinen aber nicht in dieser Verwaltungs-Liste.
+  const programs = (data.programs || []).filter(p => p.owner_id != null);
   const competitions = data.competitions || [];
 
   // Doppelte Programme/Übungen erkennen → „Bereinigen"-Hinweis anbieten.
