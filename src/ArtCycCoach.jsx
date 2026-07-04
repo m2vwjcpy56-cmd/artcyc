@@ -4802,6 +4802,7 @@ export default function App() {
     notes: s.notes || '',
     exerciseName: s.exercise_name || '',
     withRope: typeof s.with_rope === 'boolean' ? s.with_rope : null,
+    repCount: s.rep_count || null,  // erreichte Anzahl (taktisch, z. B. Lenkerdrehungen)
     created: s.created_at || null   // Zeitstempel für Sortierung + Uhrzeit-Anzeige
   }), []);
   const dbCompetitionToBlob = useCallback((c) => ({
@@ -4860,7 +4861,8 @@ export default function App() {
         exercise_name: s.exerciseName || s.exercise_name || '',
         with_rope: typeof s.withRope === 'boolean' ? s.withRope
                   : typeof s.with_rope === 'boolean' ? s.with_rope
-                  : null
+                  : null,
+        rep_count: s.repCount || s.rep_count || null
       })).filter(p => p.exercise_id);
       if (payload.length > 0) {
         const { error } = await bulkInsertSessions(payload);
@@ -4874,19 +4876,22 @@ export default function App() {
       const old = oldById.get(s.id);
       if (!old) continue; // war ein Insert (oben behandelt)
       const wr = (v) => (typeof v?.withRope === 'boolean' ? v.withRope : (typeof v?.with_rope === 'boolean' ? v.with_rope : null));
+      const rc = (v) => (v?.repCount || v?.rep_count || null);
       const changed =
         (old.date || '') !== (s.date || '') ||
         JSON.stringify(old.entries || []) !== JSON.stringify(s.entries || []) ||
         (old.notes || '') !== (s.notes || '') ||
         (old.exerciseId || old.exercise_id || '') !== (s.exerciseId || s.exercise_id || '') ||
-        wr(old) !== wr(s);
+        wr(old) !== wr(s) ||
+        rc(old) !== rc(s);
       if (!changed) continue;
       const { error } = await updateSession(s.id, {
         date: s.date,
         entries: s.entries || [],
         notes: s.notes || '',
         exercise_id: s.exerciseId || s.exercise_id,
-        with_rope: wr(s)
+        with_rope: wr(s),
+        rep_count: rc(s)
       });
       if (error) console.warn('Session update:', error.message);
     }
@@ -7121,6 +7126,9 @@ function TrainingView({ data, setData, setView }) {
             )}
             {s.withRope === false && (
               <span className="text-[10px] font-medium text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded-full shrink-0">ohne</span>
+            )}
+            {(s.repCount || 0) > 0 && (
+              <span className="text-[10px] font-medium text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded-full shrink-0">{s.repCount}×</span>
             )}
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
@@ -11967,6 +11975,7 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
   const [entries, setEntries] = useState(bootDraft?.entries || []);
   const [notes, setNotes] = useState(bootDraft?.notes || '');
   const [withRope, setWithRope] = useState(typeof bootDraft?.withRope === 'boolean' ? bootDraft.withRope : true);
+  const [repCount, setRepCount] = useState(bootDraft?.repCount || 0); // erreichte Anzahl (taktisch)
   const [addOpen, setAddOpen] = useState(false);   // Reglement-Suche offen?
   const [draftRestored, setDraftRestored] = useState(!!bootDraft); // Hinweis-Banner
 
@@ -11984,10 +11993,10 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
     if (savedRef.current) return;
     const hasProgress = entries.length > 0 || (notes && notes.trim());
     try {
-      if (hasProgress) localStorage.setItem(DRAFT_KEY, JSON.stringify({ date, exerciseId, athleteId, entries, notes, withRope }));
+      if (hasProgress) localStorage.setItem(DRAFT_KEY, JSON.stringify({ date, exerciseId, athleteId, entries, notes, withRope, repCount }));
       else localStorage.removeItem(DRAFT_KEY);
     } catch { /* localStorage evtl. blockiert */ }
-  }, [date, exerciseId, athleteId, entries, notes, withRope]);
+  }, [date, exerciseId, athleteId, entries, notes, withRope, repCount]);
 
   const exercise = data.exercises.find(e => e.id === exerciseId);
 
@@ -12065,6 +12074,7 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
         entries,
         notes: notes.trim() || null,
         withRope: exercise.has_rope_variant ? withRope : null,
+        repCount: repCount > 0 ? repCount : null,  // taktische Aufwertung: erreichte Anzahl
         created: new Date().toISOString()   // Uhrzeit für Reihenfolge + Anzeige
       }]
     });
@@ -12147,6 +12157,19 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
               </select>
             </div>
           )}
+
+          {/* Taktische Aufwertung: erreichte Anzahl (z. B. Lenkerdrehungen) — optional */}
+          <div>
+            <label className="text-sm font-medium block mb-1.5">Erreichte Anzahl <span className="font-normal text-slate-400">(optional, z. B. Drehungen)</span></label>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => setRepCount(c => Math.max(0, c - 1))}
+                className="w-10 h-10 rounded-xl border border-slate-300 bg-white text-[20px] font-semibold text-slate-700 active:scale-95 disabled:opacity-40"
+                disabled={repCount <= 0}>−</button>
+              <div className="w-14 text-center text-[17px] font-semibold tabular-nums">{repCount > 0 ? repCount : '–'}</div>
+              <button type="button" onClick={() => setRepCount(c => Math.min(99, c + 1))}
+                className="w-10 h-10 rounded-xl border border-slate-300 bg-white text-[20px] font-semibold text-slate-700 active:scale-95">+</button>
+            </div>
+          </div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5">
@@ -12161,7 +12184,7 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
             <div className="mb-3 flex items-center justify-between gap-2 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2 text-[13px] text-sky-900">
               <span className="flex items-center gap-1.5"><RotateCcw size={14} className="shrink-0" /> Entwurf wiederhergestellt</span>
               <button type="button"
-                onClick={(ev) => { pressFeedback(ev, 'light'); setEntries([]); setNotes(''); setDraftRestored(false); try { localStorage.removeItem(DRAFT_KEY); } catch { /* egal */ } }}
+                onClick={(ev) => { pressFeedback(ev, 'light'); setEntries([]); setNotes(''); setRepCount(0); setDraftRestored(false); try { localStorage.removeItem(DRAFT_KEY); } catch { /* egal */ } }}
                 className="font-medium text-sky-700 active:opacity-60 shrink-0">
                 Verwerfen
               </button>

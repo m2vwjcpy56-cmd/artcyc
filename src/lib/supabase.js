@@ -474,17 +474,17 @@ export async function clearClaimCodeForAthlete(athleteId) {
 export async function fetchSessions() {
   const { data, error } = await supabase
     .from('sessions')
-    .select('id, athlete_id, exercise_id, date, entries, notes, exercise_name, with_rope, created_at, created_by')
+    .select('id, athlete_id, exercise_id, date, entries, notes, exercise_name, with_rope, rep_count, created_at, created_by')
     .is('deleted_at', null)
     .order('date', { ascending: false });
   if (error) { console.warn('Sessions fetch:', error.message); return []; }
   return data || [];
 }
 
-export async function insertSession({ athlete_id, exercise_id, date, entries, notes = '', exercise_name = '', with_rope = null }) {
+export async function insertSession({ athlete_id, exercise_id, date, entries, notes = '', exercise_name = '', with_rope = null, rep_count = null }) {
   const { data, error } = await supabase
     .from('sessions')
-    .insert({ athlete_id, exercise_id, date, entries, notes, exercise_name, with_rope })
+    .insert({ athlete_id, exercise_id, date, entries, notes, exercise_name, with_rope, rep_count })
     .select()
     .single();
   return { data, error };
