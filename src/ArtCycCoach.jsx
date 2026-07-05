@@ -2674,30 +2674,80 @@ function calcTableResult(program, entries, schwierigkeit = 0) {
 
 // „Höchste Abzüge" (nach Dieter Mautes Wettkampfstatistik): Ø-Punktabzug pro Übung
 // über alle Wettkämpfe (x 0,2 · ~ 0,5 · | 1,0 · ○ 2,0), absteigend — plus
-// Trainings-Erfolgsquote zum Vergleich.
+// Trainings-Erfolgsquote zum Vergleich, Abzugs-Serie und Schwierigkeits-Histogramm.
+// Platzhalter-Namen („Übung 12") werden über die Punktfolge hergeleitet; Einträge
+// ohne Nummer werden mit gleichnamigen MIT Nummer zusammengeführt (sonst taucht
+// dieselbe Übung doppelt auf).
 function calcDeductionRanking(programs, competitions, exercises, sessions) {
+  const isPlaceholder = (n) => /^übung\s*\d+$/i.test((n || '').trim());
+  const norm = (n) => (n || '').toLowerCase().replace(/\s+/g, ' ').replace(/[ .]+$/, '').trim();
   const programMap = new Map((programs || []).map(p => [p.id, p]));
+  const sigOf = (p) => (p.exercises || []).map(e => Number(e.points || 0).toFixed(2)).join(',');
+
+  // Herleitung: Programme mit identischer Punktfolge = dasselbe Programm →
+  // Platzhalter übernehmen den Namen derselben Position eines benannten Programms.
+  const derived = new Map();
+  (programs || []).forEach(p => {
+    const sig = sigOf(p);
+    (p.exercises || []).forEach((ex, idx) => {
+      const n = (ex.name || '').trim();
+      if (n && !isPlaceholder(n) && !derived.has(sig + '|' + idx)) derived.set(sig + '|' + idx, n);
+    });
+  });
+  const resolvedName = (ex, idx, sig) => {
+    const n = (ex.name || '').trim();
+    if (!n || isPlaceholder(n)) return derived.get(sig + '|' + idx) || (n || 'Übung');
+    return n;
+  };
+
+  // Pass 1: Name→Nummer, damit nummernlose Einträge zur Nummern-Gruppe finden.
+  const codeByName = new Map();
+  for (const comp of (competitions || [])) {
+    const program = programMap.get(comp.program_id);
+    if (!program || !program.exercises) continue;
+    const sig = sigOf(program);
+    program.exercises.forEach((ex, idx) => {
+      const code = ex.code && String(ex.code).trim();
+      if (code) codeByName.set(norm(resolvedName(ex, idx, sig)), code.toLowerCase());
+    });
+  }
+
+  // Pass 2: Aggregation (Fehlerbild, Histogramm, Serie).
   const acc = new Map();
   for (const comp of (competitions || [])) {
     const program = programMap.get(comp.program_id);
     if (!program || !program.exercises) continue;
+    const sig = sigOf(program);
     const seen = new Set();
+    const dedThis = new Map();
     program.exercises.forEach((ex, idx) => {
-      const key = (ex.code && String(ex.code).trim()) || (ex.name || '').trim().toLowerCase();
-      if (!key) return;
+      const name = resolvedName(ex, idx, sig);
+      const nk = norm(name);
+      if (!nk) return;
+      const code = ex.code && String(ex.code).trim().toLowerCase();
+      const key = code || codeByName.get(nk) || nk;
       let s = acc.get(key);
-      if (!s) { s = { key, name: ex.name || 'Übung', competitions: 0, cross: 0, wave: 0, bar: 0, circle: 0 }; acc.set(key, s); }
+      if (!s) { s = { key, name, competitions: 0, cross: 0, wave: 0, bar: 0, circle: 0, schwPctHist: {}, series: [] }; acc.set(key, s); }
+      if (isPlaceholder(s.name) && !isPlaceholder(name)) s.name = name;
+      let ded = 0;
       [(comp.table1 || [])[idx], (comp.table2 || [])[idx]].forEach(e => {
         if (!e) return;
         s.cross += Number(e.cross || 0); s.wave += Number(e.wave || 0);
         s.bar += Number(e.bar || 0); s.circle += Number(e.circle || 0);
+        const pct = String(Number(e.schwPct || 0));
+        if (pct !== '0') s.schwPctHist[pct] = (s.schwPctHist[pct] || 0) + 1;
+        ded += Number(e.cross || 0) * 0.2 + Number(e.wave || 0) * 0.5 + Number(e.bar || 0) * 1.0 + Number(e.circle || 0) * 2.0;
       });
+      dedThis.set(key, (dedThis.get(key) || 0) + ded);
       if (!seen.has(key)) { s.competitions += 1; seen.add(key); }
     });
+    for (const [key, ded] of dedThis) acc.get(key).series.push({ name: comp.name || 'Wettkampf', date: comp.date || '', ded });
   }
+
   const exByKey = new Map();
   (exercises || []).forEach(e => {
-    const key = (e.uci_code && String(e.uci_code).trim()) || (e.name || '').trim().toLowerCase();
+    const code = e.uci_code && String(e.uci_code).trim().toLowerCase();
+    const key = code || norm(e.name);
     if (key && !exByKey.has(key)) exByKey.set(key, e);
   });
   const bySessions = new Map();
@@ -2710,6 +2760,7 @@ function calcDeductionRanking(programs, competitions, exercises, sessions) {
   return [...acc.values()]
     .filter(s => s.competitions > 0)
     .map(s => {
+      s.series.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       const ded = s.cross * 0.2 + s.wave * 0.5 + s.bar * 1.0 + s.circle * 2.0;
       const ex = exByKey.get(s.key);
       const tr = ex ? bySessions.get(ex.id) : null;
@@ -13368,6 +13419,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
   const { t } = useI18n();
   const [tab, setTab] = useState('wettkaempfe'); // 'wettkaempfe' | 'programme'
   const [showAllDeductions, setShowAllDeductions] = useState(false); // „Höchste Abzüge" ausgeklappt?
+  const [expandedDeduction, setExpandedDeduction] = useState(null);  // Detail-Aufklappung (key)
 
   // Persistierter Editor-Öffnungs-Zustand
   const initView = (() => {
@@ -13603,21 +13655,68 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
               <div className="card-surface rounded-[22px] p-4 space-y-1">
                 <h2 className="text-[15px] font-semibold flex items-center gap-2 mb-2"><TrendingDown size={16} className="text-[#FF3B30]" /> Höchste Abzüge</h2>
                 {shown.map((r, i) => (
-                  <div key={r.key} className={'flex items-center gap-3 py-2 ' + (i > 0 ? 'border-t border-[#C6C6C8]/30' : '')}>
-                    <span className={'w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0 tabular-nums ' + (i < 3 ? 'bg-[#FF9500]/15 text-[#FF9500]' : 'bg-[#8E8E93]/12 text-[#8E8E93]')}>{i + 1}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[14px] font-medium truncate">{r.name}</div>
-                      <div className="text-[12px] text-[#8E8E93]">
-                        {r.competitions}× Wettkampf
-                        {r.trainingRate != null && <> · Training <span className={r.trainingRate >= 80 ? 'text-emerald-600' : r.trainingRate >= 50 ? 'text-amber-600' : 'text-rose-600'}>{r.trainingRate}%</span></>}
+                  <div key={r.key} className={i > 0 ? 'border-t border-[#C6C6C8]/30' : ''}>
+                    <button onClick={() => setExpandedDeduction(v => v === r.key ? null : r.key)}
+                      className="w-full flex items-center gap-3 py-2 text-left active:opacity-70">
+                      <span className={'w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0 tabular-nums ' + (i < 3 ? 'bg-[#FF9500]/15 text-[#FF9500]' : 'bg-[#8E8E93]/12 text-[#8E8E93]')}>{i + 1}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[14px] font-medium truncate">{r.name}</div>
+                        <div className="text-[12px] text-[#8E8E93]">
+                          {r.competitions}× Wettkampf
+                          {r.trainingRate != null && <> · Training <span className={r.trainingRate >= 80 ? 'text-emerald-600' : r.trainingRate >= 50 ? 'text-amber-600' : 'text-rose-600'}>{r.trainingRate}%</span></>}
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className={'text-[14px] font-semibold tabular-nums ' + (r.avgDeduction >= 0.6 ? 'text-rose-600' : r.avgDeduction >= 0.15 ? 'text-amber-600' : 'text-emerald-600')}>−{r.avgDeduction.toFixed(2)}</div>
-                      <div className="text-[11px] font-mono text-[#8E8E93]">
-                        {[['x', r.cross], ['~', r.wave], ['|', r.bar], ['○', r.circle]].filter(([, n]) => n > 0).map(([s, n]) => s + Math.round(n)).join(' ')}
+                      <div className="text-right shrink-0">
+                        <div className={'text-[14px] font-semibold tabular-nums ' + (r.avgDeduction >= 0.6 ? 'text-rose-600' : r.avgDeduction >= 0.15 ? 'text-amber-600' : 'text-emerald-600')}>−{r.avgDeduction.toFixed(2)}</div>
+                        <div className="text-[11px] font-mono text-[#8E8E93]">
+                          {[['x', r.cross], ['~', r.wave], ['|', r.bar], ['○', r.circle]].filter(([, n]) => n > 0).map(([s, n]) => s + Math.round(n)).join(' ')}
+                        </div>
                       </div>
-                    </div>
+                      <ChevronRight size={16} strokeWidth={2.4} className={'text-[#C7C7CC] shrink-0 transition-transform ' + (expandedDeduction === r.key ? 'rotate-90' : '')} />
+                    </button>
+                    {expandedDeduction === r.key && (
+                      <div className="pb-3 pl-10 pr-1 space-y-3">
+                        {/* Abzugs-Verlauf */}
+                        {r.series.length >= 2 && (() => {
+                          const max = Math.max(...r.series.map(s => s.ded), 0.5);
+                          return (
+                            <div className="flex items-end gap-1.5">
+                              {r.series.map((s, j) => (
+                                <div key={j} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
+                                  <span className="text-[10px] text-[#8E8E93] tabular-nums">{s.ded.toFixed(1)}</span>
+                                  <div className={'w-full rounded-t ' + (s.ded >= 0.6 ? 'bg-rose-400' : s.ded >= 0.15 ? 'bg-amber-400' : 'bg-emerald-400')}
+                                    style={{ height: Math.max(4, (s.ded / max) * 48) + 'px' }} />
+                                  <span className="text-[9px] text-[#8E8E93] truncate w-full text-center">{formatDateShort(s.date)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                        {/* Schwierigkeits-Histogramm */}
+                        {(() => {
+                          const levels = ['10', '50', '100'].filter(k => Number(r.schwPctHist[k] || 0) > 0);
+                          if (levels.length === 0) return null;
+                          return (
+                            <div className="flex gap-2">
+                              {levels.map(k => (
+                                <span key={k} className={'text-[12px] font-medium px-2 py-1 rounded-lg ' + (k === '100' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700')}>
+                                  −{k} % · {r.schwPctHist[k]}×
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                        {/* Pro Wettkampf */}
+                        <div className="space-y-1">
+                          {[...r.series].reverse().map((s, j) => (
+                            <div key={j} className="flex items-center justify-between gap-2 text-[13px]">
+                              <span className="truncate text-[#3C3C43]">{s.name} <span className="text-[#8E8E93]">· {formatDateShort(s.date)}</span></span>
+                              <span className={'font-semibold tabular-nums shrink-0 ' + (s.ded >= 0.6 ? 'text-rose-600' : s.ded >= 0.15 ? 'text-amber-600' : 'text-emerald-600')}>−{s.ded.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {ranking.length > 5 && (
