@@ -12719,9 +12719,12 @@ function ProgrammeView({ data, setData, myUserId = null }) {
   const upsert = (prog) => {
     const list = data.programs || [];
     const exists = list.find(p => p.id === prog.id);
+    // owner_id sicherstellen: vom Bestand übernehmen, sonst = ich. Ohne owner_id
+    // fiele das Programm aus der owner-gefilterten Liste („weg nach Sichern").
+    const withOwner = { ...prog, owner_id: prog.owner_id ?? (exists && exists.owner_id) ?? myUserId ?? null };
     setData({
       ...data,
-      programs: exists ? list.map(p => p.id === prog.id ? prog : p) : [...list, prog]
+      programs: exists ? list.map(p => p.id === prog.id ? withOwner : p) : [...list, withOwner]
     });
   };
 
@@ -13169,6 +13172,9 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete }) {
     if (!validation.valid) return;
     onSave({
       id: (program && program.id) || uid(),
+      // owner_id ERHALTEN — sonst fällt das Programm nach dem Sichern aus der
+      // owner-gefilterten Liste („weg nach Sichern"), obwohl die DB es behält.
+      owner_id: (program && program.owner_id) || undefined,
       name: name.trim(),
       discipline,
       ageClass,
