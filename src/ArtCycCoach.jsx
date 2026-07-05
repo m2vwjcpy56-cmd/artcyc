@@ -7,7 +7,7 @@ import {
   TrendingUp, TrendingDown, Minus, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
-  Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical, Zap
+  Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
 import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, moveAthleteData, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, scanWertungsbogenVision, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
@@ -14236,10 +14236,6 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
   const [t2S, setT2S] = useState(() => initVal('t2S', (competition && competition.t2_schwierigkeit) || 0));
   const [activeTable, setActiveTable] = useState(1);
   const [showExercises, setShowExercises] = useState(true);
-  // Fokus-Erfassung („Abzüge erfassen"): Übung für Übung mit großen Tippflächen,
-  // wie in der nativen App. focusIdx = Start-Übung.
-  const [focusOpen, setFocusOpen] = useState(false);
-  const [focusIdx, setFocusIdx] = useState(0);
   // Referenz-Werte aus letztem PDF-Import zur Validierung
   const [pdfRef, setPdfRef] = useState(() => initVal('pdfRef', competition && competition.pdf_ref ? competition.pdf_ref : null));
 
@@ -15262,15 +15258,6 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             <ValidationCheck pdfRef={pdfRef} t1={t1} t2={t2} />
           )}
 
-          {/* Fokus-Erfassung: Übung für Übung durchtippen (wie native App) —
-              die einfache manuelle Erfassung ohne Foto-/PDF-Import. */}
-          {program.exercises.length > 0 && (
-            <button onClick={() => { setFocusIdx(0); setFocusOpen(true); }}
-              className="w-full bg-[#FF9500] hover:brightness-105 text-white px-4 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.99] transition shadow-[0_2px_8px_rgba(255,149,0,0.25)]">
-              <Zap size={17} strokeWidth={2.4} /> Abzüge erfassen
-            </button>
-          )}
-
           {/* Collapse-Knopf für Übungs-Liste */}
           <button onClick={() => setShowExercises(!showExercises)}
             className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-sm font-medium flex items-center justify-between hover:bg-slate-50">
@@ -15297,231 +15284,6 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
       )}
 
       {/* Speichern erfolgt über den „Speichern"-Button oben rechts im Header. */}
-      </div>
-
-      {/* Fokus-Erfassung als Vollbild-Overlay */}
-      {focusOpen && program && (
-        <StellungFocusEditor
-          program={program}
-          table1={table1}
-          table2={table2}
-          startIdx={focusIdx}
-          onUpdate={updateEntry}
-          onClose={() => setFocusOpen(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-// Die vier Fehlerzeichen als SVG — einheitliche Strichstärke/Größe (wie native App).
-function MarkGlyph({ kind, color, size = 30 }) {
-  const s = { fill: 'none', stroke: color, strokeWidth: 3.2, strokeLinecap: 'round', strokeLinejoin: 'round' };
-  const p = size * 0.12;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-      {kind === 'cross' && <><line x1={p} y1={p} x2={size - p} y2={size - p} style={s} /><line x1={size - p} y1={p} x2={p} y2={size - p} style={s} /></>}
-      {kind === 'wave' && <path d={`M ${p} ${size / 2} Q ${size * 0.3} ${size * 0.2}, ${size / 2} ${size / 2} T ${size - p} ${size / 2}`} style={s} />}
-      {kind === 'bar' && <line x1={size / 2} y1={p} x2={size / 2} y2={size - p} style={s} />}
-      {kind === 'circle' && <circle cx={size / 2} cy={size / 2} r={size / 2 - p} style={s} />}
-    </svg>
-  );
-}
-
-// Fokus-Erfassung: eine Übung pro Ansicht mit großen Tippflächen, KG-Umschalter,
-// Schwierigkeit-Segmenten, taktischer Aufwertung (nur bei taktischen Übungen) und
-// Durchblättern. Web-Pendant zum nativen StellungEditor.
-function StellungFocusEditor({ program, table1, table2, startIdx, onUpdate, onClose }) {
-  const exercises = program.exercises || [];
-  const [idx, setIdx] = useState(Math.min(startIdx || 0, Math.max(0, exercises.length - 1)));
-  const [kg, setKg] = useState(1);              // aktives Kampfgericht
-  const [history, setHistory] = useState([]);   // [{idx, kg, key}] für Rückgängig
-
-  const ex = exercises[idx] || {};
-  const entriesFor = (n) => (n === 1 ? table1 : table2);
-  const cur = (entriesFor(kg)[idx]) || {};
-  const std = Number(ex.points || 0);
-
-  const dedTotal = (n) => {
-    const e = entriesFor(n)[idx] || {};
-    return calcExerciseDeduction(e) + calcExerciseSchwierigkeit(e, ex);
-  };
-  const sumBoth = dedTotal(1) + dedTotal(2);
-
-  // Taktische Aufwertung: feste Skala per Übungsnummer (DB) → sonst aus dem Namen.
-  const byCode = getTaktScale(ex.code);
-  const nameScale = parseTacticalScale(ex.name);
-  const taktScale = (byCode && byCode.length > 0) ? byCode : nameScale;
-  const isTactical = byCode !== null || nameScale.length > 0 || / T\s*$/.test(ex.name || '');
-  const curTakt = Number(cur.taktischePunkte || 0);
-  const taktActive = curTakt > 0 && Math.abs(curTakt - std) > 0.001;
-
-  const bump = (key, delta) => {
-    const count = Math.max(0, Number(cur[key] || 0) + delta);
-    onUpdate(kg, idx, key, count);
-    if (delta > 0) setHistory(h => [...h, { idx, kg, key }]);
-  };
-  const undo = () => {
-    setHistory(h => {
-      if (h.length === 0) return h;
-      const last = h[h.length - 1];
-      const e = entriesFor(last.kg)[last.idx] || {};
-      onUpdate(last.kg, last.idx, last.key, Math.max(0, Number(e[last.key] || 0) - 1));
-      if (last.idx !== idx) setIdx(last.idx);
-      if (last.kg !== kg) setKg(last.kg);
-      return h.slice(0, -1);
-    });
-  };
-
-  const MARKS = [
-    { key: 'cross', name: 'Kreuz', w: '0,2', color: '#3b82f6' },
-    { key: 'wave', name: 'Welle', w: '0,5', color: '#f59e0b' },
-    { key: 'bar', name: 'Strich', w: '1', color: '#ef4444' },
-    { key: 'circle', name: 'Sturz', w: '2', color: '#a855f7' },
-  ];
-  const kgLabel = (n) => { const d = dedTotal(n); return 'Kampfgericht ' + n + (d > 0.0001 ? ' · −' + d.toFixed(1).replace('.', ',') : ''); };
-  const numStr = (v) => (Math.abs(v - Math.round(v)) < 0.001 ? String(Math.round(v)) : v.toFixed(1).replace('.', ','));
-
-  return (
-    <div className="fixed inset-0 z-50 bg-white dark:bg-slate-950 flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 h-[52px] border-b border-slate-200 dark:border-white/10 shrink-0">
-        <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-white/10">
-          <X size={20} className="text-slate-700 dark:text-slate-200" />
-        </button>
-        <div className="text-[15px] font-semibold tabular-nums dark:text-white">Übung {idx + 1} / {exercises.length}</div>
-        <div className="w-9" />
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-lg mx-auto px-4 py-4 space-y-4">
-          {/* Übungs-Kopf */}
-          <div className="text-center">
-            <h2 className="text-[20px] font-bold leading-tight dark:text-white">{localizedExerciseName(ex)}</h2>
-            <div className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
-              {ex.code && <span className="font-mono">Nr. {ex.code}</span>}
-              {ex.code && ' · '}{numStr(std)} Pkt
-              {sumBoth > 0.0001 && <span className="text-[#FF9500] font-semibold ml-2">Σ −{numStr(sumBoth)}</span>}
-            </div>
-          </div>
-
-          {/* KG-Umschalter */}
-          <div className="grid grid-cols-2 gap-2">
-            {[1, 2].map(n => (
-              <button key={n} onClick={() => setKg(n)}
-                className={'py-2.5 rounded-xl text-[14px] font-semibold border transition ' +
-                  (kg === n ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white'
-                            : 'bg-white dark:bg-white/5 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-white/15')}>
-                {kgLabel(n)}
-              </button>
-            ))}
-          </div>
-
-          {/* Große Tippflächen */}
-          <div className="grid grid-cols-2 gap-3">
-            {MARKS.map(m => {
-              const count = Number(cur[m.key] || 0);
-              const active = count > 0;
-              return (
-                <div key={m.key} className="relative">
-                  <button onClick={() => { try { navigator.vibrate && navigator.vibrate(10); } catch { /* egal */ } bump(m.key, 1); }}
-                    className={'w-full h-32 sm:h-36 rounded-2xl border flex flex-col items-center justify-center gap-2 select-none active:scale-[0.97] transition ' +
-                      (active ? 'border-[#FF9500] bg-[#FF9500]/10' : 'border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10')}>
-                    <div className="flex items-center gap-2">
-                      <MarkGlyph kind={m.key} color={active ? '#FF9500' : 'currentColor'} size={32} />
-                      {active && <span className="text-[26px] font-bold text-[#FF9500] tabular-nums leading-none">{count}</span>}
-                    </div>
-                    <span className="text-[12px] text-slate-500 dark:text-slate-400">{m.name} · −{m.w}</span>
-                  </button>
-                  {active && (
-                    <button onClick={() => bump(m.key, -1)} aria-label="Zeichen entfernen"
-                      className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-[#FF9500] text-white flex items-center justify-center shadow">
-                      <Minus size={16} strokeWidth={3} />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Schwierigkeit + taktische Aufwertung */}
-          <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3 space-y-3">
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">Schwierigkeit</span>
-                {calcExerciseSchwierigkeit(cur, ex) > 0.0001 && (
-                  <span className="text-[12px] font-semibold text-[#FF9500] tabular-nums">−{numStr(calcExerciseSchwierigkeit(cur, ex))} Pkt</span>
-                )}
-              </div>
-              <div className="grid grid-cols-4 gap-1.5">
-                {[0, 10, 50, 100].map(p => (
-                  <button key={p} onClick={() => onUpdate(kg, idx, 'schwPct', p)}
-                    className={'py-2 rounded-lg text-[13px] font-medium border ' +
-                      (Number(cur.schwPct || 0) === p ? 'bg-[#FF9500] text-white border-[#FF9500]'
-                        : 'bg-white dark:bg-white/5 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-white/15')}>
-                    {p === 0 ? 'keine' : p + '%'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {isTactical && (
-              <div className="pt-1 border-t border-slate-200 dark:border-white/10">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">Taktische Aufwertung</span>
-                  {taktActive && <span className="text-[12px] font-semibold text-[#FF9500] tabular-nums">+{numStr(curTakt - std)}</span>}
-                </div>
-                {taktScale.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    <button onClick={() => onUpdate(kg, idx, 'taktischePunkte', '')}
-                      className={'px-3 py-1.5 rounded-full text-[13px] font-medium border tabular-nums ' +
-                        (!taktActive ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white dark:bg-white/5 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-white/15')}>
-                      Standard · {numStr(std)}
-                    </button>
-                    {taktScale.map(v => (
-                      <button key={v} onClick={() => onUpdate(kg, idx, 'taktischePunkte', String(Math.abs(v - std) < 0.001 ? '' : v))}
-                        className={'px-3 py-1.5 rounded-full text-[13px] font-medium border tabular-nums ' +
-                          (curTakt > 0 && Math.abs(curTakt - v) < 0.001 ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white dark:bg-white/5 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-white/15')}>
-                        {numStr(v)}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <input type="number" min="0" step="0.1" inputMode="decimal"
-                      value={cur.taktischePunkte || ''} placeholder={numStr(std)}
-                      onChange={e => onUpdate(kg, idx, 'taktischePunkte', e.target.value)}
-                      className="w-24 px-2 py-1.5 text-center border border-slate-300 dark:border-white/15 rounded-lg bg-white dark:bg-white/5 dark:text-white outline-none focus:ring-1 focus:ring-amber-500 text-sm" />
-                    <span className="text-[12px] text-slate-400">Pkt</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Steuerleiste: zurück · rückgängig · weiter */}
-      <div className="shrink-0 border-t border-slate-200 dark:border-white/10 px-4 py-3 flex items-center gap-2 max-w-lg mx-auto w-full">
-        <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0}
-          className="flex-1 py-3 rounded-xl border border-slate-300 dark:border-white/15 flex items-center justify-center disabled:opacity-30 hover:bg-slate-50 dark:hover:bg-white/10">
-          <ChevronLeft size={22} className="dark:text-white" />
-        </button>
-        <button onClick={undo} disabled={history.length === 0}
-          className="flex-1 py-3 rounded-xl border border-slate-300 dark:border-white/15 flex items-center justify-center disabled:opacity-30 hover:bg-slate-50 dark:hover:bg-white/10">
-          <RotateCcw size={20} className="dark:text-white" />
-        </button>
-        {idx < exercises.length - 1 ? (
-          <button onClick={() => setIdx(i => Math.min(exercises.length - 1, i + 1))}
-            className="flex-1 py-3 rounded-xl border border-slate-300 dark:border-white/15 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-white/10">
-            <ChevronRight size={22} className="dark:text-white" />
-          </button>
-        ) : (
-          <button onClick={onClose}
-            className="flex-1 py-3 rounded-xl bg-[#FF9500] text-white font-semibold flex items-center justify-center gap-1.5">
-            <Check size={18} strokeWidth={2.6} /> Fertig
-          </button>
-        )}
       </div>
     </div>
   );
