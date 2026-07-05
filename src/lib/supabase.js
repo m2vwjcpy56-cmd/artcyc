@@ -236,6 +236,16 @@ export async function mergeAthlete(sourceId, targetId) {
   return { error };
 }
 
+// Trainings/Wettkämpfe auf einen anderen Sportler/ein Team verschieben, OHNE die
+// Quelle zu löschen (RPC move_athlete_data). Fall: eigene Daten importiert, danach
+// Team angelegt → Daten gehören ins Team.
+export async function moveAthleteData(sourceId, targetId, { sessions = true, competitions = true } = {}) {
+  const { data, error } = await supabase.rpc('move_athlete_data', {
+    p_source: sourceId, p_target: targetId, p_sessions: sessions, p_competitions: competitions
+  });
+  return { data, error };
+}
+
 // Feedback-Anzahl je Athlet (alle sichtbaren, RLS-gefiltert) — damit man in der
 // Sportler-Liste sieht, an welchem Athleten Feedback hängt (z. B. Platzhalter).
 export async function fetchFeedbackCounts() {

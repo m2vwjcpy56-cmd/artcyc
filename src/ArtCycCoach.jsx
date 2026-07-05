@@ -9,7 +9,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
 } from 'lucide-react';
-import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, scanWertungsbogenVision, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
+import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, moveAthleteData, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, scanWertungsbogenVision, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -15817,6 +15817,10 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
   const [adminPreselectUserId, setAdminPreselectUserId] = useState(null);
   // Zusammenführen: Platzhalter-Sportler (Quelle) → echtes Konto (Ziel)
   const [mergeSource, setMergeSource] = useState(null);
+  // Daten verschieben (Trainings/Wettkämpfe → anderer Sportler/Team, Quelle bleibt)
+  const [moveSource, setMoveSource] = useState(null);
+  const [moveSessions, setMoveSessions] = useState(true);
+  const [moveComps, setMoveComps] = useState(true);
   // Feedback-Anzahl je Athlet — zeigt, an welchem Eintrag Feedback hängt.
   const [fbCounts, setFbCounts] = useState({});
   useEffect(() => {
@@ -16081,6 +16085,28 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
     setBusy(false);
   };
 
+  // Ziele fürs Verschieben: Teams zuerst (Hauptanwendungsfall), dann Sportler.
+  const moveTargets = useMemo(
+    () => (athletes || [])
+      .filter(a => !moveSource || a.id !== moveSource.id)
+      .sort((x, y) => {
+        const tx = x.type === 'team' ? 0 : 1, ty = y.type === 'team' ? 0 : 1;
+        if (tx !== ty) return tx - ty;
+        return (x.name || '').localeCompare(y.name || '', 'de');
+      }),
+    [athletes, moveSource]
+  );
+
+  const onMove = async (targetId) => {
+    if (!moveSource || (!moveSessions && !moveComps)) return;
+    setBusy(true); setErr(''); setInfo('');
+    const { error } = await moveAthleteData(moveSource.id, targetId, { sessions: moveSessions, competitions: moveComps });
+    if (error) { setErr(error.message); setBusy(false); setMoveSource(null); return; }
+    setMoveSource(null);
+    // Sessions/Wettkämpfe hängen jetzt am Ziel → komplette Daten neu laden.
+    window.location.reload();
+  };
+
   const renderAthleteCard = (a, badges) => {
     const isMine = a.auth_user_id === myUserId;
     const isManagedByMe = a.created_by_coach_id === myUserId || myCoachAthleteIds.has(a.id);
@@ -16186,6 +16212,14 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
             <button onClick={() => setMergeSource(a)} disabled={busy}
               className="text-[13px] bg-slate-100 text-slate-800 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
               <Users size={13} /> Mit Konto zusammenführen
+            </button>
+          )}
+          {/* Trainings/Wettkämpfe auf einen anderen Sportler/ein Team verschieben —
+              Quelle bleibt bestehen (Simon-Fall: Daten importiert, dann Team angelegt). */}
+          {canEdit && (
+            <button onClick={() => { setMoveSource(a); setMoveSessions(true); setMoveComps(true); }} disabled={busy}
+              className="text-[13px] bg-slate-100 text-slate-800 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
+              <Send size={13} /> Daten verschieben
             </button>
           )}
           {/* Eigener Sportler-Eintrag: „Trainer verwalten" springt in
@@ -16486,6 +16520,57 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
                     <Users size={16} className="text-[#FF9500] shrink-0" />
                   </button>
                 ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Daten verschieben: Trainings/Wettkämpfe → anderer Sportler/Team (Quelle bleibt). */}
+      {moveSource && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm"
+          onClick={() => setMoveSource(null)}>
+          <div className="bg-[#F2F2F7] dark:bg-[#1c1c1e] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-[#C6C6C8]/40">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-[17px]">Daten verschieben</h3>
+                <button onClick={() => setMoveSource(null)} className="p-1 text-[#8E8E93] active:opacity-60"><X size={20} /></button>
+              </div>
+              <p className="text-[13px] text-[#8E8E93] mt-1 leading-snug">
+                Verschiebt Trainings/Wettkämpfe von <strong className="text-[#000] dark:text-white">{moveSource.name}</strong> auf
+                einen anderen Sportler oder ein Team. Der Eintrag selbst bleibt bestehen.
+              </p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              <div>
+                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">Was verschieben?</div>
+                <div className="bg-white dark:bg-white/5 rounded-2xl overflow-hidden">
+                  <label className="flex items-center justify-between px-4 py-3 cursor-pointer">
+                    <span className="text-[15px]">Trainings</span>
+                    <input type="checkbox" checked={moveSessions} onChange={e => setMoveSessions(e.target.checked)} className="w-5 h-5 accent-[#FF9500]" />
+                  </label>
+                  <label className="flex items-center justify-between px-4 py-3 border-t border-[#C6C6C8]/40 cursor-pointer">
+                    <span className="text-[15px]">Wettkämpfe</span>
+                    <input type="checkbox" checked={moveComps} onChange={e => setMoveComps(e.target.checked)} className="w-5 h-5 accent-[#FF9500]" />
+                  </label>
+                </div>
+              </div>
+              <div>
+                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">Ziel wählen</div>
+                <div className="bg-white dark:bg-white/5 rounded-2xl overflow-hidden">
+                  {moveTargets.length === 0 ? (
+                    <div className="px-4 py-3 text-[13px] text-[#8E8E93]">Kein anderer Sportler / kein Team vorhanden.</div>
+                  ) : moveTargets.map((tg, i) => (
+                    <button key={tg.id} onClick={() => onMove(tg.id)} disabled={busy || (!moveSessions && !moveComps)}
+                      className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/40 disabled:opacity-50 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+                      <span className="min-w-0">
+                        <span className="block text-[15px] truncate">{tg.name}{tg.last_name ? ' ' + tg.last_name : ''}</span>
+                        <span className="block text-[12px] text-[#8E8E93] truncate">{tg.type === 'team' ? 'Team' : 'Sportler'}</span>
+                      </span>
+                      <Send size={16} className="text-[#FF9500] shrink-0" />
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
