@@ -4995,13 +4995,24 @@ export default function App() {
     }
     return list;
   }, [dbAthletes, dbAthleteCoaches, session?.user?.id, profile?.role]);
-  // Default-Auswahl: eigener Athlet wenn vorhanden, sonst der erste verfügbare
+  // Default-Auswahl: zuletzt gewählter Sportler (pro Konto in localStorage gemerkt,
+  // z. B. ein Team), sonst eigener Athlet, sonst der erste verfügbare
   // (= erster managed Sportler für reine Trainer ohne eigenen Eintrag).
   useEffect(() => {
     if (selectedAthleteId) return;
+    try {
+      const saved = session?.user?.id ? localStorage.getItem('artcyc:selectedAthlete:' + session.user.id) : null;
+      if (saved && availableAthletes.some(a => a.id === saved)) { setSelectedAthleteId(saved); return; }
+    } catch { /* localStorage evtl. blockiert */ }
     if (myAthleteId) { setSelectedAthleteId(myAthleteId); return; }
     if (availableAthletes.length > 0) setSelectedAthleteId(availableAthletes[0].id);
-  }, [myAthleteId, selectedAthleteId, availableAthletes]);
+  }, [myAthleteId, selectedAthleteId, availableAthletes, session?.user?.id]);
+
+  // Auswahl pro Konto merken, damit sie App-Neustart/Reload überlebt.
+  useEffect(() => {
+    if (!selectedAthleteId || !session?.user?.id) return;
+    try { localStorage.setItem('artcyc:selectedAthlete:' + session.user.id, selectedAthleteId); } catch { /* egal */ }
+  }, [selectedAthleteId, session?.user?.id]);
 
   // Bei jedem Wechsel des aktiven Sportlers ALLE Daten neu laden — sonst
   // bleiben veraltete Cache-Daten in dbSessions/dbCompetitions/etc. stehen
