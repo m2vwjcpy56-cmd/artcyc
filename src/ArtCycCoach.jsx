@@ -7111,222 +7111,6 @@ function groupSessionsByExercise(sessions) {
   return Array.from(byEx.values()).sort((a, b) => b.lastDate.localeCompare(a.lastDate));
 }
 
-// Schnell-Erfassen („Dart-Scorer"-Modus): Vollbild mit riesigen Tap-Flächen,
-// Live-Quote und automatischem Sprung zur nächsten Übung nach der Serien-Länge.
-// Quellen: Programm-Durchlauf, Trainingsplan oder aktive Übungen. Gespeichert
-// wird am Ende (eine Session pro Übung, wie das normale Erfassen).
-function QuickLog({ data, setData, onClose }) {
-  const [phase, setPhase] = useState('setup');      // setup | scoring | summary
-  const [target, setTarget] = useState(5);          // 0 = manuell weiter
-  const [items, setItems] = useState([]);           // { exercise, withRope, entries: [] }
-  const [index, setIndex] = useState(0);
-  const [skipped, setSkipped] = useState(0);
-
-  const norm = (n) => (n || '').toLowerCase().replace(/\s+/g, ' ').replace(/[ .]+$/, '').trim();
-  const exKey = (code, name) => (code && String(code).trim().toLowerCase()) || norm(name);
-
-  const startFromProgram = (p) => {
-    const byKey = new Map();
-    (data.exercises || []).forEach(e => { const k = exKey(e.uci_code, e.name); if (k && !byKey.has(k)) byKey.set(k, e); });
-    const run = []; let skip = 0;
-    (p.exercises || []).forEach(pe => {
-      const ex = byKey.get(exKey(pe.code, pe.name));
-      if (ex) run.push({ exercise: ex, withRope: false, entries: [] }); else skip++;
-    });
-    if (run.length === 0) return;
-    setSkipped(skip); setItems(run); setIndex(0); setPhase('scoring');
-  };
-  const startFromExercises = (exs) => {
-    const run = exs.map(e => ({ exercise: e, withRope: false, entries: [] }));
-    if (run.length === 0) return;
-    setSkipped(0); setItems(run); setIndex(0); setPhase('scoring');
-  };
-
-  const cur = items[index];
-  const allEntries = items.flatMap(it => it.entries);
-  const liveRate = allEntries.length > 0 ? Math.round(allEntries.filter(e => e === 'success').length / allEntries.length * 100) : null;
-
-  const log = (entry) => {
-    if (!cur) return;
-    try { navigator.vibrate && navigator.vibrate(10); } catch { /* egal */ }
-    setItems(list => {
-      const next = list.map((it, i) => i === index ? { ...it, entries: [...it.entries, entry] } : it);
-      // Serie voll → automatisch weiter (Kern des Dart-Scorer-Gefühls).
-      if (target > 0 && next[index].entries.length >= target) {
-        setTimeout(() => {
-          if (index < next.length - 1) setIndex(index + 1);
-          else setPhase('summary');
-        }, 350);
-      }
-      return next;
-    });
-  };
-  const undo = () => setItems(list => list.map((it, i) => i === index && it.entries.length > 0 ? { ...it, entries: it.entries.slice(0, -1) } : it));
-
-  const saveAll = () => {
-    const now = new Date().toISOString();
-    const today = now.slice(0, 10);
-    const newSessions = items.filter(it => it.entries.length > 0).map(it => ({
-      id: uid(),
-      date: today,
-      athleteId: data._viewingAthleteId || null,
-      exerciseId: it.exercise.id,
-      exerciseName: it.exercise.name,
-      entries: it.entries,
-      notes: null,
-      withRope: it.exercise.has_rope_variant ? it.withRope : null,
-      created: now
-    }));
-    if (newSessions.length > 0) setData({ ...data, sessions: [...(data.sessions || []), ...newSessions] });
-    onClose();
-  };
-
-  const programs = (data.programs || []).filter(p => p.owner_id != null);
-  const plans = (data.trainingPlans || []).filter(p => (p.items || []).some(it => it.exerciseId));
-  const activeExercises = (data.exercises || []).filter(e => e.active !== false);
-  const doneItems = items.filter(it => it.entries.length > 0);
-  const mode3 = cur && cur.exercise.category_mode === 3;
-
-  return (
-    <div className="fixed inset-0 z-[70] bg-[#F2F2F7] dark:bg-[#0B0B0D] flex flex-col overflow-y-auto"
-      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
-      {/* Kopfzeile */}
-      <div className="sticky top-0 bg-[#F2F2F7]/95 dark:bg-black/80 backdrop-blur px-4 py-3 flex items-center justify-between border-b border-[#C6C6C8]/40 z-10">
-        <button onClick={onClose} className="text-[15px] text-[#FF9500] active:opacity-60">Abbrechen</button>
-        <h2 className="font-semibold text-[17px] flex items-center gap-1.5"><Sparkles size={16} className="text-[#FF9500]" /> Schnell-Erfassen</h2>
-        {phase === 'scoring'
-          ? <button onClick={() => setPhase('summary')} disabled={doneItems.length === 0}
-              className="text-[15px] font-semibold text-[#FF9500] disabled:opacity-40 active:opacity-60">Fertig</button>
-          : <span className="w-16" />}
-      </div>
-
-      {phase === 'setup' && (
-        <div className="p-4 space-y-5 max-w-lg w-full mx-auto">
-          <div>
-            <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium px-1 mb-1.5">Womit trainierst du?</div>
-            <div className="card-surface rounded-2xl overflow-hidden">
-              {programs.map((p, i) => (
-                <button key={p.id} onClick={() => startFromProgram(p)}
-                  className={'w-full px-4 py-3 flex items-center justify-between gap-2 text-left active:bg-[#D1D1D6]/40 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
-                  <span className="text-[15px] font-medium truncate">{p.name}</span>
-                  <span className="text-[13px] text-[#8E8E93] tabular-nums shrink-0">{(p.exercises || []).length} Übungen</span>
-                </button>
-              ))}
-              {plans.map((p) => (
-                <button key={p.id} onClick={() => startFromExercises((p.items || []).map(it => (data.exercises || []).find(e => e.id === it.exerciseId)).filter(Boolean))}
-                  className="w-full px-4 py-3 flex items-center justify-between gap-2 text-left active:bg-[#D1D1D6]/40 border-t border-[#C6C6C8]/40">
-                  <span className="text-[15px] font-medium truncate">{p.name} <span className="text-[#8E8E93] font-normal">(Plan)</span></span>
-                  <span className="text-[13px] text-[#8E8E93] tabular-nums shrink-0">{(p.items || []).filter(it => it.exerciseId).length} Übungen</span>
-                </button>
-              ))}
-              <button onClick={() => startFromExercises(activeExercises)}
-                className={'w-full px-4 py-3 flex items-center justify-between gap-2 text-left active:bg-[#D1D1D6]/40 ' + ((programs.length + plans.length) > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
-                <span className="text-[15px] font-medium">Aktive Übungen</span>
-                <span className="text-[13px] text-[#8E8E93] tabular-nums shrink-0">{activeExercises.length} Übungen</span>
-              </button>
-            </div>
-          </div>
-          <div>
-            <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium px-1 mb-1.5">Versuche pro Übung</div>
-            <div className="flex gap-2">
-              {[3, 5, 8, 10, 0].map(v => (
-                <button key={v} onClick={() => setTarget(v)}
-                  className={'flex-1 py-2 rounded-xl text-[14px] font-semibold transition ' + (target === v ? 'bg-[#FF9500] text-white' : 'card-surface text-[#3C3C43] dark:text-slate-200')}>
-                  {v === 0 ? 'Manuell' : v}
-                </button>
-              ))}
-            </div>
-            <p className="text-[12px] text-[#8E8E93] mt-1.5 px-1">Nach dieser Anzahl springt die Erfassung automatisch zur nächsten Übung.</p>
-          </div>
-        </div>
-      )}
-
-      {phase === 'scoring' && cur && (
-        <div className="flex-1 flex flex-col p-4 max-w-lg w-full mx-auto">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[14px] font-semibold text-[#8E8E93] tabular-nums">Übung {index + 1} / {items.length}</span>
-            {liveRate != null && (
-              <span className={'text-[20px] font-bold tabular-nums ' + (liveRate >= 80 ? 'text-emerald-600' : liveRate >= 50 ? 'text-amber-600' : 'text-rose-600')}>{liveRate} %</span>
-            )}
-          </div>
-          <div className="text-center mb-2">
-            <div className="text-[22px] font-bold leading-tight">{cur.exercise.name}</div>
-            <div className="text-[13px] text-[#8E8E93] mt-0.5">
-              {cur.exercise.uci_code ? 'Nr. ' + cur.exercise.uci_code + ' · ' : ''}{Number(cur.exercise.points || 0) > 0 ? Number(cur.exercise.points).toFixed(1) + ' Pkt' : ''}
-              {cur.exercise.has_rope_variant && (
-                <button onClick={() => setItems(list => list.map((it, i) => i === index ? { ...it, withRope: !it.withRope } : it))}
-                  className={'ml-2 px-2 py-0.5 rounded-full text-[12px] font-medium ' + (cur.withRope ? 'bg-sky-600 text-white' : 'bg-slate-200 dark:bg-white/10 text-[#3C3C43] dark:text-slate-200')}>
-                  {cur.withRope ? 'Seil' : 'ohne Seil'}
-                </button>
-              )}
-            </div>
-          </div>
-          {/* Versuchs-Punkte */}
-          <div className="flex justify-center gap-1.5 mb-3 h-3">
-            {Array.from({ length: target > 0 ? Math.max(target, cur.entries.length) : Math.max(cur.entries.length, 1) }).map((_, i) => (
-              <span key={i} className={'w-3 h-3 rounded-full ' + (i < cur.entries.length
-                ? (cur.entries[i] === 'success' ? 'bg-emerald-500' : cur.entries[i] === 'third' ? 'bg-amber-500' : 'bg-rose-500')
-                : 'bg-slate-300 dark:bg-white/15')} />
-            ))}
-          </div>
-          {/* Riesige Tap-Flächen */}
-          <div className="flex-1 flex flex-col gap-2.5 min-h-[300px]">
-            <button onClick={() => log('success')}
-              className="flex-1 rounded-2xl bg-emerald-500/15 border-2 border-emerald-500/50 text-emerald-600 text-[22px] font-bold active:scale-[0.99] active:bg-emerald-500/25 transition">
-              {cur.exercise.success_label || 'Geklappt'}
-            </button>
-            {mode3 && (
-              <button onClick={() => log('third')}
-                className="flex-1 rounded-2xl bg-amber-500/15 border-2 border-amber-500/50 text-amber-600 text-[22px] font-bold active:scale-[0.99] active:bg-amber-500/25 transition">
-                {cur.exercise.third_label || 'Getroffen'}
-              </button>
-            )}
-            <button onClick={() => log('fail')}
-              className="flex-1 rounded-2xl bg-rose-500/15 border-2 border-rose-500/50 text-rose-600 text-[22px] font-bold active:scale-[0.99] active:bg-rose-500/25 transition">
-              {cur.exercise.fail_label || 'Nicht geklappt'}
-            </button>
-          </div>
-          {/* Steuerzeile */}
-          <div className="flex gap-2.5 mt-3">
-            <button onClick={() => setIndex(i => Math.max(0, i - 1))} disabled={index === 0}
-              className="flex-1 py-3 rounded-xl card-surface font-semibold disabled:opacity-40 active:opacity-70">←</button>
-            <button onClick={undo} disabled={cur.entries.length === 0}
-              className="flex-1 py-3 rounded-xl card-surface font-semibold disabled:opacity-40 active:opacity-70">↩︎</button>
-            <button onClick={() => setIndex(i => Math.min(items.length - 1, i + 1))} disabled={index >= items.length - 1}
-              className="flex-1 py-3 rounded-xl card-surface font-semibold disabled:opacity-40 active:opacity-70">→</button>
-          </div>
-        </div>
-      )}
-
-      {phase === 'summary' && (
-        <div className="p-4 space-y-4 max-w-lg w-full mx-auto">
-          <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium px-1">{doneItems.length} Übungen erfasst</div>
-          <div className="card-surface rounded-2xl overflow-hidden">
-            {doneItems.map((it, i) => {
-              const succ = it.entries.filter(e => e === 'success').length;
-              const rate = Math.round(succ / it.entries.length * 100);
-              return (
-                <div key={i} className={'px-4 py-3 flex items-center justify-between gap-2 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
-                  <span className="text-[15px] truncate">{it.exercise.name}{it.withRope ? ' · Seil' : ''}</span>
-                  <span className="text-[14px] tabular-nums shrink-0">
-                    <span className="text-[#8E8E93]">{succ}/{it.entries.length} · </span>
-                    <span className={'font-semibold ' + (rate >= 80 ? 'text-emerald-600' : rate >= 50 ? 'text-amber-600' : 'text-rose-600')}>{rate}%</span>
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          {skipped > 0 && <p className="text-[12px] text-[#8E8E93] px-1">{skipped} Programm-Übungen ohne eigene Übung übersprungen.</p>}
-          <button onClick={saveAll} disabled={doneItems.length === 0}
-            className="w-full py-3.5 rounded-2xl bg-[#FF9500] text-white text-[16px] font-bold active:scale-[0.99] disabled:opacity-40 transition">Training sichern</button>
-          <button onClick={() => setPhase('scoring')}
-            className="w-full py-3 rounded-2xl card-surface text-[15px] font-semibold active:opacity-70">Weiter erfassen</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function TrainingView({ data, setData, setView }) {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
@@ -7345,7 +7129,6 @@ function TrainingView({ data, setData, setView }) {
   const [pendingDeleteExercise, setPendingDeleteExercise] = useState(null);
   // „Erfassen"-Auswahl (Action-Sheet) + Übungs-Picker für Feedback.
   const [erfassenOpen, setErfassenOpen] = useState(false);
-  const [quickOpen, setQuickOpen] = useState(false);   // Schnell-Erfassen (Dart-Scorer-Modus)
   const [runEditorOpen, setRunEditorOpen] = useState(false); // Trainings-Durchlauf werten
   const [viewRunId, setViewRunId] = useState(null);           // Durchlauf-Detail
   const [fbPickerOpen, setFbPickerOpen] = useState(false);
@@ -7834,16 +7617,10 @@ function TrainingView({ data, setData, setView }) {
             <p className="text-[#8E8E93] text-[15px] mt-1">{t('training.totalSessions', { n: totalCount })}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {/* Schnell-Erfassen (Dart-Scorer-Modus) */}
-            <button onClick={() => setQuickOpen(true)} title="Schnell-Erfassen"
-              className="px-3 py-2 rounded-full bg-white dark:bg-white/10 border border-slate-300 dark:border-white/10 text-[14px] font-semibold flex items-center gap-1 active:scale-95 transition">
-              <Sparkles size={15} strokeWidth={2.4} className="text-[#FF9500]" />
-            </button>
             <button onClick={() => setView('erfassen')}
               className="px-3.5 py-2 rounded-full bg-[#FF9500] text-white text-[14px] font-semibold flex items-center gap-1 active:scale-95 transition"><Plus size={15} strokeWidth={2.6} /> Erfassen</button>
           </div>
         </header>
-        {quickOpen && <QuickLog data={data} setData={setData} onClose={() => setQuickOpen(false)} />}
 
         {/* Trainingsplan */}
         <button onClick={() => setView('trainingsplan')} className="w-full card-surface rounded-[20px] px-4 py-3 flex items-center gap-3 active:bg-[#D1D1D6]/30 transition">
@@ -15560,21 +15337,34 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                   {total > 0 ? '-' + total.toFixed(2) : '0'}
                 </div>
               </div>
+              {/* Blitz-Eingabe: Tipp = +1 Fehlerzeichen, kleines Minus zum Korrigieren. */}
               <div className="grid grid-cols-4 gap-1.5 mb-1">
                 {[
-                  { k: 'cross',  label: 'x', title: 'Kreuz (0,2)' },
-                  { k: 'wave',   label: '~', title: 'Welle (0,5)' },
-                  { k: 'bar',    label: '|', title: 'Strich (1,0)' },
-                  { k: 'circle', label: '○', title: 'Kreis/Sturz (2,0)' }
-                ].map(c => (
-                  <div key={c.k}>
-                    <label className="text-[10px] text-slate-500 block text-center">{c.label}</label>
-                    <input type="number" min="0" inputMode="numeric"
-                      value={e[c.k] || ''}
-                      onChange={ev => onUpdate(idx, c.k, ev.target.value)}
-                      className="w-full px-1 py-1.5 text-center border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-amber-500 text-sm" />
-                  </div>
-                ))}
+                  { k: 'cross',  sym: '✕', w: '0,2', title: 'Kreuz (0,2)' },
+                  { k: 'wave',   sym: '∿', w: '0,5', title: 'Welle (0,5)' },
+                  { k: 'bar',    sym: '|', w: '1,0', title: 'Strich (1,0)' },
+                  { k: 'circle', sym: '○', w: '2,0', title: 'Sturz (2,0)' }
+                ].map(c => {
+                  const count = Number(e[c.k] || 0);
+                  return (
+                    <div key={c.k} className="relative">
+                      <button type="button" title={c.title}
+                        onClick={() => { try { navigator.vibrate && navigator.vibrate(10); } catch { /* egal */ } onUpdate(idx, c.k, count + 1); }}
+                        className={'w-full py-2.5 rounded-xl border text-center select-none active:scale-95 transition ' +
+                          (count > 0 ? 'bg-amber-100 border-amber-300' : 'bg-white border-slate-300 hover:bg-slate-50')}>
+                        <div className="text-[17px] font-bold leading-none">
+                          {c.sym}{count > 0 && <span className="ml-1 text-[#FF9500] tabular-nums">{count}</span>}
+                        </div>
+                        <div className="text-[9px] text-slate-500 mt-0.5">−{c.w}</div>
+                      </button>
+                      {count > 0 && (
+                        <button type="button" aria-label="Zeichen entfernen"
+                          onClick={() => onUpdate(idx, c.k, count - 1)}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#FF9500] text-white text-[12px] font-bold leading-none flex items-center justify-center shadow">−</button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
               {exec > 0 && (
                 <div className="text-[10px] text-slate-500 mb-2">
