@@ -10661,6 +10661,48 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                     </div>
                   );
                 })()}
+                {/* Abzugs-Verlauf über die Wettkämpfe (Dieters Diagramme): wird die Übung stabiler? */}
+                {compList.length >= 2 && (() => {
+                  const series = [...compList].reverse().map(c => ({
+                    date: c.competition.date,
+                    ded: (c.k1cross + c.k2cross) * 0.2 + (c.k1wave + c.k2wave) * 0.5 + (c.k1bar + c.k2bar) * 1.0 + (c.k1circle + c.k2circle) * 2.0
+                  }));
+                  const max = Math.max(...series.map(s => s.ded), 0.5);
+                  return (
+                    <div className="pt-2 border-t border-slate-100">
+                      <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-2">Abzug pro Wettkampf</div>
+                      <div className="flex items-end gap-2">
+                        {series.map((s, i) => (
+                          <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+                            <span className="text-[10px] text-slate-500 tabular-nums">{s.ded.toFixed(1)}</span>
+                            <div className={'w-full rounded-t-md ' + (s.ded >= 0.6 ? 'bg-rose-400' : s.ded >= 0.15 ? 'bg-amber-400' : 'bg-emerald-400')}
+                              style={{ height: Math.max(4, (s.ded / max) * 64) + 'px' }} />
+                            <span className="text-[9px] text-slate-400 truncate w-full text-center">{formatDateShort(s.date)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+                {/* Schwierigkeits-Abwertungen (10/50/100 %) — Histogramm wie Dieters Statistik */}
+                {(() => {
+                  const hist = compStats.schwPctHist || {};
+                  const levels = ['10', '50', '100'].filter(k => Number(hist[k] || 0) > 0);
+                  if (levels.length === 0) return null;
+                  return (
+                    <div className="pt-2 border-t border-slate-100">
+                      <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-1.5">Schwierigkeits-Abwertungen</div>
+                      <div className="flex gap-2">
+                        {levels.map(k => (
+                          <div key={k} className={'flex-1 rounded-xl py-2 text-center ' + (k === '100' ? 'bg-rose-50 border border-rose-100' : 'bg-amber-50 border border-amber-100')}>
+                            <div className="text-[11px] font-bold text-slate-500">−{k} %</div>
+                            <div className="font-bold text-[17px] tabular-nums">{hist[k]}×</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div className="pt-2 border-t border-slate-100 space-y-2">
                   <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium">Pro Wettkampf</div>
                   {compList.map((c, i) => {
@@ -11167,6 +11209,48 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                         {dedSchw > 0 && <div className="text-[10px] text-amber-700/70">inkl. Schwierigkeits-Abwertung</div>}
                       </div>
                       <div className="font-bold text-[22px] text-amber-700 tabular-nums">−{avgDed.toFixed(2)}</div>
+                    </div>
+                  );
+                })()}
+                {/* Abzugs-Verlauf über die Wettkämpfe (Dieters Diagramme): wird die Übung stabiler? */}
+                {compList.length >= 2 && (() => {
+                  const series = [...compList].reverse().map(c => ({
+                    date: c.competition.date,
+                    ded: (c.k1cross + c.k2cross) * 0.2 + (c.k1wave + c.k2wave) * 0.5 + (c.k1bar + c.k2bar) * 1.0 + (c.k1circle + c.k2circle) * 2.0
+                  }));
+                  const max = Math.max(...series.map(s => s.ded), 0.5);
+                  return (
+                    <div className="pt-2 border-t border-slate-100">
+                      <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-2">Abzug pro Wettkampf</div>
+                      <div className="flex items-end gap-2">
+                        {series.map((s, i) => (
+                          <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+                            <span className="text-[10px] text-slate-500 tabular-nums">{s.ded.toFixed(1)}</span>
+                            <div className={'w-full rounded-t-md ' + (s.ded >= 0.6 ? 'bg-rose-400' : s.ded >= 0.15 ? 'bg-amber-400' : 'bg-emerald-400')}
+                              style={{ height: Math.max(4, (s.ded / max) * 64) + 'px' }} />
+                            <span className="text-[9px] text-slate-400 truncate w-full text-center">{formatDateShort(s.date)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+                {/* Schwierigkeits-Abwertungen (10/50/100 %) — Histogramm wie Dieters Statistik */}
+                {(() => {
+                  const hist = compStats.schwPctHist || {};
+                  const levels = ['10', '50', '100'].filter(k => Number(hist[k] || 0) > 0);
+                  if (levels.length === 0) return null;
+                  return (
+                    <div className="pt-2 border-t border-slate-100">
+                      <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-1.5">Schwierigkeits-Abwertungen</div>
+                      <div className="flex gap-2">
+                        {levels.map(k => (
+                          <div key={k} className={'flex-1 rounded-xl py-2 text-center ' + (k === '100' ? 'bg-rose-50 border border-rose-100' : 'bg-amber-50 border border-amber-100')}>
+                            <div className="text-[11px] font-bold text-slate-500">−{k} %</div>
+                            <div className="font-bold text-[17px] tabular-nums">{hist[k]}×</div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   );
                 })()}
