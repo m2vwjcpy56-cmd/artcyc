@@ -2672,6 +2672,37 @@ function calcTableResult(program, entries, schwierigkeit = 0) {
   };
 }
 
+// Abzugs-Verlauf-Balken: keine Datums-Labels unter jedem Balken (unlesbar) —
+// stattdessen Jahres-Marken + Klick auf einen Balken zeigt Wettkampf, Datum, Abzug.
+function DeductionBars({ series }) {
+  const [sel, setSel] = useState(null);
+  const max = Math.max(...series.map(s => s.ded), 0.5);
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[11px] h-4 leading-4 truncate">
+        {sel
+          ? <span className="text-[#3C3C43] font-medium">{sel.name || 'Wettkampf'} <span className="text-[#8E8E93] font-normal">· {formatDateShort(sel.date)} · −{sel.ded.toFixed(2)}</span></span>
+          : <span className="text-[#C7C7CC]">Balken antippen — zeigt Wettkampf, Datum und Abzug.</span>}
+      </div>
+      <div className="flex items-end gap-1.5">
+        {series.map((s, i) => {
+          const y = (s.date || '').slice(0, 4);
+          const showYear = i === 0 || (series[i - 1].date || '').slice(0, 4) !== y;
+          const active = sel === s;
+          return (
+            <button key={i} type="button" onClick={() => setSel(v => v === s ? null : s)}
+              className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
+              <div className={'w-full rounded-t ' + (s.ded >= 0.6 ? 'bg-rose-400' : s.ded >= 0.15 ? 'bg-amber-400' : 'bg-emerald-400') + (sel && !active ? ' opacity-40' : '')}
+                style={{ height: Math.max(4, (s.ded / max) * 56) + 'px' }} />
+              <span className="text-[9px] text-[#8E8E93] h-3">{showYear ? y : ''}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // „Höchste Abzüge" (nach Dieter Mautes Wettkampfstatistik): Ø-Punktabzug pro Übung
 // über alle Wettkämpfe (x 0,2 · ~ 0,5 · | 1,0 · ○ 2,0), absteigend — plus
 // Trainings-Erfolgsquote zum Vergleich, Abzugs-Serie und Schwierigkeits-Histogramm.
@@ -10715,23 +10746,14 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                 {/* Abzugs-Verlauf über die Wettkämpfe (Dieters Diagramme): wird die Übung stabiler? */}
                 {compList.length >= 2 && (() => {
                   const series = [...compList].reverse().map(c => ({
+                    name: c.competition.name || 'Wettkampf',
                     date: c.competition.date,
                     ded: (c.k1cross + c.k2cross) * 0.2 + (c.k1wave + c.k2wave) * 0.5 + (c.k1bar + c.k2bar) * 1.0 + (c.k1circle + c.k2circle) * 2.0
                   }));
-                  const max = Math.max(...series.map(s => s.ded), 0.5);
                   return (
                     <div className="pt-2 border-t border-slate-100">
                       <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-2">Abzug pro Wettkampf</div>
-                      <div className="flex items-end gap-2">
-                        {series.map((s, i) => (
-                          <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-                            <span className="text-[10px] text-slate-500 tabular-nums">{s.ded.toFixed(1)}</span>
-                            <div className={'w-full rounded-t-md ' + (s.ded >= 0.6 ? 'bg-rose-400' : s.ded >= 0.15 ? 'bg-amber-400' : 'bg-emerald-400')}
-                              style={{ height: Math.max(4, (s.ded / max) * 64) + 'px' }} />
-                            <span className="text-[9px] text-slate-400 truncate w-full text-center">{formatDateShort(s.date)}</span>
-                          </div>
-                        ))}
-                      </div>
+                      <DeductionBars series={series} />
                     </div>
                   );
                 })()}
@@ -11266,23 +11288,14 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                 {/* Abzugs-Verlauf über die Wettkämpfe (Dieters Diagramme): wird die Übung stabiler? */}
                 {compList.length >= 2 && (() => {
                   const series = [...compList].reverse().map(c => ({
+                    name: c.competition.name || 'Wettkampf',
                     date: c.competition.date,
                     ded: (c.k1cross + c.k2cross) * 0.2 + (c.k1wave + c.k2wave) * 0.5 + (c.k1bar + c.k2bar) * 1.0 + (c.k1circle + c.k2circle) * 2.0
                   }));
-                  const max = Math.max(...series.map(s => s.ded), 0.5);
                   return (
                     <div className="pt-2 border-t border-slate-100">
                       <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-2">Abzug pro Wettkampf</div>
-                      <div className="flex items-end gap-2">
-                        {series.map((s, i) => (
-                          <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-                            <span className="text-[10px] text-slate-500 tabular-nums">{s.ded.toFixed(1)}</span>
-                            <div className={'w-full rounded-t-md ' + (s.ded >= 0.6 ? 'bg-rose-400' : s.ded >= 0.15 ? 'bg-amber-400' : 'bg-emerald-400')}
-                              style={{ height: Math.max(4, (s.ded / max) * 64) + 'px' }} />
-                            <span className="text-[9px] text-slate-400 truncate w-full text-center">{formatDateShort(s.date)}</span>
-                          </div>
-                        ))}
-                      </div>
+                      <DeductionBars series={series} />
                     </div>
                   );
                 })()}
@@ -13677,21 +13690,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
                     {expandedDeduction === r.key && (
                       <div className="pb-3 pl-10 pr-1 space-y-3">
                         {/* Abzugs-Verlauf */}
-                        {r.series.length >= 2 && (() => {
-                          const max = Math.max(...r.series.map(s => s.ded), 0.5);
-                          return (
-                            <div className="flex items-end gap-1.5">
-                              {r.series.map((s, j) => (
-                                <div key={j} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
-                                  <span className="text-[10px] text-[#8E8E93] tabular-nums">{s.ded.toFixed(1)}</span>
-                                  <div className={'w-full rounded-t ' + (s.ded >= 0.6 ? 'bg-rose-400' : s.ded >= 0.15 ? 'bg-amber-400' : 'bg-emerald-400')}
-                                    style={{ height: Math.max(4, (s.ded / max) * 48) + 'px' }} />
-                                  <span className="text-[9px] text-[#8E8E93] truncate w-full text-center">{formatDateShort(s.date)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })()}
+                        {r.series.length >= 2 && <DeductionBars series={r.series} />}
                         {/* Schwierigkeits-Histogramm */}
                         {(() => {
                           const levels = ['10', '50', '100'].filter(k => Number(r.schwPctHist[k] || 0) > 0);
