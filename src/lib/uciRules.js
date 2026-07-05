@@ -44,6 +44,20 @@ export function getRulesLanguage(appLang, pref) {
  * Bei Fehler: gibt null zurück — der Aufrufer fällt dann auf den
  * hartcodierten UCI_DB_2026 zurück.
  */
+// Code (lowercase) → feste Aufwertungs-Skala der taktischen Übungen ([] = taktisch ohne Skala).
+const TAKT_BY_CODE = new Map();
+
+/**
+ * Taktische Aufwertung laut Reglement für eine Übungsnummer:
+ * null = keine taktische Übung (oder Katalog noch nicht geladen);
+ * [] = taktisch ohne feste Skala; sonst die Punktstufen.
+ */
+export function getTaktScale(code) {
+  if (!code) return null;
+  const hit = TAKT_BY_CODE.get(String(code).trim().toLowerCase());
+  return hit === undefined ? null : hit;
+}
+
 export async function loadUciExercisesFromDb(lang) {
   try {
     // PostgREST/Supabase liefert per Default nur 1000 Rows pro Query —
@@ -54,7 +68,7 @@ export async function loadUciExercisesFromDb(lang) {
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await supabase
         .from('uci_exercises')
-        .select('code, discipline, points, name_de, name_en, name_fr')
+        .select('code, discipline, points, name_de, name_en, name_fr, taktisch, takt_scale')
         .eq('version', '2026')
         .order('code')
         .range(from, from + PAGE - 1);
@@ -67,6 +81,15 @@ export async function loadUciExercisesFromDb(lang) {
       if (data.length < PAGE) break; // letzte Seite
     }
     if (all.length === 0) return null;
+    // Taktik-Kennzeichnung cachen (Code → feste Aufwertungs-Skala), damit der
+    // Wertungsbogen-Editor ohne Props-Durchreichen nachschlagen kann.
+    TAKT_BY_CODE.clear();
+    for (const r of all) {
+      if (r.taktisch) {
+        const scale = Array.isArray(r.takt_scale) ? r.takt_scale.map(Number).filter(v => v > 0) : [];
+        TAKT_BY_CODE.set(String(r.code).toLowerCase(), scale);
+      }
+    }
     return all.map(r => ({
       c: r.code,
       // Reglement-Sprache + Fallback-Kaskade: pref → en → de

@@ -18,7 +18,7 @@ import { useProtoFeatures, setProtoFeatures } from './lib/featureFlags.js';
 import { suggestClubs, normClub, CLUBS, COUNTRY_FLAG } from './lib/clubs.js';
 import { parseProgramFile } from './lib/programImport.js';
 import { exportMauteVorlage } from './lib/mauteExport.js';
-import { loadUciExercisesFromDb, getRulesLanguage, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram } from './lib/uciRules.js';
+import { loadUciExercisesFromDb, getRulesLanguage, getTaktScale, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram } from './lib/uciRules.js';
 
 // =============================================================
 // Haptisches Feedback + Tap-Animation
@@ -15392,13 +15392,17 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                   </div>
                 )}
               </div>
-              {/* Taktische Aufwertung — nach Reglement: Übungen mit fester Aufwertungs-
-                  Skala im Namen (z. B. Lenkerdrehungen „… (7,8 - 8,3 - 8,8 - 9,3)")
-                  bekommen NUR die Auswahl zwischen diesen Punktstufen; ohne Skala
-                  bleibt ein Eingabefeld für die aufgewertete Punktzahl als Backup. */}
+              {/* Taktische Aufwertung — NUR bei taktischen Übungen (T laut Reglement,
+                  per Übungsnummer in der DB gekennzeichnet). Auswahl statt Eintippen:
+                  feste Punktstufen als Chips, „Standard" (= 0) vorausgewählt; nur ohne
+                  bekannte Skala bleibt ein Eingabefeld als Backup. */}
               {(() => {
                 const std = Number(ex.points || 0);
-                const scale = parseTacticalScale(ex.name);
+                const byCode = getTaktScale(ex.code);
+                const nameScale = parseTacticalScale(ex.name);
+                const scale = (byCode && byCode.length > 0) ? byCode : nameScale;
+                const tactical = byCode !== null || nameScale.length > 0 || / T\s*$/.test(ex.name || '');
+                if (!tactical) return null;
                 const cur = Number(e.taktischePunkte || 0);
                 const chip = (key, label, sel, onClick) => (
                   <button key={key} type="button" onClick={onClick}
@@ -15412,7 +15416,7 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                     <div className="text-[10px] text-slate-500 mb-1">Taktische Aufwertung:</div>
                     {scale.length > 0 && std > 0 ? (
                       <div className="flex flex-wrap gap-1.5">
-                        {chip('std', 'Standard ' + std.toFixed(1).replace('.', ','), cur <= 0 || Math.abs(cur - std) < 0.001,
+                        {chip('std', 'Standard · ' + std.toFixed(1).replace('.', ','), cur <= 0 || Math.abs(cur - std) < 0.001,
                           () => onUpdate(idx, 'taktischePunkte', ''))}
                         {scale.map(v => chip(v, v.toFixed(1).replace('.', ','),
                           cur > 0 && Math.abs(cur - v) < 0.001,
@@ -15494,11 +15498,36 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                     </select>
                   </td>
                   <td className="py-1 px-0.5">
-                    <input type="number" min="0" step="0.1" value={e.taktischePunkte || ''}
-                      placeholder={Number(ex.points).toFixed(1)}
-                      onChange={ev => onUpdate(idx, 'taktischePunkte', ev.target.value)}
-                      className={'w-full px-1 py-1 text-center border rounded outline-none focus:ring-1 focus:ring-amber-500 text-xs ' +
-                        (Number(e.taktischePunkte||0) > 0 && Number(e.taktischePunkte) !== Number(ex.points) ? 'border-amber-400 text-amber-700 font-semibold' : 'border-slate-200')} />
+                    {(() => {
+                      // Taktische Aufwertung nur bei taktischen Übungen; mit fester
+                      // Skala als Auswahl, sonst Eingabefeld (Backup).
+                      const std = Number(ex.points || 0);
+                      const byCode = getTaktScale(ex.code);
+                      const nameScale = parseTacticalScale(ex.name);
+                      const scale = (byCode && byCode.length > 0) ? byCode : nameScale;
+                      const tactical = byCode !== null || nameScale.length > 0 || / T\s*$/.test(ex.name || '');
+                      const cur = Number(e.taktischePunkte || 0);
+                      const active = cur > 0 && Math.abs(cur - std) > 0.001;
+                      if (!tactical) return <span className="block text-center text-slate-300">—</span>;
+                      if (scale.length > 0) {
+                        return (
+                          <select value={active ? String(cur) : ''}
+                            onChange={ev => onUpdate(idx, 'taktischePunkte', ev.target.value)}
+                            className={'w-full px-1 py-1 text-center border rounded outline-none focus:ring-1 focus:ring-amber-500 text-xs bg-white ' +
+                              (active ? 'border-amber-400 text-amber-700 font-semibold' : 'border-slate-200')}>
+                            <option value="">Std. {std.toFixed(1)}</option>
+                            {scale.map(v => <option key={v} value={String(v)}>{v.toFixed(1)}</option>)}
+                          </select>
+                        );
+                      }
+                      return (
+                        <input type="number" min="0" step="0.1" value={e.taktischePunkte || ''}
+                          placeholder={std.toFixed(1)}
+                          onChange={ev => onUpdate(idx, 'taktischePunkte', ev.target.value)}
+                          className={'w-full px-1 py-1 text-center border rounded outline-none focus:ring-1 focus:ring-amber-500 text-xs ' +
+                            (active ? 'border-amber-400 text-amber-700 font-semibold' : 'border-slate-200')} />
+                      );
+                    })()}
                   </td>
                   <td className="py-1.5 px-1 text-right font-semibold text-slate-700">
                     {total > 0 ? '-' + total.toFixed(2) : '0'}
