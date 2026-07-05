@@ -15392,45 +15392,45 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                   </div>
                 )}
               </div>
-              {/* Anerkannt (taktische Aufwertung) – Standard = Übungspunkte */}
-              <div className={'mt-2 rounded-lg p-2 ' + (isTaktisch ? 'bg-amber-100/60 ring-1 ring-amber-300' : '')}>
-                <div className="text-[10px] text-slate-500 mb-1">Taktische Aufwertung:</div>
-                <div className="flex items-center gap-2">
-                  <input type="number" min="0" step="0.1" inputMode="decimal"
-                    value={e.taktischePunkte || ''}
-                    placeholder={Number(ex.points).toFixed(1)}
-                    onChange={ev => onUpdate(idx, 'taktischePunkte', ev.target.value)}
-                    className="w-20 px-2 py-1.5 text-center border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-amber-500 text-sm" />
-                  <span className="text-[10px] text-slate-400">Pkt · Standard {Number(ex.points).toFixed(1)}</span>
-                </div>
-                {/* Taktische Auswahl (z. B. Lenkerdrehungen): Punktstufen antippen statt
-                    tippen. Skala aus dem Text, sonst Standard + 0,5er-Stufen. */}
-                {(() => {
-                  const std = Number(ex.points || 0);
-                  const scale = parseTacticalScale(ex.name);
-                  const nm = (ex.name || '').toLowerCase();
-                  const isTactical = scale.length > 0 || nm.includes('drehung') || nm.includes('fach');
-                  if (!isTactical || std <= 0) return null;
-                  const opts = scale.length > 0 ? scale : [0.5, 1.0, 1.5, 2.0].map(d => std + d);
-                  const cur = Number(e.taktischePunkte || 0);
-                  const chip = (key, label, sel, onClick) => (
-                    <button key={key} type="button" onClick={onClick}
-                      className={'text-xs px-3 py-1.5 rounded-full font-medium border tabular-nums ' +
-                        (sel ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100')}>
-                      {label}
-                    </button>
-                  );
-                  return (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {chip('std', 'Standard', cur <= 0 || Math.abs(cur - std) < 0.001,
-                        () => onUpdate(idx, 'taktischePunkte', ''))}
-                      {opts.map(v => chip(v, v.toFixed(1).replace('.', ','),
-                        cur > 0 && Math.abs(cur - v) < 0.001,
-                        () => onUpdate(idx, 'taktischePunkte', String(Math.abs(v - std) < 0.001 ? '' : v))))}
-                    </div>
-                  );
-                })()}
-              </div>
+              {/* Taktische Aufwertung — nach Reglement: Übungen mit fester Aufwertungs-
+                  Skala im Namen (z. B. Lenkerdrehungen „… (7,8 - 8,3 - 8,8 - 9,3)")
+                  bekommen NUR die Auswahl zwischen diesen Punktstufen; ohne Skala
+                  bleibt ein Eingabefeld für die aufgewertete Punktzahl als Backup. */}
+              {(() => {
+                const std = Number(ex.points || 0);
+                const scale = parseTacticalScale(ex.name);
+                const cur = Number(e.taktischePunkte || 0);
+                const chip = (key, label, sel, onClick) => (
+                  <button key={key} type="button" onClick={onClick}
+                    className={'text-xs px-3 py-1.5 rounded-full font-medium border tabular-nums ' +
+                      (sel ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100')}>
+                    {label}
+                  </button>
+                );
+                return (
+                  <div className={'mt-2 rounded-lg p-2 ' + (isTaktisch ? 'bg-amber-100/60 ring-1 ring-amber-300' : '')}>
+                    <div className="text-[10px] text-slate-500 mb-1">Taktische Aufwertung:</div>
+                    {scale.length > 0 && std > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {chip('std', 'Standard ' + std.toFixed(1).replace('.', ','), cur <= 0 || Math.abs(cur - std) < 0.001,
+                          () => onUpdate(idx, 'taktischePunkte', ''))}
+                        {scale.map(v => chip(v, v.toFixed(1).replace('.', ','),
+                          cur > 0 && Math.abs(cur - v) < 0.001,
+                          () => onUpdate(idx, 'taktischePunkte', String(Math.abs(v - std) < 0.001 ? '' : v))))}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <input type="number" min="0" step="0.1" inputMode="decimal"
+                          value={e.taktischePunkte || ''}
+                          placeholder={Number(ex.points).toFixed(1)}
+                          onChange={ev => onUpdate(idx, 'taktischePunkte', ev.target.value)}
+                          className="w-20 px-2 py-1.5 text-center border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-amber-500 text-sm" />
+                        <span className="text-[10px] text-slate-400">Pkt · Standard {Number(ex.points).toFixed(1)}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
