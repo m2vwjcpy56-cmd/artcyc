@@ -289,15 +289,15 @@ function Home() {
             </div>
           ))}
         </div>
-        <div className="mt-4 flex items-start gap-3 bg-slate-50 rounded-2xl border border-slate-200/70 p-5">
-          <ShieldCheck size={22} className="shrink-0" style={{ color: ACCENT }} />
-          <div>
-            <div className="font-semibold text-[15px]">Feine Rechte-Kontrolle & Papierkorb</div>
-            <p className="text-[14px] text-slate-600 leading-relaxed mt-0.5">
-              Jeder Sportler legt pro Trainer fest, ob dieser nur eintragen oder auch bearbeiten und löschen darf
-              („Volle Rechte"). Gelöschtes landet 30 Tage im Papierkorb und lässt sich jederzeit wiederherstellen.
-            </p>
+        <div className="mt-4 bg-white rounded-3xl border border-slate-200/70 p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center mb-4" style={{ background: ACCENT + '22' }}>
+            <ShieldCheck size={22} style={{ color: ACCENT }} />
           </div>
+          <h3 className="font-semibold text-[18px] mb-1.5">Rechte-Kontrolle & Papierkorb</h3>
+          <p className="text-[14px] text-slate-600 leading-relaxed">
+            Jeder Sportler legt pro Trainer fest, ob dieser nur eintragen oder auch bearbeiten und löschen darf
+            („Volle Rechte"). Gelöschtes landet 30 Tage im Papierkorb und lässt sich jederzeit wiederherstellen.
+          </p>
         </div>
       </Section>
 
