@@ -10628,6 +10628,9 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
   const scopedComps = (data.competitions || []).filter(c => compScope === 'gesamt' ? true
     : compScope === 'training' ? (c.kind || 'wettkampf') === 'training' : (c.kind || 'wettkampf') !== 'training');
   const compStats = calcExerciseCompetitionStats(exercise, data.programs || [], scopedComps);
+  // Über ALLE Bereiche (gesamt) — steuert, ob der Block überhaupt gezeigt wird, damit
+  // der Bereichs-Umschalter sichtbar bleibt, auch wenn der gewählte Bereich leer ist.
+  const anyCompStats = calcExerciseCompetitionStats(exercise, data.programs || [], data.competitions || []);
   const compList = (() => {
     const programMap = new Map((data.programs || []).map(p => [p.id, p]));
     const matches = (ex) => {
@@ -10788,11 +10791,11 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
         </>)}
 
         {/* WETTKAMPF — sekundär, als Disclosure im System (keine alte Insel) */}
-        {compStats.wettkaempfe > 0 && (
+        {anyCompStats.wettkaempfe > 0 && (
           <div className="card-surface rounded-[22px] p-4 space-y-3">
             <button onClick={() => setCompOpen(v => !v)} className="w-full flex items-center justify-between gap-2">
               <h2 className="text-[15px] font-semibold flex items-center gap-2">
-                <Trophy size={16} className="text-[#FF9500]" /> Wettkampf
+                <Trophy size={16} className="text-[#FF9500]" /> Wertungen
                 <span className="text-[13px] font-normal text-slate-400 tabular-nums">{compStats.wettkaempfe}×</span>
               </h2>
               <ChevronRight size={18} strokeWidth={2.4} className={'text-[#C7C7CC] transition-transform ' + (compOpen ? 'rotate-90' : '')} />
@@ -10807,11 +10810,12 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                     </button>
                   ))}
                 </div>
+                {compStats.wettkaempfe > 0 ? (<>
                 <div className="grid grid-cols-4 gap-2 text-center">
                   {[['x', compStats.cross, false], ['~', compStats.wave, false], ['|', compStats.bar, false], ['○', compStats.circle, true]].map(([sym, n, danger], i) => (
                     <div key={i} className={'rounded-xl py-2.5 ' + (danger ? 'bg-rose-50 border border-rose-100' : 'bg-slate-100')}>
                       <div className={'text-[11px] font-bold leading-none ' + (danger ? 'text-rose-600' : 'text-slate-500')}>{sym}</div>
-                      <div className={'font-bold text-[17px] leading-tight mt-1 tabular-nums ' + (danger ? 'text-rose-700' : 'text-slate-900')}>Ø {(n / compStats.wettkaempfe).toFixed(1)}</div>
+                      <div className={'font-bold text-[17px] leading-tight mt-1 tabular-nums ' + (danger ? 'text-rose-700' : 'text-slate-900')}>Ø {(compStats.wettkaempfe ? n / compStats.wettkaempfe : 0).toFixed(1)}</div>
                       <div className={'text-[10px] leading-tight tabular-nums ' + (danger ? 'text-rose-400' : 'text-slate-400')}>{n} ges.</div>
                     </div>
                   ))}
@@ -10892,6 +10896,9 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                     );
                   })}
                 </div>
+                </>) : (
+                  <div className="text-[13px] text-slate-400 text-center py-4">Keine Wertungen in diesem Bereich.</div>
+                )}
               </div>
             )}
           </div>
@@ -11341,11 +11348,11 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
         )}
 
         {/* Wettkampf — sekundär, eingeklappt, nur bei Daten */}
-        {compStats.wettkaempfe > 0 && (
+        {anyCompStats.wettkaempfe > 0 && (
           <div className="space-y-2">
             <button onClick={() => setCompOpen(v => !v)}
               className="w-full card-surface rounded-[22px] px-4 py-3.5 flex items-center justify-between active:bg-[#D1D1D6]/30 transition">
-              <span className="text-[15px] font-semibold flex items-center gap-2"><Trophy size={16} className="text-[#FF9500]" /> Wettkampf
+              <span className="text-[15px] font-semibold flex items-center gap-2"><Trophy size={16} className="text-[#FF9500]" /> Wertungen
                 <span className="text-[13px] font-normal text-slate-400 tabular-nums">{compStats.wettkaempfe}×</span>
               </span>
               <ChevronRight size={18} strokeWidth={2.4} className={'text-[#C7C7CC] transition-transform ' + (compOpen ? 'rotate-90' : '')} />
@@ -11360,11 +11367,12 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                     </button>
                   ))}
                 </div>
+                {compStats.wettkaempfe > 0 ? (<>
                 <div className="grid grid-cols-4 gap-2 text-center">
                   {[['x', compStats.cross, false], ['~', compStats.wave, false], ['|', compStats.bar, false], ['○', compStats.circle, true]].map(([sym, n, danger], i) => (
                     <div key={i} className={'rounded-xl py-2.5 ' + (danger ? 'bg-rose-50 border border-rose-100' : 'bg-slate-100')}>
                       <div className={'text-[11px] font-bold leading-none ' + (danger ? 'text-rose-600' : 'text-slate-500')}>{sym}</div>
-                      <div className={'font-bold text-[17px] leading-tight mt-1 tabular-nums ' + (danger ? 'text-rose-700' : 'text-slate-900')}>Ø {(n / compStats.wettkaempfe).toFixed(1)}</div>
+                      <div className={'font-bold text-[17px] leading-tight mt-1 tabular-nums ' + (danger ? 'text-rose-700' : 'text-slate-900')}>Ø {(compStats.wettkaempfe ? n / compStats.wettkaempfe : 0).toFixed(1)}</div>
                       <div className={'text-[10px] leading-tight tabular-nums ' + (danger ? 'text-rose-400' : 'text-slate-400')}>{n} ges.</div>
                     </div>
                   ))}
@@ -11445,6 +11453,9 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                     );
                   })}
                 </div>
+                </>) : (
+                  <div className="text-[13px] text-slate-400 text-center py-4">Keine Wertungen in diesem Bereich.</div>
+                )}
               </div>
             )}
           </div>
