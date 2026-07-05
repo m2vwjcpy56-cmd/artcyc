@@ -2684,13 +2684,16 @@ function DeductionBars({ series }) {
           ? <span className="text-[#3C3C43] font-medium">{sel.name || 'Wettkampf'} <span className="text-[#8E8E93] font-normal">· {formatDateShort(sel.date)} · −{sel.ded.toFixed(2)}</span></span>
           : <span className="text-[#C7C7CC]">Balken antippen — zeigt Wettkampf, Datum und Abzug.</span>}
       </div>
-      <div className="flex items-end gap-1.5">
+      {/* Maus: Drüberfahren scrubbt (wie nativ), Verlassen setzt zurück. Touch: Klick toggelt. */}
+      <div className="flex items-end gap-1.5" onMouseLeave={() => setSel(null)}>
         {series.map((s, i) => {
           const y = (s.date || '').slice(0, 4);
           const showYear = i === 0 || (series[i - 1].date || '').slice(0, 4) !== y;
           const active = sel === s;
           return (
-            <button key={i} type="button" onClick={() => setSel(v => v === s ? null : s)}
+            <button key={i} type="button"
+              onClick={() => setSel(v => v === s ? null : s)}
+              onMouseEnter={() => setSel(s)}
               className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
               <div className={'w-full rounded-t ' + (s.ded >= 0.6 ? 'bg-rose-400' : s.ded >= 0.15 ? 'bg-amber-400' : 'bg-emerald-400') + (sel && !active ? ' opacity-40' : '')}
                 style={{ height: Math.max(4, (s.ded / max) * 56) + 'px' }} />
