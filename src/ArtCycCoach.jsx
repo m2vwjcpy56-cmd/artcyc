@@ -15355,7 +15355,7 @@ function MarkSummary({ table1, table2 }) {
   );
   return (
     <div className="card-surface rounded-[22px] p-4 space-y-3">
-      <h3 className="text-[13px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Zeichen-Übersicht</h3>
+      <h3 className="text-[13px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Abzugs-Übersicht</h3>
       {row('Kampfgericht 1', a)}
       {row('Kampfgericht 2', b)}
       <p className="text-[11px] text-slate-400 leading-snug">Gesamtzahl der getippten Fehlerzeichen je Kampfgericht — zum Abgleich mit dem Wertungsbogen.</p>
