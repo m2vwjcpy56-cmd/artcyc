@@ -538,7 +538,7 @@ export async function bulkUpdateSessions(filter = {}, fields = {}) {
 export async function fetchCompetitions() {
   const { data, error } = await supabase
     .from('competitions')
-    .select('id, athlete_id, program_id, name, date, location, host, start_nr, table1, table2, t1_schwierigkeit, t2_schwierigkeit, pdf_ref, target_score, created_at, created_by')
+    .select('id, athlete_id, program_id, name, date, location, host, start_nr, table1, table2, t1_schwierigkeit, t2_schwierigkeit, pdf_ref, target_score, kind, created_at, created_by')
     .is('deleted_at', null)
     .order('date', { ascending: false });
   if (error) { console.warn('Competitions fetch:', error.message); return []; }

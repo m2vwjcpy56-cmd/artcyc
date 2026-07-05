@@ -4942,6 +4942,7 @@ export default function App() {
     id: c.id,
     athlete_id: c.athlete_id,
     program_id: c.program_id,
+    kind: c.kind || 'wettkampf',
     name: c.name,
     date: c.date,
     location: c.location || '',
@@ -5200,6 +5201,7 @@ export default function App() {
   const normalizeCompetition = useCallback((c) => ({
     athlete_id: c.athlete_id || c.athleteId || selectedAthleteId || myAthleteId || null,
     program_id: c.program_id || null,
+    kind: c.kind || 'wettkampf',   // 'training' = gewerteter Trainings-Durchlauf
     name: c.name,
     date: c.date,
     location: c.location || '',
@@ -7344,6 +7346,8 @@ function TrainingView({ data, setData, setView }) {
   // „Erfassen"-Auswahl (Action-Sheet) + Übungs-Picker für Feedback.
   const [erfassenOpen, setErfassenOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);   // Schnell-Erfassen (Dart-Scorer-Modus)
+  const [runEditorOpen, setRunEditorOpen] = useState(false); // Trainings-Durchlauf werten
+  const [viewRunId, setViewRunId] = useState(null);           // Durchlauf-Detail
   const [fbPickerOpen, setFbPickerOpen] = useState(false);
   // Aufgeklappte Hauptübungs-Gruppen (Phase 2: Variationen).
   const [openGroups, setOpenGroups] = useState(() => new Set());
@@ -7786,7 +7790,42 @@ function TrainingView({ data, setData, setView }) {
       : sortMode === 'exercise'
         ? <div className="space-y-2">{exerciseGroups.map(renderExerciseGroup)}</div>
         : <div className="space-y-1">{renderGroup(t('training.today'), groups.today)}{renderGroup(t('training.yesterday'), groups.yesterday)}{renderGroup(t('training.thisWeek'), groups.week)}{groups.months.map(m => renderGroup(m.label, m.items))}</div>;
-    return (
+    // Trainings-Durchlauf werten: gleicher Editor wie Wettkämpfe, aber kind='training'.
+  if (runEditorOpen) {
+    return <WettkampfEditor
+      competition={null}
+      programs={(data.programs || []).filter(p => p.owner_id != null)}
+      athletes={[]}
+      existingExercises={data.exercises || []}
+      existingCompetitions={(data.competitions || []).filter(c => (c.kind || 'wettkampf') === 'training')}
+      onSave={(payload) => {
+        const c = { ...payload.competition, kind: 'training' };
+        const full = data.competitions || [];
+        const exists = full.find(x => x.id === c.id);
+        setData({ ...data, competitions: exists ? full.map(x => x.id === c.id ? c : x) : [...full, c] });
+        setRunEditorOpen(false);
+      }}
+      onCancel={() => setRunEditorOpen(false)}
+    />;
+  }
+  if (viewRunId) {
+    const c = (data.competitions || []).find(x => x.id === viewRunId);
+    if (c) {
+      return <WettkampfDetail
+        competition={c}
+        program={(data.programs || []).find(p => p.id === c.program_id)}
+        athlete={null}
+        onBack={() => setViewRunId(null)}
+        onEdit={undefined}
+        onDelete={data._isReadOnly ? undefined : () => {
+          setData({ ...data, competitions: (data.competitions || []).filter(x => x.id !== c.id) });
+          setViewRunId(null);
+        }}
+      />;
+    }
+  }
+
+  return (
       <div className="space-y-5 pb-2">
         {/* TOP BAR — Actions dezenter (ghost + kompakt) */}
         <header className="flex items-end justify-between gap-3 pt-2 px-1">
@@ -7812,6 +7851,40 @@ function TrainingView({ data, setData, setView }) {
           <span className="flex-1 text-left text-[15px] font-medium">Trainingsplan</span>
           <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
         </button>
+
+        {/* Gewertete Trainings-Durchläufe: Programm mit Abzügen wie ein Wertungsbogen —
+            fließt getrennt vom Wettkampf in die Statistiken ein (Bereich „Training"). */}
+        <div className="card-surface rounded-[20px] overflow-hidden">
+          <button onClick={() => setRunEditorOpen(true)} className="w-full px-4 py-3 flex items-center gap-3 active:bg-[#D1D1D6]/30 transition">
+            <FileText size={18} className="text-[#FF9500] shrink-0" />
+            <span className="flex-1 text-left text-[15px] font-medium">Durchlauf werten (Wertungsbogen)</span>
+            <Plus size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
+          </button>
+          {(() => {
+            const runs = (data.competitions || []).filter(c => (c.kind || 'wettkampf') === 'training')
+              .sort((x, y) => (y.date || '').localeCompare(x.date || ''));
+            if (runs.length === 0) return null;
+            return runs.slice(0, 3).map(c => {
+              const program = (data.programs || []).find(p => p.id === c.program_id);
+              const t1 = program ? calcTableResult(program, c.table1, c.t1_schwierigkeit) : null;
+              const t2 = program ? calcTableResult(program, c.table2, c.t2_schwierigkeit) : null;
+              const final = (t1 && t2) ? Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100 : null;
+              return (
+                <button key={c.id} onClick={() => setViewRunId(c.id)}
+                  className="w-full px-4 py-2.5 flex items-center justify-between gap-2 border-t border-[#C6C6C8]/40 active:bg-[#D1D1D6]/30">
+                  <span className="min-w-0 text-left">
+                    <span className="block text-[14px] font-medium truncate">{c.name || 'Trainings-Durchlauf'}</span>
+                    <span className="block text-[12px] text-[#8E8E93]">{formatDateShort(c.date)}</span>
+                  </span>
+                  <span className="flex items-center gap-1.5 shrink-0">
+                    {final != null && <span className="text-[14px] font-bold text-[#FF9500] tabular-nums">{final.toFixed(2)}</span>}
+                    <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC]" />
+                  </span>
+                </button>
+              );
+            });
+          })()}
+        </div>
 
         {/* OVERVIEW — getönte Karten; Erfolgsquote NICHT als Warnung (violet, neutral-positiv) */}
         {totalCount > 0 && (
@@ -10774,7 +10847,10 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
   const vm = buildExerciseScreenModel(exercise, data, ropeFilter, period);
 
   // Wettkampf-Statistik (sekundäre Disclosure, im System)
-  const compStats = calcExerciseCompetitionStats(exercise, data.programs || [], data.competitions || []);
+  const [compScope, setCompScope] = useState('gesamt'); // gesamt | training | wettkampf
+  const scopedComps = (data.competitions || []).filter(c => compScope === 'gesamt' ? true
+    : compScope === 'training' ? (c.kind || 'wettkampf') === 'training' : (c.kind || 'wettkampf') !== 'training');
+  const compStats = calcExerciseCompetitionStats(exercise, data.programs || [], scopedComps);
   const compList = (() => {
     const programMap = new Map((data.programs || []).map(p => [p.id, p]));
     const matches = (ex) => {
@@ -10783,7 +10859,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
         && Number(ex.points || 0) === Number(exercise.points || 0);
     };
     const result = [];
-    for (const comp of data.competitions || []) {
+    for (const comp of scopedComps) {
       const program = programMap.get(comp.program_id);
       if (!program || !program.exercises) continue;
       program.exercises.forEach((ex, idx) => {
@@ -10946,6 +11022,14 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
             </button>
             {compOpen && (
               <div className="space-y-3">
+                <div className="bg-[#E5E5EA] dark:bg-white/10 rounded-lg p-0.5 flex gap-0.5">
+                  {[['gesamt', 'Gesamt'], ['training', 'Training'], ['wettkampf', 'Wettkampf']].map(([v, lbl]) => (
+                    <button key={v} onClick={() => setCompScope(v)}
+                      className={'flex-1 py-1 rounded-md text-[12px] font-medium transition ' + (compScope === v ? 'ios-seg-active' : 'text-[#3C3C43] dark:text-slate-300 active:opacity-70')}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
                 <div className="grid grid-cols-4 gap-2 text-center">
                   {[['x', compStats.cross, false], ['~', compStats.wave, false], ['|', compStats.bar, false], ['○', compStats.circle, true]].map(([sym, n, danger], i) => (
                     <div key={i} className={'rounded-xl py-2.5 ' + (danger ? 'bg-rose-50 border border-rose-100' : 'bg-slate-100')}>
@@ -11157,7 +11241,10 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
     withoutRope: calcExerciseTrainingStats(exercise, data.sessions || [], false),
   } : null;
 
-  const compStats = calcExerciseCompetitionStats(exercise, data.programs || [], data.competitions || []);
+  const [compScope, setCompScope] = useState('gesamt'); // gesamt | training | wettkampf
+  const scopedComps = (data.competitions || []).filter(c => compScope === 'gesamt' ? true
+    : compScope === 'training' ? (c.kind || 'wettkampf') === 'training' : (c.kind || 'wettkampf') !== 'training');
+  const compStats = calcExerciseCompetitionStats(exercise, data.programs || [], scopedComps);
 
   // Liste aller Wettkämpfe mit dieser Übung (für die eingeklappte Sektion)
   const compList = (() => {
@@ -11168,7 +11255,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
         && Number(ex.points || 0) === Number(exercise.points || 0);
     };
     const result = [];
-    for (const comp of data.competitions || []) {
+    for (const comp of scopedComps) {
       const program = programMap.get(comp.program_id);
       if (!program || !program.exercises) continue;
       program.exercises.forEach((ex, idx) => {
@@ -11488,6 +11575,14 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
             </button>
             {compOpen && (
               <div className="card-surface rounded-[22px] p-4 space-y-3">
+                <div className="bg-[#E5E5EA] dark:bg-white/10 rounded-lg p-0.5 flex gap-0.5">
+                  {[['gesamt', 'Gesamt'], ['training', 'Training'], ['wettkampf', 'Wettkampf']].map(([v, lbl]) => (
+                    <button key={v} onClick={() => setCompScope(v)}
+                      className={'flex-1 py-1 rounded-md text-[12px] font-medium transition ' + (compScope === v ? 'ios-seg-active' : 'text-[#3C3C43] dark:text-slate-300 active:opacity-70')}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
                 <div className="grid grid-cols-4 gap-2 text-center">
                   {[['x', compStats.cross, false], ['~', compStats.wave, false], ['|', compStats.bar, false], ['○', compStats.circle, true]].map(([sym, n, danger], i) => (
                     <div key={i} className={'rounded-xl py-2.5 ' + (danger ? 'bg-rose-50 border border-rose-100' : 'bg-slate-100')}>
@@ -13664,6 +13759,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
   const { t } = useI18n();
   const [tab, setTab] = useState('wettkaempfe'); // 'wettkaempfe' | 'programme'
   const [showAllDeductions, setShowAllDeductions] = useState(false); // „Höchste Abzüge" ausgeklappt?
+  const [dedScope, setDedScope] = useState('gesamt');                 // gesamt | training | wettkampf
   const [expandedDeduction, setExpandedDeduction] = useState(null);  // Detail-Aufklappung (key)
 
   // Persistierter Editor-Öffnungs-Zustand
@@ -13707,23 +13803,27 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
     );
   }
 
-  const competitions = data.competitions || [];
+  // Trainings-Durchläufe (kind='training') gehören in den Training-Tab —
+  // dieser Tab zeigt nur ECHTE Wettkämpfe. Roh-Liste bleibt fürs Scope-Ranking.
+  const allScoredRuns = data.competitions || [];
+  const competitions = allScoredRuns.filter(c => (c.kind || 'wettkampf') !== 'training');
   const programs = data.programs || [];
   // Athletes aus DB (Phase 9a). Fallback auf data.athletes für legacy
   const athletes = (dbAthletes && dbAthletes.length > 0) ? dbAthletes : (data.athletes || []);
 
   const upsert = (comp) => {
-    const exists = competitions.find(c => c.id === comp.id);
+    const full = data.competitions || [];
+    const exists = full.find(c => c.id === comp.id);
     setData({
       ...data,
       competitions: exists
-        ? competitions.map(c => c.id === comp.id ? comp : c)
-        : [...competitions, comp]
+        ? full.map(c => c.id === comp.id ? comp : c)
+        : [...full, comp]
     });
   };
 
   const remove = (id) => {
-    setData({ ...data, competitions: competitions.filter(c => c.id !== id) });
+    setData({ ...data, competitions: (data.competitions || []).filter(c => c.id !== id) });
   };
 
   // Detail-Ansicht
@@ -13893,12 +13993,22 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
 
           {/* HÖCHSTE ABZÜGE — nach Dieter Mautes Wettkampfstatistik */}
           {(() => {
-            const ranking = calcDeductionRanking(programs, competitions, data.exercises, data.sessions);
+            const scoped = dedScope === 'gesamt' ? allScoredRuns
+              : allScoredRuns.filter(c => dedScope === 'training' ? (c.kind || 'wettkampf') === 'training' : (c.kind || 'wettkampf') !== 'training');
+            const ranking = calcDeductionRanking(programs, scoped, data.exercises, data.sessions);
             if (ranking.length === 0) return null;
             const shown = showAllDeductions ? ranking : ranking.slice(0, 5);
             return (
               <div className="card-surface rounded-[22px] p-4 space-y-1">
                 <h2 className="text-[15px] font-semibold flex items-center gap-2 mb-2"><TrendingDown size={16} className="text-[#FF3B30]" /> Höchste Abzüge</h2>
+                <div className="bg-[#E5E5EA] dark:bg-white/10 rounded-lg p-0.5 flex gap-0.5 mb-2">
+                  {[['gesamt', 'Gesamt'], ['training', 'Training'], ['wettkampf', 'Wettkampf']].map(([v, lbl]) => (
+                    <button key={v} onClick={() => setDedScope(v)}
+                      className={'flex-1 py-1 rounded-md text-[12px] font-medium transition ' + (dedScope === v ? 'ios-seg-active' : 'text-[#3C3C43] dark:text-slate-300 active:opacity-70')}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
                 {shown.map((r, i) => (
                   <div key={r.key} className={i > 0 ? 'border-t border-[#C6C6C8]/30' : ''}>
                     <button onClick={() => setExpandedDeduction(v => v === r.key ? null : r.key)}
