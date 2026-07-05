@@ -15280,11 +15280,74 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
               result={activeTable === 1 ? t1 : t2}
             />
           )}
+
+          {/* Zeichen-Übersicht: Gesamtzahl der getippten Fehlerzeichen je Kampfgericht
+              — zum Abgleich mit dem Papier-Bogen, damit Vertipper sofort auffallen. */}
+          <MarkSummary table1={table1} table2={table2} />
         </>
       )}
 
       {/* Speichern erfolgt über den „Speichern"-Button oben rechts im Header. */}
       </div>
+    </div>
+  );
+}
+
+// Kleines Fehlerzeichen als SVG (einheitliche Strichstärke) für die Zeichen-Übersicht.
+function MarkMini({ kind, active }) {
+  const c = active ? '#FF9500' : '#94a3b8';
+  const st = { fill: 'none', stroke: c, strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  const S = 18, p = 3;
+  return (
+    <svg width={S} height={S} viewBox={`0 0 ${S} ${S}`} aria-hidden="true">
+      {kind === 'cross' && <><line x1={p} y1={p} x2={S - p} y2={S - p} style={st} /><line x1={S - p} y1={p} x2={p} y2={S - p} style={st} /></>}
+      {kind === 'wave' && <path d={`M ${p} ${S / 2} Q ${S * 0.3} ${S * 0.22}, ${S / 2} ${S / 2} T ${S - p} ${S / 2}`} style={st} />}
+      {kind === 'bar' && <line x1={S / 2} y1={p} x2={S / 2} y2={S - p} style={st} />}
+      {kind === 'circle' && <circle cx={S / 2} cy={S / 2} r={S / 2 - p} style={st} />}
+    </svg>
+  );
+}
+
+// Zeichen-Übersicht: Gesamtzahl der getippten Fehlerzeichen je Kampfgericht.
+function MarkSummary({ table1, table2 }) {
+  const tally = (t) => {
+    const s = { cross: 0, wave: 0, bar: 0, circle: 0, schw: 0 };
+    (t || []).forEach(e => {
+      s.cross += Number(e?.cross || 0); s.wave += Number(e?.wave || 0);
+      s.bar += Number(e?.bar || 0); s.circle += Number(e?.circle || 0);
+      if (Number(e?.schwPct || 0) > 0) s.schw += 1;
+    });
+    return s;
+  };
+  const a = tally(table1), b = tally(table2);
+  const total = a.cross + a.wave + a.bar + a.circle + b.cross + b.wave + b.bar + b.circle;
+  if (total === 0) return null;
+  const cell = (kind, n) => (
+    <div className="flex items-center gap-1.5">
+      <MarkMini kind={kind} active={n > 0} />
+      <span className={'text-sm tabular-nums ' + (n > 0 ? 'font-semibold text-slate-800 dark:text-slate-100' : 'text-slate-400')}>{n}</span>
+    </div>
+  );
+  const row = (label, s) => (
+    <div>
+      <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">{label}</div>
+      <div className="flex flex-wrap gap-x-5 gap-y-2 items-center">
+        {cell('cross', s.cross)}{cell('wave', s.wave)}{cell('bar', s.bar)}{cell('circle', s.circle)}
+        {s.schw > 0 && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[15px] font-bold text-[#FF9500] leading-none">%</span>
+            <span className="text-sm tabular-nums font-semibold text-slate-800 dark:text-slate-100">{s.schw}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+  return (
+    <div className="card-surface rounded-[22px] p-4 space-y-3">
+      <h3 className="text-[13px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Zeichen-Übersicht</h3>
+      {row('Kampfgericht 1', a)}
+      {row('Kampfgericht 2', b)}
+      <p className="text-[11px] text-slate-400 leading-snug">Gesamtzahl der getippten Fehlerzeichen je Kampfgericht — zum Abgleich mit dem Wertungsbogen.</p>
     </div>
   );
 }
