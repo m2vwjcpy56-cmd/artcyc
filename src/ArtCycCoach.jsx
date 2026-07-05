@@ -15265,7 +15265,7 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
               </div>
               {/* Anerkannt (taktische Aufwertung) – Standard = Übungspunkte */}
               <div className={'mt-2 rounded-lg p-2 ' + (isTaktisch ? 'bg-amber-100/60 ring-1 ring-amber-300' : '')}>
-                <div className="text-[10px] text-slate-500 mb-1">Anerkannt (taktische Aufwertung):</div>
+                <div className="text-[10px] text-slate-500 mb-1">Taktische Aufwertung:</div>
                 <div className="flex items-center gap-2">
                   <input type="number" min="0" step="0.1" inputMode="decimal"
                     value={e.taktischePunkte || ''}
@@ -15320,7 +15320,7 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
               <th className="py-2 px-1 font-medium w-10" title="Strich (1,0)">|</th>
               <th className="py-2 px-1 font-medium w-10" title="Kreis/Sturz (2,0)">○</th>
               <th className="py-2 px-1 font-medium w-16" title="Schwierigkeit %">Schw</th>
-              <th className="py-2 px-1 font-medium w-16" title="Anerkannt (taktische Aufwertung)">Anerk.</th>
+              <th className="py-2 px-1 font-medium w-16" title="Taktische Aufwertung — zählt statt der Standard-Punkte">Takt.</th>
               <th className="py-2 px-1 font-medium w-12 text-right">Σ</th>
             </tr>
           </thead>
