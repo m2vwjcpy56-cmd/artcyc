@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Trophy, ClipboardList, ScanLine, BarChart3, Users, ListChecks,
   Check, ChevronRight, X, Menu, Smartphone, ShieldCheck, Globe, BookOpen,
-  User, UserCog,
+  User, UserCog, Zap,
 } from 'lucide-react';
 
 // =============================================================
@@ -99,6 +99,7 @@ function Section({ children, className }) {
 const FEATURES = [
   { icon: ClipboardList, title: 'Training protokollieren', text: 'Übungen mit Geklappt/Nicht erfassen, Serien zählen, mit/ohne Seil — schnell direkt aus dem Trainingsplan.' },
   { icon: ScanLine, title: 'Wertungsbögen scannen', text: 'Wettkampf-Wertungsbogen abfotografieren — die KI liest Übungen, Abzüge und Endergebnis automatisch aus.' },
+  { icon: Zap, title: 'Wertungsbögen manuell erfassen', text: 'Übung für Übung durchtippen: große Flächen für die Fehlerzeichen, beide Kampfgerichte, Schwierigkeit — schnell und ohne Papier.' },
   { icon: BarChart3, title: 'Statistik & Trends', text: 'Erfolgsquoten pro Übung, Verlauf über Wochen/Monate, Ø-Punktabzug pro Wettkampf und Bestleistungen.' },
   { icon: ListChecks, title: 'Trainingspläne', text: 'Stehende Pläne mit verknüpften Übungen — direkt protokollieren, mit Verlaufs-Protokoll je Plan.' },
   { icon: Users, title: 'Mehrere Trainer & Sportler', text: 'Sportler per Code einladen, Co-Trainer verwalten — alle sehen dieselben Daten in Echtzeit.' },
@@ -119,6 +120,7 @@ const REGLEMENT_SAMPLE = [
 const PREVIEWS = [
   { img: 'dashboard', label: 'Dashboard' },
   { img: 'trend', label: 'Übungs-Trend' },
+  { img: 'erfassen', label: 'Wertungsbogen erfassen' },
   { img: 'wettkampf', label: 'Wettkämpfe' },
   { img: 'uebungen', label: 'Übungen' },
 ];
