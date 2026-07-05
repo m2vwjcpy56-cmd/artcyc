@@ -2672,6 +2672,54 @@ function calcTableResult(program, entries, schwierigkeit = 0) {
   };
 }
 
+// „Höchste Abzüge" (nach Dieter Mautes Wettkampfstatistik): Ø-Punktabzug pro Übung
+// über alle Wettkämpfe (x 0,2 · ~ 0,5 · | 1,0 · ○ 2,0), absteigend — plus
+// Trainings-Erfolgsquote zum Vergleich.
+function calcDeductionRanking(programs, competitions, exercises, sessions) {
+  const programMap = new Map((programs || []).map(p => [p.id, p]));
+  const acc = new Map();
+  for (const comp of (competitions || [])) {
+    const program = programMap.get(comp.program_id);
+    if (!program || !program.exercises) continue;
+    const seen = new Set();
+    program.exercises.forEach((ex, idx) => {
+      const key = (ex.code && String(ex.code).trim()) || (ex.name || '').trim().toLowerCase();
+      if (!key) return;
+      let s = acc.get(key);
+      if (!s) { s = { key, name: ex.name || 'Übung', competitions: 0, cross: 0, wave: 0, bar: 0, circle: 0 }; acc.set(key, s); }
+      [(comp.table1 || [])[idx], (comp.table2 || [])[idx]].forEach(e => {
+        if (!e) return;
+        s.cross += Number(e.cross || 0); s.wave += Number(e.wave || 0);
+        s.bar += Number(e.bar || 0); s.circle += Number(e.circle || 0);
+      });
+      if (!seen.has(key)) { s.competitions += 1; seen.add(key); }
+    });
+  }
+  const exByKey = new Map();
+  (exercises || []).forEach(e => {
+    const key = (e.uci_code && String(e.uci_code).trim()) || (e.name || '').trim().toLowerCase();
+    if (key && !exByKey.has(key)) exByKey.set(key, e);
+  });
+  const bySessions = new Map();
+  (sessions || []).forEach(s => {
+    if (!s.exerciseId) return;
+    let r = bySessions.get(s.exerciseId);
+    if (!r) { r = { total: 0, success: 0 }; bySessions.set(s.exerciseId, r); }
+    (s.entries || []).forEach(x => { r.total += 1; if (x === 'success') r.success += 1; });
+  });
+  return [...acc.values()]
+    .filter(s => s.competitions > 0)
+    .map(s => {
+      const ded = s.cross * 0.2 + s.wave * 0.5 + s.bar * 1.0 + s.circle * 2.0;
+      const ex = exByKey.get(s.key);
+      const tr = ex ? bySessions.get(ex.id) : null;
+      return { ...s, avgDeduction: ded / s.competitions,
+               trainingRate: tr && tr.total > 0 ? Math.round(tr.success / tr.total * 100) : null };
+    })
+    .filter(s => s.avgDeduction > 0)
+    .sort((a, b) => b.avgDeduction - a.avgDeduction);
+}
+
 // Wettkampf-Statistik pro Übung — summiert x/~/|/○ über alle Wettkämpfe in beiden KGs
 function calcExerciseCompetitionStats(exercise, programs, competitions) {
   const stats = {
@@ -13235,6 +13283,7 @@ function BulkImportModal({ data, athletes, onApply, onClose }) {
 function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
   const { t } = useI18n();
   const [tab, setTab] = useState('wettkaempfe'); // 'wettkaempfe' | 'programme'
+  const [showAllDeductions, setShowAllDeductions] = useState(false); // „Höchste Abzüge" ausgeklappt?
 
   // Persistierter Editor-Öffnungs-Zustand
   const initView = (() => {
@@ -13460,6 +13509,43 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
               <CompetitionTrendChart competitions={competitions} programs={programs} best={stats.best ? { competition: stats.best.c, final: stats.best.final } : null} onTapWettkampf={() => { }} bare />
             </div>
           )}
+
+          {/* HÖCHSTE ABZÜGE — nach Dieter Mautes Wettkampfstatistik */}
+          {(() => {
+            const ranking = calcDeductionRanking(programs, competitions, data.exercises, data.sessions);
+            if (ranking.length === 0) return null;
+            const shown = showAllDeductions ? ranking : ranking.slice(0, 5);
+            return (
+              <div className="card-surface rounded-[22px] p-4 space-y-1">
+                <h2 className="text-[15px] font-semibold flex items-center gap-2 mb-2"><TrendingDown size={16} className="text-[#FF3B30]" /> Höchste Abzüge</h2>
+                {shown.map((r, i) => (
+                  <div key={r.key} className={'flex items-center gap-3 py-2 ' + (i > 0 ? 'border-t border-[#C6C6C8]/30' : '')}>
+                    <span className={'w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0 tabular-nums ' + (i < 3 ? 'bg-[#FF9500]/15 text-[#FF9500]' : 'bg-[#8E8E93]/12 text-[#8E8E93]')}>{i + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[14px] font-medium truncate">{r.name}</div>
+                      <div className="text-[12px] text-[#8E8E93]">
+                        {r.competitions}× Wettkampf
+                        {r.trainingRate != null && <> · Training <span className={r.trainingRate >= 80 ? 'text-emerald-600' : r.trainingRate >= 50 ? 'text-amber-600' : 'text-rose-600'}>{r.trainingRate}%</span></>}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className={'text-[14px] font-semibold tabular-nums ' + (r.avgDeduction >= 0.6 ? 'text-rose-600' : r.avgDeduction >= 0.15 ? 'text-amber-600' : 'text-emerald-600')}>−{r.avgDeduction.toFixed(2)}</div>
+                      <div className="text-[11px] font-mono text-[#8E8E93]">
+                        {[['x', r.cross], ['~', r.wave], ['|', r.bar], ['○', r.circle]].filter(([, n]) => n > 0).map(([s, n]) => s + Math.round(n)).join(' ')}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {ranking.length > 5 && (
+                  <button onClick={() => setShowAllDeductions(v => !v)}
+                    className="w-full text-center text-[13px] font-medium text-[#FF9500] pt-2 active:opacity-60">
+                    {showAllDeductions ? 'Nur Top 5 anzeigen' : `Alle ${ranking.length} Übungen anzeigen`}
+                  </button>
+                )}
+                <p className="text-[11px] text-[#8E8E93] pt-1 leading-snug">Ø-Punktabzug pro Übung über alle Wettkämpfe (x 0,2 · ~ 0,5 · | 1,0 · ○ 2,0) — daneben die Trainings-Erfolgsquote zum Vergleich.</p>
+              </div>
+            );
+          })()}
 
           {/* LISTEN pro Jahr */}
           {years.map(year => (
