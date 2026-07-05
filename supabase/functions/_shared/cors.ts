@@ -18,6 +18,8 @@
 // =============================================================
 
 const ALLOWED_PATTERNS = [
+  /^https:\/\/artcyc\.app$/,
+  /^https:\/\/www\.artcyc\.app$/,
   /^https:\/\/artcyc\.vercel\.app$/,
   /^https:\/\/[a-z0-9-]+\.vercel\.app$/,
   /^http:\/\/localhost(:\d+)?$/,

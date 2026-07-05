@@ -61,7 +61,9 @@ Gib AUSSCHLIESSLICH dieses JSON zurück (kein Text, keine Code-Fences):
 { "rows": [ { "points": number|null, "code": string|null, "name": string|null, "confidence": number,
               "P":[kg1,kg2,kg3], "X":[kg1,kg2,kg3], "W":[kg1,kg2,kg3], "S":[kg1,kg2,kg3], "K":[kg1,kg2,kg3] } ] }
 REGELN:
-- Eine Zeile pro Übung, von oben nach unten. "points" = Punktwert aus der Pkte-Spalte (z. B. 5,8).
+- Die Tabelle hat gedruckte horizontale LINIEN — jede gedruckte Zeile ist GENAU eine Übung. Ordne jede handschriftliche Zahl der Zeile zu, auf deren Linie sie steht (NICHT der Zeile darüber oder darunter).
+- Gib JEDE gedruckte Zeile aus — auch komplett leere (dann alle Werte 0). NIEMALS Zeilen überspringen, zusammenfassen oder zusätzliche erfinden.
+- "points" und "code" sind GEDRUCKT — exakt ablesen, sie sind der Anker für die Zuordnung. "points" = Punktwert aus der Pkte-Spalte (z. B. 5,8).
 - "code" = der gedruckte Übungs-Code aus der Code-Spalte (Überschrift ACA/CBMC o. ä.), z. B. "1175c" (vier Ziffern, evtl. mit Kleinbuchstabe). Wenn nicht lesbar: null.
 - "name" = der Übungstext aus der linken Spalte (z. B. "Drehsprung"). Wenn nicht lesbar: null.
 - Leere Zelle = 0. X/W/S/K sind kleine ganze Zahlen (0–9). P ist 0, 10, 50 oder 100.
@@ -161,6 +163,42 @@ function sanitizeExerciseRow(row: any): any {
   };
 }
 
+// Richtet die gelesenen Zeilen an der bekannten Punktfolge des Programms aus
+// (Needleman-Wunsch). Verhindert das „Verrutschen": überspringt das Modell eine
+// gedruckte Zeile oder erfindet eine, ordnet das Alignment die Abzüge trotzdem
+// der richtigen Übung zu — Anker ist der GEDRUCKTE Punktwert je Zeile.
+function alignToProgram(rows: any[], prog: number[]): { rows: any[]; matched: number } {
+  const N = prog.length, M = rows.length;
+  const emptyRow = (p: number) => ({ points: p, code: null, name: null, confidence: 0,
+    P: [0, 0, 0], X: [0, 0, 0], W: [0, 0, 0], S: [0, 0, 0], K: [0, 0, 0] });
+  if (!N) return { rows, matched: 0 };
+  if (!M) return { rows: prog.map(emptyRow), matched: 0 };
+  const match = (r: any, p: number) => {
+    const pts = Number(r?.points);
+    if (!Number.isFinite(pts)) return 0;           // Punktwert nicht gelesen — neutral
+    return Math.abs(pts - p) < 0.051 ? 2 : -2;     // gedruckter Punktwert = Anker
+  };
+  const GAP = -1;
+  const dp: number[][] = Array.from({ length: M + 1 }, () => new Array(N + 1).fill(0));
+  for (let i = 1; i <= M; i++) dp[i][0] = dp[i - 1][0] + GAP;
+  for (let j = 1; j <= N; j++) dp[0][j] = dp[0][j - 1] + GAP;
+  for (let i = 1; i <= M; i++) {
+    for (let j = 1; j <= N; j++) {
+      dp[i][j] = Math.max(dp[i - 1][j - 1] + match(rows[i - 1], prog[j - 1]),
+                          dp[i - 1][j] + GAP, dp[i][j - 1] + GAP);
+    }
+  }
+  const out: any[] = new Array(N).fill(null);
+  let i = M, j = N, matched = 0;
+  while (i > 0 && j > 0) {
+    if (dp[i][j] === dp[i - 1][j - 1] + match(rows[i - 1], prog[j - 1])) {
+      out[j - 1] = rows[i - 1]; matched++; i--; j--;
+    } else if (dp[i][j] === dp[i - 1][j] + GAP) { i--; }  // gelesene Extra-Zeile → verwerfen
+    else { j--; }                                          // gedruckte Zeile nicht gelesen → leer
+  }
+  return { rows: out.map((r, idx) => r ? { ...r, points: prog[idx] } : emptyRow(prog[idx])), matched };
+}
+
 // @ts-ignore Deno-Runtime
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
@@ -217,6 +255,13 @@ Deno.serve(async (req: Request) => {
         else if (!exDebug) exDebug = "PRO: " + (ex.error || ex.raw || "leer").slice(0, 280) + " | FLASH: " + (fb.error || fb.raw || "leer").slice(0, 280);
       }
       if (rawRows) exercises = rawRows.map(sanitizeExerciseRow);
+      // Anti-Verrutsch: Zeilen an der Punktfolge des Programms ausrichten,
+      // statt blind auf die Lesereihenfolge zu vertrauen.
+      if (exercises.length > 0 && programPoints && programPoints.length) {
+        const aligned = alignToProgram(exercises, programPoints);
+        exercises = aligned.rows;
+        exDebug = (exDebug ? exDebug + " | " : "") + `align: ${aligned.matched}/${programPoints.length} Zeilen verankert`;
+      }
       if (exercises.length === 0 && !exDebug) exDebug = (ex.error || ex.raw || "").slice(0, 600);
     } catch (e) { exDebug = "Ausnahme: " + String((e as Error)?.message || e); }
 
