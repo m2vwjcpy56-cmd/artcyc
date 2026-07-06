@@ -14275,10 +14275,10 @@ function ValidationCheck({ pdfRef, t1, t2 }) {
 // Vollbild-Dart-Scorer (wie native iOS): eine Übung nach der anderen, große Tippflächen
 // für die Fehlerzeichen (Tipp = +1, kleines Minus zum Korrigieren), Schwierigkeit +
 // taktische Aufwertung darunter, Weiter/Zurück. Deckt pro-KG und Gesamt ab.
-function StellungScorer({ program, tables, gesamt, kampfgerichte, onUpdate, onUpdateSchwHits, onUpdateTaktHits, onClose }) {
+function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0, onUpdate, onUpdateSchwHits, onUpdateTaktHits, onClose }) {
   const N = Math.max(1, Math.min(4, Number(kampfgerichte || 2)));
   const exs = program.exercises || [];
-  const [idx, setIdx] = useState(0);
+  const [idx, setIdx] = useState(() => Math.max(0, Math.min(startIndex || 0, (program.exercises || []).length - 1)));
   const [kg, setKg] = useState(1);            // aktives Kampfgericht (per-KG); Gesamt = immer 1
   const [pulse, setPulse] = useState(0);       // Haptik-Trigger
   const tapKg = gesamt ? 1 : kg;
@@ -14471,6 +14471,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
   const [activeTable, setActiveTable] = useState(1);
   const [showExercises, setShowExercises] = useState(true);
   const [scoring, setScoring] = useState(false);   // Vollbild-Dart-Scorer (wie iOS)
+  const [scoringIdx, setScoringIdx] = useState(0); // Übung, mit der der Scorer startet
   // Referenz-Werte aus letztem PDF-Import zur Validierung
   const [pdfRef, setPdfRef] = useState(() => initVal('pdfRef', competition && competition.pdf_ref ? competition.pdf_ref : null));
 
@@ -15522,11 +15523,11 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Erfassung</div>
                 <div className="flex gap-1.5">
                   <button type="button" onClick={() => setAbzugGesamt(false)}
-                    className={'flex-1 py-2 rounded-xl text-sm font-semibold border ' + (!abzugGesamt ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
+                    className={'flex-1 py-2 rounded-xl text-sm font-semibold border ' + (!abzugGesamt ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
                     Pro Kampfgericht
                   </button>
                   <button type="button" onClick={() => setAbzugGesamt(true)}
-                    className={'flex-1 py-2 rounded-xl text-sm font-semibold border ' + (abzugGesamt ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
+                    className={'flex-1 py-2 rounded-xl text-sm font-semibold border ' + (abzugGesamt ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
                     Gesamt
                   </button>
                 </div>
@@ -15538,57 +15539,44 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             )}
           </div>
 
-          {/* Pro-KG-Tabs (nur pro-KG-Modus mit ≥2 KG) */}
-          {!abzugGesamt && N >= 2 && (
-            <div className="flex gap-2 flex-wrap">
-              {Array.from({ length: N }, (_, i) => i + 1).map(n => (
-                <button key={n} onClick={() => setActiveTable(n)}
-                  className={'flex-1 min-w-[70px] py-3 rounded-xl font-semibold transition-colors ' +
-                    (activeTable === n ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
-                  Kampfgericht {n}
-                  <div className="text-xs font-normal opacity-80 mt-0.5">{kgResults[n - 1] && kgResults[n - 1].ergebnis.toFixed(2)} Pkt.</div>
-                </button>
-              ))}
-            </div>
-          )}
-
           {/* Validierungs-Check gegen PDF-Soll (nur pro-KG) */}
           {pdfRef && t1 && t2 && !abzugGesamt && (
             <ValidationCheck pdfRef={pdfRef} t1={t1} t2={t2} />
           )}
 
           {/* Abzüge erfassen — Vollbild-Dart-Scorer (wie native iOS) */}
-          <button onClick={() => setScoring(true)}
+          <button onClick={() => { setScoringIdx(0); setScoring(true); }}
             className="w-full bg-[#FF9500] text-white px-4 py-3 rounded-2xl text-[15px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99] transition shadow-sm">
             <Zap size={18} /> Abzüge erfassen
           </button>
 
-          {/* Collapse-Knopf für Übungs-Liste */}
-          <button onClick={() => setShowExercises(!showExercises)}
-            className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-sm font-medium flex items-center justify-between hover:bg-slate-50">
-            <span className="flex items-center gap-2">
-              <ListChecks size={16} className="text-slate-500" />
-              <span>Einzelübungen</span>
-              <span className="text-xs text-slate-500">({program.exercises.length})</span>
-            </span>
-            <span className="text-slate-500 text-xs flex items-center gap-1">
-              {showExercises ? 'Ausblenden ▲' : 'Anzeigen ▼'}
-            </span>
-          </button>
-
-          {/* Wertungstisch: Gesamt = eine Tabelle mit pro-KG-Tipp-Buttons; sonst pro KG. */}
-          {showExercises && (
-            <WertungstischEditor
-              program={program}
-              entries={abzugGesamt ? table1 : allTables[activeTable - 1]}
-              gesamt={abzugGesamt}
-              kampfgerichte={N}
-              onUpdate={(idx, key, val) => updateEntry(abzugGesamt ? 1 : activeTable, idx, key, val)}
-              onUpdateSchwHits={updateSchwHits}
-              onUpdateTaktHits={updateTaktHits}
-              result={abzugGesamt ? t1 : kgResults[activeTable - 1]}
-            />
-          )}
+          {/* Kompakte, tippbare Übungsliste (wie iOS) — Tipp öffnet den Vollbild-Scorer bei dieser Übung. */}
+          <div className="card-surface rounded-[22px] overflow-hidden divide-y divide-black/5 dark:divide-white/10">
+            {program.exercises.map((ex, idx) => {
+              const ded = (t) => calcExerciseDeduction(t) + calcExerciseSchwierigkeit(t, ex);
+              const parts = abzugGesamt
+                ? [ded((table1 || [])[idx])]
+                : Array.from({ length: N }, (_, k) => ded((allTables[k] || [])[idx]));
+              const any = parts.some(v => v > 0.0001);
+              return (
+                <button key={ex.id || idx} type="button"
+                  onClick={() => { setScoringIdx(idx); setScoring(true); }}
+                  className={'w-full flex items-start gap-2.5 px-3.5 py-3 text-left transition-colors active:bg-black/5 dark:active:bg-white/5 ' + (any ? 'bg-amber-500/[0.06]' : '')}>
+                  <span className="w-5 shrink-0 text-sm font-semibold text-slate-400 dark:text-slate-500 tabular-nums pt-0.5">{idx + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[15px] font-medium leading-snug text-slate-900 dark:text-slate-100 line-clamp-2">{localizedExerciseName(ex)}</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      {Number(ex.points || 0).toFixed(1)} Pkt{ex.uci_code ? ` · Nr. ${ex.uci_code}` : ''}
+                    </div>
+                  </div>
+                  <span className={'text-xs font-semibold tabular-nums shrink-0 pt-0.5 ' + (any ? 'text-[#FF9500]' : 'text-slate-300 dark:text-slate-600')}>
+                    {any ? parts.map(v => '−' + v.toFixed(1)).join(' / ') : '—'}
+                  </span>
+                  <ChevronRight size={16} className="text-slate-300 dark:text-slate-600 shrink-0 mt-1" />
+                </button>
+              );
+            })}
+          </div>
 
           {/* Zeichen-Übersicht (nur pro-KG — Gesamt fasst ohnehin zusammen). */}
           {!abzugGesamt && <MarkSummary table1={table1} table2={table2} />}
@@ -15600,6 +15588,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
               tables={abzugGesamt ? [table1] : allTables.slice(0, N)}
               gesamt={abzugGesamt}
               kampfgerichte={N}
+              startIndex={scoringIdx}
               onUpdate={updateEntry}
               onUpdateSchwHits={updateSchwHits}
               onUpdateTaktHits={updateTaktHits}
