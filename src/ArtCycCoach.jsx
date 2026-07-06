@@ -4876,6 +4876,15 @@ export default function App() {
   const userDataKey = session ? DATA_KEY + ':' + session.user.id : null;
   const [cloudStatus, setCloudStatus] = useState('idle'); // 'idle' | 'syncing' | 'error' | 'offline'
   const [saveError, setSaveError] = useState(null); // sichtbare Meldung bei DB-Speicherfehler
+  // Offline-Indikator (Paket D, Phase 1): Verbindungsstatus live überwachen.
+  const [isOnlineWeb, setIsOnlineWeb] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+  useEffect(() => {
+    const on = () => setIsOnlineWeb(true);
+    const off = () => setIsOnlineWeb(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
   useEffect(() => {
     if (!session) { setLoading(false); return; }
     setLoading(true);
@@ -5463,6 +5472,13 @@ export default function App() {
       className="min-h-screen bg-[#F2F2F7] text-slate-900 flex flex-col sm:flex-row antialiased"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif' }}>
       <PullToRefreshIndicator pull={ptrPull} refreshing={ptrRefreshing} />
+      {/* Offline-Indikator: zeigt an, dass gerade der gespeicherte Stand angezeigt wird. */}
+      {!isOnlineWeb && (
+        <div className="fixed top-0 inset-x-0 z-50 bg-[#FF9500] text-white text-[13px] font-semibold px-4 py-1.5 text-center"
+             style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.375rem)' }}>
+          Offline – gespeicherter Stand wird angezeigt
+        </div>
+      )}
       {/* Mobile Header — iOS Navigation Bar Style */}
       <div
         className="ios-header-bg sm:hidden px-4 pb-3 flex items-center justify-between gap-2 sticky top-0 z-30"
