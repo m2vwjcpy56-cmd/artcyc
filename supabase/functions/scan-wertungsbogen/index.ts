@@ -48,7 +48,7 @@ Gib AUSSCHLIESSLICH ein JSON-Objekt zurück (kein Text, keine Code-Fences) mit g
 Feld-Regeln (WICHTIG — Felder NICHT vermischen, je Wert NUR aus dem zugehörigen Label):
 - "wettbewerb": NUR der kurze Veranstaltungsname (z. B. „Kreismeisterschaft", „Deutsche Meisterschaft", „German Masters"). OHNE Disziplin, OHNE Verein/Ort/Region.
 - "disziplin": die Disziplin separat (z. B. „1er Kunstradsport Männer Elite").
-- "ausrichter": der AUSRICHTENDE VEREIN — der Wert direkt hinter dem Label „Ausrichter" (z. B. „RC Oberesslingen"; Vereinskürzel wie RCO/RKV beibehalten). NICHT der „Radsportkreis …"/die Region, NICHT der Ort, NICHT die Vereine der Kampfrichter (Ansager/Schreiber).
+- "ausrichter": der AUSRICHTENDE VEREIN — NUR der Wert, der direkt hinter dem gedruckten Label „Ausrichter" steht (z. B. „RC Oberesslingen"; Vereinskürzel wie RCO/RKV beibehalten). NICHT der „Radsportkreis …"/die Region, NICHT der Ort, NICHT die Vereine der Kampfrichter (Ansager/Schreiber) und AUF KEINEN FALL der Verein des Starters (das gehört ins Feld „verein"). Steht hinter „Ausrichter" nichts eindeutig Lesbares → null (NICHT raten, NICHT den Starter-Verein einsetzen).
 - "ort": der Austragungsort.
 Zahlen mit Dezimalpunkt (Komma→Punkt). Zwei Kampfgerichte (KG1 links, KG2 rechts).
 "Aufgestellte Punkte"=aufgestellt, "Endergebnis"=endergebnis. Unsicher → null. NUR das JSON.`;
