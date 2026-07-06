@@ -7,7 +7,7 @@ import {
   TrendingUp, TrendingDown, Minus, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
-  Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical
+  Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, Camera, FlaskConical, Zap
 } from 'lucide-react';
 import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, moveAthleteData, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, scanWertungsbogenVision, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
@@ -14269,6 +14269,148 @@ function ValidationCheck({ pdfRef, t1, t2 }) {
   );
 }
 
+// Vollbild-Dart-Scorer (wie native iOS): eine Übung nach der anderen, große Tippflächen
+// für die Fehlerzeichen (Tipp = +1, kleines Minus zum Korrigieren), Schwierigkeit +
+// taktische Aufwertung darunter, Weiter/Zurück. Deckt pro-KG und Gesamt ab.
+function StellungScorer({ program, tables, gesamt, kampfgerichte, onUpdate, onUpdateSchwHits, onUpdateTaktHits, onClose }) {
+  const N = Math.max(1, Math.min(4, Number(kampfgerichte || 2)));
+  const exs = program.exercises || [];
+  const [idx, setIdx] = useState(0);
+  const [kg, setKg] = useState(1);            // aktives Kampfgericht (per-KG); Gesamt = immer 1
+  const [pulse, setPulse] = useState(0);       // Haptik-Trigger
+  const tapKg = gesamt ? 1 : kg;
+  const ex = exs[idx] || {};
+  const entries = tables[tapKg - 1] || [];
+  const e = entries[idx] || { cross: 0, wave: 0, bar: 0, circle: 0, schwPct: 0, taktischePunkte: 0 };
+  const std = Number(ex.points || 0);
+  const byCode = getTaktScale(ex.code);
+  const nameScale = parseTacticalScale(ex.name);
+  const scale = (byCode && byCode.length > 0) ? byCode : nameScale;
+  const tactical = byCode !== null || nameScale.length > 0 || / T\s*$/.test(ex.name || '');
+  const cur = Number(e.taktischePunkte || 0);
+  const exec = calcExerciseDeduction(e);
+  const schw = calcExerciseSchwierigkeit(e, ex);
+  const total = exec + schw;
+  const marks = [
+    { k: 'cross', label: 'Kreuz', w: '0,2' },
+    { k: 'wave', label: 'Welle', w: '0,5' },
+    { k: 'bar', label: 'Strich', w: '1,0' },
+    { k: 'circle', label: 'Sturz', w: '2,0' },
+  ];
+  const bump = () => { try { navigator.vibrate && navigator.vibrate(10); } catch { /* egal */ } setPulse(p => p + 1); };
+  const seg = (on) => 'flex-1 py-2 rounded-xl text-sm font-semibold border ' + (on
+    ? 'bg-[#FF9500] text-white border-[#FF9500]'
+    : 'bg-white/5 border-white/10 text-slate-300');
+  return (
+    <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-[#0b0b0d] flex flex-col overscroll-none">
+      {/* Kopf */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-black/5 dark:border-white/10 shrink-0">
+        <button onClick={() => (idx > 0 ? setIdx(idx - 1) : onClose())} className="text-[#007AFF] text-[17px] active:opacity-60 px-1">
+          {idx > 0 ? 'Zurück' : 'Schließen'}
+        </button>
+        <div className="font-semibold text-[17px] text-slate-900 dark:text-white tabular-nums">Übung {idx + 1} / {exs.length}</div>
+        <button onClick={onClose} className="text-[#FF9500] text-[17px] font-semibold active:opacity-60 px-1">Fertig</button>
+      </div>
+      {/* Übungs-Kopf */}
+      <div className="text-center px-4 pt-3 shrink-0">
+        <div className="text-slate-900 dark:text-white text-xl font-bold leading-tight line-clamp-2">{localizedExerciseName(ex)}</div>
+        <div className="text-slate-500 dark:text-slate-400 text-sm mt-1">
+          {ex.code && <span className="font-mono">Nr. {ex.code} · </span>}
+          {std.toFixed(1).replace('.', ',')} Pkt
+          {total > 0 && <span className="text-[#FF9500] font-semibold ml-2 tabular-nums">Σ −{total.toFixed(1).replace('.', ',')}</span>}
+        </div>
+      </div>
+      {/* KG-Umschalter (nur pro-KG mit ≥2 KG) */}
+      {!gesamt && N > 1 && (
+        <div className="flex gap-1.5 px-4 pt-3 shrink-0">
+          {Array.from({ length: N }, (_, i) => i + 1).map(n => (
+            <button key={n} onClick={() => setKg(n)} className={seg(kg === n)}>KG {n}</button>
+          ))}
+        </div>
+      )}
+      {/* 2×2 Tippflächen */}
+      <div className="grid grid-cols-2 gap-3 p-4 flex-1 content-center min-h-0">
+        {marks.map(m => {
+          const cnt = Number(e[m.k] || 0);
+          const act = cnt > 0;
+          return (
+            <button key={m.k} onClick={() => { bump(); onUpdate(tapKg, idx, m.k, cnt + 1); }}
+              className={'relative rounded-3xl flex flex-col items-center justify-center gap-2 select-none active:scale-95 transition ' +
+                (act ? 'bg-[#FF9500]/15 ring-2 ring-[#FF9500]/50' : 'bg-white dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10')}>
+              <div className="flex items-center gap-2">
+                <MarkMini kind={m.k} active={act} size={44} stroke={4} color={act ? '#FF9500' : undefined} />
+                {act && <span className="text-[#FF9500] text-4xl font-bold tabular-nums leading-none">{cnt}</span>}
+              </div>
+              <div className="text-slate-500 dark:text-slate-400 text-xs">{m.label} · −{m.w}</div>
+              {act && (
+                <span role="button" aria-label="Zeichen entfernen"
+                  onClick={(ev) => { ev.stopPropagation(); onUpdate(tapKg, idx, m.k, Math.max(0, cnt - 1)); }}
+                  className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-[#FF9500] text-white flex items-center justify-center text-xl font-bold shadow">−</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {/* Schwierigkeit + taktische Aufwertung */}
+      <div className="px-4 space-y-2.5 shrink-0">
+        <div className="bg-white dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 rounded-2xl p-3">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wide">Schwierigkeit</span>
+            {schw > 0 && <span className="text-[#FF9500] text-xs font-semibold tabular-nums">−{schw.toFixed(1).replace('.', ',')} Pkt</span>}
+          </div>
+          {gesamt ? (
+            <PanelTapButtons options={[10, 50, 100]} hits={e.schwHits || []} limit={N} onChange={(h) => onUpdateSchwHits(idx, h)} fmt={(v) => v + ' %'} />
+          ) : (
+            <div className="grid grid-cols-4 gap-1.5">
+              {[0, 10, 50, 100].map(p => (
+                <button key={p} onClick={() => onUpdate(tapKg, idx, 'schwPct', p)}
+                  className={'text-sm py-2 rounded-xl font-medium border ' +
+                    (Number(e.schwPct || 0) === p ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white/5 text-slate-300 border-white/10')}>
+                  {p === 0 ? '—' : p + '%'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {tactical && scale.length > 0 && std > 0 && (
+          <div className="bg-white dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 rounded-2xl p-3">
+            <div className="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wide mb-2">Taktische Aufwertung</div>
+            {gesamt ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button onClick={() => onUpdateTaktHits(idx, [], std)}
+                  className={'text-xs px-3 py-2 rounded-full font-medium border ' + ((e.taktHits || []).filter(h => h > 0).length === 0 ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white/5 text-slate-300 border-white/10')}>
+                  Standard
+                </button>
+                <PanelTapButtons options={scale.filter(v => v > std + 0.001)} hits={e.taktHits || []} limit={N} onChange={(h) => onUpdateTaktHits(idx, h, std)} fmt={(v) => v.toFixed(1).replace('.', ',')} />
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                <button onClick={() => onUpdate(tapKg, idx, 'taktischePunkte', '')}
+                  className={'text-xs px-3 py-2 rounded-full font-medium border ' + (cur <= 0 || Math.abs(cur - std) < 0.001 ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white/5 text-slate-300 border-white/10')}>
+                  Standard · {std.toFixed(1).replace('.', ',')}
+                </button>
+                {scale.map(v => (
+                  <button key={v} onClick={() => onUpdate(tapKg, idx, 'taktischePunkte', String(Math.abs(v - std) < 0.001 ? '' : v))}
+                    className={'text-xs px-3 py-2 rounded-full font-medium border tabular-nums ' + (cur > 0 && Math.abs(cur - v) < 0.001 ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white/5 text-slate-300 border-white/10')}>
+                    {v.toFixed(1).replace('.', ',')}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {/* Steuerzeile */}
+      <div className="flex gap-2 px-4 py-4 shrink-0">
+        <button disabled={idx <= 0} onClick={() => setIdx(idx - 1)}
+          className="flex-1 py-3 rounded-2xl bg-white dark:bg-white/10 ring-1 ring-black/5 dark:ring-0 text-slate-900 dark:text-white text-xl font-bold disabled:opacity-30 active:scale-95 transition">‹</button>
+        <button disabled={idx >= exs.length - 1} onClick={() => setIdx(idx + 1)}
+          className="flex-1 py-3 rounded-2xl bg-white dark:bg-white/10 ring-1 ring-black/5 dark:ring-0 text-slate-900 dark:text-white text-xl font-bold disabled:opacity-30 active:scale-95 transition">›</button>
+      </div>
+    </div>
+  );
+}
+
 function WettkampfEditor({ competition, programs, athletes, existingExercises, existingCompetitions, onSave, onCancel }) {
   const { t } = useI18n();
   const isNew = !competition;
@@ -14325,6 +14467,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
   const [abzugGesamt, setAbzugGesamt] = useState(() => initVal('abzugGesamt', !!(competition && competition.abzug_gesamt)));
   const [activeTable, setActiveTable] = useState(1);
   const [showExercises, setShowExercises] = useState(true);
+  const [scoring, setScoring] = useState(false);   // Vollbild-Dart-Scorer (wie iOS)
   // Referenz-Werte aus letztem PDF-Import zur Validierung
   const [pdfRef, setPdfRef] = useState(() => initVal('pdfRef', competition && competition.pdf_ref ? competition.pdf_ref : null));
 
@@ -15420,6 +15563,12 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             <ValidationCheck pdfRef={pdfRef} t1={t1} t2={t2} />
           )}
 
+          {/* Abzüge erfassen — Vollbild-Dart-Scorer (wie native iOS) */}
+          <button onClick={() => setScoring(true)}
+            className="w-full bg-[#FF9500] text-white px-4 py-3 rounded-2xl text-[15px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99] transition shadow-sm">
+            <Zap size={18} /> Abzüge erfassen
+          </button>
+
           {/* Collapse-Knopf für Übungs-Liste */}
           <button onClick={() => setShowExercises(!showExercises)}
             className="w-full bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-sm font-medium flex items-center justify-between hover:bg-slate-50">
@@ -15449,6 +15598,20 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
 
           {/* Zeichen-Übersicht (nur pro-KG — Gesamt fasst ohnehin zusammen). */}
           {!abzugGesamt && <MarkSummary table1={table1} table2={table2} />}
+
+          {/* Vollbild-Dart-Scorer (wie native iOS) */}
+          {scoring && (
+            <StellungScorer
+              program={program}
+              tables={abzugGesamt ? [table1] : allTables.slice(0, N)}
+              gesamt={abzugGesamt}
+              kampfgerichte={N}
+              onUpdate={updateEntry}
+              onUpdateSchwHits={updateSchwHits}
+              onUpdateTaktHits={updateTaktHits}
+              onClose={() => setScoring(false)}
+            />
+          )}
         </>
       )}
 
@@ -15459,10 +15622,10 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
 }
 
 // Kleines Fehlerzeichen als SVG (einheitliche Strichstärke) für die Zeichen-Übersicht.
-function MarkMini({ kind, active }) {
-  const c = active ? '#FF9500' : '#94a3b8';
-  const st = { fill: 'none', stroke: c, strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round' };
-  const S = 18, p = 3;
+function MarkMini({ kind, active, size = 18, stroke = 2.4, color }) {
+  const c = color || (active ? '#FF9500' : '#94a3b8');
+  const st = { fill: 'none', stroke: c, strokeWidth: stroke, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  const S = size, p = Math.max(2, size * 0.17);
   return (
     <svg width={S} height={S} viewBox={`0 0 ${S} ${S}`} aria-hidden="true">
       {kind === 'cross' && <><line x1={p} y1={p} x2={S - p} y2={S - p} style={st} /><line x1={S - p} y1={p} x2={p} y2={S - p} style={st} /></>}
