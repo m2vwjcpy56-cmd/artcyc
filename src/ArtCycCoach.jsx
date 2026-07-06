@@ -2676,8 +2676,13 @@ function calcTableResult(program, entries, schwierigkeit = 0) {
 // vorhandene Anzahl wird gemittelt (analog nativ Scoring.finalScore).
 function compFinalScore(program, c) {
   if (!program) return null;
-  // Gesamt-Modus: Abzüge nur einmal erfasst → allein table1 zählt.
-  if (c.abzug_gesamt) return calcTableResult(program, c.table1, c.t1_schwierigkeit).ergebnis;
+  // Gesamt-Modus: Abzüge sind EINMAL als Summe aller Kampfgerichte erfasst → der
+  // Gesamt-Abzug wird durch die Anzahl der Kampfgerichte geteilt (= Ø-Abzug).
+  if (c.abzug_gesamt) {
+    const r = calcTableResult(program, c.table1, c.t1_schwierigkeit);
+    const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
+    return Math.round((r.anerkannt - r.abzugGesamt / n) * 100) / 100;
+  }
   const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
   const tables = [c.table1, c.table2, c.table3, c.table4];
   const schw = [c.t1_schwierigkeit, c.t2_schwierigkeit, 0, 0];
@@ -15505,7 +15510,9 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
               <div>
                 <div className="text-[10px] text-slate-500 mb-1">Schwierigkeit (% Abzug):</div>
                 <div className="grid grid-cols-4 gap-1">
-                  {SCHW_OPTIONS.map(p => (
+                  {/* Summierter Gesamt-Wert (native Gesamt-Erfassung, z. B. 150 %) als
+                      zusätzlichen Chip erhalten, damit er im Web nicht verloren geht. */}
+                  {(SCHW_OPTIONS.includes(Number(e.schwPct||0)) ? SCHW_OPTIONS : [...SCHW_OPTIONS, Number(e.schwPct||0)]).map(p => (
                     <button key={p} type="button"
                       onClick={() => onUpdate(idx, 'schwPct', p)}
                       className={'text-xs py-1.5 rounded-lg font-medium border ' +
@@ -15625,6 +15632,11 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                       <option value={10}>10%</option>
                       <option value={50}>50%</option>
                       <option value={100}>100%</option>
+                      {/* Summierter Gesamt-Wert (native Gesamt-Erfassung, z. B. 150 %): als
+                          eigene Option erhalten, damit er im Web nicht verloren geht. */}
+                      {![0,10,50,100].includes(Number(e.schwPct||0)) && (
+                        <option value={Number(e.schwPct)}>{Number(e.schwPct)}%</option>
+                      )}
                     </select>
                   </td>
                   <td className="py-1 px-0.5">
