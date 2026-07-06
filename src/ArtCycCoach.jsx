@@ -2688,8 +2688,9 @@ function scoredKGIndices(c) {
   return filled.length ? filled : Array.from({ length: n }, (_, i) => i);
 }
 
-// Endergebnis = Durchschnitt der tatsächlich erfassten Kampfgerichte (1–4).
-// Leere Kampfgerichte werden nicht mitgemittelt (analog nativ Scoring.finalScore).
+// Endergebnis = Durchschnitt ALLER gewählten Kampfgerichte (1–4). Ein leeres
+// Kampfgericht zählt mit seinem vollen (aufgestellten) Ergebnis — so bleibt der
+// Schnitt stabil und unabhängig davon, ob der Gesamt-Marker gesetzt ist (analog nativ).
 function compFinalScore(program, c) {
   if (!program) return null;
   // Gesamt-Modus: Abzüge sind EINMAL als Summe aller Kampfgerichte erfasst → der
@@ -2699,12 +2700,12 @@ function compFinalScore(program, c) {
     const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
     return Math.round((r.anerkannt - r.abzugGesamt / n) * 100) / 100;
   }
+  const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
   const tables = [c.table1, c.table2, c.table3, c.table4];
   const schw = [c.t1_schwierigkeit, c.t2_schwierigkeit, 0, 0];
-  const idxs = scoredKGIndices(c);
   let sum = 0;
-  for (const i of idxs) sum += calcTableResult(program, tables[i], schw[i]).ergebnis;
-  return Math.round((sum / idxs.length) * 100) / 100;
+  for (let i = 0; i < n; i++) sum += calcTableResult(program, tables[i], schw[i]).ergebnis;
+  return Math.round((sum / n) * 100) / 100;
 }
 
 // Abzugs-Verlauf-Balken: keine Datums-Labels unter jedem Balken (unlesbar) —
@@ -14391,11 +14392,9 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
       return Math.round((r.anerkannt - r.abzugGesamt / N) * 100) / 100;
     }
     const schw = [t1S, t2S, 0, 0];
-    const idxs = [];
-    for (let i = 0; i < N; i++) if (tableHasContent(allTables[i])) idxs.push(i);
-    const use = idxs.length ? idxs : Array.from({ length: N }, (_, i) => i);
-    const sum = use.reduce((a, i) => a + calcTableResult(program, allTables[i], schw[i]).ergebnis, 0);
-    return Math.round((sum / use.length) * 100) / 100;
+    let sum = 0;
+    for (let i = 0; i < N; i++) sum += calcTableResult(program, allTables[i], schw[i]).ergebnis;
+    return Math.round((sum / N) * 100) / 100;
   })();
 
   const tableSetters = [setTable1, setTable2, setTable3, setTable4];
