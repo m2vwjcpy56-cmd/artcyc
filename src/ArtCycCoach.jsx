@@ -2672,8 +2672,24 @@ function calcTableResult(program, entries, schwierigkeit = 0) {
   };
 }
 
-// Endergebnis = Durchschnitt ALLER Kampfgerichte (1–4). Nur die tatsächlich
-// vorhandene Anzahl wird gemittelt (analog nativ Scoring.finalScore).
+// Hat ein Kampfgericht überhaupt Eingaben (Fehlerzeichen, Schwierigkeit, taktische
+// Aufwertung)? Leere Tabellen sollen den Schnitt nicht verwässern (analog nativ kgHasContent).
+function tableHasContent(tbl) {
+  return (tbl || []).some(e => e && (calcExerciseDeduction(e) > 0.0001 || Number(e.schwPct || 0) > 0 || Number(e.taktischePunkte || 0) > 0));
+}
+
+// Welche Kampfgericht-Indizes (0-basiert) gewertet werden: nur die mit echten
+// Eingaben; ist keins erfasst, alle gewählten (Fallback).
+function scoredKGIndices(c) {
+  const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
+  const tables = [c.table1, c.table2, c.table3, c.table4];
+  const filled = [];
+  for (let i = 0; i < n; i++) if (tableHasContent(tables[i])) filled.push(i);
+  return filled.length ? filled : Array.from({ length: n }, (_, i) => i);
+}
+
+// Endergebnis = Durchschnitt der tatsächlich erfassten Kampfgerichte (1–4).
+// Leere Kampfgerichte werden nicht mitgemittelt (analog nativ Scoring.finalScore).
 function compFinalScore(program, c) {
   if (!program) return null;
   // Gesamt-Modus: Abzüge sind EINMAL als Summe aller Kampfgerichte erfasst → der
@@ -2683,12 +2699,12 @@ function compFinalScore(program, c) {
     const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
     return Math.round((r.anerkannt - r.abzugGesamt / n) * 100) / 100;
   }
-  const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
   const tables = [c.table1, c.table2, c.table3, c.table4];
   const schw = [c.t1_schwierigkeit, c.t2_schwierigkeit, 0, 0];
+  const idxs = scoredKGIndices(c);
   let sum = 0;
-  for (let i = 0; i < n; i++) sum += calcTableResult(program, tables[i], schw[i]).ergebnis;
-  return Math.round((sum / n) * 100) / 100;
+  for (const i of idxs) sum += calcTableResult(program, tables[i], schw[i]).ergebnis;
+  return Math.round((sum / idxs.length) * 100) / 100;
 }
 
 // Abzugs-Verlauf-Balken: keine Datums-Labels unter jedem Balken (unlesbar) —
@@ -14298,8 +14314,13 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
 
   const [table1, setTable1] = useState(() => initVal('table1', initEntries(competition && competition.table1)));
   const [table2, setTable2] = useState(() => initVal('table2', initEntries(competition && competition.table2)));
+  const [table3, setTable3] = useState(() => initVal('table3', initEntries(competition && competition.table3)));
+  const [table4, setTable4] = useState(() => initVal('table4', initEntries(competition && competition.table4)));
   const [t1S, setT1S] = useState(() => initVal('t1S', (competition && competition.t1_schwierigkeit) || 0));
   const [t2S, setT2S] = useState(() => initVal('t2S', (competition && competition.t2_schwierigkeit) || 0));
+  // Anzahl Kampfgerichte (1–4) + Erfassungs-Modus (pro KG / Gesamt) — wie nativ.
+  const [kampfgerichte, setKampfgerichte] = useState(() => initVal('kampfgerichte', Math.max(1, Math.min(4, Number((competition && competition.kampfgerichte) || 2)))));
+  const [abzugGesamt, setAbzugGesamt] = useState(() => initVal('abzugGesamt', !!(competition && competition.abzug_gesamt)));
   const [activeTable, setActiveTable] = useState(1);
   const [showExercises, setShowExercises] = useState(true);
   // Referenz-Werte aus letztem PDF-Import zur Validierung
@@ -14341,25 +14362,61 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({
         name, date, location, host, startNr, athleteId, programId,
-        pendingNewProgram, pendingNewExercises, table1, table2, t1S, t2S, pdfRef,
+        pendingNewProgram, pendingNewExercises, table1, table2, table3, table4, t1S, t2S,
+        kampfgerichte, abzugGesamt, pdfRef,
         importStatus, importMsg, importPreview
       }));
     } catch {}
   }, [DRAFT_KEY, name, date, location, host, startNr, athleteId, programId,
-      pendingNewProgram, pendingNewExercises, table1, table2, t1S, t2S, pdfRef,
+      pendingNewProgram, pendingNewExercises, table1, table2, table3, table4, t1S, t2S,
+      kampfgerichte, abzugGesamt, pdfRef,
       importStatus, importMsg, importPreview]);
 
   // (Früher: useEffect der bei programId-Wechsel table1/table2 reset hat — entfernt,
   //  weil das Programm nur noch beim PDF-Import gesetzt wird und applyImport die Tabellen
   //  bereits korrekt befüllt. Der Reset hier hat das beim Import gerade gesetzte überschrieben.)
 
+  const N = Math.max(1, Math.min(4, Number(kampfgerichte || 2)));
+  const allTables = [table1, table2, table3, table4];
   const t1 = program ? calcTableResult(program, table1, t1S) : null;
   const t2 = program ? calcTableResult(program, table2, t2S) : null;
-  const finalScore = (t1 && t2) ? Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100 : 0;
+  const t3 = program ? calcTableResult(program, table3, 0) : null;
+  const t4 = program ? calcTableResult(program, table4, 0) : null;
+  const kgResults = [t1, t2, t3, t4];
+  // Endergebnis: Gesamt-Modus = anerkannt − Gesamt-Abzug ÷ N; sonst Ø der erfassten KG.
+  const finalScore = (() => {
+    if (!program) return 0;
+    if (abzugGesamt) {
+      const r = calcTableResult(program, table1, t1S);
+      return Math.round((r.anerkannt - r.abzugGesamt / N) * 100) / 100;
+    }
+    const schw = [t1S, t2S, 0, 0];
+    const idxs = [];
+    for (let i = 0; i < N; i++) if (tableHasContent(allTables[i])) idxs.push(i);
+    const use = idxs.length ? idxs : Array.from({ length: N }, (_, i) => i);
+    const sum = use.reduce((a, i) => a + calcTableResult(program, allTables[i], schw[i]).ergebnis, 0);
+    return Math.round((sum / use.length) * 100) / 100;
+  })();
 
+  const tableSetters = [setTable1, setTable2, setTable3, setTable4];
   const updateEntry = (tableNum, idx, key, val) => {
-    const setter = tableNum === 1 ? setTable1 : setTable2;
+    const setter = tableSetters[tableNum - 1] || setTable1;
     setter(prev => prev.map((e, i) => i === idx ? { ...e, [key]: val } : e));
+  };
+
+  // Gesamt-Modus: Schwierigkeit je Kampfgericht (Liste 10/50/100) → schwPct = Summe.
+  const updateSchwHits = (idx, hits) => {
+    const clean = hits.filter(h => h > 0).slice(0, N);
+    const schwPct = clean.reduce((a, b) => a + b, 0);
+    setTable1(prev => prev.map((e, i) => i === idx ? { ...e, schwHits: clean.length ? clean : undefined, schwPct } : e));
+  };
+  // Gesamt-Modus: taktische Aufwertung je Kampfgericht → taktischePunkte = Ø (fehlende KG = Standard).
+  const updateTaktHits = (idx, hits, std) => {
+    const clean = hits.filter(h => h > 0).slice(0, N);
+    const sum = clean.reduce((a, b) => a + b, 0) + Math.max(0, N - clean.length) * std;
+    const avg = N > 0 ? sum / N : std;
+    const takt = avg > std + 0.001 ? avg : 0;
+    setTable1(prev => prev.map((e, i) => i === idx ? { ...e, taktHits: clean.length ? clean : undefined, taktischePunkte: takt } : e));
   };
 
   // (parseWertungsbericht ist jetzt eine top-level Funktion — siehe oben.
@@ -14951,12 +15008,11 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
         athlete_id: athleteId || null,
         program_id: finalProgramId,
         table1, table2,
-        // KG-Anzahl + Tabellen 3/4 durchreichen — der Web-Editor bearbeitet nur KG1/KG2,
-        // darf aber vorhandene 3–4-KG-Daten (nativ erfasst) NICHT verlieren.
-        table3: (competition && competition.table3) || null,
-        table4: (competition && competition.table4) || null,
-        kampfgerichte: (competition && competition.kampfgerichte) || 2,
-        abzug_gesamt: !!(competition && competition.abzug_gesamt),
+        // KG-Anzahl + Modus + Tabellen 3/4 aus dem Editor-State (pro KG / Gesamt).
+        table3: abzugGesamt ? null : (N >= 3 ? table3 : ((competition && competition.table3) || null)),
+        table4: abzugGesamt ? null : (N >= 4 ? table4 : ((competition && competition.table4) || null)),
+        kampfgerichte: N,
+        abzug_gesamt: !!abzugGesamt,
         t1_schwierigkeit: Number(t1S) || 0,
         t2_schwierigkeit: Number(t2S) || 0,
         // Daten-Sicherheit: Programm-Schnappschuss in pdf_ref (jsonb-Spalte, wird
@@ -15307,26 +15363,60 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
 
       {/* (Live-Ergebnis-Card wurde nach oben verschoben — direkt unter Header sticky) */}
 
-      {/* Tisch-Tabs */}
+      {/* Kampfgericht-Anzahl + Erfassungs-Modus (wie nativ) */}
       {program && (
         <>
-          <div className="flex gap-2">
-            <button onClick={() => setActiveTable(1)}
-              className={'flex-1 py-3 rounded-xl font-semibold transition-colors ' +
-                (activeTable === 1 ? 'bg-slate-900 text-white' : 'bg-white border border-slate-300 text-slate-700')}>
-              Kampfgericht 1
-              <div className="text-xs font-normal opacity-80 mt-0.5">{t1 && t1.ergebnis.toFixed(2)} Pkt.</div>
-            </button>
-            <button onClick={() => setActiveTable(2)}
-              className={'flex-1 py-3 rounded-xl font-semibold transition-colors ' +
-                (activeTable === 2 ? 'bg-slate-900 text-white' : 'bg-white border border-slate-300 text-slate-700')}>
-              Kampfgericht 2
-              <div className="text-xs font-normal opacity-80 mt-0.5">{t2 && t2.ergebnis.toFixed(2)} Pkt.</div>
-            </button>
+          <div className="card-surface rounded-[22px] p-4 space-y-3">
+            <div>
+              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Kampfgerichte</div>
+              <div className="flex gap-1.5">
+                {[1, 2, 3, 4].map(n => (
+                  <button key={n} type="button"
+                    onClick={() => { setKampfgerichte(n); if (activeTable > n) setActiveTable(1); if (n < 2) setAbzugGesamt(false); }}
+                    className={'flex-1 py-2 rounded-xl text-sm font-semibold border tabular-nums ' +
+                      (N === n ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {N >= 2 && (
+              <div>
+                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Erfassung</div>
+                <div className="flex gap-1.5">
+                  <button type="button" onClick={() => setAbzugGesamt(false)}
+                    className={'flex-1 py-2 rounded-xl text-sm font-semibold border ' + (!abzugGesamt ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
+                    Pro Kampfgericht
+                  </button>
+                  <button type="button" onClick={() => setAbzugGesamt(true)}
+                    className={'flex-1 py-2 rounded-xl text-sm font-semibold border ' + (abzugGesamt ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
+                    Gesamt
+                  </button>
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
+                  {abzugGesamt ? `Abzüge einmal für alle Kampfgerichte erfassen — Ergebnis = Durchschnitt (÷ ${N}).`
+                               : 'Für jedes Kampfgericht einzeln — Ergebnis = Durchschnitt der erfassten.'}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Validierungs-Check gegen PDF-Soll */}
-          {pdfRef && t1 && t2 && (
+          {/* Pro-KG-Tabs (nur pro-KG-Modus mit ≥2 KG) */}
+          {!abzugGesamt && N >= 2 && (
+            <div className="flex gap-2 flex-wrap">
+              {Array.from({ length: N }, (_, i) => i + 1).map(n => (
+                <button key={n} onClick={() => setActiveTable(n)}
+                  className={'flex-1 min-w-[70px] py-3 rounded-xl font-semibold transition-colors ' +
+                    (activeTable === n ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
+                  KG {n}
+                  <div className="text-xs font-normal opacity-80 mt-0.5">{kgResults[n - 1] && kgResults[n - 1].ergebnis.toFixed(2)} Pkt.</div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Validierungs-Check gegen PDF-Soll (nur pro-KG) */}
+          {pdfRef && t1 && t2 && !abzugGesamt && (
             <ValidationCheck pdfRef={pdfRef} t1={t1} t2={t2} />
           )}
 
@@ -15343,19 +15433,22 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             </span>
           </button>
 
-          {/* Wertungstisch-Tabelle */}
+          {/* Wertungstisch: Gesamt = eine Tabelle mit pro-KG-Tipp-Buttons; sonst pro KG. */}
           {showExercises && (
             <WertungstischEditor
               program={program}
-              entries={activeTable === 1 ? table1 : table2}
-              onUpdate={(idx, key, val) => updateEntry(activeTable, idx, key, val)}
-              result={activeTable === 1 ? t1 : t2}
+              entries={abzugGesamt ? table1 : allTables[activeTable - 1]}
+              gesamt={abzugGesamt}
+              kampfgerichte={N}
+              onUpdate={(idx, key, val) => updateEntry(abzugGesamt ? 1 : activeTable, idx, key, val)}
+              onUpdateSchwHits={updateSchwHits}
+              onUpdateTaktHits={updateTaktHits}
+              result={abzugGesamt ? t1 : kgResults[activeTable - 1]}
             />
           )}
 
-          {/* Zeichen-Übersicht: Gesamtzahl der getippten Fehlerzeichen je Kampfgericht
-              — zum Abgleich mit dem Papier-Bogen, damit Vertipper sofort auffallen. */}
-          <MarkSummary table1={table1} table2={table2} />
+          {/* Zeichen-Übersicht (nur pro-KG — Gesamt fasst ohnehin zusammen). */}
+          {!abzugGesamt && <MarkSummary table1={table1} table2={table2} />}
         </>
       )}
 
@@ -15424,12 +15517,46 @@ function MarkSummary({ table1, table2 }) {
   );
 }
 
-function WertungstischEditor({ program, entries, onUpdate, result }) {
+// Pro-Kampfgericht-Tipp-Buttons (Gesamt-Modus): jede Stufe mehrfach antippbar (×N),
+// kleines Minus zum Entfernen, Obergrenze = Anzahl Kampfgerichte (ein KG gibt nur EINE Stufe).
+function PanelTapButtons({ options, hits, limit, onChange, fmt }) {
+  const list = (hits || []).map(Number).filter(h => h > 0);
+  const full = list.length >= limit;
+  const add = (v) => { if (!full) onChange([...list, v]); };
+  const remove = (v) => { const i = list.lastIndexOf(Number(v)); if (i >= 0) { const h = [...list]; h.splice(i, 1); onChange(h); } };
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map(v => {
+        const count = list.filter(h => Math.abs(h - v) < 0.001).length;
+        const active = count > 0;
+        const blocked = full && !active;
+        return (
+          <div key={v} className="relative">
+            <button type="button" disabled={blocked} onClick={() => add(v)}
+              className={'text-xs px-3 py-2 rounded-full font-medium border tabular-nums ' +
+                (active ? 'bg-amber-100 text-amber-900 border-amber-300'
+                        : (blocked ? 'bg-white text-slate-400 border-slate-200 opacity-50 cursor-not-allowed'
+                                   : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'))}>
+              {fmt(v)}{active && <span className="ml-1 text-[#FF9500]">×{count}</span>}
+            </button>
+            {active && (
+              <button type="button" aria-label="Entfernen" onClick={() => remove(v)}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#FF9500] text-white text-[12px] font-bold leading-none flex items-center justify-center shadow">−</button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onUpdateTaktHits, gesamt = false, kampfgerichte = 2, result }) {
   const SCHW_OPTIONS = [0, 10, 50, 100];
+  const N = Math.max(1, Math.min(4, Number(kampfgerichte || 2)));
   return (
     <div className="card-surface rounded-[22px] p-4">
-      {/* Mobile: Karten pro Übung */}
-      <div className="sm:hidden space-y-2">
+      {/* Karten pro Übung (Gesamt-Modus immer, sonst nur Mobile) */}
+      <div className={(gesamt ? '' : 'sm:hidden ') + 'space-y-2'}>
         {program.exercises.map((ex, idx) => {
           const e = entries[idx] || { included: true, cross: 0, wave: 0, bar: 0, circle: 0, schwPct: 0, taktischePunkte: 0 };
           const exec = calcExerciseDeduction(e);
@@ -15509,23 +15636,36 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
               {/* Schwierigkeitsabzug pro Übung */}
               <div>
                 <div className="text-[10px] text-slate-500 mb-1">Schwierigkeit (% Abzug):</div>
-                <div className="grid grid-cols-4 gap-1">
-                  {/* Summierter Gesamt-Wert (native Gesamt-Erfassung, z. B. 150 %) als
-                      zusätzlichen Chip erhalten, damit er im Web nicht verloren geht. */}
-                  {(SCHW_OPTIONS.includes(Number(e.schwPct||0)) ? SCHW_OPTIONS : [...SCHW_OPTIONS, Number(e.schwPct||0)]).map(p => (
-                    <button key={p} type="button"
-                      onClick={() => onUpdate(idx, 'schwPct', p)}
-                      className={'text-xs py-1.5 rounded-lg font-medium border ' +
-                        (Number(e.schwPct||0) === p
-                          ? 'bg-amber-100 text-amber-900 border-amber-200'
-                          : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100')}>
-                      {p === 0 ? '—' : p + '%'}
-                    </button>
-                  ))}
-                </div>
+                {gesamt ? (
+                  <>
+                    {/* Gesamt-Modus: pro Kampfgericht eine %-Stufe (mehrfach antippbar, max N). */}
+                    <PanelTapButtons options={[10, 50, 100]} hits={e.schwHits || []} limit={N}
+                      onChange={(h) => onUpdateSchwHits(idx, h)} fmt={(v) => v + ' %'} />
+                    <div className="text-[10px] text-slate-500 mt-1">
+                      {(e.schwHits || []).filter(h => h > 0).length >= N
+                        ? 'Alle Kampfgerichte erfasst'
+                        : `${N - (e.schwHits || []).filter(h => h > 0).length} von ${N} frei`}
+                    </div>
+                  </>
+                ) : (
+                  <div className="grid grid-cols-4 gap-1">
+                    {/* Summierter Gesamt-Wert (native Gesamt-Erfassung, z. B. 150 %) als
+                        zusätzlichen Chip erhalten, damit er im Web nicht verloren geht. */}
+                    {(SCHW_OPTIONS.includes(Number(e.schwPct||0)) ? SCHW_OPTIONS : [...SCHW_OPTIONS, Number(e.schwPct||0)]).map(p => (
+                      <button key={p} type="button"
+                        onClick={() => onUpdate(idx, 'schwPct', p)}
+                        className={'text-xs py-1.5 rounded-lg font-medium border ' +
+                          (Number(e.schwPct||0) === p
+                            ? 'bg-amber-100 text-amber-900 border-amber-200'
+                            : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100')}>
+                        {p === 0 ? '—' : p + '%'}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {schw > 0 && (
                   <div className="text-[10px] text-amber-700 mt-1">
-                    -{schw.toFixed(2)} Pkt ({e.schwPct}% von {Number(ex.points).toFixed(1)})
+                    -{schw.toFixed(2)} Pkt{gesamt ? ' (÷ ' + N + ' im Ergebnis)' : ` (${e.schwPct}% von ${Number(ex.points).toFixed(1)})`}
                   </div>
                 )}
               </div>
@@ -15552,13 +15692,33 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
                   <div className={'mt-2 rounded-lg p-2 ' + (isTaktisch ? 'bg-amber-100/60 ring-1 ring-amber-300' : '')}>
                     <div className="text-[10px] text-slate-500 mb-1">Taktische Aufwertung:</div>
                     {scale.length > 0 && std > 0 ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {chip('std', 'Standard · ' + std.toFixed(1).replace('.', ','), cur <= 0 || Math.abs(cur - std) < 0.001,
-                          () => onUpdate(idx, 'taktischePunkte', ''))}
-                        {scale.map(v => chip(v, v.toFixed(1).replace('.', ','),
-                          cur > 0 && Math.abs(cur - v) < 0.001,
-                          () => onUpdate(idx, 'taktischePunkte', String(Math.abs(v - std) < 0.001 ? '' : v))))}
-                      </div>
+                      gesamt ? (
+                        <>
+                          {/* Gesamt-Modus: je Kampfgericht ein anerkannter Wert (mehrfach, max N, Ø). */}
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <button type="button" onClick={() => onUpdateTaktHits(idx, [], std)}
+                              className={'text-xs px-3 py-2 rounded-full font-medium border ' +
+                                ((e.taktHits || []).filter(h => h > 0).length === 0 ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100')}>
+                              Standard
+                            </button>
+                            <PanelTapButtons options={scale.filter(v => v > std + 0.001)} hits={e.taktHits || []} limit={N}
+                              onChange={(h) => onUpdateTaktHits(idx, h, std)} fmt={(v) => v.toFixed(1).replace('.', ',')} />
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-1">
+                            {(e.taktHits || []).filter(h => h > 0).length >= N
+                              ? 'Alle Kampfgerichte erfasst'
+                              : `${N - (e.taktHits || []).filter(h => h > 0).length} von ${N} frei`}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {chip('std', 'Standard · ' + std.toFixed(1).replace('.', ','), cur <= 0 || Math.abs(cur - std) < 0.001,
+                            () => onUpdate(idx, 'taktischePunkte', ''))}
+                          {scale.map(v => chip(v, v.toFixed(1).replace('.', ','),
+                            cur > 0 && Math.abs(cur - v) < 0.001,
+                            () => onUpdate(idx, 'taktischePunkte', String(Math.abs(v - std) < 0.001 ? '' : v))))}
+                        </div>
+                      )
                     ) : (
                       <div className="flex items-center gap-2">
                         <input type="number" min="0" step="0.1" inputMode="decimal"
@@ -15578,7 +15738,7 @@ function WertungstischEditor({ program, entries, onUpdate, result }) {
       </div>
 
       {/* Desktop: Tabelle */}
-      <div className="hidden sm:block overflow-x-auto -mx-4 px-4">
+      <div className={(gesamt ? 'hidden' : 'hidden sm:block') + ' overflow-x-auto -mx-4 px-4'}>
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
