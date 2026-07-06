@@ -2678,25 +2678,26 @@ function tableHasContent(tbl) {
   return (tbl || []).some(e => e && (calcExerciseDeduction(e) > 0.0001 || Number(e.schwPct || 0) > 0 || Number(e.taktischePunkte || 0) > 0));
 }
 
-// Welche Kampfgericht-Indizes (0-basiert) gewertet werden: nur die mit echten
-// Eingaben; ist keins erfasst, alle gewählten (Fallback).
-function scoredKGIndices(c) {
+// Wird der Wettkampf als „Gesamt" (kombiniert, ein Ergebnis ÷ Anzahl KG) behandelt?
+// True, wenn der Marker gesetzt ist ODER höchstens EIN Kampfgericht Eingaben hat —
+// so bleibt Darstellung/Rechnung stabil, selbst wenn der Marker verloren geht (analog nativ).
+function isEffectiveGesamt(c) {
+  if (c.abzug_gesamt) return true;
   const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
   const tables = [c.table1, c.table2, c.table3, c.table4];
-  const filled = [];
-  for (let i = 0; i < n; i++) if (tableHasContent(tables[i])) filled.push(i);
-  return filled.length ? filled : Array.from({ length: n }, (_, i) => i);
+  let cnt = 0;
+  for (let i = 0; i < n; i++) if (tableHasContent(tables[i])) cnt++;
+  return cnt <= 1;
 }
 
-// Endergebnis = Durchschnitt ALLER gewählten Kampfgerichte (1–4). Ein leeres
-// Kampfgericht zählt mit seinem vollen (aufgestellten) Ergebnis — so bleibt der
-// Schnitt stabil und unabhängig davon, ob der Gesamt-Marker gesetzt ist (analog nativ).
+// Endergebnis. „Gesamt" (kombiniert): anerkannt − Gesamt-Abzug ÷ Anzahl KG. Sonst
+// Durchschnitt aller gewählten Kampfgerichte. `isEffectiveGesamt` fängt auch den Fall ab,
+// dass der Gesamt-Marker verloren ging (nur ein KG erfasst).
 function compFinalScore(program, c) {
   if (!program) return null;
-  // Gesamt-Modus: Abzüge sind EINMAL als Summe aller Kampfgerichte erfasst → der
-  // Gesamt-Abzug wird durch die Anzahl der Kampfgerichte geteilt (= Ø-Abzug).
-  if (c.abzug_gesamt) {
-    const r = calcTableResult(program, c.table1, c.t1_schwierigkeit);
+  if (isEffectiveGesamt(c)) {
+    const tbl = tableHasContent(c.table1) ? c.table1 : (tableHasContent(c.table2) ? c.table2 : c.table1);
+    const r = calcTableResult(program, tbl, c.t1_schwierigkeit);
     const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
     return Math.round((r.anerkannt - r.abzugGesamt / n) * 100) / 100;
   }
