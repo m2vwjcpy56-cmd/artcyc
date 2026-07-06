@@ -2672,6 +2672,20 @@ function calcTableResult(program, entries, schwierigkeit = 0) {
   };
 }
 
+// Endergebnis = Durchschnitt ALLER Kampfgerichte (1–4). Nur die tatsächlich
+// vorhandene Anzahl wird gemittelt (analog nativ Scoring.finalScore).
+function compFinalScore(program, c) {
+  if (!program) return null;
+  // Gesamt-Modus: Abzüge nur einmal erfasst → allein table1 zählt.
+  if (c.abzug_gesamt) return calcTableResult(program, c.table1, c.t1_schwierigkeit).ergebnis;
+  const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
+  const tables = [c.table1, c.table2, c.table3, c.table4];
+  const schw = [c.t1_schwierigkeit, c.t2_schwierigkeit, 0, 0];
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += calcTableResult(program, tables[i], schw[i]).ergebnis;
+  return Math.round((sum / n) * 100) / 100;
+}
+
 // Abzugs-Verlauf-Balken: keine Datums-Labels unter jedem Balken (unlesbar) —
 // stattdessen Jahres-Marken + Klick auf einen Balken zeigt Wettkampf, Datum, Abzug.
 function DeductionBars({ series }) {
@@ -5209,6 +5223,10 @@ export default function App() {
     start_nr: c.start_nr || '',
     table1: c.table1 || [],
     table2: c.table2 || [],
+    table3: c.table3 || null,
+    table4: c.table4 || null,
+    kampfgerichte: Number(c.kampfgerichte || 2),
+    abzug_gesamt: !!c.abzug_gesamt,
     t1_schwierigkeit: Number(c.t1_schwierigkeit || 0),
     t2_schwierigkeit: Number(c.t2_schwierigkeit || 0),
     pdf_ref: c.pdf_ref || null,
@@ -6190,7 +6208,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
       if (!program) return null;
       const t1 = calcTableResult(program, c.table1, c.t1_schwierigkeit);
       const t2 = calcTableResult(program, c.table2, c.t2_schwierigkeit);
-      const final = Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100;
+      const final = compFinalScore(program, c);
       // Gesamtabzug pro KG-Mittel — identische Berechnung wie in WettkampfView
       const ded = Math.round(((t1.abzugGesamt + t2.abzugGesamt) / 2) * 100) / 100;
       return { competition: c, final, ded };
@@ -6638,7 +6656,7 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf, b
         if (!program) return null;
         const t1 = calcTableResult(program, c.table1, c.t1_schwierigkeit);
         const t2 = calcTableResult(program, c.table2, c.t2_schwierigkeit);
-        const final = Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100;
+        const final = compFinalScore(program, c);
         return { date: c.date, name: c.name, final, id: c.id };
       })
       .filter(Boolean)
@@ -7510,8 +7528,8 @@ function TrainingView({ data, setData, setView }) {
     return (
       <IOSListRow key={ex.id} onClick={() => setSelectedExercise(ex)}
         trailing={<div className="flex items-center gap-2 shrink-0">{!ex._feedbackOnly && total > 0 && renderRateTrend({ recSucc, recTot, prevSucc, prevTot, allRate: rate, allTotal: total })}<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" /></div>}>
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="font-medium text-[15px] truncate">{localizedExerciseName(ex)}</span>
+        <div className="flex items-start gap-2 min-w-0">
+          <span className="font-medium text-[15px] leading-snug line-clamp-2">{localizedExerciseName(ex)}</span>
           {ex.active === false && <IOSTag color="gray">archiviert</IOSTag>}
         </div>
         <div className="text-[13px] text-[#8E8E93] mt-1 flex items-center gap-3 tabular-nums">
@@ -7634,7 +7652,7 @@ function TrainingView({ data, setData, setView }) {
         <div className="card-surface rounded-[20px] overflow-hidden">
           <button onClick={() => setRunEditorOpen(true)} className="w-full px-4 py-3 flex items-center gap-3 active:bg-[#D1D1D6]/30 transition">
             <FileText size={18} className="text-[#FF9500] shrink-0" />
-            <span className="flex-1 text-left text-[15px] font-medium">Durchlauf werten (Wertungsbogen)</span>
+            <span className="flex-1 text-left text-[15px] font-medium">Trainingsprogramm erfassen</span>
             <Plus size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
           </button>
           {(() => {
@@ -7645,7 +7663,7 @@ function TrainingView({ data, setData, setView }) {
               const program = (data.programs || []).find(p => p.id === c.program_id);
               const t1 = program ? calcTableResult(program, c.table1, c.t1_schwierigkeit) : null;
               const t2 = program ? calcTableResult(program, c.table2, c.t2_schwierigkeit) : null;
-              const final = (t1 && t2) ? Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100 : null;
+              const final = compFinalScore(program, c);
               return (
                 <button key={c.id} onClick={() => setViewRunId(c.id)}
                   className="w-full px-4 py-2.5 flex items-center justify-between gap-2 border-t border-[#C6C6C8]/40 active:bg-[#D1D1D6]/30">
@@ -12602,6 +12620,21 @@ function ProgrammeView({ data, setData, myUserId = null }) {
   const upsert = (prog) => {
     const list = data.programs || [];
     const exists = list.find(p => p.id === prog.id);
+    // VORBEUGEN gegen Duplikate: wird ein NEUES Programm angelegt, das inhaltlich
+    // identisch zu einem bestehenden eigenen ist (gleiche Codefolge ODER gleicher
+    // Name + Punktfolge), dann NICHT anlegen — das verhindert den „10× dasselbe
+    // Programm"-Wildwuchs (analog zum nativen findMatchingOwnProgram).
+    if (!exists) {
+      const norm = s => (s || '').trim().toLowerCase();
+      const sameContent = (a, b) => {
+        const ca = programCodeSeq(a), cb = programCodeSeq(b);
+        if (ca && cb && ca === cb) return true;
+        return norm(a.name) === norm(b.name) && programPointSeq(a) === programPointSeq(b)
+          && (a.exercises || []).length === (b.exercises || []).length;
+      };
+      const dup = list.find(p => p.id !== prog.id && ownsProgramForWrite(p, myUserId) && sameContent(p, prog));
+      if (dup) return; // identisches Programm existiert bereits → wiederverwenden
+    }
     // owner_id sicherstellen: vom Bestand übernehmen, sonst = ich. Ohne owner_id
     // fiele das Programm aus der owner-gefilterten Liste („weg nach Sichern").
     const withOwner = { ...prog, owner_id: prog.owner_id ?? (exists && exists.owner_id) ?? myUserId ?? null };
@@ -13246,12 +13279,13 @@ function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onRemove }) {
 
   return (
     <div>
-      <div className="flex items-center gap-3 px-4 py-3">
-        <div className="text-[13px] text-[#8E8E93] w-6 shrink-0 font-medium">{ex.nr}</div>
+      <div className="flex items-start gap-3 px-4 py-3">
+        <div className="text-[13px] text-[#8E8E93] w-6 shrink-0 font-medium pt-0.5">{ex.nr}</div>
         <div className="flex-1 min-w-0">
           {ex.name ? (
             <>
-              <div className="font-medium text-[15px] truncate">{localizedExerciseName(ex)}</div>
+              {/* Voller Name (umbrechend) — lange 2er-Übungen fangen ähnlich an. */}
+              <div className="font-medium text-[15px] leading-snug">{localizedExerciseName(ex)}</div>
               <div className="text-[12px] text-[#8E8E93]">
                 {ex.code ? 'Nr. ' + ex.code : 'Eigene'} · {Number(ex.points).toFixed(1)} Pkt.
               </div>
@@ -13695,7 +13729,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
       || (snapEx && snapEx.length ? { name: 'Gespeichertes Programm', exercises: snapEx } : null);
     const t1 = program ? calcTableResult(program, c.table1, c.t1_schwierigkeit) : null;
     const t2 = program ? calcTableResult(program, c.table2, c.t2_schwierigkeit) : null;
-    const final = (t1 && t2) ? Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100
+    const final = program ? compFinalScore(program, c)
       : (ref && ref.endergebnis != null ? Number(ref.endergebnis) : null);
     const ded = (t1 && t2) ? Math.round(((t1.abzugGesamt + t2.abzugGesamt) / 2) * 100) / 100
       : (ref && ref.kg1_gesamt != null && ref.kg2_gesamt != null
@@ -14896,6 +14930,12 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
         athlete_id: athleteId || null,
         program_id: finalProgramId,
         table1, table2,
+        // KG-Anzahl + Tabellen 3/4 durchreichen — der Web-Editor bearbeitet nur KG1/KG2,
+        // darf aber vorhandene 3–4-KG-Daten (nativ erfasst) NICHT verlieren.
+        table3: (competition && competition.table3) || null,
+        table4: (competition && competition.table4) || null,
+        kampfgerichte: (competition && competition.kampfgerichte) || 2,
+        abzug_gesamt: !!(competition && competition.abzug_gesamt),
         t1_schwierigkeit: Number(t1S) || 0,
         t2_schwierigkeit: Number(t2S) || 0,
         // Daten-Sicherheit: Programm-Schnappschuss in pdf_ref (jsonb-Spalte, wird
@@ -15727,7 +15767,7 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
         if (!program) return null;
         const t1 = calcTableResult(program, c.table1, c.t1_schwierigkeit);
         const t2 = calcTableResult(program, c.table2, c.t2_schwierigkeit);
-        const final = Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100;
+        const final = compFinalScore(program, c);
         return { c, final };
       })
       .filter(Boolean)
@@ -17068,6 +17108,9 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
                     <input type="checkbox" checked={moveComps} onChange={e => setMoveComps(e.target.checked)} className="w-5 h-5 accent-[#FF9500]" />
                   </label>
                 </div>
+                {/* Übungen sind der geteilte Katalog und werden pro Sportler aus dessen
+                    Trainings/Wettkämpfen abgeleitet → sie kommen automatisch mit. */}
+                <p className="text-[12px] text-[#8E8E93] px-3 mt-1.5">Übungen werden automatisch mitübernommen — sie hängen an den Trainings und Wettkämpfen und erscheinen dann beim Ziel.</p>
               </div>
               <div>
                 <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">Ziel wählen</div>
@@ -17964,8 +18007,8 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
 
   const t1 = effProgram ? calcTableResult(effProgram, competition.table1, competition.t1_schwierigkeit) : null;
   const t2 = effProgram ? calcTableResult(effProgram, competition.table2, competition.t2_schwierigkeit) : null;
-  const finalScore = (t1 && t2)
-    ? Math.round(((t1.ergebnis + t2.ergebnis) / 2) * 100) / 100
+  const finalScore = effProgram
+    ? compFinalScore(effProgram, competition)
     : (ref && ref.endergebnis != null ? Number(ref.endergebnis) : null);
 
   const entries = activeTable === 1 ? (competition.table1 || []) : (competition.table2 || []);
