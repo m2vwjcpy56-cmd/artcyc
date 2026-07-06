@@ -2513,7 +2513,10 @@ function parseWertungsbogenRows(items) {
     }
 
     nameTokens.sort((a, b) => a.x - b.x);
-    row.name = nameTokens.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim();
+    // Übungsname aus der zuverlässigen Übungsnummer auflösen — der aus dem PDF gelesene Name
+    // ist durch umgebrochene Nachbarzeilen oft verwürfelt. Fallback = zusammengesetzter Text.
+    const catHit = row.code && activeUciByCode.get(row.code);
+    row.name = (catHit && catHit.n) ? catHit.n : nameTokens.map(t => t.text).join(' ').replace(/\s+/g, ' ').trim();
 
     rows.push(row);
   }
@@ -14324,7 +14327,7 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, onUpdate, onUp
       {!gesamt && N > 1 && (
         <div className="flex gap-1.5 px-4 pt-3 shrink-0">
           {Array.from({ length: N }, (_, i) => i + 1).map(n => (
-            <button key={n} onClick={() => setKg(n)} className={seg(kg === n)}>KG {n}</button>
+            <button key={n} onClick={() => setKg(n)} className={seg(kg === n)}>Kampfgericht {n}</button>
           ))}
         </div>
       )}
@@ -15330,23 +15333,14 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
 
           {!importPreview && (
             <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <label className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
-                  <FileText size={15} /> PDF / Dokument
-                  <input type="file" accept="application/pdf"
-                    onChange={e => handlePdfImport(e.target.files && e.target.files[0])}
-                    className="hidden" />
-                </label>
-                <label className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
-                  <Camera size={15} /> Foto scannen
-                  <input type="file" accept="image/*"
-                    onChange={e => handleScanImport(e.target.files)}
-                    className="hidden" />
-                </label>
-              </div>
+              <label className="bg-white dark:bg-white/10 border border-violet-300 dark:border-violet-700/60 text-violet-900 dark:text-violet-100 hover:bg-violet-50 dark:hover:bg-white/15 px-3 py-2.5 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
+                <FileText size={15} /> PDF importieren
+                <input type="file" accept="application/pdf"
+                  onChange={e => handlePdfImport(e.target.files && e.target.files[0])}
+                  className="hidden" />
+              </label>
               <p className="text-[11px] text-violet-900/70 dark:text-violet-200/70 leading-snug px-0.5">
-                <strong>PDF / Dokument</strong> liefert das genaueste Ergebnis (auch ein gescanntes PDF) — Stammdaten und alle Abzüge pro Übung werden gesetzt.
-                <strong> Foto scannen</strong> lässt dich aufnehmen oder ein vorhandenes Bild wählen; die KI liest den Bogen aus (Stammdaten, Schwierigkeit, Endergebnis). Werte bitte kurz prüfen <em>(Beta)</em>.
+                Wähle das <strong>Original-Wertungsbericht-PDF</strong> (digital, nicht abfotografiert/eingescannt) — Stammdaten, Endergebnis und alle Übungen (bis 3 Kampfgerichte) werden in Sekunden gesetzt.
               </p>
             </div>
           )}
@@ -15364,7 +15358,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                     ? <div className="h-full rounded-full bg-[#FF9500] transition-[width] duration-300 ease-out" style={{ width: Math.round(scanProgress * 100) + '%' }} />
                     : <div className="h-full w-1/3 rounded-full bg-[#FF9500] acc-indeterminate" />}
                 </div>
-                <div className="text-[11px] text-violet-900/60 dark:text-violet-200/60 mt-1">Foto-Erkennung kann je nach Bild etwas dauern — bitte offen lassen.</div>
+                <div className="text-[11px] text-violet-900/60 dark:text-violet-200/60 mt-1">Nur einen Moment …</div>
               </div>
             </div>
           )}
@@ -15551,7 +15545,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 <button key={n} onClick={() => setActiveTable(n)}
                   className={'flex-1 min-w-[70px] py-3 rounded-xl font-semibold transition-colors ' +
                     (activeTable === n ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
-                  KG {n}
+                  Kampfgericht {n}
                   <div className="text-xs font-normal opacity-80 mt-0.5">{kgResults[n - 1] && kgResults[n - 1].ergebnis.toFixed(2)} Pkt.</div>
                 </button>
               ))}
