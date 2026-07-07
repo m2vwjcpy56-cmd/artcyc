@@ -56,8 +56,16 @@ function buildCellMap(program, comps) {
     const base = 3 + 9 * k;                 // 1-basierte Spalte von i.P.
     const nameCol = colLetter(base + 2);    // E, N, …
     const anzCol = colLetter(base + 1);     // D, M, …
+    const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));   // echte Anzahl KG
+    const gesamt = isGesamt(c);
     map.set(nameCol + '1', { kind: 's', val: (c.name || 'Wettkampf') + (c.date ? ' ' + dateShort(c.date) : '') });
-    map.set(anzCol + '2', { kind: 'n', val: 2 }); // 2 Kampfgerichte
+    map.set(anzCol + '2', { kind: 'n', val: n }); // „Anz." — treibt die Vorlagen-Mittelung ÷ N
+
+    // Welche Tabellen summiert werden: „Gesamt"-Modus = Abzüge liegen EINMAL
+    // kombiniert in table1 (= Summe über alle KG; die Sheet-Formel teilt durch
+    // „Anz."=N). Pro-KG = über die N erfassten Kampfgerichte summieren.
+    const allTables = [c.table1, c.table2, c.table3, c.table4];
+    const usedTables = gesamt ? [c.table1 || []] : allTables.slice(0, n).map(t => t || []);
 
     const D = colLetter(base + 1), E = colLetter(base + 2), F = colLetter(base + 3),
       G = colLetter(base + 4), H = colLetter(base + 5), I = colLetter(base + 6),
@@ -65,32 +73,55 @@ function buildCellMap(program, comps) {
 
     exs.forEach((ex, i) => {
       const r = rowOf(i);
-      const t1 = (c.table1 || []);
-      const t2 = (c.table2 || []);
-      const e1 = t1.find(e => e.exerciseId === ex.id) || t1[i] || {};
-      const e2 = t2.find(e => e.exerciseId === ex.id) || t2[i] || {};
-      const sum = (a, b) => Number(a || 0) + Number(b || 0);
-      const pctCount = (p) => (Number(e1.schwPct || 0) === p ? 1 : 0) + (Number(e2.schwPct || 0) === p ? 1 : 0);
+      const pick = (t) => (t.find(e => e && e.exerciseId === ex.id) || t[i] || {});
+      const entries = usedTables.map(pick);
+      const sum = (kp) => entries.reduce((acc, e) => acc + Number(kp(e) || 0), 0);
       const bonus = (e) => {
         const tp = Number(e.taktischePunkte || 0);
         return (tp > 0 && tp !== Number(ex.points || 0)) ? (tp - Number(ex.points || 0)) : 0;
       };
+      // %-Stufen ZÄHLEN (wie oft 10/50/100): Gesamt über die je-KG-Liste schwHits,
+      // pro-KG je erfasster Tabelle. Fallback (Altdaten ohne schwHits): schwPct.
+      const pctCount = (p) => {
+        if (gesamt) {
+          const e = pick(c.table1 || []);
+          const hits = Array.isArray(e.schwHits) ? e.schwHits : null;
+          if (hits && hits.length) return hits.filter(v => Number(v) === p).length;
+          return Number(e.schwPct || 0) === p ? 1 : 0;
+        }
+        return entries.filter(e => Number(e.schwPct || 0) === p).length;
+      };
       const setN = (col, v) => { if (v) map.set(col + r, { kind: 'n', val: Math.round(v * 1000) / 1000 }); };
       // T (taktische Zusatzpunkte): die Vorlage addiert T DIREKT zu den Punkten
-      // ((B+T)*i.P.), NICHT geteilt durch die Kampfgericht-Anzahl. Daher NUR
-      // EINMAL eintragen (nicht über KG1+KG2 summieren — beide KG bewerten
-      // dieselbe Aufwertung). max() falls nur ein KG sie erfasst hat.
-      setN(D, Math.max(bonus(e1), bonus(e2)));
-      setN(E, sum(e1.cross, e2.cross)); // X
-      setN(F, sum(e1.wave, e2.wave));   // ~
-      setN(G, sum(e1.bar, e2.bar));     // |
-      setN(H, sum(e1.circle, e2.circle)); // ○
-      setN(I, pctCount(10));            // 10%
-      setN(J, pctCount(50));            // 50%
-      setN(K, pctCount(100));           // 100%
+      // ((B+T)*i.P.), NICHT geteilt durch die KG-Anzahl → nur EINMAL eintragen
+      // (max, falls nur ein KG die Aufwertung erfasst hat).
+      setN(D, Math.max(0, ...entries.map(bonus)));
+      setN(E, sum(e => e.cross)); // X
+      setN(F, sum(e => e.wave));  // ~
+      setN(G, sum(e => e.bar));   // |
+      setN(H, sum(e => e.circle)); // ○
+      setN(I, pctCount(10));      // 10%
+      setN(J, pctCount(50));      // 50%
+      setN(K, pctCount(100));     // 100%
     });
   });
   return map;
+}
+
+// „Gesamt"-Modus: Marker gesetzt ODER höchstens EIN Kampfgericht mit Eingaben
+// (analog isEffectiveGesamt in ArtCycCoach). Robust gegen verlorenen Marker.
+function isGesamt(c) {
+  if (c.abzug_gesamt || c.abzugGesamt) return true;
+  const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
+  const tables = [c.table1, c.table2, c.table3, c.table4];
+  let cnt = 0;
+  for (let i = 0; i < n; i++) {
+    const has = (tables[i] || []).some(e => e && (
+      Number(e.cross || 0) + Number(e.wave || 0) + Number(e.bar || 0) + Number(e.circle || 0) > 0
+      || Number(e.schwPct || 0) > 0 || Number(e.taktischePunkte || 0) > 0));
+    if (has) cnt++;
+  }
+  return cnt <= 1;
 }
 
 // Ersetzt in einem Durchlauf alle vorhandenen Zellen, deren Ref in der Map
