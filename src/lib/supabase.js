@@ -779,22 +779,6 @@ export function isAppOwner(session) {
   return !!email && OWNER_EMAILS.includes(email);
 }
 
-// Wertungsbogen-Foto per Vision-LLM auslesen (Edge-Function scan-wertungsbogen).
-// Gibt { data, error } zurück; data = strukturierte Felder oder null.
-export async function scanWertungsbogenVision(imageDataUrl, opts = {}) {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return { data: null, error: { message: 'Nicht angemeldet' } };
-  const body = { image: imageDataUrl };
-  if (Array.isArray(opts.programPoints) && opts.programPoints.length) body.programPoints = opts.programPoints;
-  if (opts.correction) body.correction = String(opts.correction);
-  if (opts.tableOnly) body.tableOnly = true;
-  if (opts.tableModel) body.tableModel = String(opts.tableModel);
-  const { data, error } = await supabase.functions.invoke('scan-wertungsbogen', { body });
-  if (error) return { data: null, error };
-  if (!data || data.ok !== true) return { data: null, error: { message: (data && data.error) || 'Bilderkennung fehlgeschlagen' } };
-  return { data: data.data || null, error: null };
-}
-
 async function callAdminFn(action, payload = {}) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return { error: { message: 'Nicht angemeldet' } };
