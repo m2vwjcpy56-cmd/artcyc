@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Trophy, Dumbbell, Plus, ChevronLeft, ChevronRight, Save, Check, X, Edit2, Trash2,
   Search, Info, Archive, AlertTriangle, ListChecks,
@@ -14304,7 +14305,10 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
   const seg = (on) => 'flex-1 py-2 rounded-xl text-sm font-semibold border ' + (on
     ? 'bg-[#FF9500] text-white border-[#FF9500]'
     : 'bg-white/5 border-white/10 text-slate-300');
-  return (
+  // Per Portal an <body>, damit `fixed inset-0` wirklich den ganzen Viewport
+  // deckt — sonst richtet sich der Overlay an einem transformierten Vorfahren
+  // (Editor-Container) aus und scrollt/leuchtet der Inhalt darunter durch.
+  return createPortal(
     <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-[#0b0b0d] flex flex-col overscroll-none">
       {/* Kopf */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-black/5 dark:border-white/10 shrink-0">
@@ -14410,7 +14414,8 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
         <button disabled={idx >= exs.length - 1} onClick={() => setIdx(idx + 1)}
           className="flex-1 py-3 rounded-2xl bg-white dark:bg-white/10 ring-1 ring-black/5 dark:ring-0 text-slate-900 dark:text-white text-xl font-bold disabled:opacity-30 active:scale-95 transition">›</button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
