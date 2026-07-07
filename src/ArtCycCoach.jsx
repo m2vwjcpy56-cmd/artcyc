@@ -2713,6 +2713,41 @@ function compFinalScore(program, c) {
   return Math.round((sum / n) * 100) / 100;
 }
 
+// Effektiver Punktabzug JE ÜBUNG in EINEM Wettkampf — über die Kampfgerichte gemittelt
+// (bei „Gesamt" ist es die kombinierte Erfassung ÷ Anzahl KG). Spiegelt exakt die Logik
+// von compFinalScore wider, nur pro Übung aufgeschlüsselt. Rückgabe: Array [ded je Übung].
+function compExerciseDeductions(program, c) {
+  if (!program) return [];
+  const exs = program.exercises || [];
+  const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
+  if (isEffectiveGesamt(c)) {
+    const tbl = tableHasContent(c.table1) ? c.table1 : (tableHasContent(c.table2) ? c.table2 : c.table1);
+    return exs.map((ex, idx) => {
+      const e = (tbl || [])[idx];
+      const d = calcExerciseDeduction(e) + calcExerciseSchwierigkeit(e, ex);
+      return Math.round((d / n) * 100) / 100;
+    });
+  }
+  const tables = [c.table1, c.table2, c.table3, c.table4];
+  return exs.map((ex, idx) => {
+    let s = 0;
+    for (let i = 0; i < n; i++) {
+      const e = (tables[i] || [])[idx];
+      s += calcExerciseDeduction(e) + calcExerciseSchwierigkeit(e, ex);
+    }
+    return Math.round((s / n) * 100) / 100;
+  });
+}
+
+// Ø-Punktabzug PRO ÜBUNG in EINEM Wettkampf (Summe der übungsweisen Abzüge ÷ Anzahl Übungen).
+// Für die Kennzeichnung „Ø −x/Übung" an Wettkampf-Karte und -Detail. Null, wenn nicht berechenbar.
+function compAvgDeductionPerExercise(program, c) {
+  const arr = compExerciseDeductions(program, c);
+  if (!arr.length) return null;
+  const sum = arr.reduce((a, b) => a + b, 0);
+  return Math.round((sum / arr.length) * 100) / 100;
+}
+
 // Abzugs-Verlauf-Balken: keine Datums-Labels unter jedem Balken (unlesbar) —
 // stattdessen Jahres-Marken + Klick auf einen Balken zeigt Wettkampf, Datum, Abzug.
 function DeductionBars({ series }) {
@@ -13777,7 +13812,9 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
     const ded = (t1 && t2) ? Math.round(((t1.abzugGesamt + t2.abzugGesamt) / 2) * 100) / 100
       : (ref && ref.kg1_gesamt != null && ref.kg2_gesamt != null
         ? Math.round(((Number(ref.kg1_gesamt) + Number(ref.kg2_gesamt)) / 2) * 100) / 100 : null);
-    return { c, final, ded };
+    // Ø-Abzug pro Übung (KG-gemittelt) für die Kennzeichnung an der Karte.
+    const avgDedEx = program ? compAvgDeductionPerExercise(program, c) : null;
+    return { c, final, ded, avgDedEx };
   });
   const sorted = [...enriched].sort((a, b) => (b.c.date || '').localeCompare(a.c.date || ''));
 
@@ -13806,13 +13843,16 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
 
   const previewV2 = true;
   if (previewV2) {
-    const compRow = ({ c, final }) => {
+    const compRow = ({ c, final, avgDedEx }) => {
       const athlete = athletes.find(a => a.id === c.athlete_id);
       return (
         <IOSListRow key={c.id} onClick={() => setViewId(c.id)}
           trailing={<div className="flex items-center gap-2 shrink-0">{final !== null && <div className="text-right"><div className="text-[14px] font-bold text-[#FF9500] leading-none tabular-nums">{final.toFixed(2)}</div><div className="text-[10px] text-[#8E8E93] uppercase tracking-wide font-medium mt-0.5">Pkt</div></div>}<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" /></div>}>
           <div className="font-medium text-[15px] truncate">{c.name}</div>
-          <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">{formatDateShort(c.date)}{c.location ? ' · ' + c.location : ''}{athlete ? ' · ' + athlete.name : ''}</div>
+          <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">
+            {formatDateShort(c.date)}{c.location ? ' · ' + c.location : ''}{athlete ? ' · ' + athlete.name : ''}
+            {avgDedEx != null && avgDedEx > 0 && <span className="text-[#FF9500] font-medium"> · Ø −{avgDedEx.toFixed(2).replace('.', ',')}/Üb.</span>}
+          </div>
         </IOSListRow>
       );
     };
@@ -18469,6 +18509,36 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
           </div>
         )
       )}
+
+      {/* Ø-Abzug je Übung — über die Kampfgerichte gemittelt: zeigt, welche Übung in
+          DIESEM Wettkampf durchschnittlich am meisten kostet (absteigend sortiert). */}
+      {effProgram && (() => {
+        const perEx = compExerciseDeductions(effProgram, competition);
+        const avg = compAvgDeductionPerExercise(effProgram, competition);
+        const ranked = effProgram.exercises
+          .map((ex, idx) => ({ ex, ded: perEx[idx] || 0 }))
+          .filter(r => r.ded > 0.0001)
+          .sort((a, b) => b.ded - a.ded);
+        if (!ranked.length) return null;
+        return (
+          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold flex items-center gap-2"><TrendingDown size={16} className="text-[#FF3B30]" /> Ø-Abzug je Übung</h3>
+              {avg != null && <span className="text-[13px] text-slate-500">Ø −{avg.toFixed(2)}/Übung</span>}
+            </div>
+            <div className="space-y-1.5">
+              {ranked.map(({ ex, ded }, i) => (
+                <div key={ex.id || i} className="flex items-center gap-2.5">
+                  <span className="w-5 text-right text-xs font-semibold text-slate-400 tabular-nums shrink-0">{i + 1}</span>
+                  <span className="flex-1 min-w-0 text-sm font-medium truncate">{localizedExerciseName(ex)}</span>
+                  <span className={'text-sm font-bold tabular-nums shrink-0 ' + (ded >= 0.6 ? 'text-rose-600' : ded >= 0.15 ? 'text-amber-600' : 'text-emerald-600')}>−{ded.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-400 pt-2.5 leading-snug">Punktabzug je Übung, über die Kampfgerichte gemittelt (Ausführung + Schwierigkeit).</p>
+          </div>
+        );
+      })()}
 
       {/* Einzelübungen je Kampfgericht — nur Tabellen-Umschalter (Scores stehen
           bereits oben in den KPI-Karten; keine doppelte Ergebnis-Anzeige). */}
