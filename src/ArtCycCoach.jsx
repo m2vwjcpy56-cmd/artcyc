@@ -6279,7 +6279,9 @@ function Dashboard({ data, setView, onOpenFeedback }) {
 
   // Wettkampf-Stats (gefiltert nach Saison)
   const compStats = useMemo(() => {
-    const comps = (data.competitions || []).filter(c => season === 'all' ? true : inRange(c.date));
+    // Nur echte Wettkämpfe — Trainings-Durchläufe (kind=training) gehören nicht in die
+    // Wettkampf-Kacheln (Letzter Wettkampf / Bestleistung / Trend).
+    const comps = (data.competitions || []).filter(c => (c.kind || 'wettkampf') !== 'training' && (season === 'all' ? true : inRange(c.date)));
     const programMap = new Map((data.programs || []).map(p => [p.id, p]));
     const withResult = comps.map(c => {
       const program = programMap.get(c.program_id);
@@ -6480,7 +6482,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
             {compStats.count >= 2 && (
               <div className="card-surface rounded-[22px] p-4 space-y-2">
                 <h2 className="text-[15px] font-semibold flex items-center gap-2"><Trophy size={16} className="text-[#FF9500]" /> Wettkampf-Verlauf</h2>
-                <CompetitionTrendChart competitions={(data.competitions || []).filter(c => season === 'all' ? true : inRange(c.date))} programs={data.programs || []} best={compStats.best} onTapWettkampf={() => setView('wettkampf')} />
+                <CompetitionTrendChart competitions={(data.competitions || []).filter(c => (c.kind || 'wettkampf') !== 'training' && (season === 'all' ? true : inRange(c.date)))} programs={data.programs || []} best={compStats.best} onTapWettkampf={() => setView('wettkampf')} />
               </div>
             )}
             {focusEx && (
