@@ -17825,26 +17825,36 @@ function downloadCSV(rows, filename) {
 // =============================================================
 // EXPORT WETTKAMPF (Maute-Format)
 // =============================================================
+// Übungs-Schlüssel für die Vereinigung (wie statKey): Nummer/Code, sonst Name.
+function mauteExKey(ex) {
+  const c = String((ex && (ex.nr || ex.code)) || '').trim();
+  return c ? c.toLowerCase() : String((ex && ex.name) || '').toLowerCase().replace(/\s+/g, ' ').replace(/[ .]+$/, '').trim();
+}
 function ExportWettkampf({ data, defaultName = '' }) {
-  const [athleteFilter, setAthleteFilter] = useState('');
-  const [programId, setProgramId] = useState((data.programs && data.programs[0] && data.programs[0].id) || '');
-
   const programs = data.programs || [];
   const competitions = data.competitions || [];
   const athletes = data.athletes || [];
-  const program = programs.find(p => p.id === programId);
+  const [athleteFilter, setAthleteFilter] = useState(() => (athletes[0] && athletes[0].id) || '');
+
+  // Übungen eines Wettkampfs = Übungen SEINES Programms (Programmwechsel-fest;
+  // die Export-Zeilen sind die Vereinigung über alle gewählten Wettkämpfe).
+  const exercisesFor = (c) => { const p = programs.find(pp => pp.id === c.program_id); return (p && p.exercises) || []; };
+  const unionOf = (comps) => {
+    const seen = new Set(); const out = [];
+    comps.forEach(c => exercisesFor(c).forEach(ex => { const k = mauteExKey(ex); if (k && !seen.has(k)) { seen.add(k); out.push(ex); } }));
+    return out;
+  };
 
   const filtered = useMemo(() => {
     return competitions
-      .filter(c => c.program_id === programId)
       .filter(c => !athleteFilter || c.athlete_id === athleteFilter)
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  }, [competitions, programId, athleteFilter]);
+  }, [competitions, athleteFilter]);
 
   const ath = athleteFilter ? athletes.find(a => a.id === athleteFilter) : null;
-  // Auswahl, welche Wettkämpfe exportiert werden (Default: alle des Programms).
+  // Auswahl, welche Wettkämpfe exportiert werden (Default: alle des Sportlers).
   const [chosen, setChosen] = useState(() => new Set());
-  useEffect(() => { setChosen(new Set(filtered.map(c => c.id))); }, [programId, athleteFilter, filtered.length]);
+  useEffect(() => { setChosen(new Set(filtered.map(c => c.id))); }, [athleteFilter, filtered.length]);
   const selected = useMemo(() => filtered.filter(c => chosen.has(c.id)), [filtered, chosen]);
   const toggleChosen = (id) => setChosen(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   // Dateiname frei festlegbar (Konvention: Name_Wettkampfstatistik_Jahr).
@@ -17870,27 +17880,35 @@ function ExportWettkampf({ data, defaultName = '' }) {
       });
     });
     rows.push(r0, r1, r2);
-    program.exercises.forEach(ex => {
-      const row = [ex.nr + '. ' + ex.name, Number(ex.points).toFixed(1), ''];
-      selected.forEach(c => {
+    // Zeilen = Vereinigung aller Übungen; i.P. je Wettkampf (1, wenn in dessen Programm).
+    const U = unionOf(selected);
+    const compMeta = selected.map(c => { const m = new Map(); exercisesFor(c).forEach(ex => { const k = mauteExKey(ex); if (k && !m.has(k)) m.set(k, ex); }); return m; });
+    U.forEach(u => {
+      const uk = mauteExKey(u);
+      const row = [(u.nr ? u.nr + '. ' : '') + (u.name || ''), Number(u.points || 0).toFixed(1), ''];
+      selected.forEach((c, ci) => {
+        const inProg = compMeta[ci].get(uk);
         [1, 2].forEach(tNum => {
+          if (!inProg) { row.push(0, '', '', '', '', '', '', '', ''); return; }
           const tableEntries = (tNum === 1 ? c.table1 : c.table2) || [];
-          const e = tableEntries.find(en => en.exerciseId === ex.id) || { included: 0, cross: 0, wave: 0, bar: 0, circle: 0 };
-          row.push(e.included ? 1 : 0, e.cross || '', e.wave || '', e.bar || '', e.circle || '', '', '', '', '');
+          const e = tableEntries.find(en => en.exerciseId === inProg.id) || { cross: 0, wave: 0, bar: 0, circle: 0 };
+          row.push(1, e.cross || '', e.wave || '', e.bar || '', e.circle || '', '', '', '', '');
         });
       });
       rows.push(row);
     });
-    const totalPoints = program.exercises.reduce((s, e) => s + Number(e.points), 0);
-    const fAuf = ['Aufgestellte Punkte', totalPoints.toFixed(2), ''];
+    const progFor = (c) => programs.find(p => p.id === c.program_id) || { exercises: exercisesFor(c) };
+    const fAuf = ['Aufgestellte Punkte', '', ''];
     const fSchw = ['Abzug Schwierigkeit', '', ''];
     const fAusf = ['Abzug Ausführung', '', ''];
     const fGes = ['Gesamtabzug', '', ''];
     const fEnd = ['Endergebnis', '', ''];
     selected.forEach(c => {
+      const pr = progFor(c);
+      const tp = exercisesFor(c).reduce((s, e) => s + Number(e.points || 0), 0);
       [1, 2].forEach(tNum => {
-        const r = calcTableResult(program, tNum === 1 ? c.table1 : c.table2, tNum === 1 ? c.t1_schwierigkeit : c.t2_schwierigkeit);
-        fAuf.push(totalPoints.toFixed(2), '', '', '', '', '', '', '', '');
+        const r = calcTableResult(pr, tNum === 1 ? c.table1 : c.table2, tNum === 1 ? c.t1_schwierigkeit : c.t2_schwierigkeit);
+        fAuf.push(tp.toFixed(2), '', '', '', '', '', '', '', '');
         fSchw.push(r.abzugSchwierigkeit.toFixed(2), '', '', '', '', '', '', '', '');
         fAusf.push(r.abzugAusfuehrung.toFixed(2), '', '', '', '', '', '', '', '');
         fGes.push(r.abzugGesamt.toFixed(2), '', '', '', '', '', '', '', '');
@@ -17899,8 +17917,9 @@ function ExportWettkampf({ data, defaultName = '' }) {
     });
     const fFinal = ['Endergebnis (Ø KG1+KG2)', '', ''];
     selected.forEach(c => {
-      const t1 = calcTableResult(program, c.table1, c.t1_schwierigkeit);
-      const t2 = calcTableResult(program, c.table2, c.t2_schwierigkeit);
+      const pr = progFor(c);
+      const t1 = calcTableResult(pr, c.table1, c.t1_schwierigkeit);
+      const t2 = calcTableResult(pr, c.table2, c.t2_schwierigkeit);
       fFinal.push(((t1.ergebnis + t2.ergebnis) / 2).toFixed(2), '', '', '', '', '', '', '', '');
       fFinal.push('', '', '', '', '', '', '', '', '');
     });
@@ -17909,12 +17928,12 @@ function ExportWettkampf({ data, defaultName = '' }) {
   };
 
   const exportMauteCSV = () => {
-    if (!program || selected.length === 0) return;
+    if (selected.length === 0) return;
     downloadCSV(buildMauteRows(), baseFilename() + '.csv');
   };
 
   const exportMauteXLSX = async () => {
-    if (!program || selected.length === 0) return;
+    if (selected.length === 0) return;
     const xlsx = await import('xlsx');
     const ws = xlsx.utils.aoa_to_sheet(buildMauteRows());
     const wb = xlsx.utils.book_new();
@@ -17925,10 +17944,11 @@ function ExportWettkampf({ data, defaultName = '' }) {
   const [vorlageBusy, setVorlageBusy] = useState(false);
   const [vorlageErr, setVorlageErr] = useState('');
   const exportVorlage = async () => {
-    if (!program || selected.length === 0) return;
+    if (selected.length === 0) return;
     setVorlageBusy(true); setVorlageErr('');
     try {
-      await exportMauteVorlage({ program, competitions: selected, athleteName: ath ? ath.name : '', filename: baseFilename() });
+      const compsWithEx = selected.map(c => ({ ...c, exercises: exercisesFor(c) }));
+      await exportMauteVorlage({ competitions: compsWithEx, athleteName: ath ? ath.name : '', filename: baseFilename() });
     } catch (e) {
       setVorlageErr(e && e.message ? e.message : 'Export fehlgeschlagen');
     } finally {
@@ -17936,11 +17956,11 @@ function ExportWettkampf({ data, defaultName = '' }) {
     }
   };
 
-  if (programs.length === 0) {
+  if (competitions.length === 0) {
     return (
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-amber-900 text-sm">
-        <strong>Kein Programm vorhanden.</strong>
-        <p className="mt-1">Lege im Bereich „Programme" mindestens ein Programm an, bevor du exportieren kannst.</p>
+        <strong>Keine Wettkämpfe vorhanden.</strong>
+        <p className="mt-1">Erfasse zuerst mindestens einen Wettkampf, bevor du exportieren kannst.</p>
       </div>
     );
   }
@@ -17948,13 +17968,6 @@ function ExportWettkampf({ data, defaultName = '' }) {
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 space-y-3">
-        <div>
-          <label className="text-xs font-medium text-slate-500 block mb-1.5">Programm</label>
-          <select value={programId} onChange={e => setProgramId(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
-            {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </div>
         {athletes.length > 0 && (
           <div>
             <label className="text-xs font-medium text-slate-500 block mb-1.5">Sportler/Team</label>
@@ -17979,7 +17992,7 @@ function ExportWettkampf({ data, defaultName = '' }) {
           )}
         </div>
         {filtered.length === 0 ? (
-          <p className="text-sm text-slate-500">Keine Wettkämpfe für dieses Programm{athleteFilter ? ' und diesen Sportler' : ''}.</p>
+          <p className="text-sm text-slate-500">Keine Wettkämpfe{ath ? ' für ' + ath.name : ''}.</p>
         ) : (
           <div className="max-h-64 overflow-y-auto -mx-1 px-1 divide-y divide-slate-100">
             {filtered.map(c => {
@@ -18024,18 +18037,18 @@ function ExportWettkampf({ data, defaultName = '' }) {
 
         <div className="flex flex-col gap-2">
           <button onClick={exportVorlage}
-            disabled={selected.length === 0 || !program || vorlageBusy}
+            disabled={selected.length === 0 || vorlageBusy}
             className="w-full bg-amber-500 text-slate-900 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 rounded-xl font-semibold flex items-center gap-2 justify-center">
             {vorlageBusy ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
             {vorlageBusy ? 'Erstelle …' : 'Offizielle Maute-Vorlage (.xlsm)'}
           </button>
           <button onClick={exportMauteXLSX}
-            disabled={selected.length === 0 || !program}
+            disabled={selected.length === 0}
             className="w-full bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 rounded-xl font-medium text-sm flex items-center gap-2 justify-center">
             <Download size={16} /> Einfache Tabelle (.xlsx)
           </button>
           <button onClick={exportMauteCSV}
-            disabled={selected.length === 0 || !program}
+            disabled={selected.length === 0}
             className="w-full bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 rounded-xl font-medium text-sm flex items-center gap-2 justify-center">
             <Download size={16} /> Als CSV
           </button>
