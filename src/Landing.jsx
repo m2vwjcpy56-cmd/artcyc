@@ -401,19 +401,9 @@ function Impressum() {
       <div className="space-y-5 text-[15px] text-slate-700 leading-relaxed">
         <div>
           <div className="font-semibold">Angaben gemäß § 5 DDG</div>
-          <p>Rad- und Kraftfahrerverein Denkendorf 1909 e.&nbsp;V.<br />
-            Löcherhaldenstraße 36<br />
-            73770 Denkendorf</p>
-        </div>
-        <div>
-          <div className="font-semibold">Vertreten durch den Vorstand</div>
-          <p>Hermann Alber (1. Vorsitzender)<br />
-            Dagmar Staudinger (stellvertretende Vorsitzende)<br />
-            Jasmin Wörner (Vorstand Finanzen)</p>
-        </div>
-        <div>
-          <div className="font-semibold">Registereintrag</div>
-          <p>Vereinsregister – Amtsgericht Stuttgart<br />Registernummer: VR 210271</p>
+          <p>Ruben Geyer<br />
+            Borsigstr. 26<br />
+            73249 Wernau</p>
         </div>
         <div>
           <div className="font-semibold">Kontakt</div>
@@ -430,7 +420,7 @@ function Datenschutz() {
     <Section className="py-14 max-w-3xl">
       <h1 className="text-[34px] font-bold tracking-tight mb-6">Datenschutzerklärung</h1>
       <div className="space-y-5 text-[15px] text-slate-700 leading-relaxed">
-        <div><div className="font-semibold">1. Verantwortlicher</div><p>Rad- und Kraftfahrerverein Denkendorf 1909 e.&nbsp;V., Löcherhaldenstraße 36, 73770 Denkendorf. Kontakt: info@artcyc.app (weitere Angaben im Impressum).</p></div>
+        <div><div className="font-semibold">1. Verantwortlicher</div><p>Ruben Geyer, Borsigstr. 26, 73249 Wernau. Kontakt: info@artcyc.app (weitere Angaben im Impressum).</p></div>
         <div><div className="font-semibold">2. Welche Daten wir verarbeiten</div><p>Konto-Daten (Name, E-Mail) sowie die von dir eingegebenen Trainings-, Wettkampf- und Sportlerdaten. Diese sind nötig, um die App-Funktionen bereitzustellen.</p></div>
         <div><div className="font-semibold">3. Hosting & Speicherung</div><p>Die App wird über Vercel ausgeliefert; Daten werden bei Supabase (Rechenzentrum EU) gespeichert. Mit diesen Anbietern bestehen Verträge zur Auftragsverarbeitung.</p></div>
         <div><div className="font-semibold">4. Wertungsbogen-Scan (KI)</div><p>Nutzt du die optionale Scan-Funktion, wird das aufgenommene Foto des Wertungsbogens zur automatischen Texterkennung an den KI-Dienst Google Gemini (Google, auch USA) übertragen und dort verarbeitet. Die Funktion ist freiwillig; Rechtsgrundlage ist deine Einwilligung bzw. die Vertragserfüllung (Art. 6 Abs. 1 lit. a/b DSGVO). Ohne Nutzung des Scans findet diese Übermittlung nicht statt.</p></div>

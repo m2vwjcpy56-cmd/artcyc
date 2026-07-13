@@ -2840,14 +2840,22 @@ function calcDeductionRanking(programs, competitions, exercises, sessions) {
       if (!s) { s = { key, name, competitions: 0, cross: 0, wave: 0, bar: 0, circle: 0, schwPctHist: {}, series: [] }; acc.set(key, s); }
       if (isPlaceholder(s.name) && !isPlaceholder(name)) s.name = name;
       let ded = 0;
-      [(comp.table1 || [])[idx], (comp.table2 || [])[idx]].forEach(e => {
-        if (!e) return;
-        s.cross += Number(e.cross || 0); s.wave += Number(e.wave || 0);
-        s.bar += Number(e.bar || 0); s.circle += Number(e.circle || 0);
-        const pct = String(Number(e.schwPct || 0));
-        if (pct !== '0') s.schwPctHist[pct] = (s.schwPctHist[pct] || 0) + 1;
-        ded += Number(e.cross || 0) * 0.2 + Number(e.wave || 0) * 0.5 + Number(e.bar || 0) * 1.0 + Number(e.circle || 0) * 2.0;
-      });
+      // Über die Kampfgerichte MITTELN, nicht summieren: beide KG bewerten dieselbe
+      // Kür, die Wellen-/Fehlerzahl ist der Mittelwert (sonst zählt alles pro KG doppelt).
+      const cells = [(comp.table1 || [])[idx], (comp.table2 || [])[idx]].filter(Boolean);
+      if (cells.length) {
+        let cx = 0, cw = 0, cb = 0, cc = 0;
+        cells.forEach(e => {
+          cx += Number(e.cross || 0); cw += Number(e.wave || 0);
+          cb += Number(e.bar || 0); cc += Number(e.circle || 0);
+          const pct = String(Number(e.schwPct || 0));
+          if (pct !== '0') s.schwPctHist[pct] = (s.schwPctHist[pct] || 0) + 1;
+        });
+        const d = cells.length;
+        cx /= d; cw /= d; cb /= d; cc /= d;
+        s.cross += cx; s.wave += cw; s.bar += cb; s.circle += cc;
+        ded += cx * 0.2 + cw * 0.5 + cb * 1.0 + cc * 2.0;
+      }
       dedThis.set(key, (dedThis.get(key) || 0) + ded);
       if (!seen.has(key)) { s.competitions += 1; seen.add(key); }
     });
@@ -2907,30 +2915,38 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
     program.exercises.forEach((ex, idx) => {
       if (!matches(ex)) return;
       foundInThisComp = true;
-      const e1 = (comp.table1 || [])[idx];
-      const e2 = (comp.table2 || [])[idx];
-      [e1, e2].forEach(e => {
-        if (!e) return;
-        stats.cross += Number(e.cross || 0);
-        stats.wave += Number(e.wave || 0);
-        stats.bar += Number(e.bar || 0);
-        stats.circle += Number(e.circle || 0);
-        const pct = Number(e.schwPct || 0);
-        stats.schwPctSum += pct;
-        if (pct > 0) {
-          stats.schwPctNonZero += 1;
-          const key = String(pct);
-          stats.schwPctHist[key] = (stats.schwPctHist[key] || 0) + 1;
-        }
-        const takt = Number(e.taktischePunkte || 0);
-        if (takt > 0) {
-          stats.taktSum += takt;
-          stats.taktCount += 1;
-          const tk = takt.toFixed(1);
-          stats.taktHist[tk] = (stats.taktHist[tk] || 0) + 1;
-        }
-        stats.count += 1;
-      });
+      // Fehlerzeichen über die Kampfgerichte MITTELN (nicht summieren) — beide KG
+      // bewerten dieselbe Kür; Histogramme/Zähler bleiben pro KG-Eintrag.
+      const cells = [(comp.table1 || [])[idx], (comp.table2 || [])[idx]].filter(Boolean);
+      if (cells.length) {
+        let cx = 0, cw = 0, cb = 0, cc = 0;
+        cells.forEach(e => {
+          cx += Number(e.cross || 0);
+          cw += Number(e.wave || 0);
+          cb += Number(e.bar || 0);
+          cc += Number(e.circle || 0);
+          const pct = Number(e.schwPct || 0);
+          stats.schwPctSum += pct;
+          if (pct > 0) {
+            stats.schwPctNonZero += 1;
+            const key = String(pct);
+            stats.schwPctHist[key] = (stats.schwPctHist[key] || 0) + 1;
+          }
+          const takt = Number(e.taktischePunkte || 0);
+          if (takt > 0) {
+            stats.taktSum += takt;
+            stats.taktCount += 1;
+            const tk = takt.toFixed(1);
+            stats.taktHist[tk] = (stats.taktHist[tk] || 0) + 1;
+          }
+          stats.count += 1;
+        });
+        const d = cells.length;
+        stats.cross += cx / d;
+        stats.wave += cw / d;
+        stats.bar += cb / d;
+        stats.circle += cc / d;
+      }
     });
     if (foundInThisComp) stats.wettkaempfe += 1;
   }
