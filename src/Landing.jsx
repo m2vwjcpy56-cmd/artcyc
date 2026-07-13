@@ -1,9 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import {
   Trophy, ClipboardList, ScanLine, BarChart3, Users, ListChecks,
-  Check, ChevronRight, X, Menu, Smartphone, ShieldCheck, Globe, BookOpen,
+  Check, ChevronRight, X, Menu, ShieldCheck, Globe, BookOpen,
   User, UserCog, Zap,
 } from 'lucide-react';
+
+// Apple-Logo (lucide führt keine Marken-Icons mehr) — für die „Im App Store"-Buttons.
+function AppleLogo({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 384 512" fill="currentColor" aria-hidden="true">
+      <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zM262.1 104.5c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/>
+    </svg>
+  );
+}
 
 // =============================================================
 // ArtCyc — öffentliche Landingpage (artcyc.app)
@@ -144,7 +153,7 @@ function Home() {
           </a>
           <a href={APP_STORE_URL} target="_blank" rel="noreferrer"
             className="px-6 py-3 rounded-full font-semibold border border-slate-300 text-slate-800 active:scale-95 transition flex items-center gap-2">
-            <Smartphone size={18} /> Im App Store
+            <AppleLogo size={17} /> Im App Store
           </a>
         </div>
         <p className="mt-3 text-[12px] text-slate-400">Jetzt im App Store — oder direkt im Browser als Web-App.</p>
@@ -308,7 +317,7 @@ function Home() {
           <p className="mt-3 text-white/70 max-w-xl mx-auto">Im Browser sofort starten oder die iOS-App holen.</p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
             <a href="/web" className="px-6 py-3 rounded-full font-semibold text-white active:scale-95 transition" style={{ background: ACCENT }}>Web-App öffnen</a>
-            <a href={APP_STORE_URL} target="_blank" rel="noreferrer" className="px-6 py-3 rounded-full font-semibold bg-white/10 hover:bg-white/15 transition">Im App Store</a>
+            <a href={APP_STORE_URL} target="_blank" rel="noreferrer" className="px-6 py-3 rounded-full font-semibold bg-white/10 hover:bg-white/15 transition flex items-center gap-2"><AppleLogo size={16} /> Im App Store</a>
           </div>
         </Section>
       </div>
