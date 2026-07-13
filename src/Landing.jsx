@@ -12,9 +12,8 @@ import {
 // =============================================================
 
 const APP_NAME = 'ArtCyc Coach';
-// App-Store-Link: greift, sobald die App öffentlich ist (App-ID 6783066572).
-// Bis dahin verweist der Banner darauf bzw. auf TestFlight (PLATZHALTER).
-const APP_STORE_URL = 'https://apps.apple.com/app/id6783066572';
+// App-Store-Link (App-ID 6783066572) — App ist öffentlich verfügbar.
+const APP_STORE_URL = 'https://apps.apple.com/de/app/artcyc/id6783066572';
 const ACCENT = '#FF9500';
 
 const NAV = [
@@ -148,7 +147,7 @@ function Home() {
             <Smartphone size={18} /> Im App Store
           </a>
         </div>
-        <p className="mt-3 text-[12px] text-slate-400">iOS-App derzeit in der Beta (TestFlight) — App-Store-Release in Kürze.</p>
+        <p className="mt-3 text-[12px] text-slate-400">Jetzt im App Store — oder direkt im Browser als Web-App.</p>
       </Section>
 
       <Section className="pb-16 sm:pb-24">
