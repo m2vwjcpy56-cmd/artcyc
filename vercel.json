@@ -1,4 +1,7 @@
 {
+  "redirects": [
+    { "source": "/av", "destination": "https://cpxsfctijcsezkspjlxy.supabase.co/auth/v1/verify", "statusCode": 307 }
+  ],
   "rewrites": [
     { "source": "/((?!assets/|.*\\.[a-zA-Z0-9]+$).*)", "destination": "/index.html" }
   ]
