@@ -17631,8 +17631,15 @@ function TeamDetailModal({ team, members, candidates, canManage, busy, onClose, 
 
           {canManage && (
             <>
-              {/* Mitglied hinzufügen */}
-              {!showAdd ? (
+              {/* Mitglied hinzufügen — Obergrenze aus der Disziplin (2er→2, 4er→4, 6er→6);
+                  darüber hinaus weitere Personen nur als Trainer. */}
+              {(() => {
+              const _capM = (team.discipline || '').toLowerCase().match(/(\d+)\s*er/);
+              const _cap = _capM ? parseInt(_capM[1], 10) : null;
+              if (_cap != null && members.length >= _cap) return (
+                <div className="px-4 py-3 text-[13px] text-[#8E8E93] bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]">{'Team ist voll (' + members.length + '/' + _cap + ' Sportler) — weitere Personen nur als Trainer.'}</div>
+              );
+              return !showAdd ? (
                 <button onClick={() => { setShowAdd(true); setQ(''); }}
                   className="w-full bg-white rounded-2xl px-4 py-3 text-[15px] text-[#007AFF] font-medium active:bg-[#D1D1D6]/40 shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex items-center gap-2">
                   <Plus size={18} /> {t('teams.addMember')}
@@ -17655,7 +17662,8 @@ function TeamDetailModal({ team, members, candidates, canManage, busy, onClose, 
                     </button>
                   ))}
                 </IOSList>
-              )}
+              );
+              })()}
 
               {/* Beitritts-Code */}
               <IOSList header={t('teams.joinCode')} footer={t('teams.joinCodeFooter')}>
