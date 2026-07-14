@@ -5220,14 +5220,10 @@ export default function App() {
         || (dbAthleteCoaches || []).some(ac => ac.athlete_id === a.id && ac.coach_id === session?.user?.id);
       if (isManaged) { list.push(a); seen.add(a.id); }
     });
-    // Teams (Formationen): dbAthletes enthält nur RLS-sichtbare Team-Subjekte
-    // (Mitglied / Ersteller / Trainer eines Mitglieds) → alle in den Picker.
-    dbAthletes.forEach(a => {
-      if (!seen.has(a.id) && a.type === 'team') { list.push(a); seen.add(a.id); }
-    });
-    if (profile?.role === 'admin' || isAppOwner(session)) {
-      dbAthletes.forEach(a => { if (!seen.has(a.id)) { list.push(a); seen.add(a.id); } });
-    }
+    // Auch als Admin/Owner NUR eigene Sportler im Picker: eigenes Profil, selbst angelegt,
+    // mitbetreut (inkl. selbst angelegter/mitbetreuter Teams — bereits über den managed-Block
+    // oben abgedeckt). KEIN pauschales type==='team' und KEIN Admin-Alle-Zweig mehr.
+    // Fremdzugriff läuft ausschließlich über Einstellungen → Admin (AdminAccountsView).
     return list;
   }, [dbAthletes, dbAthleteCoaches, session?.user?.id, profile?.role]);
   // Default-Auswahl: zuletzt gewählter Sportler (pro Konto in localStorage gemerkt,
