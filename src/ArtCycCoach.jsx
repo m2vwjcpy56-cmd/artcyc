@@ -5226,6 +5226,18 @@ export default function App() {
     // Fremdzugriff läuft ausschließlich über Einstellungen → Admin (AdminAccountsView).
     return list;
   }, [dbAthletes, dbAthleteCoaches, session?.user?.id, profile?.role]);
+  // Coaching-Feedback = Soft-Rollout (analog iOS hasCoachingFeedback): nur für Accounts,
+  // die schon Feedback zu EIGENEN Sportlern haben. Feedback-Zähler je Athlet laden.
+  const [feedbackCounts, setFeedbackCounts] = useState({});
+  useEffect(() => {
+    if (!session?.user?.id) { setFeedbackCounts({}); return; }
+    let cancelled = false;
+    fetchFeedbackCounts().then(c => { if (!cancelled) setFeedbackCounts(c || {}); });
+    return () => { cancelled = true; };
+  }, [session?.user?.id]);
+  const hasCoachingFeedback = useMemo(
+    () => availableAthletes.some(a => (feedbackCounts[a.id] || 0) > 0),
+    [availableAthletes, feedbackCounts]);
   // Default-Auswahl: zuletzt gewählter Sportler (pro Konto in localStorage gemerkt,
   // z. B. ein Team), sonst eigener Athlet, sonst der erste verfügbare
   // (= erster managed Sportler für reine Trainer ohne eigenen Eintrag).
@@ -5419,7 +5431,7 @@ export default function App() {
     // Auch im nicht-migrierten Blob-Fall den Athleten-Bezug mitgeben, damit
     // DB-Features (z. B. Feedback je Übung) den richtigen Sportler kennen.
     if (!data.migrated_to_tables && !coachView) {
-      return { ...data, _viewingAthleteId: selectedAthleteId || myAthleteId || null };
+      return { ...data, _viewingAthleteId: selectedAthleteId || myAthleteId || null, _hasCoachingFeedback: hasCoachingFeedback };
     }
     // Maute-Sprung: has_rope_variant auto-aktivieren falls in DB nicht gesetzt
     const exercises = dbExercises.map(e => {
@@ -5460,8 +5472,9 @@ export default function App() {
       exercises,
       _viewingAthleteId: selectedAthleteId,
       _isReadOnly: isReadOnlyView,
+      _hasCoachingFeedback: hasCoachingFeedback,
     };
-  }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob, selectedAthleteId, myAthleteId, isReadOnlyView, isOwnAthlete, dbAthletes, session?.user?.id]);
+  }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob, selectedAthleteId, myAthleteId, isReadOnlyView, isOwnAthlete, dbAthletes, session?.user?.id, hasCoachingFeedback]);
 
   if (!authChecked || loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#F2F2F7] gap-5"
@@ -11014,8 +11027,8 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
           </div>
         )}
 
-        {/* Feedback — direkt unter der Statistik */}
-        <FeedbackSection athleteId={data._viewingAthleteId || null} exercise={exercise} />
+        {/* Feedback — Soft-Rollout: nur für Accounts mit bestehenden Feedback-Daten (analog iOS) */}
+        {data._hasCoachingFeedback && <FeedbackSection athleteId={data._viewingAthleteId || null} exercise={exercise} />}
 
         {/* 08 — Verwalten (Footer, klar getrennt) */}
         <div className="pt-2 space-y-2">
