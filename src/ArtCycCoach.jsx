@@ -10950,7 +10950,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                   return (
                     <div className="bg-amber-50 border border-amber-100 rounded-2xl py-3 px-4 flex items-baseline justify-between">
                       <div>
-                        <div className="text-[12px] text-amber-900 font-medium">Ø Punktabzug pro Wettkampf</div>
+                        <div className="text-[12px] text-amber-900 font-medium">Ø Abzug / Wertung</div>
                         {dedSchw > 0 && <div className="text-[10px] text-amber-700/70">inkl. Schwierigkeits-Abwertung</div>}
                       </div>
                       <div className="font-bold text-[22px] text-amber-700 tabular-nums">−{avgDed.toFixed(2)}</div>
@@ -11507,7 +11507,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                   return (
                     <div className="bg-amber-50 border border-amber-100 rounded-2xl py-3 px-4 flex items-baseline justify-between">
                       <div>
-                        <div className="text-[12px] text-amber-900 font-medium">Ø Punktabzug pro Wettkampf</div>
+                        <div className="text-[12px] text-amber-900 font-medium">Ø Abzug / Wertung</div>
                         {dedSchw > 0 && <div className="text-[10px] text-amber-700/70">inkl. Schwierigkeits-Abwertung</div>}
                       </div>
                       <div className="font-bold text-[22px] text-amber-700 tabular-nums">−{avgDed.toFixed(2)}</div>
