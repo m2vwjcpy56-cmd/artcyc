@@ -2782,6 +2782,72 @@ function DeductionBars({ series }) {
   );
 }
 
+// Umschaltbares Kennzahl-Diagramm im Übungs-Detail (Parität zu iOS CompMetricChart):
+// Chips Abzug/Kreuz/Welle/Strich/Sturz/Schwierigkeit → Balken-Verlauf über die Wertungen.
+// Werte werden über die Kampfgerichte GEMITTELT (wie die Statistik). „Keine Daten" im Chart.
+function CompMetricChart({ compList }) {
+  const [metric, setMetric] = useState('abzug');
+  const [sel, setSel] = useState(null);
+  const METRICS = [
+    { key: 'abzug', label: 'Abzug' }, { key: 'wave', label: 'Welle' },
+    { key: 'cross', label: 'Kreuz' }, { key: 'bar', label: 'Strich' },
+    { key: 'circle', label: 'Sturz' }, { key: 'schw', label: 'Schwierigkeit' },
+  ];
+  const val = (c) => {
+    switch (metric) {
+      case 'cross': return (c.k1cross + c.k2cross) / 2;
+      case 'wave': return (c.k1wave + c.k2wave) / 2;
+      case 'bar': return (c.k1bar + c.k2bar) / 2;
+      case 'circle': return (c.k1circle + c.k2circle) / 2;
+      case 'schw': return ((c.k1schwPct || 0) + (c.k2schwPct || 0)) / 2;
+      default: return ((c.k1cross * 0.2 + c.k1wave * 0.5 + c.k1bar * 1.0 + c.k1circle * 2.0)
+                     + (c.k2cross * 0.2 + c.k2wave * 0.5 + c.k2bar * 1.0 + c.k2circle * 2.0)) / 2;
+    }
+  };
+  const series = [...compList].reverse().map(c => ({ name: c.competition.name || 'Wettkampf', date: c.competition.date, v: val(c) }));
+  const realMax = Math.max(...series.map(s => s.v), 0);
+  const max = Math.max(realMax, metric === 'abzug' ? 0.5 : 1);
+  const fmt = (v) => metric === 'abzug' ? '−' + v.toFixed(2) : (metric === 'schw' ? Math.round(v) + ' %' : (Number.isInteger(v) ? String(v) : v.toFixed(1)));
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+        {METRICS.map(m => (
+          <button key={m.key} type="button" onClick={() => { setMetric(m.key); setSel(null); }}
+            className={'px-2.5 py-1 rounded-full text-[12px] font-medium whitespace-nowrap shrink-0 ' + (metric === m.key ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-800')}>
+            {m.label}
+          </button>
+        ))}
+      </div>
+      {realMax === 0 ? (
+        <div className="h-[72px] flex items-center justify-center text-[13px] text-[#8E8E93]">Keine Daten in diesem Zeitraum.</div>
+      ) : (
+        <>
+          <div className="text-[11px] h-4 leading-4 truncate">
+            {sel
+              ? <span className="text-[#3C3C43] font-medium">{sel.name} <span className="text-[#8E8E93] font-normal">· {formatDateShort(sel.date)} · {fmt(sel.v)}</span></span>
+              : <span className="text-[#C7C7CC]">Balken antippen — zeigt Wettkampf, Datum und Wert.</span>}
+          </div>
+          <div className="flex items-end gap-1.5" onMouseLeave={() => setSel(null)}>
+            {series.map((s, i) => {
+              const y = (s.date || '').slice(0, 4);
+              const showYear = i === 0 || (series[i - 1].date || '').slice(0, 4) !== y;
+              const active = sel === s;
+              return (
+                <button key={i} type="button" onClick={() => setSel(v => v === s ? null : s)} onMouseEnter={() => setSel(s)}
+                  className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
+                  <div className={'w-full rounded-t bg-amber-400' + (sel && !active ? ' opacity-40' : '')}
+                    style={{ height: Math.max(4, (s.v / max) * 56) + 'px' }} />
+                  <span className="text-[9px] text-[#8E8E93] h-3">{showYear ? y : ''}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // „Höchste Abzüge" (nach Dieter Mautes Wettkampfstatistik): Ø-Punktabzug pro Übung
 // über alle Wettkämpfe (x 0,2 · ~ 0,5 · | 1,0 · ○ 2,0), absteigend — plus
 // Trainings-Erfolgsquote zum Vergleich, Abzugs-Serie und Schwierigkeits-Histogramm.
@@ -10958,19 +11024,12 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                   );
                 })()}
                 {/* Abzugs-Verlauf über die Wettkämpfe (Dieters Diagramme): wird die Übung stabiler? */}
-                {compList.length >= 2 && (() => {
-                  const series = [...compList].reverse().map(c => ({
-                    name: c.competition.name || 'Wettkampf',
-                    date: c.competition.date,
-                    ded: (c.k1cross + c.k2cross) * 0.2 + (c.k1wave + c.k2wave) * 0.5 + (c.k1bar + c.k2bar) * 1.0 + (c.k1circle + c.k2circle) * 2.0
-                  }));
-                  return (
-                    <div className="pt-2 border-t border-slate-100">
-                      <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-2">Abzug pro Wettkampf</div>
-                      <DeductionBars series={series} />
-                    </div>
-                  );
-                })()}
+                {compList.length >= 1 && (
+                  <div className="pt-2 border-t border-slate-100">
+                    <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-2">Verlauf</div>
+                    <CompMetricChart compList={compList} />
+                  </div>
+                )}
                 {/* Schwierigkeits-Abwertungen (10/50/100 %) — Histogramm wie Dieters Statistik */}
                 {(() => {
                   const hist = compStats.schwPctHist || {};
@@ -11515,19 +11574,12 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                   );
                 })()}
                 {/* Abzugs-Verlauf über die Wettkämpfe (Dieters Diagramme): wird die Übung stabiler? */}
-                {compList.length >= 2 && (() => {
-                  const series = [...compList].reverse().map(c => ({
-                    name: c.competition.name || 'Wettkampf',
-                    date: c.competition.date,
-                    ded: (c.k1cross + c.k2cross) * 0.2 + (c.k1wave + c.k2wave) * 0.5 + (c.k1bar + c.k2bar) * 1.0 + (c.k1circle + c.k2circle) * 2.0
-                  }));
-                  return (
-                    <div className="pt-2 border-t border-slate-100">
-                      <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-2">Abzug pro Wettkampf</div>
-                      <DeductionBars series={series} />
-                    </div>
-                  );
-                })()}
+                {compList.length >= 1 && (
+                  <div className="pt-2 border-t border-slate-100">
+                    <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-2">Verlauf</div>
+                    <CompMetricChart compList={compList} />
+                  </div>
+                )}
                 {/* Schwierigkeits-Abwertungen (10/50/100 %) — Histogramm wie Dieters Statistik */}
                 {(() => {
                   const hist = compStats.schwPctHist || {};
