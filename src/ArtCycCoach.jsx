@@ -13980,7 +13980,10 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
             const scoped = dedScope === 'gesamt' ? allScoredRuns
               : allScoredRuns.filter(c => dedScope === 'training' ? (c.kind || 'wettkampf') === 'training' : (c.kind || 'wettkampf') !== 'training');
             const ranking = calcDeductionRanking(programs, scoped, data.exercises, data.sessions);
-            if (ranking.length === 0) return null;
+            // Sektion sichtbar, sobald IRGENDEIN Bereich Abzüge hat → Tabs bleiben stehen;
+            // leerer Bereich (z. B. noch keine Trainings) zeigt Hinweis statt zu verschwinden (Simon).
+            const anyRanking = calcDeductionRanking(programs, allScoredRuns, data.exercises, data.sessions);
+            if (anyRanking.length === 0) return null;
             const shown = showAllDeductions ? ranking : ranking.slice(0, 5);
             return (
               <div className="card-surface rounded-[22px] p-4 space-y-1">
@@ -13993,6 +13996,9 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
                     </button>
                   ))}
                 </div>
+                {ranking.length === 0 && (
+                  <div className="py-3 text-[13px] text-[#8E8E93]">{dedScope === 'training' ? 'Noch keine Trainings erfasst.' : 'Keine Wertungen in diesem Bereich.'}</div>
+                )}
                 {shown.map((r, i) => (
                   <div key={r.key} className={i > 0 ? 'border-t border-[#C6C6C8]/30' : ''}>
                     <button onClick={() => setExpandedDeduction(v => v === r.key ? null : r.key)}
