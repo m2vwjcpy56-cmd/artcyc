@@ -6358,7 +6358,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
   // DashboardV2 (Vorschau): Trend-Toggles + Disclosure-Zustände
   const [dashShowHit, setDashShowHit] = useState(false);
   const [dashShowDanger, setDashShowDanger] = useState(false);
-  const [dashNeglectOpen, setDashNeglectOpen] = useState(false);
+  const [dashNeglectOpen, setDashNeglectOpen] = useState(true);
   // Erfassen-Auswahl (Action-Sheet) — im Dashboard bewusst MIT Auswahl
   // (im Training-Tab geht der Button direkt ins Protokollieren).
   const [erfassenOpen, setErfassenOpen] = useState(false);
