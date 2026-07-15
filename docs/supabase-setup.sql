@@ -275,6 +275,31 @@ $$ LANGUAGE sql STABLE SECURITY DEFINER;
 -- Eigener Eintrag, von mir betreuter Sportler, Admin — ODER ein Team-Subjekt,
 -- in dem ich Mitglied bin bzw. dessen Mitglied ich trainiere (dann darf ich die
 -- geteilten Team-Daten lesen/schreiben).
+-- Direkter Co-Trainer (athlete_coaches). ⚠️ WICHTIG: Dieser Pfad MUSS in
+-- can_access_athlete, athletes_select UND programs/exercises_select bleiben —
+-- sonst sehen Co-Trainer ihre Sportler weder im Picker noch mit Daten. Das ist
+-- eine WIEDERKEHRENDE Regression (bereits 3× passiert), weil ein erneutes
+-- Ausführen dieses Setups die Klausel wegwarf. Siehe docs/migration-phase15-*.sql.
+CREATE OR REPLACE FUNCTION user_is_coach_of(athlete_uuid UUID)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM athlete_coaches WHERE athlete_id = athlete_uuid AND coach_id = auth.uid()
+  )
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+-- Ist owner_uuid Besitzer eines Sportlers, den ich als Co-Trainer betreue?
+-- (programs/exercises sind owner-basiert → sonst zeigen programm-verknüpfte
+--  Wettkämpfe ohne Inline-Punkte keinen Score.)
+CREATE OR REPLACE FUNCTION owns_cocoached_athlete(owner_uuid UUID)
+RETURNS BOOLEAN AS $$
+  SELECT owner_uuid IS NOT NULL AND EXISTS (
+    SELECT 1 FROM athletes a
+    JOIN athlete_coaches ac ON ac.athlete_id = a.id
+    WHERE ac.coach_id = auth.uid()
+      AND (a.auth_user_id = owner_uuid OR a.created_by_coach_id = owner_uuid)
+  )
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
 CREATE OR REPLACE FUNCTION can_access_athlete(athlete_uuid UUID)
 RETURNS BOOLEAN AS $$
   SELECT EXISTS (
@@ -287,6 +312,7 @@ RETURNS BOOLEAN AS $$
       )
   ) OR is_team_member(athlete_uuid)
     OR coaches_team_member(athlete_uuid)
+    OR user_is_coach_of(athlete_uuid)   -- direkter Co-Trainer (NICHT entfernen!)
 $$ LANGUAGE sql STABLE SECURITY DEFINER;
 
 -- Generiert einen 6-stelligen alphanumerischen Claim-Code (vermeidet ähnliche Zeichen wie 0/O, 1/I)
@@ -496,6 +522,7 @@ CREATE POLICY athletes_select ON athletes
     OR is_admin()
     OR visible_via_team(id)          -- Team-Subjekte + Team-Kollegen (Namen/Roster)
     OR coaches_team_member(id)       -- Trainer eines Mitglieds sieht das Team
+    OR user_is_coach_of(id)          -- direkter Co-Trainer (athlete_coaches) — NICHT entfernen!
   );
 -- Anlegen: Coach/Admin legen Sportler an (Sportler-Self via Trigger);
 -- Team-Subjekte (type='team') darf jeder Account anlegen (created_by = ich).
@@ -518,7 +545,7 @@ CREATE POLICY athletes_delete ON athletes
 -- EXERCISES: globale (owner_id NULL) für alle lesbar; eigene les/schreibbar; Admin alles.
 CREATE POLICY exercises_select ON exercises
   FOR SELECT TO authenticated
-  USING (owner_id IS NULL OR owner_id = auth.uid() OR is_admin());
+  USING (owner_id IS NULL OR owner_id = auth.uid() OR is_admin() OR owns_cocoached_athlete(owner_id));
 CREATE POLICY exercises_write ON exercises
   FOR ALL TO authenticated
   USING (owner_id = auth.uid() OR (owner_id IS NULL AND is_admin()))
@@ -527,7 +554,7 @@ CREATE POLICY exercises_write ON exercises
 -- PROGRAMS: gleiche Logik wie Exercises (globale + eigene + Admin alles).
 CREATE POLICY programs_select ON programs
   FOR SELECT TO authenticated
-  USING (owner_id IS NULL OR owner_id = auth.uid() OR is_admin());
+  USING (owner_id IS NULL OR owner_id = auth.uid() OR is_admin() OR owns_cocoached_athlete(owner_id));
 CREATE POLICY programs_write ON programs
   FOR ALL TO authenticated
   USING (owner_id = auth.uid() OR (owner_id IS NULL AND is_admin()))
