@@ -5322,25 +5322,21 @@ export default function App() {
   useEffect(() => {
     if (selectedAthleteId) return;
     const uid = session?.user?.id;
-    try {
-      // Nur eine BEWUSST getroffene Auswahl (Picker) wiederherstellen — eine bloß
-      // automatisch vorbelegte Auswahl darf den Team-Standard nicht dauerhaft blockieren
-      // (Simon-Fall: „beim Öffnen ist noch das eigene Profil aktiv").
-      const explicit = uid ? localStorage.getItem('artcyc:selectedAthleteExplicit:' + uid) === '1' : false;
-      const saved = uid ? localStorage.getItem('artcyc:selectedAthlete:' + uid) : null;
-      if (explicit && saved && availableAthletes.some(a => a.id === saved)) { setSelectedAthleteId(saved); return; }
-    } catch { /* localStorage evtl. blockiert */ }
-    // Sportler-Sicht: das Team, in dem ich Mitglied bin, hat Vorrang (analog iOS —
-    // als Sportler interessiert primär das Team). Sonst eigenes Profil, sonst erster.
+    let saved = null;
+    try { saved = uid ? localStorage.getItem('artcyc:selectedAthlete:' + uid) : null; } catch { /* localStorage evtl. blockiert */ }
+    // Team, in dem ICH (als Sportler) Mitglied bin.
     const myTeamId = myAthleteId
       ? (dbTeamMembers || []).map(tm => tm.athlete_id === myAthleteId
           ? availableAthletes.find(a => a.id === tm.team_id && a.type === 'team')?.id : null).find(Boolean)
       : null;
+    // Team-Mitglied OHNE bewusst abweichende Auswahl (nichts gemerkt oder nur eigenes Profil)
+    // → eigenes Team vorbelegen (Simon-Wunsch).
+    if (myTeamId && (!saved || saved === myAthleteId)) { setSelectedAthleteId(myTeamId); return; }
+    // Zuletzt gewählte Auswahl BEHALTEN – z. B. der von einem Trainer betreute Sportler
+    // (Marius → Ruben). Darf nicht verworfen werden, sonst landet der Trainer auf sich selbst.
+    if (saved && availableAthletes.some(a => a.id === saved)) { setSelectedAthleteId(saved); return; }
     const auto = myTeamId || myAthleteId || (availableAthletes.length > 0 ? availableAthletes[0].id : null);
-    if (auto) {
-      try { if (uid) localStorage.setItem('artcyc:selectedAthleteExplicit:' + uid, '0'); } catch { /* egal */ }
-      setSelectedAthleteId(auto);
-    }
+    if (auto) setSelectedAthleteId(auto);
   }, [myAthleteId, selectedAthleteId, availableAthletes, dbTeamMembers, session?.user?.id]);
 
   // Auswahl pro Konto merken, damit sie App-Neustart/Reload überlebt.
@@ -5349,12 +5345,8 @@ export default function App() {
     try { localStorage.setItem('artcyc:selectedAthlete:' + session.user.id, selectedAthleteId); } catch { /* egal */ }
   }, [selectedAthleteId, session?.user?.id]);
 
-  // Vom Nutzer im Picker bewusst getroffene Auswahl — merkt sich, dass sie absichtlich
-  // war (überlebt Reload), anders als eine automatische Vorbelegung.
-  const chooseAthlete = useCallback((id) => {
-    try { if (session?.user?.id) localStorage.setItem('artcyc:selectedAthleteExplicit:' + session.user.id, '1'); } catch { /* egal */ }
-    setSelectedAthleteId(id);
-  }, [session?.user?.id]);
+  // Vom Nutzer im Picker getroffene Auswahl (wird über die Persistenz-Effect pro Konto gemerkt).
+  const chooseAthlete = useCallback((id) => { setSelectedAthleteId(id); }, []);
 
   // Bei jedem Wechsel des aktiven Sportlers ALLE Daten neu laden — sonst
   // bleiben veraltete Cache-Daten in dbSessions/dbCompetitions/etc. stehen
