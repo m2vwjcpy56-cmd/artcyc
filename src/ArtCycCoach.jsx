@@ -4963,21 +4963,24 @@ export default function App() {
   const [dbAthletes, setDbAthletes] = useState([]);
   const [dbProfiles, setDbProfiles] = useState([]);
   const [dbAthleteCoaches, setDbAthleteCoaches] = useState([]);
+  const [dbTeamMembers, setDbTeamMembers] = useState([]);
   // Phase 9d-3: alle "großen" Entitäten kommen aus DB-Tabellen
   const [dbSessions, setDbSessions] = useState([]);
   const [dbCompetitions, setDbCompetitions] = useState([]);
   const [dbPrograms, setDbPrograms] = useState([]);
   const [dbExercises, setDbExercises] = useState([]);
   const refreshAthletes = useCallback(async () => {
-    if (!session) { setDbAthletes([]); setDbProfiles([]); setDbAthleteCoaches([]); return; }
-    const [list, profs, links] = await Promise.all([
+    if (!session) { setDbAthletes([]); setDbProfiles([]); setDbAthleteCoaches([]); setDbTeamMembers([]); return; }
+    const [list, profs, links, members] = await Promise.all([
       fetchAthletes(),
       fetchProfiles(),
       fetchAthleteCoaches(),
+      fetchTeamMembers(),
     ]);
     setDbAthletes(list);
     setDbProfiles(profs);
     setDbAthleteCoaches(links);
+    setDbTeamMembers(members);
   }, [session]);
   const refreshSessions = useCallback(async () => {
     if (!session) { setDbSessions([]); return; }
@@ -5286,12 +5289,21 @@ export default function App() {
         || (dbAthleteCoaches || []).some(ac => ac.athlete_id === a.id && ac.coach_id === session?.user?.id);
       if (isManaged) { list.push(a); seen.add(a.id); }
     });
+    // Teams, in denen ICH (als Sportler) Mitglied bin – auch wenn ich sie nicht selbst
+    // angelegt/mitbetreue. Analog iOS: als Sportler interessiert primär das eigene Team.
+    if (own) {
+      (dbTeamMembers || []).forEach(tm => {
+        if (tm.athlete_id !== own.id || seen.has(tm.team_id)) return;
+        const team = dbAthletes.find(a => a.id === tm.team_id && a.type === 'team');
+        if (team) { list.push(team); seen.add(team.id); }
+      });
+    }
     // Auch als Admin/Owner NUR eigene Sportler im Picker: eigenes Profil, selbst angelegt,
     // mitbetreut (inkl. selbst angelegter/mitbetreuter Teams — bereits über den managed-Block
     // oben abgedeckt). KEIN pauschales type==='team' und KEIN Admin-Alle-Zweig mehr.
     // Fremdzugriff läuft ausschließlich über Einstellungen → Admin (AdminAccountsView).
     return list;
-  }, [dbAthletes, dbAthleteCoaches, session?.user?.id, profile?.role]);
+  }, [dbAthletes, dbAthleteCoaches, dbTeamMembers, session?.user?.id, profile?.role]);
   // Coaching-Feedback = Soft-Rollout (analog iOS hasCoachingFeedback): nur für Accounts,
   // die schon Feedback zu EIGENEN Sportlern haben. Feedback-Zähler je Athlet laden.
   const [feedbackCounts, setFeedbackCounts] = useState({});
@@ -5309,19 +5321,40 @@ export default function App() {
   // (= erster managed Sportler für reine Trainer ohne eigenen Eintrag).
   useEffect(() => {
     if (selectedAthleteId) return;
+    const uid = session?.user?.id;
     try {
-      const saved = session?.user?.id ? localStorage.getItem('artcyc:selectedAthlete:' + session.user.id) : null;
-      if (saved && availableAthletes.some(a => a.id === saved)) { setSelectedAthleteId(saved); return; }
+      // Nur eine BEWUSST getroffene Auswahl (Picker) wiederherstellen — eine bloß
+      // automatisch vorbelegte Auswahl darf den Team-Standard nicht dauerhaft blockieren
+      // (Simon-Fall: „beim Öffnen ist noch das eigene Profil aktiv").
+      const explicit = uid ? localStorage.getItem('artcyc:selectedAthleteExplicit:' + uid) === '1' : false;
+      const saved = uid ? localStorage.getItem('artcyc:selectedAthlete:' + uid) : null;
+      if (explicit && saved && availableAthletes.some(a => a.id === saved)) { setSelectedAthleteId(saved); return; }
     } catch { /* localStorage evtl. blockiert */ }
-    if (myAthleteId) { setSelectedAthleteId(myAthleteId); return; }
-    if (availableAthletes.length > 0) setSelectedAthleteId(availableAthletes[0].id);
-  }, [myAthleteId, selectedAthleteId, availableAthletes, session?.user?.id]);
+    // Sportler-Sicht: das Team, in dem ich Mitglied bin, hat Vorrang (analog iOS —
+    // als Sportler interessiert primär das Team). Sonst eigenes Profil, sonst erster.
+    const myTeamId = myAthleteId
+      ? (dbTeamMembers || []).map(tm => tm.athlete_id === myAthleteId
+          ? availableAthletes.find(a => a.id === tm.team_id && a.type === 'team')?.id : null).find(Boolean)
+      : null;
+    const auto = myTeamId || myAthleteId || (availableAthletes.length > 0 ? availableAthletes[0].id : null);
+    if (auto) {
+      try { if (uid) localStorage.setItem('artcyc:selectedAthleteExplicit:' + uid, '0'); } catch { /* egal */ }
+      setSelectedAthleteId(auto);
+    }
+  }, [myAthleteId, selectedAthleteId, availableAthletes, dbTeamMembers, session?.user?.id]);
 
   // Auswahl pro Konto merken, damit sie App-Neustart/Reload überlebt.
   useEffect(() => {
     if (!selectedAthleteId || !session?.user?.id) return;
     try { localStorage.setItem('artcyc:selectedAthlete:' + session.user.id, selectedAthleteId); } catch { /* egal */ }
   }, [selectedAthleteId, session?.user?.id]);
+
+  // Vom Nutzer im Picker bewusst getroffene Auswahl — merkt sich, dass sie absichtlich
+  // war (überlebt Reload), anders als eine automatische Vorbelegung.
+  const chooseAthlete = useCallback((id) => {
+    try { if (session?.user?.id) localStorage.setItem('artcyc:selectedAthleteExplicit:' + session.user.id, '1'); } catch { /* egal */ }
+    setSelectedAthleteId(id);
+  }, [session?.user?.id]);
 
   // Bei jedem Wechsel des aktiven Sportlers ALLE Daten neu laden — sonst
   // bleiben veraltete Cache-Daten in dbSessions/dbCompetitions/etc. stehen
@@ -5612,7 +5645,7 @@ export default function App() {
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} myUserId={session?.user?.id || null} />;
   else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} dbAthleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={openFeedback} />;
-  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} athleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { setSelectedAthleteId(id); setView('dashboard'); }} myAthleteId={myAthleteId} setView={setView} />;
+  else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} athleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { chooseAthlete(id); setView('dashboard'); }} myAthleteId={myAthleteId} setView={setView} />;
   else if (view === 'export') viewEl = <ExportView data={effectiveData} setView={setView} defaultName={[profile?.display_name, profile?.last_name].filter(Boolean).join(' ')} />;
   else if (view === 'kuer' || view === 'video') {
     viewEl = <ComingSoon viewId={view} />;
@@ -5727,7 +5760,7 @@ export default function App() {
                   const isTeam = a.type === 'team';
                   const isSel = a.id === selectedAthleteId;
                   return (
-                    <button key={a.id} onClick={() => { setSelectedAthleteId(a.id); setShowAthletePicker(false); }}
+                    <button key={a.id} onClick={() => { chooseAthlete(a.id); setShowAthletePicker(false); }}
                       className={'w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 active:bg-[#D1D1D6]/40 ' +
                         (isSel ? 'bg-[#FF9500]/10' : '')}>
                       {isTeam ? <Users size={18} className="text-[#007AFF]" />
