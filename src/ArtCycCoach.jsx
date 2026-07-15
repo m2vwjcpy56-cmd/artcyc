@@ -7831,7 +7831,7 @@ function TrainingView({ data, setData, setView }) {
             <p className="text-[#8E8E93] text-[15px] mt-1">{t('training.totalSessions', { n: totalCount })}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button onClick={() => setView('erfassen')}
+            <button onClick={() => setErfassenOpen(true)}
               className="px-3.5 py-2 rounded-full bg-[#FF9500] text-white text-[14px] font-semibold flex items-center gap-1 active:scale-95 transition"><Plus size={15} strokeWidth={2.6} /> Erfassen</button>
           </div>
         </header>
@@ -7991,15 +7991,16 @@ function TrainingView({ data, setData, setView }) {
           <EmptyState title={t('training.empty')} hint={t('training.emptyHint')} />
         )}
 
-        {/* „Erfassen"-Auswahl als iOS-Action-Sheet */}
+        {/* „Erfassen"-Auswahl als iOS-Action-Sheet — Parität zum nativen „+"-Menü:
+            Wiederholung erfassen / Trainingsprogramm erfassen / PDF importieren. */}
         <ActionSheet
           open={erfassenOpen}
           onClose={() => setErfassenOpen(false)}
           message="Was möchtest du erfassen?"
           actions={[
-            { icon: Dumbbell, label: 'Serie protokollieren', sublabel: 'Geklappt / nicht — fürs Training', onClick: () => setView('erfassen') },
-            { icon: MessageCircle, label: 'Feedback zu Übung', sublabel: 'Fehlerbild + Handlungsanweisung', onClick: () => setFbPickerOpen(true) },
-            { icon: Plus, label: 'Neue Übung anlegen', sublabel: 'Übung zur Liste hinzufügen', onClick: () => setNewExercise(true) },
+            { icon: Dumbbell, label: 'Wiederholung erfassen', sublabel: 'Versuche einer Übung — Geklappt / Nicht', onClick: () => setView('erfassen') },
+            { icon: FileText, label: 'Trainingsprogramm erfassen', sublabel: 'Ganzes Programm mit Abzügen werten', onClick: () => setRunEditorOpen(true) },
+            { icon: Upload, label: 'PDF importieren', sublabel: 'Wertungsbericht-PDF als Training', onClick: () => setRunEditorOpen(true) },
           ]}
         />
 

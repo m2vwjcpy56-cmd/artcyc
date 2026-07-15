@@ -136,7 +136,7 @@ const dict = {
     'training.noMatches': 'Keine Treffer für deinen Filter.',
 
     // Erfassen / Session anlegen
-    'log.title': 'Serie protokollieren',
+    'log.title': 'Wiederholung erfassen',
     'log.date': 'Datum',
     'log.athlete': 'Sportler / Team',
     'log.athleteNone': '— Kein Sportler —',
@@ -573,7 +573,7 @@ const dict = {
     'training.emptyHint': 'Tap "Log series" above to get started.',
     'training.noMatches': 'No results for your filter.',
 
-    'log.title': 'Log series',
+    'log.title': 'Log repetition',
     'log.date': 'Date',
     'log.athlete': 'Athlete / team',
     'log.athleteNone': '— No athlete —',
@@ -991,7 +991,7 @@ const dict = {
     'training.emptyHint': 'Touche « Saisir série » pour commencer.',
     'training.noMatches': 'Aucun résultat pour ton filtre.',
 
-    'log.title': 'Saisir série',
+    'log.title': 'Saisir une répétition',
     'log.date': 'Date',
     'log.athlete': 'Athlète / équipe',
     'log.athleteNone': '— Aucun athlète —',
@@ -1306,7 +1306,7 @@ const dict = {
     'training.emptyHint': 'Tocca « Registra serie » per iniziare.',
     'training.noMatches': 'Nessun risultato per il tuo filtro.',
 
-    'log.title': 'Registra serie',
+    'log.title': 'Registra ripetizione',
     'log.date': 'Data',
     'log.athlete': 'Atleta / squadra',
     'log.athleteNone': '— Nessun atleta —',
@@ -1621,7 +1621,7 @@ const dict = {
     'training.emptyHint': 'Toca «Registrar serie» arriba para empezar.',
     'training.noMatches': 'Sin resultados para tu filtro.',
 
-    'log.title': 'Registrar serie',
+    'log.title': 'Registrar repetición',
     'log.date': 'Fecha',
     'log.athlete': 'Deportista / equipo',
     'log.athleteNone': '— Sin deportista —',
@@ -1936,7 +1936,7 @@ const dict = {
     'training.emptyHint': 'Klepni nahoře na „Zaznamenat sérii" pro start.',
     'training.noMatches': 'Žádné výsledky pro tvůj filtr.',
 
-    'log.title': 'Zaznamenat sérii',
+    'log.title': 'Zaznamenat opakování',
     'log.date': 'Datum',
     'log.athlete': 'Sportovec / tým',
     'log.athleteNone': '— Žádný sportovec —',
