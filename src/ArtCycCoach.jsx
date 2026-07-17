@@ -13321,6 +13321,11 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete }) {
   // Erkennt Übungen mit UCI-Nr, Name und Punktwert automatisch.
   const handleFileImport = async (file) => {
     if (!file) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine && /\.pdf$/i.test(file.name || '')) {
+      setImportStatus('error');
+      setImportMsg('PDF-Import braucht eine Internetverbindung — XML-Dateien gehen auch offline.');
+      return;
+    }
     if (exercises.length > 0 && !confirm(t('programImport.replace'))) {
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
@@ -15084,6 +15089,11 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
 
   const handlePdfImport = async (file) => {
     if (!file) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setImportStatus('error');
+      setImportMsg('Der PDF-Import braucht eine Internetverbindung. Bitte online erneut versuchen.');
+      return;
+    }
     setImportStatus('parsing');
     setImportMsg('Lade PDF…');
     try {
