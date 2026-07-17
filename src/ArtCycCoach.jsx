@@ -4982,22 +4982,28 @@ export default function App() {
     setDbAthleteCoaches(links);
     setDbTeamMembers(members);
   }, [session]);
+  // Nicht-destruktiv: liefert der Fetch null (Netz-/RLS-Fehler), bleibt der
+  // vorhandene Stand erhalten — sonst leert ein fehlgeschlagenes Nachladen
+  // (v. a. offline) die ganze Liste (Offline-View-Wipe-Bug, Phase 2).
   const refreshSessions = useCallback(async () => {
     if (!session) { setDbSessions([]); return; }
     const list = await fetchSessions();
-    setDbSessions(list);
+    if (list != null) setDbSessions(list);
   }, [session]);
   const refreshCompetitions = useCallback(async () => {
     if (!session) { setDbCompetitions([]); return; }
-    setDbCompetitions(await fetchCompetitions());
+    const list = await fetchCompetitions();
+    if (list != null) setDbCompetitions(list);
   }, [session]);
   const refreshPrograms = useCallback(async () => {
     if (!session) { setDbPrograms([]); return; }
-    setDbPrograms(await fetchPrograms());
+    const list = await fetchPrograms();
+    if (list != null) setDbPrograms(list);
   }, [session]);
   const refreshExercises = useCallback(async () => {
     if (!session) { setDbExercises([]); return; }
-    setDbExercises(await fetchExercises());
+    const list = await fetchExercises();
+    if (list != null) setDbExercises(list);
   }, [session]);
   useEffect(() => {
     refreshAthletes();
@@ -6082,9 +6088,14 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
             <span className="mt-0.5">⚠️</span>
             <div className="flex-1">
               {linkError}
+              <div className="mt-1 text-[12px] opacity-80">Gib oben deine E-Mail ein und fordere einen frischen Link an (72 h gültig):</div>
+              <button type="button" onClick={forgot} disabled={busy}
+                className="mt-2 bg-[#007AFF] text-white text-[13px] font-semibold px-3.5 py-2 rounded-full active:opacity-70 disabled:opacity-50">
+                Neuen Link an meine E-Mail senden
+              </button>
               {onClearLinkError && (
                 <button type="button" onClick={onClearLinkError}
-                  className="block mt-1 text-[#007AFF] font-medium active:opacity-60">
+                  className="block mt-2 text-[#007AFF] font-medium active:opacity-60">
                   Verstanden
                 </button>
               )}
@@ -15987,7 +15998,7 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
             const snap = await fetchCloudSnapshot(athlete.auth_user_id);
             if (!cancelled) setRemoteData(snap?.data || { sessions: [], competitions: [], programs: [], exercises: [] });
           } else {
-            if (!cancelled) setRemoteData({ sessions, competitions, programs, exercises });
+            if (!cancelled) setRemoteData({ sessions: sessions || [], competitions: competitions || [], programs: programs || [], exercises: exercises || [] });
           }
         } catch (e) {
           if (!cancelled) setErr('Daten konnten nicht geladen werden: ' + (e.message || e));

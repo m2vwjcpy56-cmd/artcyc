@@ -487,7 +487,9 @@ export async function fetchSessions() {
     .select('id, athlete_id, exercise_id, date, entries, notes, exercise_name, with_rope, rep_count, created_at, created_by')
     .is('deleted_at', null)
     .order('date', { ascending: false });
-  if (error) { console.warn('Sessions fetch:', error.message); return []; }
+  // null (NICHT []) bei Fehler → der Aufrufer behält den vorhandenen Stand,
+  // statt die Liste zu leeren (Offline-View-Wipe-Bug, Offline Phase 2).
+  if (error) { console.warn('Sessions fetch:', error.message); return null; }
   return data || [];
 }
 
@@ -541,7 +543,7 @@ export async function fetchCompetitions() {
     .select('id, athlete_id, program_id, name, date, location, host, start_nr, table1, table2, table3, table4, kampfgerichte, abzug_gesamt, t1_schwierigkeit, t2_schwierigkeit, pdf_ref, target_score, kind, created_at, created_by')
     .is('deleted_at', null)
     .order('date', { ascending: false });
-  if (error) { console.warn('Competitions fetch:', error.message); return []; }
+  if (error) { console.warn('Competitions fetch:', error.message); return null; }
   return data || [];
 }
 export async function upsertCompetition(comp) {
@@ -563,7 +565,7 @@ export async function fetchPrograms() {
     .select('id, owner_id, name, discipline, exercises, created_at')
     .is('deleted_at', null)
     .order('created_at', { ascending: true });
-  if (error) { console.warn('Programs fetch:', error.message); return []; }
+  if (error) { console.warn('Programs fetch:', error.message); return null; }
   return data || [];
 }
 export async function upsertProgram(prog) {
@@ -592,7 +594,7 @@ export async function fetchExercises() {
     .select('id, owner_id, name, uci_code, uci_disc, points, active, category_mode, third_label, success_label, fail_label, default_series, target_rate, has_rope_variant, created_at')
     .is('deleted_at', null)
     .order('created_at', { ascending: true });
-  if (error) { console.warn('Exercises fetch:', error.message); return []; }
+  if (error) { console.warn('Exercises fetch:', error.message); return null; }
   return data || [];
 }
 export async function upsertExercise(ex) {
