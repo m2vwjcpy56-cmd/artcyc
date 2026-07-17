@@ -10,7 +10,7 @@ import {
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, FlaskConical, Zap
 } from 'lucide-react';
-import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, moveAthleteData, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
+import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, moveAthleteData, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, upsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -5031,13 +5031,67 @@ export default function App() {
   const [saveError, setSaveError] = useState(null); // sichtbare Meldung bei DB-Speicherfehler
   // Offline-Indikator (Paket D, Phase 1): Verbindungsstatus live überwachen.
   const [isOnlineWeb, setIsOnlineWeb] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+
+  // ── Offline-Outbox (Phase 2): offline erfasste Trainings-Sessions warten hier
+  //    persistiert (localStorage) auf den nächsten Online-Moment. Client-UUID als
+  //    DB-id + Upsert = idempotent (Retry erzeugt keine Dubletten). Greift NUR
+  //    offline; der Online-Pfad in save() bleibt unverändert.
+  const outboxKey = session ? 'artcyc:outbox:sessions:' + session.user.id : null;
+  const [outboxCount, setOutboxCount] = useState(0);
+  const readOutbox = useCallback(() => {
+    try { return outboxKey ? JSON.parse(localStorage.getItem(outboxKey) || '[]') : []; } catch { return []; }
+  }, [outboxKey]);
+  const writeOutbox = useCallback((rows) => {
+    try { if (outboxKey) localStorage.setItem(outboxKey, JSON.stringify(rows)); } catch { /* egal */ }
+    setOutboxCount(rows.length);
+  }, [outboxKey]);
+  const sessionBlobToRow = useCallback((s) => ({
+    id: s.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()),
+    athlete_id: s.athleteId || s.athlete_id || null,
+    exercise_id: s.exerciseId || s.exercise_id,
+    date: s.date,
+    entries: s.entries || [],
+    notes: s.notes || '',
+    exercise_name: s.exerciseName || s.exercise_name || '',
+    with_rope: typeof s.withRope === 'boolean' ? s.withRope : (typeof s.with_rope === 'boolean' ? s.with_rope : null),
+    rep_count: s.repCount || s.rep_count || null,
+  }), []);
+  const flushOutbox = useCallback(async () => {
+    if (!outboxKey || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
+    const remaining = readOutbox();
+    if (!remaining.length) return;
+    while (remaining.length) {
+      const { error } = await upsertSessions([remaining[0]]);
+      if (error) { console.warn('Outbox-Flush:', error.message); break; } // später erneut versuchen
+      remaining.shift();
+      writeOutbox(remaining);
+    }
+    if (remaining.length === 0) await refreshSessions();
+  }, [outboxKey, readOutbox, writeOutbox, refreshSessions]);
+
   useEffect(() => {
-    const on = () => setIsOnlineWeb(true);
+    const on = () => { setIsOnlineWeb(true); flushOutbox(); };
     const off = () => setIsOnlineWeb(false);
     window.addEventListener('online', on);
     window.addEventListener('offline', off);
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
-  }, []);
+  }, [flushOutbox]);
+
+  // Beim Start: offline erfasste, noch nicht gesyncte Sessions optimistisch anzeigen
+  // (überleben so einen Reload) und — falls online — sofort synchronisieren.
+  useEffect(() => {
+    if (!session) return;
+    const ob = readOutbox();
+    setOutboxCount(ob.length);
+    if (ob.length) {
+      setDbSessions(prev => {
+        const have = new Set((prev || []).map(s => s.id));
+        const missing = ob.filter(r => !have.has(r.id));
+        return missing.length ? [...missing, ...(prev || [])] : (prev || []);
+      });
+    }
+    flushOutbox();
+  }, [session, readOutbox, flushOutbox]);
   useEffect(() => {
     if (!session) { setLoading(false); return; }
     setLoading(true);
@@ -5456,8 +5510,19 @@ export default function App() {
         if (next.sessions) {
           const current = dbSessions.map(dbSessionToBlob).filter(sf);
           const newOnes = (next.sessions || []).filter(sf);
-          await syncSessionsToDb(current, newOnes);
-          await refreshSessions();
+          if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            // OFFLINE: neue Sessions in die Outbox (mit Client-id) statt sie zu verlieren,
+            // und optimistisch sofort anzeigen. Flush + echter Sync passieren beim Reconnect.
+            const oldIds = new Set(current.filter(s => s && s.id).map(s => s.id));
+            const rows = newOnes.filter(s => !s.id || !oldIds.has(s.id)).map(sessionBlobToRow).filter(r => r.exercise_id);
+            if (rows.length) {
+              writeOutbox([...readOutbox(), ...rows]);
+              setDbSessions(prev => [...rows, ...(prev || [])]);
+            }
+          } else {
+            await syncSessionsToDb(current, newOnes);
+            await refreshSessions();
+          }
         }
         if (next.competitions) {
           const current = dbCompetitions.map(dbCompetitionToBlob).filter(cf);
@@ -5498,7 +5563,8 @@ export default function App() {
     syncSessionsToDb, syncListToDb,
     refreshSessions, refreshCompetitions, refreshPrograms, refreshExercises,
     normalizeCompetition, normalizeProgram, normalizeExercise,
-    selectedAthleteId, isOwnAthlete
+    selectedAthleteId, isOwnAthlete,
+    readOutbox, writeOutbox, sessionBlobToRow
   ]);
 
   const resetAll = useCallback(() => {
@@ -5656,11 +5722,18 @@ export default function App() {
       className="min-h-screen bg-[#F2F2F7] text-slate-900 flex flex-col sm:flex-row antialiased"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif' }}>
       <PullToRefreshIndicator pull={ptrPull} refreshing={ptrRefreshing} />
-      {/* Offline-Indikator: zeigt an, dass gerade der gespeicherte Stand angezeigt wird. */}
+      {/* Offline-Indikator: zeigt den gespeicherten Stand + offline erfasste, noch nicht
+          gesyncte Einträge (Phase 2). Online + Outbox nicht leer = wird gerade gesynct. */}
       {!isOnlineWeb && (
         <div className="fixed top-0 inset-x-0 z-50 bg-[#FF9500] text-white text-[13px] font-semibold px-4 py-1.5 text-center"
              style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.375rem)' }}>
-          Offline – gespeicherter Stand wird angezeigt
+          Offline{outboxCount > 0 ? ` · ${outboxCount} ${outboxCount === 1 ? 'Eintrag wartet' : 'Einträge warten'} auf Sync` : ' – gespeicherter Stand wird angezeigt'}
+        </div>
+      )}
+      {isOnlineWeb && outboxCount > 0 && (
+        <div className="fixed top-0 inset-x-0 z-50 bg-[#34C759] text-white text-[13px] font-semibold px-4 py-1.5 text-center"
+             style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.375rem)' }}>
+          Synchronisiere {outboxCount} {outboxCount === 1 ? 'Eintrag' : 'Einträge'} …
         </div>
       )}
       {/* Mobile Header — iOS Navigation Bar Style */}

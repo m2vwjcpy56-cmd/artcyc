@@ -518,6 +518,15 @@ export async function bulkInsertSessions(sessions) {
   return { data, error };
 }
 
+// Idempotenter Upsert für die Offline-Outbox (Phase 2): die Zeilen tragen ihre
+// CLIENT-generierte id → ein erneuter Flush (Retry nach Verbindungsabbruch)
+// aktualisiert dieselbe Zeile statt eine Dublette anzulegen (onConflict: id).
+export async function upsertSessions(rows) {
+  if (!rows || rows.length === 0) return { data: [], error: null };
+  const { data, error } = await supabase.from('sessions').upsert(rows, { onConflict: 'id' }).select();
+  return { data, error };
+}
+
 export async function deleteSessionsByExercise(exerciseId) {
   const { error } = await supabase.from('sessions').update({ deleted_at: new Date().toISOString() }).eq('exercise_id', exerciseId);
   return { error };
