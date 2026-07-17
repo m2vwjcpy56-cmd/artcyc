@@ -12659,6 +12659,12 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
   }, [date, exerciseId, athleteId, entries, notes, withRope, repCount]);
 
   const exercise = data.exercises.find(e => e.id === exerciseId);
+  // Taktische Aufwertung: nur bei taktischen Übungen anzeigen, Punktstufen als
+  // Chips (wie im Wertungs-Tool). Gewählte Stufe = repCount 1-basiert (0 = keine).
+  const taktByCode = exercise ? getTaktScale(exercise.uci_code || exercise.code) : null;
+  const taktNameScale = parseTacticalScale(exercise?.name);
+  const taktScaleErf = (taktByCode && taktByCode.length > 0) ? taktByCode : taktNameScale;
+  const isTacticalErf = !!exercise && (taktByCode !== null || taktNameScale.length > 0 || / T\s*$/.test(exercise?.name || ''));
 
   // Bereits angelegte Übungen nach UCI-Code, um Duplikate beim Hinzufügen
   // aus dem Reglement zu vermeiden.
@@ -12818,18 +12824,36 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
             </div>
           )}
 
-          {/* Taktische Aufwertung: erreichte Anzahl (z. B. Lenkerdrehungen) — optional */}
-          <div>
-            <label className="text-sm font-medium block mb-1.5">Erreichte Anzahl <span className="font-normal text-slate-400">(optional, z. B. Drehungen)</span></label>
-            <div className="flex items-center gap-3">
-              <button type="button" onClick={() => setRepCount(c => Math.max(0, c - 1))}
-                className="w-10 h-10 rounded-xl border border-slate-300 bg-white text-[20px] font-semibold text-slate-700 active:scale-95 disabled:opacity-40"
-                disabled={repCount <= 0}>−</button>
-              <div className="w-14 text-center text-[17px] font-semibold tabular-nums">{repCount > 0 ? repCount : '–'}</div>
-              <button type="button" onClick={() => setRepCount(c => Math.min(99, c + 1))}
-                className="w-10 h-10 rounded-xl border border-slate-300 bg-white text-[20px] font-semibold text-slate-700 active:scale-95">+</button>
+          {/* Taktische Aufwertung — NUR bei taktischen Übungen. Punktstufen als Chips
+              (wie im Wertungs-Tool); ohne hinterlegte Skala Fallback auf Zähler. */}
+          {isTacticalErf && (
+            <div>
+              <label className="text-sm font-medium block mb-1.5">Taktische Aufwertung <span className="font-normal text-slate-400">(optional)</span></label>
+              {taktScaleErf.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button type="button" onClick={() => setRepCount(0)}
+                    className={'px-3.5 py-2 rounded-full text-sm font-semibold border tabular-nums ' +
+                      (repCount <= 0 ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white border-slate-300 text-slate-700')}>—</button>
+                  {taktScaleErf.map((v, idx) => (
+                    <button key={idx} type="button" onClick={() => setRepCount(idx + 1)}
+                      className={'px-3.5 py-2 rounded-full text-sm font-semibold border tabular-nums ' +
+                        (repCount === idx + 1 ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white border-slate-300 text-slate-700')}>
+                      {Number(v).toFixed(1).replace('.', ',')}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => setRepCount(c => Math.max(0, c - 1))}
+                    className="w-10 h-10 rounded-xl border border-slate-300 bg-white text-[20px] font-semibold text-slate-700 active:scale-95 disabled:opacity-40"
+                    disabled={repCount <= 0}>−</button>
+                  <div className="w-14 text-center text-[17px] font-semibold tabular-nums">{repCount > 0 ? repCount : '–'}</div>
+                  <button type="button" onClick={() => setRepCount(c => Math.min(99, c + 1))}
+                    className="w-10 h-10 rounded-xl border border-slate-300 bg-white text-[20px] font-semibold text-slate-700 active:scale-95">+</button>
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5">
