@@ -5032,21 +5032,38 @@ export default function App() {
   // Offline-Indikator (Paket D, Phase 1): Verbindungsstatus live überwachen.
   const [isOnlineWeb, setIsOnlineWeb] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
 
-  // ── Offline-Outbox (Phase 2): offline erfasste Trainings-Sessions warten hier
-  //    persistiert (localStorage) auf den nächsten Online-Moment. Client-UUID als
-  //    DB-id + Upsert = idempotent (Retry erzeugt keine Dubletten). Greift NUR
+  // ── Offline-Outbox (Phase 2): offline erfasste/geänderte Datensätze warten hier
+  //    persistiert (localStorage) auf den nächsten Online-Moment. Jede Zeile trägt
+  //    eine Client-id; geflusht wird per Upsert (onConflict:id) → idempotent, keine
+  //    Dubletten bei Retry. Entitäten: session, competition, program. Greift NUR
   //    offline; der Online-Pfad in save() bleibt unverändert.
-  const outboxKey = session ? 'artcyc:outbox:sessions:' + session.user.id : null;
+  const outboxKey = session ? 'artcyc:outbox:v2:' + session.user.id : null;
+  const legacySessionsKey = session ? 'artcyc:outbox:sessions:' + session.user.id : null;
   const [outboxCount, setOutboxCount] = useState(0);
   const readOutbox = useCallback(() => {
     try { return outboxKey ? JSON.parse(localStorage.getItem(outboxKey) || '[]') : []; } catch { return []; }
   }, [outboxKey]);
-  const writeOutbox = useCallback((rows) => {
-    try { if (outboxKey) localStorage.setItem(outboxKey, JSON.stringify(rows)); } catch { /* egal */ }
-    setOutboxCount(rows.length);
+  const writeOutbox = useCallback((ops) => {
+    try { if (outboxKey) localStorage.setItem(outboxKey, JSON.stringify(ops)); } catch { /* egal */ }
+    setOutboxCount(ops.length);
   }, [outboxKey]);
+  const enqueueOps = useCallback((newOps) => {
+    if (!newOps || !newOps.length) return;
+    const cur = readOutbox();
+    // Dedupe pro (entity + row-id): letzte Änderung gewinnt (LWW).
+    const map = new Map(cur.map(o => [o.entity + ':' + (o.row && o.row.id), o]));
+    for (const op of newOps) map.set(op.entity + ':' + (op.row && op.row.id), op);
+    writeOutbox([...map.values()]);
+  }, [readOutbox, writeOutbox]);
+  const mergeRows = useCallback((prev, rows) => {
+    if (!rows || !rows.length) return prev || [];
+    const byId = new Map((prev || []).map(x => [x.id, x]));
+    for (const r of rows) byId.set(r.id, { ...(byId.get(r.id) || {}), ...r });
+    return [...byId.values()];
+  }, []);
+  const newRowId = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
   const sessionBlobToRow = useCallback((s) => ({
-    id: s.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()),
+    id: s.id || newRowId(),
     athlete_id: s.athleteId || s.athlete_id || null,
     exercise_id: s.exerciseId || s.exercise_id,
     date: s.date,
@@ -5056,18 +5073,39 @@ export default function App() {
     with_rope: typeof s.withRope === 'boolean' ? s.withRope : (typeof s.with_rope === 'boolean' ? s.with_rope : null),
     rep_count: s.repCount || s.rep_count || null,
   }), []);
+  // Neue/geänderte Listen-Items (competition/program) → Upsert-Ops mit Client-id.
+  const diffToUpsertOps = useCallback((oldList, newList, normalizeFn, entity) => {
+    const oldNorm = new Map((oldList || []).filter(x => x && x.id).map(x => [x.id, JSON.stringify(normalizeFn(x))]));
+    const ops = [];
+    for (const item of (newList || [])) {
+      if (!item) continue;
+      const norm = normalizeFn(item);
+      const changed = !item.id || !oldNorm.has(item.id) || oldNorm.get(item.id) !== JSON.stringify(norm);
+      if (changed) ops.push({ entity, action: 'upsert', row: { ...norm, id: item.id || newRowId() } });
+    }
+    return ops;
+  }, []);
   const flushOutbox = useCallback(async () => {
     if (!outboxKey || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
     const remaining = readOutbox();
     if (!remaining.length) return;
     while (remaining.length) {
-      const { error } = await upsertSessions([remaining[0]]);
-      if (error) { console.warn('Outbox-Flush:', error.message); break; } // später erneut versuchen
+      const op = remaining[0];
+      let error = null;
+      try {
+        if (op.entity === 'session' && op.action === 'upsert') ({ error } = await upsertSessions([op.row]));
+        else if (op.entity === 'competition' && op.action === 'upsert') ({ error } = await upsertCompetition(op.row));
+        else if (op.entity === 'program' && op.action === 'upsert') ({ error } = await upsertProgram(op.row));
+        else if (op.entity === 'session' && op.action === 'delete') ({ error } = await deleteSession(op.row.id));
+        else if (op.entity === 'competition' && op.action === 'delete') ({ error } = await deleteCompetition(op.row.id));
+        else if (op.entity === 'program' && op.action === 'delete') ({ error } = await deleteProgram(op.row.id));
+      } catch (e) { error = e; }
+      if (error) { console.warn('Outbox-Flush:', error.message || error); break; } // später erneut
       remaining.shift();
       writeOutbox(remaining);
     }
-    if (remaining.length === 0) await refreshSessions();
-  }, [outboxKey, readOutbox, writeOutbox, refreshSessions]);
+    if (remaining.length === 0) { await refreshSessions(); await refreshCompetitions(); await refreshPrograms(); }
+  }, [outboxKey, readOutbox, writeOutbox, refreshSessions, refreshCompetitions, refreshPrograms]);
 
   useEffect(() => {
     const on = () => { setIsOnlineWeb(true); flushOutbox(); };
@@ -5077,21 +5115,32 @@ export default function App() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, [flushOutbox]);
 
-  // Beim Start: offline erfasste, noch nicht gesyncte Sessions optimistisch anzeigen
-  // (überleben so einen Reload) und — falls online — sofort synchronisieren.
+  // Beim Start: Alt-Session-Outbox migrieren, offline erfasste (noch nicht gesyncte)
+  // Datensätze optimistisch anzeigen (überleben so einen Reload) und — falls online —
+  // sofort synchronisieren.
   useEffect(() => {
-    if (!session) return;
-    const ob = readOutbox();
-    setOutboxCount(ob.length);
-    if (ob.length) {
-      setDbSessions(prev => {
-        const have = new Set((prev || []).map(s => s.id));
-        const missing = ob.filter(r => !have.has(r.id));
-        return missing.length ? [...missing, ...(prev || [])] : (prev || []);
-      });
-    }
+    if (!session || !outboxKey) return;
+    try {
+      const legacy = legacySessionsKey ? JSON.parse(localStorage.getItem(legacySessionsKey) || '[]') : [];
+      if (legacy.length) {
+        const cur = readOutbox();
+        const have = new Set(cur.map(o => o.entity + ':' + (o.row && o.row.id)));
+        const migrated = legacy.filter(r => r && r.id && !have.has('session:' + r.id)).map(r => ({ entity: 'session', action: 'upsert', row: r }));
+        if (migrated.length) writeOutbox([...cur, ...migrated]);
+        localStorage.removeItem(legacySessionsKey);
+      }
+    } catch { /* egal */ }
+    const ops = readOutbox();
+    setOutboxCount(ops.length);
+    const opt = (setter, ent) => {
+      const rows = ops.filter(o => o.entity === ent && o.action === 'upsert').map(o => o.row);
+      if (rows.length) setter(prev => mergeRows(prev, rows));
+    };
+    opt(setDbSessions, 'session');
+    opt(setDbCompetitions, 'competition');
+    opt(setDbPrograms, 'program');
     flushOutbox();
-  }, [session, readOutbox, flushOutbox]);
+  }, [session, outboxKey, legacySessionsKey, readOutbox, writeOutbox, mergeRows, flushOutbox]);
   useEffect(() => {
     if (!session) { setLoading(false); return; }
     setLoading(true);
@@ -5496,29 +5545,33 @@ export default function App() {
 
     if (data && data.migrated_to_tables) {
       const syncErrors = [];
+      const offline = typeof navigator !== 'undefined' && !navigator.onLine;
       try {
-        if (ownerWritable && next.exercises) {
+        // Übungen: offline (noch) nicht in die Outbox — werden selten offline erstellt.
+        if (ownerWritable && next.exercises && !offline) {
           const current = dbExercises.map(dbExerciseToBlob);
           syncErrors.push(...(await syncListToDb(current, next.exercises, upsertExercise, deleteExercise, normalizeExercise) || []));
           await refreshExercises();
         }
         if (ownerWritable && next.programs) {
           const current = dbPrograms.map(dbProgramToBlob);
-          syncErrors.push(...(await syncListToDb(current, next.programs, upsertProgram, deleteProgram, normalizeProgram) || []));
-          await refreshPrograms();
+          if (offline) {
+            const ops = diffToUpsertOps(current, next.programs, normalizeProgram, 'program');
+            if (ops.length) { enqueueOps(ops); setDbPrograms(prev => mergeRows(prev, ops.map(o => o.row))); }
+          } else {
+            syncErrors.push(...(await syncListToDb(current, next.programs, upsertProgram, deleteProgram, normalizeProgram) || []));
+            await refreshPrograms();
+          }
         }
         if (next.sessions) {
           const current = dbSessions.map(dbSessionToBlob).filter(sf);
           const newOnes = (next.sessions || []).filter(sf);
-          if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          if (offline) {
             // OFFLINE: neue Sessions in die Outbox (mit Client-id) statt sie zu verlieren,
-            // und optimistisch sofort anzeigen. Flush + echter Sync passieren beim Reconnect.
+            // und optimistisch anzeigen. Flush + echter Sync passieren beim Reconnect.
             const oldIds = new Set(current.filter(s => s && s.id).map(s => s.id));
             const rows = newOnes.filter(s => !s.id || !oldIds.has(s.id)).map(sessionBlobToRow).filter(r => r.exercise_id);
-            if (rows.length) {
-              writeOutbox([...readOutbox(), ...rows]);
-              setDbSessions(prev => [...rows, ...(prev || [])]);
-            }
+            if (rows.length) { enqueueOps(rows.map(r => ({ entity: 'session', action: 'upsert', row: r }))); setDbSessions(prev => mergeRows(prev, rows)); }
           } else {
             await syncSessionsToDb(current, newOnes);
             await refreshSessions();
@@ -5527,8 +5580,14 @@ export default function App() {
         if (next.competitions) {
           const current = dbCompetitions.map(dbCompetitionToBlob).filter(cf);
           const newOnes = (next.competitions || []).filter(cf);
-          syncErrors.push(...(await syncListToDb(current, newOnes, upsertCompetition, deleteCompetition, normalizeCompetition) || []));
-          await refreshCompetitions();
+          if (offline) {
+            // OFFLINE: Wettkämpfe + Trainings-Wertungen in die Outbox (Upsert, idempotent).
+            const ops = diffToUpsertOps(current, newOnes, normalizeCompetition, 'competition');
+            if (ops.length) { enqueueOps(ops); setDbCompetitions(prev => mergeRows(prev, ops.map(o => o.row))); }
+          } else {
+            syncErrors.push(...(await syncListToDb(current, newOnes, upsertCompetition, deleteCompetition, normalizeCompetition) || []));
+            await refreshCompetitions();
+          }
         }
       } catch (e) {
         console.warn('DB-Sync fehlgeschlagen:', e);
@@ -5564,7 +5623,7 @@ export default function App() {
     refreshSessions, refreshCompetitions, refreshPrograms, refreshExercises,
     normalizeCompetition, normalizeProgram, normalizeExercise,
     selectedAthleteId, isOwnAthlete,
-    readOutbox, writeOutbox, sessionBlobToRow
+    enqueueOps, mergeRows, diffToUpsertOps, sessionBlobToRow
   ]);
 
   const resetAll = useCallback(() => {
