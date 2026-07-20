@@ -2789,8 +2789,8 @@ function CompMetricChart({ compList }) {
   const [metric, setMetric] = useState('abzug');
   const [sel, setSel] = useState(null);
   const METRICS = [
-    { key: 'abzug', label: 'Abzug' }, { key: 'wave', label: 'Welle' },
-    { key: 'cross', label: 'Kreuz' }, { key: 'bar', label: 'Strich' },
+    { key: 'abzug', label: 'Abzug' }, { key: 'cross', label: 'Kreuz' },
+    { key: 'wave', label: 'Welle' }, { key: 'bar', label: 'Strich' },
     { key: 'circle', label: 'Sturz' }, { key: 'schw', label: 'Schwierigkeit' },
   ];
   const val = (c) => {
@@ -6670,7 +6670,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
   const previewV2 = true;
   const seasonPills = (
     <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1" data-no-swipe="true">
-      {[{ id: 'all', label: 'Alle Zeit' }, ...availableYears.map(y => ({ id: y, label: y })), { id: '90d', label: '90 Tage' }, { id: '30d', label: '30 Tage' }].map(s => (
+      {[{ id: 'all', label: 'Alle' }, { id: '30d', label: '30 Tage' }, { id: '90d', label: '90 Tage' }, ...availableYears.map(y => ({ id: y, label: y }))].map(s => (
         <button key={s.id} onClick={() => setSeason(s.id)}
           className={'px-3.5 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition active:scale-95 ' +
             (season === s.id ? 'bg-[#FF9500] text-white shadow-[0_1px_3px_rgba(255,149,0,0.35)]' : 'bg-white text-[#3C3C43] shadow-[0_1px_2px_rgba(0,0,0,0.04)]')}>
@@ -6718,7 +6718,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           message="Was möchtest du erfassen?"
           actions={[
             { icon: Dumbbell, label: 'Wiederholung erfassen', sublabel: 'Geklappt / nicht — fürs Training', onClick: () => setView('erfassen') },
-            ...(onOpenFeedback ? [{ icon: MessageCircle, label: 'Feedback zu Übung', sublabel: 'Fehlerbild + Handlungsanweisung', onClick: () => onOpenFeedback() }] : []),
+            ...(onOpenFeedback ? [{ icon: MessageCircle, label: 'Feedback zur Übung', sublabel: 'Fehlerbild + Handlungsanweisung', onClick: () => onOpenFeedback() }] : []),
           ]}
         />
 
@@ -6730,8 +6730,8 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(trainStats.totalSessions)} sub={trainStats.distinctDays + ' Trainingstage'} />
           <MetricCard accent="emerald" icon={Activity} label="Aktuelle Serie" value={streak > 0 ? streak + (streak === 1 ? ' Woche' : ' Wochen') : '—'} sub={streak > 0 ? 'in Folge' : 'keine aktive Serie'} />
           {/* Wettkampf-Paar bewusst nebeneinander (gleiche Bedeutung) */}
-          <MetricCard accent="violet" icon={Calendar} label="Letzter Wettkampf" value={compStats.last ? compStats.last.final.toFixed(2) : '—'} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : (compStats.count + ' gesamt')} />
-          <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub={compStats.best ? compStats.best.competition.name : '—'} subLines={2} />
+          <MetricCard accent="violet" icon={Calendar} label="Letzter Wettkampf" value={compStats.last ? compStats.last.final.toFixed(2) : '—'} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : '–'} />
+          <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub="Punkte" />
         </div>
 
         {/* TRENDS — Wettkampf-Verlauf + „Übung im Fokus" (eine konkrete Übung) */}
@@ -6810,7 +6810,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
                 {neglected.slice(0, 6).map(({ ex, days }) => (
                   <button key={ex.id} onClick={() => setView('erfassen')} className="w-full text-left px-3 py-2.5 flex items-center justify-between gap-3 border-b border-slate-100 last:border-0 active:opacity-60">
                     <span className="text-[15px] font-medium truncate">{localizedExerciseName(ex)}</span>
-                    <span className="text-[13px] text-[#FF9500] font-semibold tabular-nums shrink-0">seit {days} Tagen</span>
+                    <span className="text-[13px] text-[#FF9500] font-semibold tabular-nums shrink-0">{days} Tage</span>
                   </button>
                 ))}
               </div>
@@ -6918,7 +6918,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
               <button key={ex.id} onClick={() => setView('erfassen')}
                 className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-white/10 last:border-0 active:bg-slate-50 dark:active:bg-white/10 transition">
                 <span className="text-[15px] font-medium truncate">{localizedExerciseName(ex)}</span>
-                <span className="text-[13px] text-[#FF9500] font-semibold tabular-nums shrink-0">seit {days} Tagen</span>
+                <span className="text-[13px] text-[#FF9500] font-semibold tabular-nums shrink-0">{days} Tage</span>
               </button>
             ))}
           </div>
@@ -11033,7 +11033,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
     noRope: (mode === 'noRope' ? vm : buildExerciseScreenModel(exercise, data, false, period)).sessionsCount,
   };
 
-  const periodTabs = [['4w', '4 Wochen'], ['3m', '3 Monate'], ['6m', '6 Monate'], ['total', 'Gesamt']];
+  const periodTabs = [['4w', '4 Wo.'], ['3m', '3 Mon.'], ['6m', '6 Mon.'], ['total', 'Gesamt']];
   const periodLabel = (periodTabs.find(p => p[0] === period) || ['', 'Gesamt'])[1];
   const modeLabel = mode === 'rope' ? ' (mit Seil)' : mode === 'noRope' ? ' (ohne Seil)' : '';
 
@@ -11071,7 +11071,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
           )}
 
           {!vm.periodHasData ? (
-            <EmptyState title={`Keine Daten${modeLabel} in den letzten ${periodLabel}.`} hint={`Zeitraum${exercise.has_rope_variant ? ' oder Modus' : ''} oben anpassen.`} />
+            <EmptyState title="Keine Daten in diesem Zeitraum." />
           ) : (<>
             {/* 02 — HERO: eine dominante KPI (A/B: Zahl Default, Ring optional) */}
             <HeroKPI value={rate} delta={delta} deltaLabel={periodLabel} variant={kpiVariant} onVariantChange={changeKpi}
@@ -11177,7 +11177,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                     <div key={i} className={'rounded-xl py-2.5 ' + (danger ? 'bg-rose-50 border border-rose-100' : 'bg-slate-100')}>
                       <div className={'text-[11px] font-bold leading-none ' + (danger ? 'text-rose-600' : 'text-slate-500')}>{sym}</div>
                       <div className={'font-bold text-[17px] leading-tight mt-1 tabular-nums ' + (danger ? 'text-rose-700' : 'text-slate-900')}>Ø {(compStats.wettkaempfe ? n / compStats.wettkaempfe : 0).toFixed(1)}</div>
-                      <div className={'text-[10px] leading-tight tabular-nums ' + (danger ? 'text-rose-400' : 'text-slate-400')}>{n} ges.</div>
+                      <div className={'text-[10px] leading-tight tabular-nums ' + (danger ? 'text-rose-400' : 'text-slate-400')}>{n} gesamt</div>
                     </div>
                   ))}
                 </div>
@@ -11267,8 +11267,8 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
 
           <IOSList>
             {onEdit && !data._isReadOnly && <IOSListRow onClick={onEdit} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Edit2 size={17} className="text-[#007AFF]" /> Bearbeiten</span></IOSListRow>}
-            {onArchive && !data._isReadOnly && <IOSListRow onClick={onArchive} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Lock size={17} className="text-[#FF9500]" /> {exercise.active ? 'Archivieren' : 'Reaktivieren'}</span></IOSListRow>}
-            {onDelete && !data._isReadOnly && <IOSListRow onClick={onDelete}><span className="flex items-center gap-3 text-[#FF3B30]"><Trash2 size={17} /> Löschen</span></IOSListRow>}
+            {onArchive && !data._isReadOnly && <IOSListRow onClick={onArchive} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Lock size={17} className="text-[#FF9500]" /> {exercise.active ? 'Übung archivieren' : 'Übung reaktivieren'}</span></IOSListRow>}
+            {onDelete && !data._isReadOnly && <IOSListRow onClick={onDelete}><span className="flex items-center gap-3 text-[#FF3B30]"><Trash2 size={17} /> Übung löschen</span></IOSListRow>}
           </IOSList>
 
           {/* XLSX-Import — sekundär/utility (nur 3-Status), ganz unten */}
@@ -11422,7 +11422,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
   })();
 
   const sessionRate = (r) => r >= 80 ? 'text-emerald-700' : 'text-slate-700';
-  const periodTabs = [['4w', '4 Wochen'], ['3m', '3 Monate'], ['6m', '6 Monate'], ['total', 'Gesamt']];
+  const periodTabs = [['4w', '4 Wo.'], ['3m', '3 Mon.'], ['6m', '6 Mon.'], ['total', 'Gesamt']];
   const periodLabel = (periodTabs.find(p => p[0] === trendPeriod) || ['', 'Gesamt'])[1];
 
   // Trend als ZAHLEN statt Diagramm: pro Bucket (Woche/Monat) Quote, Versuche,
@@ -11727,7 +11727,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                     <div key={i} className={'rounded-xl py-2.5 ' + (danger ? 'bg-rose-50 border border-rose-100' : 'bg-slate-100')}>
                       <div className={'text-[11px] font-bold leading-none ' + (danger ? 'text-rose-600' : 'text-slate-500')}>{sym}</div>
                       <div className={'font-bold text-[17px] leading-tight mt-1 tabular-nums ' + (danger ? 'text-rose-700' : 'text-slate-900')}>Ø {(compStats.wettkaempfe ? n / compStats.wettkaempfe : 0).toFixed(1)}</div>
-                      <div className={'text-[10px] leading-tight tabular-nums ' + (danger ? 'text-rose-400' : 'text-slate-400')}>{n} ges.</div>
+                      <div className={'text-[10px] leading-tight tabular-nums ' + (danger ? 'text-rose-400' : 'text-slate-400')}>{n} gesamt</div>
                     </div>
                   ))}
                 </div>
@@ -15563,10 +15563,10 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
 
       {/* Stammdaten */}
       <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 space-y-3">
-        <h2 className="font-semibold mb-1">Wettkampf-Daten</h2>
+        <h2 className="font-semibold mb-1">Wettkampf</h2>
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-medium text-slate-500 block mb-1">Wettkampf-Name *</label>
+            <label className="text-xs font-medium text-slate-500 block mb-1">Name *</label>
             <input value={name} onChange={e => setName(e.target.value)}
               placeholder="z.B. DM Elite 2025"
               className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
@@ -15646,7 +15646,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                   </button>
                   <button type="button" onClick={() => setAbzugGesamt(true)}
                     className={'flex-1 py-2 rounded-xl text-sm font-semibold border ' + (abzugGesamt ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
-                    Gesamt
+                    Gesamt-Abzug
                   </button>
                 </div>
                 <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
@@ -18548,13 +18548,13 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
             icon={Trophy}
             label={t('detail.finalScore')}
             value={finalScore !== null ? finalScore.toFixed(2) : t('detail.noData')}
-            sub={t('detail.difficulty') + ': ' + t1.aufgestellt.toFixed(2)}
+            sub={t('competition.tabled') + ': ' + t1.aufgestellt.toFixed(2)}
             color="orange"
             size="large"
           />
           <StatCard
             icon={Sparkles}
-            label={t('detail.difficulty')}
+            label={t('competition.tabled')}
             value={t1.aufgestellt.toFixed(2)}
             sub=""
             color="violet"
