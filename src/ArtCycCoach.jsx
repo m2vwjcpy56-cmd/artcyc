@@ -5761,13 +5761,13 @@ export default function App() {
 
   // View dispatcher
   let viewEl;
-  if (view === 'dashboard') viewEl = <Dashboard data={effectiveData} setView={setView} onOpenFeedback={openFeedback} />;
+  if (view === 'dashboard') viewEl = <Dashboard data={effectiveData} setView={setView} onOpenFeedback={hasCoachingFeedback ? openFeedback : null} />;
   else if (view === 'training') viewEl = <TrainingView data={effectiveData} setData={save} setView={setView} />;
   else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
   else if (view === 'trainingsplan') viewEl = <TrainingsplanView data={effectiveData} setData={save} onBack={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} myUserId={session?.user?.id || null} />;
-  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} dbAthleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={openFeedback} />;
+  else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} dbAthleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={hasCoachingFeedback ? openFeedback : null} />;
   else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} athleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { chooseAthlete(id); setView('dashboard'); }} myAthleteId={myAthleteId} setView={setView} />;
   else if (view === 'export') viewEl = <ExportView data={effectiveData} setView={setView} defaultName={[profile?.display_name, profile?.last_name].filter(Boolean).join(' ')} />;
   else if (view === 'kuer' || view === 'video') {
@@ -9776,7 +9776,9 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
         <AdminAccountsView open={showAdminAccounts} onClose={() => setShowAdminAccounts(false)} />
       )}
 
-      {/* Feedback — prominent direkt unter Account, blau-akzentuiert */}
+      {/* Feedback — nur für Accounts mit bestehenden Feedback-Daten (Coaching-Feedback
+          ist in Überarbeitung; onOpenFeedback ist sonst null → komplett ausgeblendet). */}
+      {onOpenFeedback && (
       <IOSList header={t('feedback.section')} footer={t('feedback.footer')}>
         <IOSListRow
           onClick={onOpenFeedback}
@@ -9792,6 +9794,7 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
           </span>
         </IOSListRow>
       </IOSList>
+      )}
 
       {/* Erscheinungsbild */}
       <IOSList header={t('settings.appearance')} footer={t('settings.appearanceFooter')}>
