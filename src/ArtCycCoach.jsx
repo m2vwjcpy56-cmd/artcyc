@@ -5756,7 +5756,7 @@ export default function App() {
     { id: 'dashboard', label: t('nav.dashboard'), icon: Home },
     { id: 'training', label: t('nav.training'), icon: Dumbbell },
     { id: 'wettkampf', label: t('nav.wettkampf'), icon: Trophy },
-    { id: 'uebungen', label: t('nav.uebungen'), icon: ListChecks },
+    { id: 'uebungen', label: t('nav.statistiken'), icon: BarChart3 },
   ];
 
   // View dispatcher
@@ -11971,6 +11971,7 @@ function UebungenView({ data, setData, onBack }) {
   const [showNew, setShowNew] = useState(false);
   const [selected, setSelected] = useState(null); // Übung in Detail-Ansicht
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [statRange, setStatRange] = useState('m6'); // Statistik-Überblick Zeitraum (Parität iOS)
 
   // Sortierung wie beim Protokollieren: aktive Übungen zuerst, davon die
   // häufigst-trainierten oben (= „was ich oft anpacke ist sofort sichtbar"),
@@ -12149,12 +12150,33 @@ function UebungenView({ data, setData, onBack }) {
     );
   }
 
+  // Statistik-Überblick (Parität zu iOS „Statistiken"): 6 KPIs über den gewählten Zeitraum.
+  const statCut = statRange === 'all' ? null
+    : statRange === 'ytd' ? (new Date().getFullYear() + '-01-01')
+    : (() => { const d = new Date(); d.setMonth(d.getMonth() - (statRange === 'm12' ? 12 : 6)); return d.toISOString().slice(0, 10); })();
+  const inStatRange = (dt) => !statCut || (dt || '') >= statCut;
+  const statPrograms = new Map((data.programs || []).map(p => [p.id, p]));
+  const statFinals = (isTraining) => (data.competitions || [])
+    .filter(c => ((c.kind || 'wettkampf') === 'training') === isTraining && inStatRange(c.date))
+    .map(c => compFinalScore(statPrograms.get(c.program_id), c))
+    .filter(v => v != null);
+  const statWk = statFinals(false), statTr = statFinals(true);
+  const statAvg = (a) => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
+  const statDeds = (data.competitions || [])
+    .filter(c => (c.kind || 'wettkampf') !== 'training' && inStatRange(c.date))
+    .map(c => { const p = statPrograms.get(c.program_id); if (!p) return null; const t1 = calcTableResult(p, c.table1, c.t1_schwierigkeit); const t2 = calcTableResult(p, c.table2, c.t2_schwierigkeit); return (t1.abzugGesamt + t2.abzugGesamt) / 2; })
+    .filter(v => v != null);
+  const statSessions = (data.sessions || []).filter(s => inStatRange(s.date));
+  const statStreak = trainingWeekStreak(data.sessions || []);
+  const statFmt = (v) => v != null ? v.toFixed(2) : '—';
+  const statHasData = statWk.length || statTr.length || statSessions.length;
+
   return (
     <div className="min-h-screen bg-[#F2F2F7] p-4 sm:p-8">
       <div className="max-w-3xl mx-auto space-y-1.5 sm:space-y-5">
         <header className="flex items-end justify-between gap-3 pt-2 mb-3 sm:mb-0">
           <div className="min-w-0">
-            <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('exercises.title')}</h1>
+            <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('nav.statistiken')}</h1>
             <p className="text-[13px] text-[#8E8E93] mt-1">{data.exercises.filter(e => e.active).length} aktiv · {data.exercises.filter(e => !e.active).length} {t('exercises.archived')}</p>
           </div>
           <button onClick={() => setShowNew(true)}
@@ -12162,6 +12184,30 @@ function UebungenView({ data, setData, onBack }) {
             <Plus size={16} strokeWidth={2.5} /> {t('common.new')}
           </button>
         </header>
+
+        {/* ÜBERBLICK — 6 KPIs (Parität zu iOS „Statistiken") */}
+        {statHasData ? (
+          <section className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <div className="text-[12px] uppercase tracking-wide text-slate-400 font-medium">Überblick</div>
+              <select value={statRange} onChange={e => setStatRange(e.target.value)}
+                className="text-[13px] font-semibold text-[#FF9500] bg-transparent outline-none">
+                <option value="m6">6 Monate</option>
+                <option value="m12">12 Monate</option>
+                <option value="ytd">Dieses Jahr</option>
+                <option value="all">Alle</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <MetricCard accent="amber" icon={Trophy} label="Ø Wettkampf" value={statFmt(statAvg(statWk))} sub={statWk.length + ' Wettkämpfe'} />
+              <MetricCard accent="sky" icon={Dumbbell} label="Ø Training" value={statFmt(statAvg(statTr))} sub={statTr.length + ' Trainings'} />
+              <MetricCard accent="violet" icon={TrendingUp} label="Ø Abzug" value={statFmt(statAvg(statDeds))} sub="pro Wettkampf" />
+              <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={statWk.length ? Math.max(...statWk).toFixed(2) : '—'} sub="Punkte" />
+              <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(statSessions.length)} sub="im Zeitraum" />
+              <MetricCard accent="emerald" icon={Activity} label="Serie" value={statStreak > 0 ? String(statStreak) : '—'} sub={statStreak === 1 ? 'Woche' : 'Wochen'} />
+            </div>
+          </section>
+        ) : null}
 
         {/* iOS-style Inset Grouped List
             Layout pro Zeile:
