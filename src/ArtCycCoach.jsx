@@ -6771,6 +6771,31 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           </section>
         )}
 
+        {/* LETZTE WETTKÄMPFE — die letzten 3 (Parität zu iOS „dash.recentComps") */}
+        {compStats.withResult.length > 0 && (
+          <section className="space-y-2">
+            <div className="px-1 text-[12px] uppercase tracking-wide text-slate-400 font-medium">Letzte Wettkämpfe</div>
+            <div className="card-surface rounded-[22px] overflow-hidden">
+              {[...compStats.withResult]
+                .sort((a, b) => (b.competition.date || '').localeCompare(a.competition.date || ''))
+                .slice(0, 3)
+                .map(({ competition: c, final }) => (
+                  <button key={c.id} onClick={() => setView('wettkampf')}
+                    className="w-full text-left px-4 py-3 flex items-center justify-between gap-2 border-b border-[#C6C6C8]/40 last:border-0 active:bg-[#D1D1D6]/30 transition">
+                    <span className="min-w-0">
+                      <span className="block text-[15px] font-medium truncate">{c.name || 'Wettkampf'}</span>
+                      <span className="block text-[12px] text-[#8E8E93] truncate">{formatDateShort(c.date)}{c.location ? ' · ' + c.location : ''}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-right"><span className="block text-[14px] font-bold text-[#FF9500] tabular-nums leading-none">{final != null ? final.toFixed(2) : '—'}</span><span className="block text-[10px] text-[#8E8E93] uppercase tracking-wide mt-0.5">Pkt</span></span>
+                      <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC]" />
+                    </span>
+                  </button>
+                ))}
+            </div>
+          </section>
+        )}
+
         {/* DETAILS — wichtigste Übungen kompakt (Top/Flop), bewusst weiter unten */}
         {perExercise.length > 0 && (() => {
           const sorted = [...perExercise].sort((a, b) => b.rate - a.rate);
@@ -11260,6 +11285,20 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
 
         {/* Feedback — Soft-Rollout: nur für Accounts mit bestehenden Feedback-Daten (analog iOS) */}
         {data._hasCoachingFeedback && <FeedbackSection athleteId={data._viewingAthleteId || null} exercise={exercise} />}
+
+        {/* 07b — Übung (Stammdaten-Infozeile, Parität zu iOS) */}
+        <div className="pt-2 space-y-2">
+          <div className="text-[12px] uppercase tracking-wide text-slate-400 px-4 font-medium">Übung</div>
+          <IOSList>
+            {exercise.uci_code && <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93] tabular-nums">{exercise.uci_code}</span>}>Übungsnummer</IOSListRow>}
+            {exercise.points != null && <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93] tabular-nums">{Number(exercise.points).toFixed(1).replace('.', ',')}</span>}>Punkte</IOSListRow>}
+            <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93]">{is3 ? '3 Kategorien' : 'Geklappt / Nicht'}</span>}>Status-Modus</IOSListRow>
+            <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93]">{exercise.has_rope_variant ? 'Ja' : 'Nein'}</span>}>Seil-Variante</IOSListRow>
+            <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93] tabular-nums">{exercise.default_series ?? 10}</span>}>Standard-Serie</IOSListRow>
+            <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93] tabular-nums">{(data.sessions || []).filter(s => s.exerciseId === exercise.id).length}</span>}>Trainings-Sessions</IOSListRow>
+            {exercise.active === false && <IOSListRow trailing={<span className="text-[15px] text-[#FF9500]">Archiviert</span>}>Status</IOSListRow>}
+          </IOSList>
+        </div>
 
         {/* 08 — Verwalten (Footer, klar getrennt) */}
         <div className="pt-2 space-y-2">
