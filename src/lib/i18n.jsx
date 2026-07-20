@@ -569,8 +569,8 @@ const dict = {
     'training.range.thisMonth': 'This month',
     'training.range.thisYear': 'This year',
     'training.allExercises': 'All exercises ({n})',
-    'training.empty': 'No sessions yet',
-    'training.emptyHint': 'Tap "Log series" above to get started.',
+    'training.empty': 'No training',
+    'training.emptyHint': 'No training sessions logged yet.',
     'training.noMatches': 'No results for your filter.',
 
     'log.title': 'Log repetition',
@@ -604,8 +604,8 @@ const dict = {
     'competition.newScoresheet': 'Scoresheet',
     'competition.editCompetition': 'Competition',
     'competition.saveCompetition': 'Save competition',
-    'competition.scoreSheet': 'Scoresheet',
-    'competition.editTitle': 'Competition',
+    'competition.scoreSheet': 'Enter competition',
+    'competition.editTitle': 'Edit competition',
     'competition.tabled': 'Tabled',
     'competition.finalScore': 'Final score',
     'competition.targetScore': 'Target score',
@@ -758,7 +758,7 @@ const dict = {
 
     'settings.title': 'Settings',
     'settings.subtitle': 'Account, appearance, data',
-    'settings.account': 'Account',
+    'settings.account': 'Profile',
     'settings.loggedInAs': 'Logged in as',
     'settings.email': 'Email',
     'settings.role': 'Role',
@@ -794,7 +794,7 @@ const dict = {
     'settings.reset': 'Reset data',
     'settings.resetButton': 'Reset all data',
     'settings.resetFooter': 'Resets all exercises, sessions, competitions, programs, athletes and the UCI rules. Cannot be undone.',
-    'settings.about': 'About',
+    'settings.about': 'App',
     'settings.aboutApp': 'App',
     'settings.aboutVersion': 'Version',
     'settings.aboutUci': 'UCI rules',
@@ -812,7 +812,7 @@ const dict = {
 
     'export.title': 'Export data',
     'export.subtitle': 'CSV export of trainings & competitions',
-    'export.openButton': 'Open export',
+    'export.openButton': 'Export data',
     'export.footer': 'CSV in Maute format. Works with Numbers, Excel and Google Sheets.',
 
     'feedback.section': 'Feedback',
@@ -987,8 +987,8 @@ const dict = {
     'training.range.thisMonth': 'Ce mois',
     'training.range.thisYear': 'Cette année',
     'training.allExercises': 'Tous les exercices ({n})',
-    'training.empty': 'Aucune session',
-    'training.emptyHint': 'Touche « Saisir série » pour commencer.',
+    'training.empty': 'Aucun entraînement',
+    'training.emptyHint': 'Aucune séance enregistrée pour l\'instant.',
     'training.noMatches': 'Aucun résultat pour ton filtre.',
 
     'log.title': 'Saisir une répétition',
@@ -1114,7 +1114,7 @@ const dict = {
 
     'settings.title': 'Réglages',
     'settings.subtitle': 'Compte, apparence, données',
-    'settings.account': 'Compte',
+    'settings.account': 'Profil',
     'settings.loggedInAs': 'Connecté comme',
     'settings.email': 'E-mail',
     'settings.role': 'Rôle',
@@ -1148,7 +1148,7 @@ const dict = {
     'settings.reset': 'Réinitialiser les données',
     'settings.resetButton': 'Réinitialiser toutes les données',
     'settings.resetFooter': 'Réinitialise tous les exercices, sessions, compétitions, programmes, athlètes et règles UCI. Irréversible.',
-    'settings.about': 'À propos',
+    'settings.about': 'App',
     'settings.aboutApp': 'App',
     'settings.aboutVersion': 'Version',
     'settings.aboutUci': 'Règles UCI',
@@ -1166,7 +1166,7 @@ const dict = {
 
     'export.title': 'Exporter les données',
     'export.subtitle': 'Export CSV de tes entraînements & compétitions',
-    'export.openButton': 'Ouvrir l\'export',
+    'export.openButton': 'Exporter les données',
     'export.footer': 'CSV au format Maute. Compatible Numbers, Excel et Google Sheets.',
 
     'feedback.section': 'Feedback',
@@ -1302,8 +1302,8 @@ const dict = {
     'training.range.thisMonth': 'Questo mese',
     'training.range.thisYear': 'Quest\'anno',
     'training.allExercises': 'Tutti gli esercizi ({n})',
-    'training.empty': 'Nessuna sessione',
-    'training.emptyHint': 'Tocca « Registra serie » per iniziare.',
+    'training.empty': 'Nessun allenamento',
+    'training.emptyHint': 'Ancora nessuna sessione registrata.',
     'training.noMatches': 'Nessun risultato per il tuo filtro.',
 
     'log.title': 'Registra ripetizione',
@@ -1429,7 +1429,7 @@ const dict = {
 
     'settings.title': 'Impostazioni',
     'settings.subtitle': 'Account, aspetto, dati',
-    'settings.account': 'Account',
+    'settings.account': 'Profilo',
     'settings.loggedInAs': 'Accesso come',
     'settings.email': 'E-mail',
     'settings.role': 'Ruolo',
@@ -1463,7 +1463,7 @@ const dict = {
     'settings.reset': 'Reset dati',
     'settings.resetButton': 'Reset tutti i dati',
     'settings.resetFooter': 'Reset di tutti gli esercizi, sessioni, gare, programmi, atleti e regole UCI. Irreversibile.',
-    'settings.about': 'Info',
+    'settings.about': 'App',
     'settings.aboutApp': 'App',
     'settings.aboutVersion': 'Versione',
     'settings.aboutUci': 'Regole UCI',
@@ -1481,7 +1481,7 @@ const dict = {
 
     'export.title': 'Esporta dati',
     'export.subtitle': 'Export CSV di allenamenti e gare',
-    'export.openButton': 'Apri export',
+    'export.openButton': 'Esporta dati',
     'export.footer': 'CSV in formato Maute. Funziona con Numbers, Excel e Google Sheets.',
 
     'feedback.section': 'Feedback',
@@ -1617,8 +1617,8 @@ const dict = {
     'training.range.thisMonth': 'Este mes',
     'training.range.thisYear': 'Este año',
     'training.allExercises': 'Todos los ejercicios ({n})',
-    'training.empty': 'Aún sin sesiones',
-    'training.emptyHint': 'Toca «Registrar serie» arriba para empezar.',
+    'training.empty': 'Sin entrenamiento',
+    'training.emptyHint': 'Aún no hay sesiones registradas.',
     'training.noMatches': 'Sin resultados para tu filtro.',
 
     'log.title': 'Registrar repetición',
@@ -1744,7 +1744,7 @@ const dict = {
 
     'settings.title': 'Ajustes',
     'settings.subtitle': 'Cuenta, apariencia, datos',
-    'settings.account': 'Cuenta',
+    'settings.account': 'Perfil',
     'settings.loggedInAs': 'Conectado como',
     'settings.email': 'Correo electrónico',
     'settings.role': 'Rol',
@@ -1778,7 +1778,7 @@ const dict = {
     'settings.reset': 'Restablecer datos',
     'settings.resetButton': 'Restablecer todos los datos',
     'settings.resetFooter': 'Restablece todos los ejercicios, sesiones, competiciones, programas, deportistas y reglas UCI. Irreversible.',
-    'settings.about': 'Acerca de',
+    'settings.about': 'App',
     'settings.aboutApp': 'App',
     'settings.aboutVersion': 'Versión',
     'settings.aboutUci': 'Reglas UCI',
@@ -1796,7 +1796,7 @@ const dict = {
 
     'export.title': 'Exportar datos',
     'export.subtitle': 'Exportación CSV de entrenamientos y competiciones',
-    'export.openButton': 'Abrir exportación',
+    'export.openButton': 'Exportar datos',
     'export.footer': 'CSV en formato Maute. Compatible con Numbers, Excel y Google Sheets.',
 
     'feedback.section': 'Comentarios',
@@ -1932,8 +1932,8 @@ const dict = {
     'training.range.thisMonth': 'Tento měsíc',
     'training.range.thisYear': 'Tento rok',
     'training.allExercises': 'Všechny cviky ({n})',
-    'training.empty': 'Žádné tréninky',
-    'training.emptyHint': 'Klepni nahoře na „Zaznamenat sérii" pro start.',
+    'training.empty': 'Žádný trénink',
+    'training.emptyHint': 'Zatím nebyl zaznamenán žádný trénink.',
     'training.noMatches': 'Žádné výsledky pro tvůj filtr.',
 
     'log.title': 'Zaznamenat opakování',
@@ -1979,7 +1979,7 @@ const dict = {
 
     'settings.title': 'Nastavení',
     'settings.subtitle': 'Účet, vzhled, data',
-    'settings.account': 'Účet',
+    'settings.account': 'Profil',
     'settings.loggedInAs': 'Přihlášen jako',
     'settings.email': 'E-mail',
     'settings.role': 'Role',
@@ -2007,7 +2007,7 @@ const dict = {
     'settings.reset': 'Reset dat',
     'settings.resetButton': 'Reset všech dat',
     'settings.resetFooter': 'Resetuje všechny cviky, tréninky, závody, programy, sportovce a UCI pravidla. Nevratné.',
-    'settings.about': 'O aplikaci',
+    'settings.about': 'App',
     'settings.aboutApp': 'App',
     'settings.aboutVersion': 'Verze',
     'settings.aboutUci': 'UCI pravidla',
@@ -2022,7 +2022,7 @@ const dict = {
 
     'export.title': 'Exportovat data',
     'export.subtitle': 'CSV export tréninků a závodů',
-    'export.openButton': 'Otevřít export',
+    'export.openButton': 'Exportovat data',
     'export.footer': 'CSV ve formátu Maute. Funguje v Numbers, Excelu a Google Sheets.',
 
     'feedback.section': 'Zpětná vazba',
