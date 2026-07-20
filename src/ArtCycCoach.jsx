@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   Trophy, Dumbbell, Plus, ChevronLeft, ChevronRight, Save, Check, X, Edit2, Trash2,
   Search, Info, Archive, AlertTriangle, ListChecks,
-  Home, BarChart3, Users, Download, Sparkles, FileText, Lock,
+  Home, BarChart3, Users, Download, Upload, Sparkles, FileText, Lock,
   Settings as SettingsIcon, LogOut, Shield, User, RotateCcw,
   TrendingUp, TrendingDown, Minus, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
