@@ -6582,6 +6582,23 @@ function Dashboard({ data, setView, onOpenFeedback }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.sessions, season]);
 
+  // Trainings-Verlauf: Sessions pro Monat (Parität zu iOS „chart.trainTrend"), max. letzte 12.
+  const trainMonthly = useMemo(() => {
+    const sessions = (data.sessions || []).filter(s => season === 'all' ? true : inRange(s.date));
+    const byMonth = new Map();
+    for (const s of sessions) {
+      const ym = (s.date || '').slice(0, 7);
+      if (ym.length !== 7) continue;
+      byMonth.set(ym, (byMonth.get(ym) || 0) + 1);
+    }
+    const MON = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+    return [...byMonth.keys()].sort().slice(-12).map(ym => ({
+      label: MON[Number(ym.slice(5, 7)) - 1] || ym.slice(5, 7),
+      count: byMonth.get(ym),
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.sessions, season]);
+
   // Pro Übung: Quote + Trend über letzte 4 Wochen
   const perExercise = useMemo(() => {
     return data.exercises.filter(ex => ex.active).map(ex => {
@@ -6733,6 +6750,22 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           <MetricCard accent="violet" icon={Calendar} label="Letzter Wettkampf" value={compStats.last ? compStats.last.final.toFixed(2) : '—'} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : '–'} />
           <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub="Punkte" />
         </div>
+
+        {/* TRAININGS-VERLAUF — Sessions pro Monat (Parität zu iOS „chart.trainTrend") */}
+        {trainMonthly.length > 0 && (
+          <div className="card-surface rounded-[22px] p-4 space-y-2">
+            <h2 className="text-[15px] font-semibold flex items-center gap-2"><BarChart3 size={16} className="text-[#FF9500]" /> Trainings-Verlauf</h2>
+            <div className="flex items-end gap-1.5 h-28">
+              {(() => { const max = Math.max(...trainMonthly.map(x => x.count), 1); return trainMonthly.map((m, i) => (
+                <div key={i} className="flex-1 rounded-t bg-[#FF9500]/80 min-w-0" style={{ height: Math.max(3, Math.round(m.count / max * 100)) + '%' }} title={m.count + ' Sessions'} />
+              )); })()}
+            </div>
+            <div className="flex gap-1.5">
+              {trainMonthly.map((m, i) => <span key={i} className="flex-1 text-[10px] text-[#8E8E93] text-center truncate">{m.label}</span>)}
+            </div>
+            <div className="text-[12px] text-[#8E8E93]">{trainStats.totalSessions} Sessions · {trainStats.distinctDays} Trainingstage</div>
+          </div>
+        )}
 
         {/* TRENDS — Wettkampf-Verlauf + „Übung im Fokus" (eine konkrete Übung) */}
         {(compStats.count >= 2 || focusEx) && (
@@ -7501,6 +7534,7 @@ function TrainingView({ data, setData, setView }) {
   const [filterExId, setFilterExId] = useState(''); // '' = alle Übungen
   const [filterRange, setFilterRange] = useState('all'); // 'all'|'7d'|'30d'|'90d'|'thisMonth'|'thisYear'
   const [histOpen, setHistOpen] = useState(false); // TrainingV2: Verlauf (Rohdaten) erst auf Wunsch
+  const [showAllRuns, setShowAllRuns] = useState(false); // Trainings-Durchläufe: alle vs. letzte 3 (Parität iOS)
 
   // Übungs-CRUD + Detail-Navigation aus der Übungs-Sektion oben
   // (analog zu ProgrammeView, damit Klick auf Übung direkt in die
@@ -8023,10 +8057,10 @@ function TrainingView({ data, setData, setView }) {
             const runs = (data.competitions || []).filter(c => (c.kind || 'wettkampf') === 'training')
               .sort((x, y) => (y.date || '').localeCompare(x.date || ''));
             if (runs.length === 0) return null;
-            return runs.slice(0, 3).map(c => {
+            const shown = showAllRuns ? runs : runs.slice(0, 3);
+            return (<>
+              {shown.map(c => {
               const program = (data.programs || []).find(p => p.id === c.program_id);
-              const t1 = program ? calcTableResult(program, c.table1, c.t1_schwierigkeit) : null;
-              const t2 = program ? calcTableResult(program, c.table2, c.t2_schwierigkeit) : null;
               const final = compFinalScore(program, c);
               return (
                 <button key={c.id} onClick={() => setViewRunId(c.id)}
@@ -8041,7 +8075,14 @@ function TrainingView({ data, setData, setView }) {
                   </span>
                 </button>
               );
-            });
+              })}
+              {runs.length > 3 && (
+                <button onClick={() => setShowAllRuns(v => !v)}
+                  className="w-full px-4 py-2.5 border-t border-[#C6C6C8]/40 text-[13px] font-medium text-[#007AFF] active:opacity-60">
+                  {showAllRuns ? 'Nur die letzten' : `Alle ${runs.length} Trainings anzeigen`}
+                </button>
+              )}
+            </>);
           })()}
         </div>
 
