@@ -6544,7 +6544,12 @@ function Dashboard({ data, setView, onOpenFeedback }) {
     const programMap = new Map((data.programs || []).map(p => [p.id, p]));
     const withResult = comps.map(c => {
       const program = programMap.get(c.program_id);
-      if (!program) return null;
+      if (!program) {
+        // „Nur Endergebnis"-Wettkampf (kein Programm) → Endergebnis aus pdf_ref; kein Abzug.
+        const ref = c.pdf_ref || null;
+        const ef = (ref && ref.endergebnis != null) ? Number(ref.endergebnis) : null;
+        return ef != null ? { competition: c, final: ef, ded: null } : null;
+      }
       const t1 = calcTableResult(program, c.table1, c.t1_schwierigkeit);
       const t2 = calcTableResult(program, c.table2, c.t2_schwierigkeit);
       const final = compFinalScore(program, c);
@@ -6552,11 +6557,12 @@ function Dashboard({ data, setView, onOpenFeedback }) {
       const ded = Math.round(((t1.abzugGesamt + t2.abzugGesamt) / 2) * 100) / 100;
       return { competition: c, final, ded };
     }).filter(Boolean);
-    const sorted = withResult.slice().sort((a, b) => b.final - a.final);
+    const sorted = withResult.slice().filter(x => x.final != null).sort((a, b) => b.final - a.final);
     const byDate = withResult.slice().sort((a, b) => (b.competition.date || '').localeCompare(a.competition.date || ''));
-    // Geringster Abzug = niedrigster Wert → bestes Performance-Indiz
-    const minDed = withResult.length > 0
-      ? withResult.reduce((a, b) => b.ded < a.ded ? b : a)
+    // Geringster Abzug = niedrigster Wert → bestes Performance-Indiz (nur Comps mit Abzug)
+    const withDed = withResult.filter(x => x.ded != null);
+    const minDed = withDed.length > 0
+      ? withDed.reduce((a, b) => b.ded < a.ded ? b : a)
       : null;
     return {
       count: comps.length,
@@ -14081,6 +14087,8 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [viewId, setViewId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [chooser, setChooser] = useState(false);   // „+": Erfassungsart wählen (Parität iOS)
+  const [endForm, setEndForm] = useState(null);     // „Nur Endergebnis"-Schnellerfassung
 
   useEffect(() => {
     try {
@@ -14270,7 +14278,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
           <div className="flex items-center gap-2 shrink-0">
             <button onClick={() => setShowBulkImport(true)} title="Mehrere PDFs importieren"
               className="w-9 h-9 rounded-full card-surface text-slate-600 dark:text-slate-300 flex items-center justify-center active:scale-95 transition"><FileText size={16} strokeWidth={2.2} /></button>
-            <button onClick={() => setShowNew(true)}
+            <button onClick={() => setChooser(true)}
               className="px-3.5 py-2 rounded-full bg-[#FF9500] text-white text-[14px] font-semibold flex items-center gap-1 active:scale-95 transition"><Plus size={15} strokeWidth={2.6} /> {t('common.new')}</button>
           </div>
         </header>
@@ -14281,6 +14289,64 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
               setData({ ...data, programs: [...(data.programs || []), ...newProgs], exercises: [...(data.exercises || []), ...newExes], competitions: [...(data.competitions || []), ...newComps] });
               setShowBulkImport(false);
             }} />
+        )}
+
+        {/* „+"-Chooser: Erfassungsart wählen (Parität zu iOS) */}
+        {chooser && (
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setChooser(false)}>
+            <div className="bg-white rounded-3xl sm:rounded-2xl w-full max-w-sm p-4 shadow-2xl space-y-2" onClick={e => e.stopPropagation()}>
+              <h3 className="font-semibold text-[17px] px-1 pb-1">Wie möchtest du erfassen?</h3>
+              <button onClick={() => { setChooser(false); setShowNew(true); }} className="w-full text-left px-4 py-3 rounded-xl bg-slate-50 active:bg-slate-100 flex items-center gap-3">
+                <FileText size={18} className="text-[#FF9500] shrink-0" />
+                <span><span className="block text-[15px] font-medium">Wertungsbogen erfassen</span><span className="block text-[12px] text-slate-500">PDF importieren oder Abzüge manuell</span></span>
+              </button>
+              <button onClick={() => { setChooser(false); setEndForm({ name: '', date: new Date().toISOString().slice(0, 10), location: '', endergebnis: '' }); }} className="w-full text-left px-4 py-3 rounded-xl bg-slate-50 active:bg-slate-100 flex items-center gap-3">
+                <Trophy size={18} className="text-[#FF9500] shrink-0" />
+                <span><span className="block text-[15px] font-medium">Nur Endergebnis</span><span className="block text-[12px] text-slate-500">Schnell ohne Einzelübungen erfassen</span></span>
+              </button>
+              <button onClick={() => setChooser(false)} className="w-full py-2.5 rounded-xl text-[15px] font-medium text-slate-500 active:opacity-60">Abbrechen</button>
+            </div>
+          </div>
+        )}
+
+        {/* „Nur Endergebnis"-Schnellerfassung (kein Programm → pdf_ref.endergebnis) */}
+        {endForm && (
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setEndForm(null)}>
+            <div className="bg-white rounded-3xl sm:rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-3" onClick={e => e.stopPropagation()}>
+              <h3 className="font-semibold text-[17px]">Nur Endergebnis</h3>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Wettkampf-Name *</label>
+                <input value={endForm.name} onChange={e => setEndForm({ ...endForm, name: e.target.value })} placeholder="z. B. DM Elite 2025" className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">Datum</label>
+                  <input type="date" value={endForm.date} onChange={e => setEndForm({ ...endForm, date: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">Endergebnis *</label>
+                  <input inputMode="decimal" value={endForm.endergebnis} onChange={e => setEndForm({ ...endForm, endergebnis: e.target.value })} placeholder="181,55" className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Ort</label>
+                <input value={endForm.location} onChange={e => setEndForm({ ...endForm, location: e.target.value })} placeholder="z. B. Lübbecke" className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setEndForm(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 font-medium text-sm">Abbrechen</button>
+                <button
+                  disabled={!endForm.name.trim() || !endForm.endergebnis.trim()}
+                  onClick={() => {
+                    const score = Number(String(endForm.endergebnis).replace(',', '.'));
+                    if (!endForm.name.trim() || !isFinite(score)) return;
+                    const comp = { id: uid(), name: endForm.name.trim(), date: endForm.date || new Date().toISOString().slice(0, 10), location: endForm.location.trim() || null, kind: 'wettkampf', athlete_id: data._viewingAthleteId || null, table1: [], table2: [], pdf_ref: { endergebnis: score } };
+                    setData({ ...data, competitions: [...(data.competitions || []), comp] });
+                    setEndForm(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-[#FF9500] text-white font-medium text-sm disabled:opacity-40">Speichern</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {competitions.length === 0 ? (
