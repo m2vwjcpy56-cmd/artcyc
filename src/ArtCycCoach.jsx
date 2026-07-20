@@ -7322,7 +7322,7 @@ function ExerciseStatsCard({ ex, total, success, fail, third, rate, riskRate, se
             )}
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
-            {sessions} Sessions · {total} Serien
+            {sessions} Sessions · {total} Versuche
           </div>
         </div>
         <div className="text-right shrink-0">
@@ -7630,14 +7630,14 @@ function TrainingView({ data, setData, setView }) {
               <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">Seil</span>
             )}
             {s.withRope === false && (
-              <span className="text-[10px] font-medium text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded-full shrink-0">ohne</span>
+              <span className="text-[10px] font-medium text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded-full shrink-0">ohne Seil</span>
             )}
             {(s.repCount || 0) > 0 && (
               <span className="text-[10px] font-medium text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded-full shrink-0">{s.repCount}×</span>
             )}
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
-            {formatDateShort(s.date)}{s.created ? ' · ' + new Date(s.created).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr' : ''} · {total} Serien
+            {formatDateShort(s.date)}{s.created ? ' · ' + new Date(s.created).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr' : ''} · {total} Versuche
           </div>
           {s.notes && (
             <div className="text-xs text-slate-500 italic mt-1 line-clamp-1 border-l-2 border-amber-200 pl-2">
@@ -8007,7 +8007,7 @@ function TrainingView({ data, setData, setView }) {
                 <button key={c.id} onClick={() => setViewRunId(c.id)}
                   className="w-full px-4 py-2.5 flex items-center justify-between gap-2 border-t border-[#C6C6C8]/40 active:bg-[#D1D1D6]/30">
                   <span className="min-w-0 text-left">
-                    <span className="block text-[14px] font-medium truncate">{c.name || 'Trainings-Durchlauf'}</span>
+                    <span className="block text-[14px] font-medium truncate">{c.name || 'Training'}</span>
                     <span className="block text-[12px] text-[#8E8E93]">{formatDateShort(c.date)}</span>
                   </span>
                   <span className="flex items-center gap-1.5 shrink-0">
@@ -9766,7 +9766,7 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
             trailing={<ChevronRight size={16} className="text-[#C7C7CC]" />}>
             <div className="flex items-center gap-3">
               <Crown size={18} className="text-[#FF9500]" />
-              <span className="text-[15px]">Alle Accounts verwalten</span>
+              <span className="text-[15px]">Nutzerverwaltung</span>
             </div>
           </IOSListRow>
         </IOSList>
@@ -10948,7 +10948,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
   // Detail oben starten — sonst erbt der Screen die Scroll-Position der Liste.
   useEffect(() => { window.scrollTo(0, 0); }, [exercise.id]);
   const is3 = exercise.category_mode === 3;
-  const [compOpen, setCompOpen] = useState(false);
+  const [compOpen, setCompOpen] = useState(true);
   const [importStatus, setImportStatus] = useState(null);
   const [importMsg, setImportMsg] = useState('');
   const [importPreview, setImportPreview] = useState(null);
@@ -11074,7 +11074,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
             <EmptyState title="Keine Daten in diesem Zeitraum." />
           ) : (<>
             {/* 02 — HERO: eine dominante KPI (A/B: Zahl Default, Ring optional) */}
-            <HeroKPI value={rate} delta={delta} deltaLabel={periodLabel} variant={kpiVariant} onVariantChange={changeKpi}
+            <HeroKPI value={rate} delta={delta} deltaLabel={periodLabel} variant={kpiVariant} onVariantChange={changeKpi} eyebrow="Trainings-Erfolgsquote"
               totalLine={`${vm.totalSuccess} / ${vm.totalAttempts} Versuche${kpiVariant === 'number' ? ' · ' + periodLabel : ''}`}
               footerLeft={`Zuletzt ${formatDateShort(vm.lastSessionDate)}`}
               footerRight={`${vm.lastSessionRate} %${kpiVariant === 'number' ? ' · ' + vm.lastSessionFraction : ''}`} />
@@ -11173,7 +11173,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                 </div>
                 {compStats.wettkaempfe > 0 ? (<>
                 <div className="grid grid-cols-4 gap-2 text-center">
-                  {[['x', compStats.cross, false], ['~', compStats.wave, false], ['|', compStats.bar, false], ['○', compStats.circle, true]].map(([sym, n, danger], i) => (
+                  {[['Kreuz', compStats.cross, false], ['Welle', compStats.wave, false], ['Strich', compStats.bar, false], ['Sturz', compStats.circle, true]].map(([sym, n, danger], i) => (
                     <div key={i} className={'rounded-xl py-2.5 ' + (danger ? 'bg-rose-50 border border-rose-100' : 'bg-slate-100')}>
                       <div className={'text-[11px] font-bold leading-none ' + (danger ? 'text-rose-600' : 'text-slate-500')}>{sym}</div>
                       <div className={'font-bold text-[17px] leading-tight mt-1 tabular-nums ' + (danger ? 'text-rose-700' : 'text-slate-900')}>Ø {(compStats.wettkaempfe ? n / compStats.wettkaempfe : 0).toFixed(1)}</div>
@@ -11363,7 +11363,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
   const [showDangerTrend, setShowDangerTrend] = useState(false);
   const [showComposition, setShowComposition] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
-  const [compOpen, setCompOpen] = useState(false);
+  const [compOpen, setCompOpen] = useState(true);
   const [showAllSessions, setShowAllSessions] = useState(false);
   const [importStatus, setImportStatus] = useState(null); // null | 'parsing' | 'preview' | 'error'
   const [importPreview, setImportPreview] = useState(null);
@@ -11723,7 +11723,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                 </div>
                 {compStats.wettkaempfe > 0 ? (<>
                 <div className="grid grid-cols-4 gap-2 text-center">
-                  {[['x', compStats.cross, false], ['~', compStats.wave, false], ['|', compStats.bar, false], ['○', compStats.circle, true]].map(([sym, n, danger], i) => (
+                  {[['Kreuz', compStats.cross, false], ['Welle', compStats.wave, false], ['Strich', compStats.bar, false], ['Sturz', compStats.circle, true]].map(([sym, n, danger], i) => (
                     <div key={i} className={'rounded-xl py-2.5 ' + (danger ? 'bg-rose-50 border border-rose-100' : 'bg-slate-100')}>
                       <div className={'text-[11px] font-bold leading-none ' + (danger ? 'text-rose-600' : 'text-slate-500')}>{sym}</div>
                       <div className={'font-bold text-[17px] leading-tight mt-1 tabular-nums ' + (danger ? 'text-rose-700' : 'text-slate-900')}>Ø {(compStats.wettkaempfe ? n / compStats.wettkaempfe : 0).toFixed(1)}</div>
@@ -18363,7 +18363,6 @@ function ExportWettkampf({ data, defaultName = '' }) {
         <div><strong>Offizielle Maute-Vorlage (.xlsm):</strong> befüllt die echte Statistik-Vorlage — mit Diagrammen, Makros und allen Berechnungen. Genau das, was du dem Trainer schickst.</div>
         <div className="text-slate-500">Abwertungen werden als Gesamtsumme beider Kampfgerichte eingetragen (wie in der Maute-Anleitung). Max. 15 Wettkämpfe · 30 Übungen pro Datei.</div>
         <div className="mt-1 pt-1 border-t border-slate-200"><strong>Einfache Tabelle / CSV:</strong> schlichter Werte-Export ohne Formeln/Diagramme — als Fallback.</div>
-        <div className="text-amber-700">⚠️ Beta: Bitte die erste Datei einmal in Excel gegenprüfen. Beim Öffnen ggf. „Makros aktivieren / Bearbeitung aktivieren" bestätigen.</div>
       </div>
     </div>
   );

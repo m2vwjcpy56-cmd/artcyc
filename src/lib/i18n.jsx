@@ -131,8 +131,8 @@ const dict = {
     'training.range.thisMonth': 'Dieser Monat',
     'training.range.thisYear': 'Dieses Jahr',
     'training.allExercises': 'Alle Übungen ({n})',
-    'training.empty': 'Noch keine Sessions',
-    'training.emptyHint': 'Tippe oben auf „Neu" um loszulegen.',
+    'training.empty': 'Kein Training',
+    'training.emptyHint': 'Noch keine Trainings-Sessions erfasst.',
     'training.noMatches': 'Keine Treffer für deinen Filter.',
 
     // Erfassen / Session anlegen
@@ -361,7 +361,7 @@ const dict = {
     'settings.reset': 'Daten zurücksetzen',
     'settings.resetButton': 'Alle Daten zurücksetzen',
     'settings.resetFooter': 'Setzt alle Übungen, Sessions, Wettkämpfe, Programme, Sportler und das UCI-Reglement zurück. Kann nicht rückgängig gemacht werden.',
-    'settings.about': 'Über',
+    'settings.about': 'App',
     'settings.aboutApp': 'App',
     'settings.aboutVersion': 'Version',
     'settings.aboutUci': 'UCI-Reglement',
