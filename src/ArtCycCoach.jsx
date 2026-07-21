@@ -6773,40 +6773,14 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           </div>
         )}
 
-        {/* TRENDS — Wettkampf-Verlauf + „Übung im Fokus" (eine konkrete Übung) */}
-        {(compStats.count >= 2 || focusEx) && (
+        {/* WETTKAMPF-VERLAUF (Parität zu iOS — „Übung im Fokus" entfernt) */}
+        {compStats.count >= 2 && (
           <section className="space-y-3">
             <div className="px-1 text-[12px] uppercase tracking-wide text-slate-400 font-medium">Trends</div>
-            {compStats.count >= 2 && (
-              <div className="card-surface rounded-[22px] p-4 space-y-2">
-                <h2 className="text-[15px] font-semibold flex items-center gap-2"><Trophy size={16} className="text-[#FF9500]" /> Wettkampf-Verlauf</h2>
-                <CompetitionTrendChart competitions={(data.competitions || []).filter(c => (c.kind || 'wettkampf') !== 'training' && (season === 'all' ? true : inRange(c.date)))} programs={data.programs || []} best={compStats.best} onTapWettkampf={() => setView('wettkampf')} />
-              </div>
-            )}
-            {focusEx && (
-              <div className="card-surface rounded-[22px] p-4 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Übung im Fokus</h2>
-                  <span className="text-[12px] text-slate-400 tabular-nums shrink-0">{focusVm.successRateCurrent} % · 6 Mon.</span>
-                </div>
-                <select value={focusEx.id} onChange={e => setDashFocusExId(e.target.value)}
-                  className="w-full px-2.5 py-2 border border-slate-300 rounded-xl text-[14px] font-medium bg-white outline-none">
-                  {focusList.map(({ ex }) => <option key={ex.id} value={ex.id}>{localizedExerciseName(ex)}</option>)}
-                </select>
-                {focusComp.length >= 2 ? (
-                  <>
-                    <TrendChart comp={focusComp} is3={focusIs3} showHit={focusIs3} showDanger />
-                    <div className="flex items-center gap-3 text-[11px] text-slate-500 flex-wrap">
-                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: STATUS.success }} />{statusLabel(focusEx, 'success')}</span>
-                      {focusIs3 && <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: STATUS.hit }} />{statusLabel(focusEx, 'third')}</span>}
-                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: STATUS.danger }} />{statusLabel(focusEx, 'fail')}</span>
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-[13px] text-slate-400 py-4 text-center">Zu wenig Trainingsdaten dieser Übung für einen Trend.</div>
-                )}
-              </div>
-            )}
+            <div className="card-surface rounded-[22px] p-4 space-y-2">
+              <h2 className="text-[15px] font-semibold flex items-center gap-2"><Trophy size={16} className="text-[#FF9500]" /> Wettkampf-Verlauf</h2>
+              <CompetitionTrendChart competitions={(data.competitions || []).filter(c => (c.kind || 'wettkampf') !== 'training' && (season === 'all' ? true : inRange(c.date)))} programs={data.programs || []} best={compStats.best} onTapWettkampf={() => setView('wettkampf')} />
+            </div>
           </section>
         )}
 
@@ -6835,35 +6809,8 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           </section>
         )}
 
-        {/* DETAILS — wichtigste Übungen kompakt (Top/Flop), bewusst weiter unten */}
-        {perExercise.length > 0 && (() => {
-          const sorted = [...perExercise].sort((a, b) => b.rate - a.rate);
-          const split = sorted.length > 6;
-          const exRow = (r, i) => (
-            <button key={r.ex.id} onClick={() => setView('uebungen')} className={'w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 active:bg-slate-50 ' + (i > 0 ? 'border-t border-slate-100' : '')}>
-              <span className="text-[15px] font-medium truncate">{localizedExerciseName(r.ex)}</span>
-              <span className="flex items-center gap-3 shrink-0">
-                <span className="text-[12px] text-slate-400 tabular-nums">{r.sessions}×</span>
-                <span className={'text-[15px] font-semibold tabular-nums w-11 text-right ' + (r.rate >= 80 ? 'text-emerald-600' : r.rate >= 55 ? 'text-slate-700' : 'text-rose-600')}>{r.rate}%</span>
-              </span>
-            </button>
-          );
-          return (
-            <section className="space-y-2">
-              <div className="px-1 flex items-center justify-between">
-                <div className="text-[12px] uppercase tracking-wide text-slate-400 font-medium">{split ? 'Stärkste Übungen' : 'Pro Übung'}</div>
-                <button onClick={() => setView('uebungen')} className="text-[13px] text-[#007AFF] font-medium active:opacity-60">Alle</button>
-              </div>
-              <div className="card-surface rounded-[22px] overflow-hidden">{(split ? sorted.slice(0, 3) : sorted).map(exRow)}</div>
-              {split && (
-                <>
-                  <div className="px-1 text-[12px] uppercase tracking-wide text-slate-400 font-medium pt-1">Mehr Fokus</div>
-                  <div className="card-surface rounded-[22px] overflow-hidden">{sorted.slice(-3).reverse().map(exRow)}</div>
-                </>
-              )}
-            </section>
-          );
-        })()}
+        {/* „Stärkste/schwächste Übungen" entfernt — Parität zu iOS: die Übungsliste
+            lebt jetzt im Statistiken-Tab, nicht mehr auf dem Dashboard. */}
 
         {/* Lange nicht trainiert — sekundär, nur als Disclosure */}
         {neglected.length > 0 && (
