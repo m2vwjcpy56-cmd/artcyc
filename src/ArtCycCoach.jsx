@@ -8030,9 +8030,9 @@ function TrainingView({ data, setData, setView }) {
               );
               })}
               {runs.length > 3 && (
-                <button onClick={() => setShowAllRuns(v => !v)}
-                  className="w-full px-4 py-2.5 border-t border-[#C6C6C8]/40 text-[13px] font-medium text-[#007AFF] active:opacity-60">
-                  {showAllRuns ? 'Nur die letzten' : `Alle ${runs.length} Trainings anzeigen`}
+                <button onClick={() => setView('uebungen')}
+                  className="w-full px-4 py-2.5 border-t border-[#C6C6C8]/40 text-[13px] font-medium text-[#007AFF] active:opacity-60 flex items-center justify-center gap-1">
+                  Alle {runs.length} Trainings anzeigen <ChevronRight size={14} strokeWidth={2.4} />
                 </button>
               )}
             </>);
