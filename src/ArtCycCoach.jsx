@@ -6591,16 +6591,20 @@ function Dashboard({ data, setView, onOpenFeedback }) {
   // Trainings-Verlauf: Sessions pro Monat (Parität zu iOS „chart.trainTrend"), max. letzte 12.
   const trainMonthly = useMemo(() => {
     const sessions = (data.sessions || []).filter(s => season === 'all' ? true : inRange(s.date));
+    // Eindeutige Trainings-TAGE pro Monat (nicht Sessions) — sonst kann ein Monat
+    // >31 zeigen, weil mehrere Sessions pro Tag zählen.
     const byMonth = new Map();
     for (const s of sessions) {
-      const ym = (s.date || '').slice(0, 7);
+      const d = s.date || '';
+      const ym = d.slice(0, 7);
       if (ym.length !== 7) continue;
-      byMonth.set(ym, (byMonth.get(ym) || 0) + 1);
+      if (!byMonth.has(ym)) byMonth.set(ym, new Set());
+      byMonth.get(ym).add(d.slice(0, 10));
     }
     const MON = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
     return [...byMonth.keys()].sort().slice(-12).map(ym => ({
       label: MON[Number(ym.slice(5, 7)) - 1] || ym.slice(5, 7),
-      count: byMonth.get(ym),
+      count: byMonth.get(ym).size,
     }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.sessions, season]);
@@ -7983,15 +7987,6 @@ function TrainingView({ data, setData, setView }) {
     const programMap = new Map((data.programs || []).map(p => [p.id, p]));
     const allRuns = (data.competitions || []).filter(c => (c.kind || 'wettkampf') === 'training')
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    const finals = allRuns.map(c => compFinalScore(programMap.get(c.program_id), c)).filter(v => v != null);
-    const deds = allRuns.map(c => {
-      const p = programMap.get(c.program_id); if (!p) return null;
-      const t1 = calcTableResult(p, c.table1, c.t1_schwierigkeit);
-      const t2 = calcTableResult(p, c.table2, c.t2_schwierigkeit);
-      return (t1.abzugGesamt + t2.abzugGesamt) / 2;
-    }).filter(v => v != null);
-    const avg = a => a.length ? (a.reduce((s, x) => s + x, 0) / a.length) : null;
-    const fmt = v => v != null ? v.toFixed(2) : '—';
     return (
       <div className="space-y-4 pb-2">
         <header className="flex items-center gap-1 pt-1">
@@ -8000,32 +7995,20 @@ function TrainingView({ data, setData, setView }) {
         </header>
         {allRuns.length === 0 ? (
           <EmptyState title="Keine Trainings-Wertungen" hint="Werte ein Trainingsprogramm wie einen Wertungsbogen." />
-        ) : (<>
-          <div className="grid grid-cols-2 gap-3">
-            <MetricCard accent="sky" icon={Dumbbell} label="Ø Ergebnis" value={fmt(avg(finals))} sub={allRuns.length + (allRuns.length === 1 ? ' Wertung' : ' Wertungen')} />
-            <MetricCard accent="violet" icon={TrendingUp} label="Ø Abzug" value={fmt(avg(deds))} sub="pro Durchlauf" />
-            <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={finals.length ? Math.max(...finals).toFixed(2) : '—'} sub="Punkte" />
-            <MetricCard accent="emerald" icon={Calendar} label="Zuletzt" value={allRuns[0] ? formatDateShort(allRuns[0].date) : '—'} sub="Datum" />
-          </div>
+        ) : (
           <div className="card-surface rounded-[22px] overflow-hidden">
-            {allRuns.map((c, i) => {
-              const final = compFinalScore(programMap.get(c.program_id), c);
-              return (
-                <button key={c.id} onClick={() => setViewRunId(c.id)}
-                  className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/30 transition ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
-                  <span className="min-w-0">
-                    <span className="block text-[15px] font-medium truncate">{c.name || 'Training'}</span>
-                    <span className="block text-[12px] text-[#8E8E93]">{formatDateShort(c.date)}{c.program_id && programMap.get(c.program_id) ? ' · ' + (programMap.get(c.program_id).exercises || []).reduce((s, e) => s + Number(e.points || 0), 0).toFixed(1) + ' Pkt' : ''}</span>
-                  </span>
-                  <span className="flex items-center gap-1.5 shrink-0">
-                    {final != null && <span className="text-[14px] font-bold text-[#FF9500] tabular-nums">{final.toFixed(2)}</span>}
-                    <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC]" />
-                  </span>
-                </button>
-              );
-            })}
+            {allRuns.map((c, i) => (
+              <button key={c.id} onClick={() => setViewRunId(c.id)}
+                className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/30 transition ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+                <span className="min-w-0">
+                  <span className="block text-[15px] font-medium truncate">{c.name || 'Training'}</span>
+                  <span className="block text-[12px] text-[#8E8E93]">{formatDateShort(c.date)}</span>
+                </span>
+                <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC] shrink-0" />
+              </button>
+            ))}
           </div>
-        </>)}
+        )}
       </div>
     );
   }
@@ -8091,6 +8074,7 @@ function TrainingView({ data, setData, setView }) {
             </>);
           })()}
         </div>
+        <p className="px-1 text-[12px] leading-snug text-[#8E8E93]">Ein Programmdurchlauf, wie im Wettkampf mit Abzügen bewertet. Fließt getrennt in die Statistiken unter „Training“ ein.</p>
 
         {/* OVERVIEW — getönte Karten; Erfolgsquote NICHT als Warnung (violet, neutral-positiv) */}
         {totalCount > 0 && (
