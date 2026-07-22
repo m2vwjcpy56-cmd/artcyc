@@ -7500,6 +7500,7 @@ function TrainingView({ data, setData, setView }) {
   const [erfassenOpen, setErfassenOpen] = useState(false);
   const [runEditorOpen, setRunEditorOpen] = useState(false); // Trainings-Durchlauf werten
   const [viewRunId, setViewRunId] = useState(null);           // Durchlauf-Detail
+  const [runsListOpen, setRunsListOpen] = useState(false);    // „Trainings-Wertungen"-Seite (Liste + Statistik)
   const [fbPickerOpen, setFbPickerOpen] = useState(false);
   // Aufgeklappte Hauptübungs-Gruppen (Phase 2: Variationen).
   const [openGroups, setOpenGroups] = useState(() => new Set());
@@ -7977,6 +7978,58 @@ function TrainingView({ data, setData, setView }) {
     }
   }
 
+  // Dedizierte „Trainings-Wertungen"-Seite: Statistik-Kopf (Ø/Best) + volle Liste (tippbar ins Detail).
+  if (runsListOpen) {
+    const programMap = new Map((data.programs || []).map(p => [p.id, p]));
+    const allRuns = (data.competitions || []).filter(c => (c.kind || 'wettkampf') === 'training')
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const finals = allRuns.map(c => compFinalScore(programMap.get(c.program_id), c)).filter(v => v != null);
+    const deds = allRuns.map(c => {
+      const p = programMap.get(c.program_id); if (!p) return null;
+      const t1 = calcTableResult(p, c.table1, c.t1_schwierigkeit);
+      const t2 = calcTableResult(p, c.table2, c.t2_schwierigkeit);
+      return (t1.abzugGesamt + t2.abzugGesamt) / 2;
+    }).filter(v => v != null);
+    const avg = a => a.length ? (a.reduce((s, x) => s + x, 0) / a.length) : null;
+    const fmt = v => v != null ? v.toFixed(2) : '—';
+    return (
+      <div className="space-y-4 pb-2">
+        <header className="flex items-center gap-1 pt-1">
+          <button onClick={() => setRunsListOpen(false)} className="p-2 -ml-2 text-[#FF9500] active:opacity-50"><ChevronLeft size={26} strokeWidth={2.6} /></button>
+          <h1 className="text-[28px] font-bold tracking-tight leading-none">Trainings-Wertungen</h1>
+        </header>
+        {allRuns.length === 0 ? (
+          <EmptyState title="Keine Trainings-Wertungen" hint="Werte ein Trainingsprogramm wie einen Wertungsbogen." />
+        ) : (<>
+          <div className="grid grid-cols-2 gap-3">
+            <MetricCard accent="sky" icon={Dumbbell} label="Ø Ergebnis" value={fmt(avg(finals))} sub={allRuns.length + (allRuns.length === 1 ? ' Wertung' : ' Wertungen')} />
+            <MetricCard accent="violet" icon={TrendingUp} label="Ø Abzug" value={fmt(avg(deds))} sub="pro Durchlauf" />
+            <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={finals.length ? Math.max(...finals).toFixed(2) : '—'} sub="Punkte" />
+            <MetricCard accent="emerald" icon={Calendar} label="Zuletzt" value={allRuns[0] ? formatDateShort(allRuns[0].date) : '—'} sub="Datum" />
+          </div>
+          <div className="card-surface rounded-[22px] overflow-hidden">
+            {allRuns.map((c, i) => {
+              const final = compFinalScore(programMap.get(c.program_id), c);
+              return (
+                <button key={c.id} onClick={() => setViewRunId(c.id)}
+                  className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/30 transition ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+                  <span className="min-w-0">
+                    <span className="block text-[15px] font-medium truncate">{c.name || 'Training'}</span>
+                    <span className="block text-[12px] text-[#8E8E93]">{formatDateShort(c.date)}{c.program_id && programMap.get(c.program_id) ? ' · ' + (programMap.get(c.program_id).exercises || []).reduce((s, e) => s + Number(e.points || 0), 0).toFixed(1) + ' Pkt' : ''}</span>
+                  </span>
+                  <span className="flex items-center gap-1.5 shrink-0">
+                    {final != null && <span className="text-[14px] font-bold text-[#FF9500] tabular-nums">{final.toFixed(2)}</span>}
+                    <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC]" />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>)}
+      </div>
+    );
+  }
+
   return (
       <div className="space-y-5 pb-2">
         {/* TOP BAR — Actions dezenter (ghost + kompakt) */}
@@ -8030,9 +8083,9 @@ function TrainingView({ data, setData, setView }) {
               );
               })}
               {runs.length > 3 && (
-                <button onClick={() => setView('uebungen')}
+                <button onClick={() => setRunsListOpen(true)}
                   className="w-full px-4 py-2.5 border-t border-[#C6C6C8]/40 text-[13px] font-medium text-[#007AFF] active:opacity-60 flex items-center justify-center gap-1">
-                  Alle {runs.length} Trainings anzeigen <ChevronRight size={14} strokeWidth={2.4} />
+                  Alle {runs.length} Trainings-Wertungen anzeigen <ChevronRight size={14} strokeWidth={2.4} />
                 </button>
               )}
             </>);
