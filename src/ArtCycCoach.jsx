@@ -3464,6 +3464,16 @@ function formatDateShort(iso) {
   return m[3] + '.' + m[2] + '.' + m[1].slice(2);
 }
 
+const MONTHS_DE_SHORT = ['', 'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+// „2026-07-20" -> „20. Jul 2026" (große, gut lesbare Primärzeile)
+function formatDateLong(iso) {
+  if (!iso) return '';
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  const mm = parseInt(m[2], 10);
+  return m[3] + '. ' + (MONTHS_DE_SHORT[mm] || m[2]) + ' ' + m[1];
+}
+
 function statusLabel(ex, status) {
   if (status === 'success') {
     return (ex && ex.success_label) || 'Geklappt';
@@ -6506,6 +6516,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
   // (im Training-Tab geht der Button direkt ins Protokollieren).
   const [erfassenOpen, setErfassenOpen] = useState(false);
   const [dashFocusExId, setDashFocusExId] = useState(null); // „Übung im Fokus" (Default: zuletzt trainiert)
+  const [barSel, setBarSel] = useState(null); // angetippter Monat im Trainings-Verlauf-Chart
   const seasonRange = useMemo(() => {
     const today = new Date();
     if (season === 'all') return { from: null, to: null, label: 'Alle Zeit' };
@@ -6761,21 +6772,31 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub="Punkte" />
         </div>
 
-        {/* TRAININGS-VERLAUF — Sessions pro Monat (Parität zu iOS „chart.trainTrend") */}
-        {trainMonthly.length > 0 && (
-          <div className="card-surface rounded-[22px] p-4 space-y-2">
-            <h2 className="text-[15px] font-semibold flex items-center gap-2"><BarChart3 size={16} className="text-[#FF9500]" /> Trainings-Verlauf</h2>
-            <div className="flex items-end gap-1.5 h-28">
-              {(() => { const max = Math.max(...trainMonthly.map(x => x.count), 1); return trainMonthly.map((m, i) => (
-                <div key={i} className="flex-1 rounded-t bg-[#FF9500]/80 min-w-0" style={{ height: Math.max(3, Math.round(m.count / max * 100)) + '%' }} title={m.count + ' Sessions'} />
-              )); })()}
+        {/* TRAININGS-VERLAUF — Trainingstage pro Monat (Parität zu iOS „chart.trainTrend"); Balken antippbar → genaue Zahl */}
+        {trainMonthly.length > 0 && (() => {
+          const max = Math.max(...trainMonthly.map(x => x.count), 1);
+          const sel = barSel != null ? trainMonthly[barSel] : null;
+          return (
+            <div className="card-surface rounded-[22px] p-4 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-[15px] font-semibold flex items-center gap-2"><BarChart3 size={16} className="text-[#FF9500]" /> Trainings-Verlauf</h2>
+                {sel && <span className="text-[13px] font-semibold text-[#FF9500] tabular-nums">{sel.label}: {sel.count} {sel.count === 1 ? 'Tag' : 'Tage'}</span>}
+              </div>
+              <div className="flex items-end gap-1.5 h-28">
+                {trainMonthly.map((m, i) => (
+                  <button key={i} onClick={() => setBarSel(barSel === i ? null : i)}
+                    className={'flex-1 rounded-t bg-[#FF9500] min-w-0 transition-opacity ' + (barSel == null || barSel === i ? 'opacity-90' : 'opacity-30')}
+                    style={{ height: Math.max(3, Math.round(m.count / max * 100)) + '%' }}
+                    title={m.count + (m.count === 1 ? ' Trainingstag' : ' Trainingstage')} aria-label={m.label + ': ' + m.count} />
+                ))}
+              </div>
+              <div className="flex gap-1.5">
+                {trainMonthly.map((m, i) => <span key={i} className={'flex-1 text-[10px] text-center truncate ' + (barSel === i ? 'text-[#FF9500] font-semibold' : 'text-[#8E8E93]')}>{m.label}</span>)}
+              </div>
+              <div className="text-[12px] text-[#8E8E93]">{trainStats.totalSessions} Sessions · {trainStats.distinctDays} Trainingstage</div>
             </div>
-            <div className="flex gap-1.5">
-              {trainMonthly.map((m, i) => <span key={i} className="flex-1 text-[10px] text-[#8E8E93] text-center truncate">{m.label}</span>)}
-            </div>
-            <div className="text-[12px] text-[#8E8E93]">{trainStats.totalSessions} Sessions · {trainStats.distinctDays} Trainingstage</div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* WETTKAMPF-VERLAUF (Parität zu iOS — „Übung im Fokus" entfernt) */}
         {compStats.count >= 2 && (
@@ -7504,7 +7525,10 @@ function TrainingView({ data, setData, setView }) {
   const [erfassenOpen, setErfassenOpen] = useState(false);
   const [runEditorOpen, setRunEditorOpen] = useState(false); // Trainings-Durchlauf werten
   const [viewRunId, setViewRunId] = useState(null);           // Durchlauf-Detail
-  const [runsListOpen, setRunsListOpen] = useState(false);    // „Trainings-Wertungen"-Seite (Liste + Statistik)
+  const [runsListOpen, setRunsListOpen] = useState(false);    // „Trainings-Wertungen"-Seite (Verwaltungsliste)
+  const [runSort, setRunSort] = useState('date');             // date | aufgestellt | ergebnis | abzug
+  const [runProgramFilter, setRunProgramFilter] = useState(''); // '' = alle Programme
+  const [runRangeDays, setRunRangeDays] = useState('');       // '' = Gesamt, sonst Tage
   const [fbPickerOpen, setFbPickerOpen] = useState(false);
   // Aufgeklappte Hauptübungs-Gruppen (Phase 2: Variationen).
   const [openGroups, setOpenGroups] = useState(() => new Set());
@@ -7975,6 +7999,7 @@ function TrainingView({ data, setData, setView }) {
         onBack={() => setViewRunId(null)}
         onEdit={undefined}
         onDelete={data._isReadOnly ? undefined : () => {
+          if (!confirm('„' + (c.name || 'Training') + '" wird in den Papierkorb verschoben und ist dort 30 Tage wiederherstellbar.')) return;
           setData({ ...data, competitions: (data.competitions || []).filter(x => x.id !== c.id) });
           setViewRunId(null);
         }}
@@ -7985,30 +8010,79 @@ function TrainingView({ data, setData, setView }) {
   // Dedizierte „Trainings-Wertungen"-Seite: Statistik-Kopf (Ø/Best) + volle Liste (tippbar ins Detail).
   if (runsListOpen) {
     const programMap = new Map((data.programs || []).map(p => [p.id, p]));
-    const allRuns = (data.competitions || []).filter(c => (c.kind || 'wettkampf') === 'training')
-      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const baseRuns = (data.competitions || []).filter(c => (c.kind || 'wettkampf') === 'training');
+    // Programme, die in den Wertungen vorkommen (für den Programm-Filter)
+    const runPrograms = [];
+    { const seen = new Set(); for (const c of baseRuns) { const pid = c.program_id; if (pid && !seen.has(pid)) { seen.add(pid); runPrograms.push({ id: pid, name: (programMap.get(pid) && programMap.get(pid).name) || 'Training' }); } } }
+    const dedOf = (c) => {
+      const p = programMap.get(c.program_id); if (!p) return 0;
+      const t1 = calcTableResult(p, c.table1, c.t1_schwierigkeit);
+      const t2 = calcTableResult(p, c.table2, c.t2_schwierigkeit);
+      return (t1.abzugGesamt + t2.abzugGesamt) / 2;
+    };
+    const aufOf = (c) => { const p = programMap.get(c.program_id); return p ? (p.exercises || []).reduce((s, e) => s + Number(e.points || 0), 0) : 0; };
+    let runs = baseRuns.slice();
+    if (runProgramFilter) runs = runs.filter(c => c.program_id === runProgramFilter);
+    if (runRangeDays) { const dt = new Date(); dt.setDate(dt.getDate() - Number(runRangeDays)); const cutoff = dt.toISOString().slice(0, 10); runs = runs.filter(c => (c.date || '') >= cutoff); }
+    if (runSort === 'date') runs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    else if (runSort === 'aufgestellt') runs.sort((a, b) => aufOf(b) - aufOf(a));
+    else if (runSort === 'ergebnis') runs.sort((a, b) => (compFinalScore(programMap.get(b.program_id), b) ?? 0) - (compFinalScore(programMap.get(a.program_id), a) ?? 0));
+    else if (runSort === 'abzug') runs.sort((a, b) => dedOf(b) - dedOf(a));
+    const trailingOf = (c) => {
+      if (runSort === 'aufgestellt') return aufOf(c).toFixed(2);
+      if (runSort === 'ergebnis') { const v = compFinalScore(programMap.get(c.program_id), c); return v != null ? v.toFixed(2) : null; }
+      if (runSort === 'abzug') { const d = dedOf(c); return d > 0.001 ? '−' + d.toFixed(2) : '0.00'; }
+      return null;
+    };
+    const selCls = 'text-[13px] font-medium rounded-full bg-[#E9E9EB] text-[#1c1c1e] pl-3 pr-2 py-1.5 border-0';
     return (
       <div className="space-y-4 pb-2">
         <header className="flex items-center gap-1 pt-1">
           <button onClick={() => setRunsListOpen(false)} className="p-2 -ml-2 text-[#FF9500] active:opacity-50"><ChevronLeft size={26} strokeWidth={2.6} /></button>
           <h1 className="text-[28px] font-bold tracking-tight leading-none">Trainings-Wertungen</h1>
         </header>
-        {allRuns.length === 0 ? (
+        {baseRuns.length === 0 ? (
           <EmptyState title="Keine Trainings-Wertungen" hint="Werte ein Trainingsprogramm wie einen Wertungsbogen." />
-        ) : (
-          <div className="card-surface rounded-[22px] overflow-hidden">
-            {allRuns.map((c, i) => (
-              <button key={c.id} onClick={() => setViewRunId(c.id)}
-                className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/30 transition ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
-                <span className="min-w-0">
-                  <span className="block text-[15px] font-medium truncate">{c.name || 'Training'}</span>
-                  <span className="block text-[12px] text-[#8E8E93]">{formatDateShort(c.date)}</span>
-                </span>
-                <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC] shrink-0" />
-              </button>
-            ))}
+        ) : (<>
+          <div className="flex flex-wrap gap-2">
+            <select value={runSort} onChange={e => setRunSort(e.target.value)} className={selCls}>
+              <option value="date">Datum</option>
+              <option value="aufgestellt">Aufgestellt</option>
+              <option value="ergebnis">Ergebnis</option>
+              <option value="abzug">Abzug</option>
+            </select>
+            {runPrograms.length > 1 && (
+              <select value={runProgramFilter} onChange={e => setRunProgramFilter(e.target.value)} className={selCls}>
+                <option value="">Alle Programme</option>
+                {runPrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            )}
+            <select value={runRangeDays} onChange={e => setRunRangeDays(e.target.value)} className={selCls}>
+              <option value="">Gesamt</option>
+              <option value="28">4 Wo.</option>
+              <option value="90">3 Mon.</option>
+              <option value="180">6 Mon.</option>
+            </select>
           </div>
-        )}
+          <div className="card-surface rounded-[22px] overflow-hidden">
+            {runs.map((c, i) => {
+              const tv = trailingOf(c);
+              return (
+                <button key={c.id} onClick={() => setViewRunId(c.id)}
+                  className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/30 transition ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+                  <span className="min-w-0">
+                    <span className="block text-[15px] font-semibold">{formatDateLong(c.date)}</span>
+                    <span className="block text-[12px] text-[#8E8E93] truncate">{c.name || (programMap.get(c.program_id) && programMap.get(c.program_id).name) || 'Training'}</span>
+                  </span>
+                  <span className="flex items-center gap-1.5 shrink-0">
+                    {tv != null && <span className={'text-[14px] font-bold tabular-nums ' + (runSort === 'abzug' ? 'text-rose-600' : 'text-[#FF9500]')}>{tv}</span>}
+                    <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC]" />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>)}
       </div>
     );
   }
@@ -14141,7 +14215,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
         {confirmDeleteId && (
           <DeleteConfirmModal
             title="Wettkampf löschen?"
-            message={'„' + c.name + '" wirklich löschen? Das kann nicht rückgängig gemacht werden.'}
+            message={'„' + c.name + '" wird in den Papierkorb verschoben und ist dort 30 Tage wiederherstellbar.'}
             onConfirm={() => {
               const id = confirmDeleteId;
               setConfirmDeleteId(null);
@@ -18680,7 +18754,7 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
         )}
         {onDelete && (
           <button onClick={onDelete}
-            className="p-2 text-slate-500 hover:text-rose-600 hover:bg-slate-100 rounded-lg" title="Löschen">
+            className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg" title="Löschen">
             <Trash2 size={18} />
           </button>
         )}
