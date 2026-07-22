@@ -7526,9 +7526,11 @@ function TrainingView({ data, setData, setView }) {
   const [runEditorOpen, setRunEditorOpen] = useState(false); // Trainings-Durchlauf werten
   const [viewRunId, setViewRunId] = useState(null);           // Durchlauf-Detail
   const [runsListOpen, setRunsListOpen] = useState(false);    // „Trainings-Wertungen"-Seite (Verwaltungsliste)
-  const [runSort, setRunSort] = useState('date');             // date | aufgestellt | ergebnis | abzug
   const [runProgramFilter, setRunProgramFilter] = useState(''); // '' = alle Programme
   const [runRangeDays, setRunRangeDays] = useState('');       // '' = Gesamt, sonst Tage
+  const [runMinErg, setRunMinErg] = useState('');            // Ergebnis ab
+  const [runMinAuf, setRunMinAuf] = useState('');            // Aufgestellt ab
+  const [runMaxAbz, setRunMaxAbz] = useState('');            // Abzug bis
   const [fbPickerOpen, setFbPickerOpen] = useState(false);
   // Aufgeklappte Hauptübungs-Gruppen (Phase 2: Variationen).
   const [openGroups, setOpenGroups] = useState(() => new Set());
@@ -8021,20 +8023,17 @@ function TrainingView({ data, setData, setView }) {
       return (t1.abzugGesamt + t2.abzugGesamt) / 2;
     };
     const aufOf = (c) => { const p = programMap.get(c.program_id); return p ? (p.exercises || []).reduce((s, e) => s + Number(e.points || 0), 0) : 0; };
-    let runs = baseRuns.slice();
+    // Immer neueste zuerst; die Filter grenzen die Liste ein (keine Sortier-Optionen).
+    let runs = baseRuns.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     if (runProgramFilter) runs = runs.filter(c => c.program_id === runProgramFilter);
     if (runRangeDays) { const dt = new Date(); dt.setDate(dt.getDate() - Number(runRangeDays)); const cutoff = dt.toISOString().slice(0, 10); runs = runs.filter(c => (c.date || '') >= cutoff); }
-    if (runSort === 'date') runs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    else if (runSort === 'aufgestellt') runs.sort((a, b) => aufOf(b) - aufOf(a));
-    else if (runSort === 'ergebnis') runs.sort((a, b) => (compFinalScore(programMap.get(b.program_id), b) ?? 0) - (compFinalScore(programMap.get(a.program_id), a) ?? 0));
-    else if (runSort === 'abzug') runs.sort((a, b) => dedOf(b) - dedOf(a));
-    const trailingOf = (c) => {
-      if (runSort === 'aufgestellt') return aufOf(c).toFixed(2);
-      if (runSort === 'ergebnis') { const v = compFinalScore(programMap.get(c.program_id), c); return v != null ? v.toFixed(2) : null; }
-      if (runSort === 'abzug') { const d = dedOf(c); return d > 0.001 ? '−' + d.toFixed(2) : '0.00'; }
-      return null;
-    };
+    if (runMinErg !== '') runs = runs.filter(c => { const v = compFinalScore(programMap.get(c.program_id), c); return v != null && v >= Number(runMinErg); });
+    if (runMinAuf !== '') runs = runs.filter(c => aufOf(c) >= Number(runMinAuf));
+    if (runMaxAbz !== '') runs = runs.filter(c => dedOf(c) <= Number(runMaxAbz));
+    const filtersActive = runProgramFilter || runRangeDays || runMinErg !== '' || runMinAuf !== '' || runMaxAbz !== '';
     const selCls = 'text-[13px] font-medium rounded-full bg-[#E9E9EB] text-[#1c1c1e] pl-3 pr-2 py-1.5 border-0';
+    const numCls = 'text-[13px] font-medium rounded-full bg-[#E9E9EB] text-[#1c1c1e] px-3 py-1.5 border-0 w-[130px] placeholder:text-[#8E8E93] placeholder:font-normal';
+    const resetRunFilters = () => { setRunProgramFilter(''); setRunRangeDays(''); setRunMinErg(''); setRunMinAuf(''); setRunMaxAbz(''); };
     return (
       <div className="space-y-4 pb-2">
         <header className="flex items-center gap-1 pt-1">
@@ -8045,12 +8044,6 @@ function TrainingView({ data, setData, setView }) {
           <EmptyState title="Keine Trainings-Wertungen" hint="Werte ein Trainingsprogramm wie einen Wertungsbogen." />
         ) : (<>
           <div className="flex flex-wrap gap-2">
-            <select value={runSort} onChange={e => setRunSort(e.target.value)} className={selCls}>
-              <option value="date">Datum</option>
-              <option value="aufgestellt">Aufgestellt</option>
-              <option value="ergebnis">Ergebnis</option>
-              <option value="abzug">Abzug</option>
-            </select>
             {runPrograms.length > 1 && (
               <select value={runProgramFilter} onChange={e => setRunProgramFilter(e.target.value)} className={selCls}>
                 <option value="">Alle Programme</option>
@@ -8063,25 +8056,33 @@ function TrainingView({ data, setData, setView }) {
               <option value="90">3 Mon.</option>
               <option value="180">6 Mon.</option>
             </select>
+            <input type="number" inputMode="decimal" value={runMinErg} onChange={e => setRunMinErg(e.target.value)} placeholder="Ergebnis ab" className={numCls} />
+            <input type="number" inputMode="decimal" value={runMinAuf} onChange={e => setRunMinAuf(e.target.value)} placeholder="Aufgestellt ab" className={numCls} />
+            <input type="number" inputMode="decimal" value={runMaxAbz} onChange={e => setRunMaxAbz(e.target.value)} placeholder="Abzug bis" className={numCls} />
+            {filtersActive && <button onClick={resetRunFilters} className="text-[13px] font-medium text-[#FF3B30] px-2 active:opacity-60">Zurücksetzen</button>}
           </div>
-          <div className="card-surface rounded-[22px] overflow-hidden">
-            {runs.map((c, i) => {
-              const tv = trailingOf(c);
-              return (
-                <button key={c.id} onClick={() => setViewRunId(c.id)}
-                  className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/30 transition ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
-                  <span className="min-w-0">
-                    <span className="block text-[15px] font-semibold">{formatDateLong(c.date)}</span>
-                    <span className="block text-[12px] text-[#8E8E93] truncate">{c.name || (programMap.get(c.program_id) && programMap.get(c.program_id).name) || 'Training'}</span>
-                  </span>
-                  <span className="flex items-center gap-1.5 shrink-0">
-                    {tv != null && <span className={'text-[14px] font-bold tabular-nums ' + (runSort === 'abzug' ? 'text-rose-600' : 'text-[#FF9500]')}>{tv}</span>}
-                    <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC]" />
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          {runs.length === 0 ? (
+            <div className="card-surface rounded-[22px] px-4 py-8 text-center text-[14px] text-[#8E8E93]">Keine Treffer</div>
+          ) : (
+            <div className="card-surface rounded-[22px] overflow-hidden">
+              {runs.map((c, i) => {
+                const v = compFinalScore(programMap.get(c.program_id), c);
+                return (
+                  <button key={c.id} onClick={() => setViewRunId(c.id)}
+                    className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/30 transition ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
+                    <span className="min-w-0">
+                      <span className="block text-[15px] font-semibold">{formatDateLong(c.date)}</span>
+                      <span className="block text-[12px] text-[#8E8E93] truncate">{c.name || (programMap.get(c.program_id) && programMap.get(c.program_id).name) || 'Training'}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5 shrink-0">
+                      {v != null && <span className="text-[14px] font-bold tabular-nums text-[#FF9500]">{v.toFixed(2)}</span>}
+                      <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC]" />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </>)}
       </div>
     );
