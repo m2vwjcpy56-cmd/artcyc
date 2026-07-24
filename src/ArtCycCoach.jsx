@@ -18434,9 +18434,11 @@ function ExportWettkampf({ data, defaultName = '' }) {
   }, [competitions, athleteFilter]);
 
   const ath = athleteFilter ? athletes.find(a => a.id === athleteFilter) : null;
-  // Auswahl, welche Wettkämpfe exportiert werden (Default: alle des Sportlers).
+  // Auswahl, welche Wettkämpfe exportiert werden — standardmäßig ALLE ABGEWÄHLT
+  // (bewusst auswählen statt abwählen). Der Effekt leert die Auswahl außerdem beim
+  // Sportler-Wechsel, damit keine Wettkämpfe eines anderen Sportlers mitgehen.
   const [chosen, setChosen] = useState(() => new Set());
-  useEffect(() => { setChosen(new Set(filtered.map(c => c.id))); }, [athleteFilter, filtered.length]);
+  useEffect(() => { setChosen(new Set()); }, [athleteFilter, filtered.length]);
   const selected = useMemo(() => filtered.filter(c => chosen.has(c.id)), [filtered, chosen]);
   const toggleChosen = (id) => setChosen(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   // Dateiname frei festlegbar (Konvention: Name_Wettkampfstatistik_Jahr).
