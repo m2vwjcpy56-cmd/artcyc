@@ -7527,10 +7527,10 @@ function TrainingView({ data, setData, setView }) {
   const [viewRunId, setViewRunId] = useState(null);           // Durchlauf-Detail
   const [runsListOpen, setRunsListOpen] = useState(false);    // „Trainings-Wertungen"-Seite (Verwaltungsliste)
   const [runProgramFilter, setRunProgramFilter] = useState(''); // '' = alle Programme
-  const [runRangeDays, setRunRangeDays] = useState('');       // '' = Gesamt, sonst Tage
-  const [runMinErg, setRunMinErg] = useState('');            // Ergebnis ab
-  const [runMinAuf, setRunMinAuf] = useState('');            // Aufgestellt ab
-  const [runMaxAbz, setRunMaxAbz] = useState('');            // Abzug bis
+  const [runRange, setRunRange] = useState('');              // '' = Gesamt; '28d/90d/180d/365d'; 'y2026'…
+  const [runErgMin, setRunErgMin] = useState(''); const [runErgMax, setRunErgMax] = useState(''); // Ergebnis von–bis
+  const [runAufMin, setRunAufMin] = useState(''); const [runAufMax, setRunAufMax] = useState(''); // Aufgestellt von–bis
+  const [runAbzMin, setRunAbzMin] = useState(''); const [runAbzMax, setRunAbzMax] = useState(''); // Abzug von–bis
   const [fbPickerOpen, setFbPickerOpen] = useState(false);
   // Aufgeklappte Hauptübungs-Gruppen (Phase 2: Variationen).
   const [openGroups, setOpenGroups] = useState(() => new Set());
@@ -8023,17 +8023,23 @@ function TrainingView({ data, setData, setView }) {
       return (t1.abzugGesamt + t2.abzugGesamt) / 2;
     };
     const aufOf = (c) => { const p = programMap.get(c.program_id); return p ? (p.exercises || []).reduce((s, e) => s + Number(e.points || 0), 0) : 0; };
+    // Jahre, die in den Wertungen vorkommen (für den Zeitraum-Filter)
+    const runYears = Array.from(new Set(baseRuns.map(c => (c.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
     // Immer neueste zuerst; die Filter grenzen die Liste ein (keine Sortier-Optionen).
     let runs = baseRuns.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     if (runProgramFilter) runs = runs.filter(c => c.program_id === runProgramFilter);
-    if (runRangeDays) { const dt = new Date(); dt.setDate(dt.getDate() - Number(runRangeDays)); const cutoff = dt.toISOString().slice(0, 10); runs = runs.filter(c => (c.date || '') >= cutoff); }
-    if (runMinErg !== '') runs = runs.filter(c => { const v = compFinalScore(programMap.get(c.program_id), c); return v != null && v >= Number(runMinErg); });
-    if (runMinAuf !== '') runs = runs.filter(c => aufOf(c) >= Number(runMinAuf));
-    if (runMaxAbz !== '') runs = runs.filter(c => dedOf(c) <= Number(runMaxAbz));
-    const filtersActive = runProgramFilter || runRangeDays || runMinErg !== '' || runMinAuf !== '' || runMaxAbz !== '';
+    if (runRange) {
+      if (runRange.slice(-1) === 'd') { const dt = new Date(); dt.setDate(dt.getDate() - Number(runRange.slice(0, -1))); const cutoff = dt.toISOString().slice(0, 10); runs = runs.filter(c => (c.date || '') >= cutoff); }
+      else if (runRange[0] === 'y') { const y = runRange.slice(1); runs = runs.filter(c => (c.date || '').slice(0, 4) === y); }
+    }
+    if (runErgMin !== '' || runErgMax !== '') runs = runs.filter(c => { const v = compFinalScore(programMap.get(c.program_id), c); if (v == null) return false; if (runErgMin !== '' && v < Number(runErgMin)) return false; if (runErgMax !== '' && v > Number(runErgMax)) return false; return true; });
+    if (runAufMin !== '' || runAufMax !== '') runs = runs.filter(c => { const v = aufOf(c); if (runAufMin !== '' && v < Number(runAufMin)) return false; if (runAufMax !== '' && v > Number(runAufMax)) return false; return true; });
+    if (runAbzMin !== '' || runAbzMax !== '') runs = runs.filter(c => { const v = dedOf(c); if (runAbzMin !== '' && v < Number(runAbzMin)) return false; if (runAbzMax !== '' && v > Number(runAbzMax)) return false; return true; });
+    const filtersActive = runProgramFilter || runRange || runErgMin !== '' || runErgMax !== '' || runAufMin !== '' || runAufMax !== '' || runAbzMin !== '' || runAbzMax !== '';
     const selCls = 'text-[13px] font-medium rounded-full bg-[#E9E9EB] text-[#1c1c1e] pl-3 pr-2 py-1.5 border-0';
-    const numCls = 'text-[13px] font-medium rounded-full bg-[#E9E9EB] text-[#1c1c1e] px-3 py-1.5 border-0 w-[130px] placeholder:text-[#8E8E93] placeholder:font-normal';
-    const resetRunFilters = () => { setRunProgramFilter(''); setRunRangeDays(''); setRunMinErg(''); setRunMinAuf(''); setRunMaxAbz(''); };
+    const lblCls = 'text-[13px] font-medium text-[#3C3C43]';
+    const numCls = 'text-[13px] font-medium rounded-full bg-[#E9E9EB] text-[#1c1c1e] px-3 py-1.5 border-0 w-full placeholder:text-[#8E8E93] placeholder:font-normal';
+    const resetRunFilters = () => { setRunProgramFilter(''); setRunRange(''); setRunErgMin(''); setRunErgMax(''); setRunAufMin(''); setRunAufMax(''); setRunAbzMin(''); setRunAbzMax(''); };
     return (
       <div className="space-y-4 pb-2">
         <header className="flex items-center gap-1 pt-1">
@@ -8043,23 +8049,35 @@ function TrainingView({ data, setData, setView }) {
         {baseRuns.length === 0 ? (
           <EmptyState title="Keine Trainings-Wertungen" hint="Werte ein Trainingsprogramm wie einen Wertungsbogen." />
         ) : (<>
-          <div className="flex flex-wrap gap-2">
-            {runPrograms.length > 1 && (
-              <select value={runProgramFilter} onChange={e => setRunProgramFilter(e.target.value)} className={selCls}>
-                <option value="">Alle Programme</option>
-                {runPrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          <div className="space-y-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              {runPrograms.length > 1 && (
+                <select value={runProgramFilter} onChange={e => setRunProgramFilter(e.target.value)} className={selCls}>
+                  <option value="">Alle Programme</option>
+                  {runPrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              )}
+              <select value={runRange} onChange={e => setRunRange(e.target.value)} className={selCls}>
+                <option value="">Gesamt</option>
+                <option value="28d">4 Wo.</option>
+                <option value="90d">3 Mon.</option>
+                <option value="180d">6 Mon.</option>
+                <option value="365d">12 Mon.</option>
+                {runYears.length > 0 && <optgroup label="Jahr">{runYears.map(y => <option key={y} value={'y' + y}>{y}</option>)}</optgroup>}
               </select>
-            )}
-            <select value={runRangeDays} onChange={e => setRunRangeDays(e.target.value)} className={selCls}>
-              <option value="">Gesamt</option>
-              <option value="28">4 Wo.</option>
-              <option value="90">3 Mon.</option>
-              <option value="180">6 Mon.</option>
-            </select>
-            <input type="number" inputMode="decimal" value={runMinErg} onChange={e => setRunMinErg(e.target.value)} placeholder="Ergebnis ab" className={numCls} />
-            <input type="number" inputMode="decimal" value={runMinAuf} onChange={e => setRunMinAuf(e.target.value)} placeholder="Aufgestellt ab" className={numCls} />
-            <input type="number" inputMode="decimal" value={runMaxAbz} onChange={e => setRunMaxAbz(e.target.value)} placeholder="Abzug bis" className={numCls} />
-            {filtersActive && <button onClick={resetRunFilters} className="text-[13px] font-medium text-[#FF3B30] px-2 active:opacity-60">Zurücksetzen</button>}
+              {filtersActive && <button onClick={resetRunFilters} className="text-[13px] font-medium text-[#FF3B30] px-2 active:opacity-60">Zurücksetzen</button>}
+            </div>
+            <div className="grid grid-cols-[5.5rem_1fr_1fr] gap-x-2 gap-y-1.5 items-center max-w-[400px]">
+              <span className={lblCls}>Ergebnis</span>
+              <input type="number" inputMode="decimal" value={runErgMin} onChange={e => setRunErgMin(e.target.value)} placeholder="von" className={numCls} />
+              <input type="number" inputMode="decimal" value={runErgMax} onChange={e => setRunErgMax(e.target.value)} placeholder="bis" className={numCls} />
+              <span className={lblCls}>Aufgestellt</span>
+              <input type="number" inputMode="decimal" value={runAufMin} onChange={e => setRunAufMin(e.target.value)} placeholder="von" className={numCls} />
+              <input type="number" inputMode="decimal" value={runAufMax} onChange={e => setRunAufMax(e.target.value)} placeholder="bis" className={numCls} />
+              <span className={lblCls}>Abzug</span>
+              <input type="number" inputMode="decimal" value={runAbzMin} onChange={e => setRunAbzMin(e.target.value)} placeholder="von" className={numCls} />
+              <input type="number" inputMode="decimal" value={runAbzMax} onChange={e => setRunAbzMax(e.target.value)} placeholder="bis" className={numCls} />
+            </div>
           </div>
           {runs.length === 0 ? (
             <div className="card-surface rounded-[22px] px-4 py-8 text-center text-[14px] text-[#8E8E93]">Keine Treffer</div>

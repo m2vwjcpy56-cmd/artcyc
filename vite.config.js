@@ -9,7 +9,10 @@ import { readFileSync } from 'node:fs';
 // Node-Versionen ohne `with { type: 'json' }`-Support funktioniert.)
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 const APP_VERSION = pkg.version;
-const BUILD_DATE = new Date().toISOString().slice(0, 10);
+// Datum + Uhrzeit (UTC) als Frische-Fingerabdruck — so lässt sich auch bei
+// mehreren Deploys am selben Tag in den Einstellungen erkennen, ob die neue
+// Version wirklich geladen ist.
+const BUILD_DATE = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 
 export default defineConfig({
   define: {
