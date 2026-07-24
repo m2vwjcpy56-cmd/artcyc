@@ -8036,9 +8036,9 @@ function TrainingView({ data, setData, setView }) {
     if (runAufMin !== '' || runAufMax !== '') runs = runs.filter(c => { const v = aufOf(c); if (runAufMin !== '' && v < Number(runAufMin)) return false; if (runAufMax !== '' && v > Number(runAufMax)) return false; return true; });
     if (runAbzMin !== '' || runAbzMax !== '') runs = runs.filter(c => { const v = dedOf(c); if (runAbzMin !== '' && v < Number(runAbzMin)) return false; if (runAbzMax !== '' && v > Number(runAbzMax)) return false; return true; });
     const filtersActive = runProgramFilter || runRange || runErgMin !== '' || runErgMax !== '' || runAufMin !== '' || runAufMax !== '' || runAbzMin !== '' || runAbzMax !== '';
-    const selCls = 'text-[13px] font-medium rounded-full bg-[#E9E9EB] text-[#1c1c1e] pl-3 pr-2 py-1.5 border-0';
-    const lblCls = 'text-[13px] font-medium text-[#3C3C43]';
-    const numCls = 'text-[13px] font-medium rounded-full bg-[#E9E9EB] text-[#1c1c1e] px-3 py-1.5 border-0 w-full placeholder:text-[#8E8E93] placeholder:font-normal';
+    const selCls = 'text-[13px] font-medium rounded-full bg-slate-100 text-slate-900 pl-3 pr-2 py-1.5 border-0';
+    const lblCls = 'text-[13px] font-medium text-slate-500';
+    const numCls = 'text-[13px] font-medium rounded-lg bg-slate-100 text-slate-900 px-3 py-1.5 border-0 w-full placeholder:text-slate-400 placeholder:font-normal';
     const resetRunFilters = () => { setRunProgramFilter(''); setRunRange(''); setRunErgMin(''); setRunErgMax(''); setRunAufMin(''); setRunAufMax(''); setRunAbzMin(''); setRunAbzMax(''); };
     return (
       <div className="space-y-4 pb-2">
