@@ -18396,6 +18396,12 @@ function mauteExKey(ex) {
   const c = String((ex && (ex.nr || ex.code)) || '').trim();
   return c ? c.toLowerCase() : String((ex && ex.name) || '').toLowerCase().replace(/\s+/g, ' ').replace(/[ .]+$/, '').trim();
 }
+// Export-Formate: EINE Auswahl + EIN Knopf (statt drei Knöpfe untereinander).
+const EXPORT_FORMATS = [
+  { id: 'xlsm', label: 'Maute-Vorlage', ext: '.xlsm', hint: 'Offizielle Vorlage mit Diagrammen, Makros und allen Formeln — genau das, was du dem Trainer schickst.' },
+  { id: 'xlsx', label: 'Tabelle', ext: '.xlsx', hint: 'Schlichte Tabelle mit den Werten, ohne Formeln und Diagramme.' },
+  { id: 'csv', label: 'CSV', ext: '.csv', hint: 'Reine Textdatei — öffnet in Numbers, Excel und Google Sheets.' },
+];
 function ExportWettkampf({ data, defaultName = '' }) {
   const programs = data.programs || [];
   const competitions = data.competitions || [];
@@ -18430,7 +18436,8 @@ function ExportWettkampf({ data, defaultName = '' }) {
   const filtered = useMemo(() => {
     return competitions
       .filter(c => !athleteFilter || c.athlete_id === athleteFilter)
-      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      // Neueste zuerst — die aktuellen Wettkämpfe stehen oben (Parität zu iOS).
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [competitions, athleteFilter]);
 
   const ath = athleteFilter ? athletes.find(a => a.id === athleteFilter) : null;
@@ -18527,6 +18534,14 @@ function ExportWettkampf({ data, defaultName = '' }) {
 
   const [vorlageBusy, setVorlageBusy] = useState(false);
   const [vorlageErr, setVorlageErr] = useState('');
+  const [exportFormat, setExportFormat] = useState('xlsm');
+  const fmt = EXPORT_FORMATS.find(f => f.id === exportFormat) || EXPORT_FORMATS[0];
+  const runExport = () => {
+    if (selected.length === 0) return;
+    if (exportFormat === 'xlsm') return exportVorlage();
+    if (exportFormat === 'xlsx') return exportMauteXLSX();
+    return exportMauteCSV();
+  };
   const exportVorlage = async () => {
     if (selected.length === 0) return;
     setVorlageBusy(true); setVorlageErr('');
@@ -18562,6 +18577,29 @@ function ExportWettkampf({ data, defaultName = '' }) {
             </select>
           </div>
         )}
+
+        {/* Format — eine Auswahl statt drei Knöpfe */}
+        <div>
+          <label className="text-xs font-medium text-slate-500 block mb-1.5">Format</label>
+          <div className="bg-[#E5E5EA] rounded-xl p-1 flex gap-1">
+            {EXPORT_FORMATS.map(f => (
+              <button key={f.id} onClick={() => setExportFormat(f.id)}
+                className={'flex-1 py-1.5 rounded-lg font-medium text-[13px] transition ' +
+                  (exportFormat === f.id ? 'ios-seg-active' : 'text-[#3C3C43] active:opacity-70')}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[12px] text-slate-500 mt-1.5 leading-snug">{fmt.hint}</p>
+        </div>
+
+        <div>
+          <label className="text-xs font-medium text-slate-500 block mb-1.5">Name (für den Dateinamen)</label>
+          <input value={fileLabel} onChange={e => setFileLabel(e.target.value)}
+            placeholder="z. B. Ruben Geyer"
+            className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500 text-[15px]" />
+          <div className="text-[12px] text-slate-500 mt-1 truncate">Datei: <span className="font-medium text-slate-700">{baseFilename()}{fmt.ext}</span></div>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 space-y-3">
@@ -18598,58 +18636,28 @@ function ExportWettkampf({ data, defaultName = '' }) {
         )}
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
-            <FileSpreadsheet size={20} className="text-amber-700" />
-          </div>
-          <div className="flex-1">
-            <div className="font-semibold">Maute-Format</div>
-            <div className="text-xs text-slate-500">
-              {selected.length} Wettkämpfe · Kampfgericht 1 + 2
-            </div>
-          </div>
-        </div>
-
-        <div className="mb-3">
-          <label className="text-xs font-medium text-slate-500 block mb-1.5">Name (für den Dateinamen)</label>
-          <input value={fileLabel} onChange={e => setFileLabel(e.target.value)}
-            placeholder="z. B. Ruben Geyer"
-            className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500 text-[15px]" />
-          <div className="text-[12px] text-slate-500 mt-1 truncate">Datei: <span className="font-medium text-slate-700">{baseFilename()}.xlsm</span></div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <button onClick={exportVorlage}
-            disabled={selected.length === 0 || vorlageBusy}
-            className="w-full bg-amber-500 text-slate-900 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 rounded-xl font-semibold flex items-center gap-2 justify-center">
-            {vorlageBusy ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
-            {vorlageBusy ? 'Erstelle …' : 'Offizielle Maute-Vorlage (.xlsm)'}
-          </button>
-          <button onClick={exportMauteXLSX}
-            disabled={selected.length === 0}
-            className="w-full bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 rounded-xl font-medium text-sm flex items-center gap-2 justify-center">
-            <Download size={16} /> Einfache Tabelle (.xlsx)
-          </button>
-          <button onClick={exportMauteCSV}
-            disabled={selected.length === 0}
-            className="w-full bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2.5 rounded-xl font-medium text-sm flex items-center gap-2 justify-center">
-            <Download size={16} /> Als CSV
-          </button>
-        </div>
-
-        {vorlageErr && <p className="text-sm text-rose-600 mt-3 text-center">{vorlageErr}</p>}
-        {selected.length === 0 && (
-          <p className="text-sm text-slate-500 mt-3 text-center">
-            Wähle oben mindestens einen Wettkampf aus.
-          </p>
-        )}
+      <div className="bg-slate-50 rounded-xl p-4 text-xs text-slate-600 space-y-1.5">
+        <div>Abwertungen werden als Gesamtsumme beider Kampfgerichte eingetragen (wie in der Maute-Anleitung).</div>
+        <div className="text-slate-500">Max. 15 Wettkämpfe · 30 Übungen pro Datei.</div>
       </div>
 
-      <div className="bg-slate-50 rounded-xl p-4 text-xs text-slate-600 space-y-1.5">
-        <div><strong>Offizielle Maute-Vorlage (.xlsm):</strong> befüllt die echte Statistik-Vorlage — mit Diagrammen, Makros und allen Berechnungen. Genau das, was du dem Trainer schickst.</div>
-        <div className="text-slate-500">Abwertungen werden als Gesamtsumme beider Kampfgerichte eingetragen (wie in der Maute-Anleitung). Max. 15 Wettkämpfe · 30 Übungen pro Datei.</div>
-        <div className="mt-1 pt-1 border-t border-slate-200"><strong>Einfache Tabelle / CSV:</strong> schlichter Werte-Export ohne Formeln/Diagramme — als Fallback.</div>
+      {/* Aktionsleiste — klebt über der Tab-Bar, bleibt beim Scrollen sichtbar,
+          damit man nicht ans Listenende scrollen muss. */}
+      <div className="sticky z-20 bottom-[calc(env(safe-area-inset-bottom)+84px)] sm:bottom-4">
+        <div className="rounded-2xl p-2 bg-white/90 backdrop-blur-xl border border-slate-200/60 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
+          <button onClick={runExport}
+            disabled={selected.length === 0 || vorlageBusy}
+            className="w-full bg-[#FF9500] text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed px-5 py-3 rounded-xl font-semibold flex items-center gap-2 justify-center active:scale-[0.99] transition">
+            {vorlageBusy ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+            {vorlageBusy ? 'Erstelle …'
+              : selected.length === 0 ? 'Exportieren'
+              : `Exportieren · ${selected.length} ${selected.length === 1 ? 'Wettkampf' : 'Wettkämpfe'}`}
+          </button>
+          {vorlageErr && <p className="text-[13px] text-rose-600 mt-2 text-center">{vorlageErr}</p>}
+          {selected.length === 0 && (
+            <p className="text-[13px] text-slate-500 mt-2 text-center">Wähle mindestens einen Wettkampf aus.</p>
+          )}
+        </div>
       </div>
     </div>
   );
