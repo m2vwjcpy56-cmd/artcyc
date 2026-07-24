@@ -18386,7 +18386,23 @@ function ExportWettkampf({ data, defaultName = '' }) {
 
   // Übungen eines Wettkampfs = Übungen SEINES Programms (Programmwechsel-fest;
   // die Export-Zeilen sind die Vereinigung über alle gewählten Wettkämpfe).
-  const exercisesFor = (c) => { const p = programs.find(pp => pp.id === c.program_id); return (p && p.exercises) || []; };
+  // Fallback-Kette wie nativ `effectiveProgram` + Wettkampf-Detail, damit auch
+  // gescannte Wettkämpfe bzw. solche mit gelöschtem/fremdem Programm gefüllt
+  // werden (sonst blieb deren ganze i.P.-Spalte leer):
+  //   1) verknüpftes Programm über program_id
+  //   2) gespeicherter Programm-Snapshot (competition / pdf_ref)
+  //   3) aus der Wertungstabelle abgeleitet, sofern Einträge Name/Nummer tragen
+  const exercisesFor = (c) => {
+    const p = programs.find(pp => pp.id === c.program_id);
+    if (p && Array.isArray(p.exercises) && p.exercises.length) return p.exercises;
+    const ref = c.pdf_ref || null;
+    const snap = c.program_snapshot || (ref && ref.program_snapshot) || null;
+    if (Array.isArray(snap) && snap.length) return snap;
+    const pick = (t) => (Array.isArray(t) && t.some(e => Number(e && e.points) > 0)) ? t : null;
+    const src = pick(c.table1) || pick(c.table2) || [];
+    const derived = src.map(e => ({ name: e && e.name, code: (e && (e.code || e.nr)) || undefined, points: Number(e && e.points) || 0 }));
+    return derived.some(e => mauteExKey(e)) ? derived : [];
+  };
   const unionOf = (comps) => {
     const seen = new Set(); const out = [];
     comps.forEach(c => exercisesFor(c).forEach(ex => { const k = mauteExKey(ex); if (k && !seen.has(k)) { seen.add(k); out.push(ex); } }));
