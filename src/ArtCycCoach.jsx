@@ -7528,9 +7528,10 @@ function TrainingView({ data, setData, setView }) {
   const [runsListOpen, setRunsListOpen] = useState(false);    // „Trainings-Wertungen"-Seite (Verwaltungsliste)
   const [runProgramFilter, setRunProgramFilter] = useState(''); // '' = alle Programme
   const [runRange, setRunRange] = useState('');              // '' = Gesamt; '28d/90d/180d/365d'; 'y2026'…
-  const [runErgMin, setRunErgMin] = useState(''); const [runErgMax, setRunErgMax] = useState(''); // Ergebnis von–bis
-  const [runAufMin, setRunAufMin] = useState(''); const [runAufMax, setRunAufMax] = useState(''); // Aufgestellt von–bis
-  const [runAbzMin, setRunAbzMin] = useState(''); const [runAbzMax, setRunAbzMax] = useState(''); // Abzug von–bis
+  // [min, max] je Kennzahl; null = keine Grenze (Griff am Anschlag)
+  const [runErg, setRunErg] = useState([null, null]);
+  const [runAuf, setRunAuf] = useState([null, null]);
+  const [runAbz, setRunAbz] = useState([null, null]);
   const [fbPickerOpen, setFbPickerOpen] = useState(false);
   // Aufgeklappte Hauptübungs-Gruppen (Phase 2: Variationen).
   const [openGroups, setOpenGroups] = useState(() => new Set());
@@ -8032,14 +8033,40 @@ function TrainingView({ data, setData, setView }) {
       if (runRange.slice(-1) === 'd') { const dt = new Date(); dt.setDate(dt.getDate() - Number(runRange.slice(0, -1))); const cutoff = dt.toISOString().slice(0, 10); runs = runs.filter(c => (c.date || '') >= cutoff); }
       else if (runRange[0] === 'y') { const y = runRange.slice(1); runs = runs.filter(c => (c.date || '').slice(0, 4) === y); }
     }
-    if (runErgMin !== '' || runErgMax !== '') runs = runs.filter(c => { const v = compFinalScore(programMap.get(c.program_id), c); if (v == null) return false; if (runErgMin !== '' && v < Number(runErgMin)) return false; if (runErgMax !== '' && v > Number(runErgMax)) return false; return true; });
-    if (runAufMin !== '' || runAufMax !== '') runs = runs.filter(c => { const v = aufOf(c); if (runAufMin !== '' && v < Number(runAufMin)) return false; if (runAufMax !== '' && v > Number(runAufMax)) return false; return true; });
-    if (runAbzMin !== '' || runAbzMax !== '') runs = runs.filter(c => { const v = dedOf(c); if (runAbzMin !== '' && v < Number(runAbzMin)) return false; if (runAbzMax !== '' && v > Number(runAbzMax)) return false; return true; });
-    const filtersActive = runProgramFilter || runRange || runErgMin !== '' || runErgMax !== '' || runAufMin !== '' || runAufMax !== '' || runAbzMin !== '' || runAbzMax !== '';
+    const inRange = (v, [lo, hi]) => (lo == null || v >= lo) && (hi == null || v <= hi);
+    const rangeSet = (p) => p[0] != null || p[1] != null;
+    if (rangeSet(runErg)) runs = runs.filter(c => { const v = compFinalScore(programMap.get(c.program_id), c); return v != null && inRange(v, runErg); });
+    if (rangeSet(runAuf)) runs = runs.filter(c => inRange(aufOf(c), runAuf));
+    if (rangeSet(runAbz)) runs = runs.filter(c => inRange(dedOf(c), runAbz));
+    const filtersActive = !!(runProgramFilter || runRange) || rangeSet(runErg) || rangeSet(runAuf) || rangeSet(runAbz);
     const selCls = 'text-[13px] font-medium rounded-full bg-slate-100 text-slate-900 pl-3 pr-2 py-1.5 border-0';
-    const lblCls = 'text-[13px] font-medium text-slate-500';
-    const numCls = 'text-[13px] font-medium rounded-lg bg-slate-100 text-slate-900 px-3 py-1.5 border-0 w-full placeholder:text-slate-400 placeholder:font-normal';
-    const resetRunFilters = () => { setRunProgramFilter(''); setRunRange(''); setRunErgMin(''); setRunErgMax(''); setRunAufMin(''); setRunAufMax(''); setRunAbzMin(''); setRunAbzMax(''); };
+    const resetRunFilters = () => { setRunProgramFilter(''); setRunRange(''); setRunErg([null, null]); setRunAuf([null, null]); setRunAbz([null, null]); };
+    // Wertebereiche aus den Daten — der Regler braucht Anfang und Ende.
+    const boundsOf = (vals) => { const xs = vals.filter(v => v != null && isFinite(v)); return xs.length ? [Math.min(...xs), Math.max(...xs)] : null; };
+    const ergB = boundsOf(baseRuns.map(c => compFinalScore(programMap.get(c.program_id), c)));
+    const aufB = boundsOf(baseRuns.map(aufOf));
+    const abzB = boundsOf(baseRuns.map(dedOf));
+    const fmtNum = (v) => Number.isInteger(v) ? String(v) : v.toFixed(1);
+    // Eine Kennzahl als Regler-Zeile; ausgeblendet, wenn alle Werte gleich sind
+    // (dann gibt es nichts zu filtern).
+    const rangeRow = (label, b, pair, setPair) => {
+      if (!b || b[1] <= b[0]) return null;
+      const [lo, hi] = b;
+      const cur = [pair[0] ?? lo, pair[1] ?? hi];
+      const act = pair[0] != null || pair[1] != null;
+      return (
+        <div className="card-surface rounded-2xl px-4 py-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[14px] font-medium text-slate-700">{label}</span>
+            <span className={'text-[13px] tabular-nums ' + (act ? 'text-[#FF9500] font-semibold' : 'text-slate-400')}>
+              {act ? fmtNum(cur[0]) + ' – ' + fmtNum(cur[1]) : 'Alle'}
+            </span>
+          </div>
+          <DualRange min={lo} max={hi} low={cur[0]} high={cur[1]} active={act}
+            onChange={(a, z) => setPair([a <= lo + 0.001 ? null : a, z >= hi - 0.001 ? null : z])} />
+        </div>
+      );
+    };
     return (
       <div className="space-y-4 pb-2">
         <header className="flex items-center gap-1 pt-1">
@@ -8067,16 +8094,10 @@ function TrainingView({ data, setData, setView }) {
               </select>
               {filtersActive && <button onClick={resetRunFilters} className="text-[13px] font-medium text-[#FF3B30] px-2 active:opacity-60">Zurücksetzen</button>}
             </div>
-            <div className="grid grid-cols-[5.5rem_1fr_1fr] gap-x-2 gap-y-1.5 items-center max-w-[400px]">
-              <span className={lblCls}>Ergebnis</span>
-              <input type="number" inputMode="decimal" value={runErgMin} onChange={e => setRunErgMin(e.target.value)} placeholder="von" className={numCls} />
-              <input type="number" inputMode="decimal" value={runErgMax} onChange={e => setRunErgMax(e.target.value)} placeholder="bis" className={numCls} />
-              <span className={lblCls}>Aufgestellt</span>
-              <input type="number" inputMode="decimal" value={runAufMin} onChange={e => setRunAufMin(e.target.value)} placeholder="von" className={numCls} />
-              <input type="number" inputMode="decimal" value={runAufMax} onChange={e => setRunAufMax(e.target.value)} placeholder="bis" className={numCls} />
-              <span className={lblCls}>Abzug</span>
-              <input type="number" inputMode="decimal" value={runAbzMin} onChange={e => setRunAbzMin(e.target.value)} placeholder="von" className={numCls} />
-              <input type="number" inputMode="decimal" value={runAbzMax} onChange={e => setRunAbzMax(e.target.value)} placeholder="bis" className={numCls} />
+            <div className="space-y-2 max-w-[440px]">
+              {rangeRow('Ergebnis', ergB, runErg, setRunErg)}
+              {rangeRow('Aufgestellt', aufB, runAuf, setRunAuf)}
+              {rangeRow('Abzug', abzB, runAbz, setRunAbz)}
             </div>
           </div>
           {runs.length === 0 ? (
@@ -18396,6 +18417,48 @@ function mauteExKey(ex) {
   const c = String((ex && (ex.nr || ex.code)) || '').trim();
   return c ? c.toLowerCase() : String((ex && ex.name) || '').toLowerCase().replace(/\s+/g, ' ').replace(/[ .]+$/, '').trim();
 }
+// Schieberegler mit ZWEI Griffen (Minimum + Maximum). Eigene Zeiger-Logik statt
+// zwei überlagerter <input type=range> — die lassen sich auf Touch kaum sauber
+// treffen. Griff am Anschlag = keine Grenze (null).
+function DualRange({ min, max, low, high, onChange, active, step = 0.1 }) {
+  const trackRef = useRef(null);
+  const dragRef = useRef(null);   // 'low' | 'high' | null
+  const span = Math.max(max - min, 0.0001);
+  const pct = (v) => ((v - min) / span) * 100;
+  const valueAt = (clientX) => {
+    const r = trackRef.current.getBoundingClientRect();
+    const t = Math.min(Math.max((clientX - r.left) / Math.max(r.width, 1), 0), 1);
+    return Math.min(Math.max(Math.round((min + t * span) / step) * step, min), max);
+  };
+  const apply = (clientX) => {
+    const v = valueAt(clientX);
+    if (dragRef.current === 'low') onChange(Math.min(v, high), high);
+    else onChange(low, Math.max(v, low));
+  };
+  const onPointerDown = (e) => {
+    const v = valueAt(e.clientX);
+    // näheren Griff greifen — wie in der iOS-Variante
+    dragRef.current = Math.abs(v - low) <= Math.abs(v - high) ? 'low' : 'high';
+    e.currentTarget.setPointerCapture(e.pointerId);
+    apply(e.clientX);
+  };
+  return (
+    <div ref={trackRef} onPointerDown={onPointerDown}
+      onPointerMove={(e) => { if (dragRef.current) apply(e.clientX); }}
+      onPointerUp={() => { dragRef.current = null; }}
+      onPointerCancel={() => { dragRef.current = null; }}
+      className="relative h-7 cursor-pointer touch-none select-none">
+      <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 rounded-full bg-slate-200" />
+      <div className={'absolute top-1/2 -translate-y-1/2 h-1 rounded-full ' + (active ? 'bg-[#FF9500]' : 'bg-slate-300')}
+        style={{ left: pct(low) + '%', width: Math.max(pct(high) - pct(low), 0) + '%' }} />
+      {[low, high].map((v, i) => (
+        <div key={i} className="absolute top-1/2 w-[26px] h-[26px] -translate-y-1/2 -translate-x-1/2 rounded-full bg-white shadow-[0_1px_4px_rgba(0,0,0,0.28)] border border-black/5"
+          style={{ left: pct(v) + '%' }} />
+      ))}
+    </div>
+  );
+}
+
 // Export-Formate: EINE Auswahl + EIN Knopf (statt drei Knöpfe untereinander).
 const EXPORT_FORMATS = [
   { id: 'xlsm', label: 'Maute-Vorlage', ext: '.xlsm', hint: 'Offizielle Vorlage mit Diagrammen, Makros und allen Formeln — genau das, was du dem Trainer schickst.' },
