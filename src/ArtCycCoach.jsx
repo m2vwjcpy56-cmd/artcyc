@@ -7675,9 +7675,7 @@ function TrainingView({ data, setData, setView }) {
             {s.withRope === true && (
               <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">Seil</span>
             )}
-            {s.withRope === false && (
-              <span className="text-[10px] font-medium text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded-full shrink-0">ohne Seil</span>
-            )}
+            {/* Kein „ohne Seil"-Etikett: ohne Seil ist der Normalfall (Parität iOS). */}
             {(s.repCount || 0) > 0 && (
               <span className="text-[10px] font-medium text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded-full shrink-0">{s.repCount}×</span>
             )}
