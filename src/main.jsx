@@ -59,6 +59,56 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   window.addEventListener('pageshow', (e) => { if (e.persisted) checkUpdate(); });
 }
 
+// ---------------------------------------------------------------------------
+// Frische-Check, der den Service Worker UMGEHT.
+// Hintergrund: auf dem iOS-Homescreen blieb die App wiederholt auf einem alten
+// Stand stehen, obwohl der Server längst neu war — r.update() half nicht, weil
+// die App aus dem Standby kommt statt neu zu laden. Darum fragen wir eine
+// winzige version.json direkt aus dem Netz (no-store, Cache-Buster) und
+// vergleichen sie mit dem eingebauten Build-Stempel. Bei Abweichung: Caches weg,
+// SW deregistrieren, hart neu laden. Nur DANN — sonst bleibt Offline erhalten.
+// ---------------------------------------------------------------------------
+if (typeof window !== 'undefined') {
+  let healing = false;
+  const selfHeal = async () => {
+    if (healing) return;
+    // Schleifen-Sicherung: höchstens EIN Selbstheilungs-Reload pro Sitzung.
+    // Sollte ein Zwischenspeicher wider Erwarten dauerhaft eine alte
+    // version.json ausliefern, hängt die App sonst im Neuladen fest.
+    try {
+      if (sessionStorage.getItem('artcyc_healed') === '1') return;
+      sessionStorage.setItem('artcyc_healed', '1');
+    } catch { /* privater Modus: dann ohne Sicherung */ }
+    healing = true;
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    } catch { /* ignore */ }
+    window.location.reload();
+  };
+  const checkFresh = async () => {
+    if (!navigator.onLine) return;   // offline ist kein veralteter Stand
+    try {
+      const res = await fetch('/version.json?t=' + Date.now(), { cache: 'no-store' });
+      if (!res.ok) return;
+      const v = await res.json();
+      if (v && v.build && typeof __BUILD_DATE__ !== 'undefined' && v.build !== __BUILD_DATE__) {
+        await selfHeal();
+      }
+    } catch { /* Netzfehler: nichts tun */ }
+  };
+  checkFresh();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkFresh(); });
+  window.addEventListener('focus', checkFresh);
+  window.addEventListener('pageshow', checkFresh);
+}
+
 // Routing: Web-App unter /web (und /app), sowie bei Auth-Rückleitungen
 // (Passwort-Reset/Magic-Link landen mit ?type=recovery / ?code / #access_token —
 // die MUSS die App rendern, nicht die Landingpage). Sonst: öffentliche Landingpage.

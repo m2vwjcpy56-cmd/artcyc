@@ -8,7 +8,8 @@ import {
   TrendingUp, TrendingDown, Minus, Calendar, Target, Activity, FileSpreadsheet,
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
-  Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, FlaskConical, Zap
+  Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, FlaskConical, Zap,
+  SlidersHorizontal
 } from 'lucide-react';
 import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, moveAthleteData, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, upsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
@@ -7528,6 +7529,7 @@ function TrainingView({ data, setData, setView }) {
   const [runsListOpen, setRunsListOpen] = useState(false);    // „Trainings-Wertungen"-Seite (Verwaltungsliste)
   const [runProgramFilter, setRunProgramFilter] = useState(''); // '' = alle Programme
   const [runRange, setRunRange] = useState('');              // '' = Gesamt; '28d/90d/180d/365d'; 'y2026'…
+  const [runFilterOpen, setRunFilterOpen] = useState(false); // Filter-Panel ein-/ausklappen
   // [min, max] je Kennzahl; null = keine Grenze (Griff am Anschlag)
   const [runErg, setRunErg] = useState([null, null]);
   const [runAuf, setRunAuf] = useState([null, null]);
@@ -8071,35 +8073,46 @@ function TrainingView({ data, setData, setView }) {
       <div className="space-y-4 pb-2">
         <header className="flex items-center gap-1 pt-1">
           <button onClick={() => setRunsListOpen(false)} className="p-2 -ml-2 text-[#FF9500] active:opacity-50"><ChevronLeft size={26} strokeWidth={2.6} /></button>
-          <h1 className="text-[28px] font-bold tracking-tight leading-none">Trainings-Wertungen</h1>
+          <h1 className="text-[28px] font-bold tracking-tight leading-none flex-1 min-w-0">Trainings-Wertungen</h1>
+          {baseRuns.length > 0 && (
+            /* Filter hinter einem Knopf (wie nativ) — sie sollen nicht dauerhaft
+               die halbe Seite belegen. Gefüllt = Filter aktiv. */
+            <button onClick={() => setRunFilterOpen(o => !o)}
+              className={'p-2 rounded-full active:opacity-60 shrink-0 ' + (filtersActive ? 'bg-[#FF9500] text-white' : 'text-[#FF9500]')}
+              title="Filter">
+              <SlidersHorizontal size={20} strokeWidth={2.4} />
+            </button>
+          )}
         </header>
         {baseRuns.length === 0 ? (
           <EmptyState title="Keine Trainings-Wertungen" hint="Werte ein Trainingsprogramm wie einen Wertungsbogen." />
         ) : (<>
-          <div className="space-y-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              {runPrograms.length > 1 && (
-                <select value={runProgramFilter} onChange={e => setRunProgramFilter(e.target.value)} className={selCls}>
-                  <option value="">Alle Programme</option>
-                  {runPrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          {runFilterOpen && (
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                {runPrograms.length > 1 && (
+                  <select value={runProgramFilter} onChange={e => setRunProgramFilter(e.target.value)} className={selCls}>
+                    <option value="">Alle Programme</option>
+                    {runPrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                )}
+                <select value={runRange} onChange={e => setRunRange(e.target.value)} className={selCls}>
+                  <option value="">Gesamt</option>
+                  <option value="28d">4 Wo.</option>
+                  <option value="90d">3 Mon.</option>
+                  <option value="180d">6 Mon.</option>
+                  <option value="365d">12 Mon.</option>
+                  {runYears.length > 0 && <optgroup label="Jahr">{runYears.map(y => <option key={y} value={'y' + y}>{y}</option>)}</optgroup>}
                 </select>
-              )}
-              <select value={runRange} onChange={e => setRunRange(e.target.value)} className={selCls}>
-                <option value="">Gesamt</option>
-                <option value="28d">4 Wo.</option>
-                <option value="90d">3 Mon.</option>
-                <option value="180d">6 Mon.</option>
-                <option value="365d">12 Mon.</option>
-                {runYears.length > 0 && <optgroup label="Jahr">{runYears.map(y => <option key={y} value={'y' + y}>{y}</option>)}</optgroup>}
-              </select>
-              {filtersActive && <button onClick={resetRunFilters} className="text-[13px] font-medium text-[#FF3B30] px-2 active:opacity-60">Zurücksetzen</button>}
+                {filtersActive && <button onClick={resetRunFilters} className="text-[13px] font-medium text-[#FF3B30] px-2 active:opacity-60">Zurücksetzen</button>}
+              </div>
+              <div className="space-y-2 max-w-[440px]">
+                {rangeRow('Ergebnis', ergB, runErg, setRunErg)}
+                {rangeRow('Aufgestellt', aufB, runAuf, setRunAuf)}
+                {rangeRow('Abzug', abzB, runAbz, setRunAbz)}
+              </div>
             </div>
-            <div className="space-y-2 max-w-[440px]">
-              {rangeRow('Ergebnis', ergB, runErg, setRunErg)}
-              {rangeRow('Aufgestellt', aufB, runAuf, setRunAuf)}
-              {rangeRow('Abzug', abzB, runAbz, setRunAbz)}
-            </div>
-          </div>
+          )}
           {runs.length === 0 ? (
             <div className="card-surface rounded-[22px] px-4 py-8 text-center text-[14px] text-[#8E8E93]">Keine Treffer</div>
           ) : (

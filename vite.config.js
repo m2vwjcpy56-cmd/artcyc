@@ -14,6 +14,24 @@ const APP_VERSION = pkg.version;
 // Version wirklich geladen ist.
 const BUILD_DATE = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 
+// Schreibt eine winzige version.json neben das Bundle. Die App fragt sie mit
+// `cache: 'no-store'` ab und vergleicht sie mit dem eingebauten Stempel — dadurch
+// erkennt sie einen veralteten Stand UNABHÄNGIG vom Service Worker. Genau dafür
+// darf sie NICHT in den Precache wandern (siehe globIgnores unten).
+function versionStampPlugin() {
+  return {
+    name: 'artcyc-version-stamp',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({ version: APP_VERSION, build: BUILD_DATE }),
+      });
+    },
+  };
+}
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
@@ -21,6 +39,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    versionStampPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
@@ -43,6 +62,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // version.json MUSS immer frisch aus dem Netz kommen — sie ist der
+        // Frische-Check, mit dem die App einen alten Cache überhaupt erkennt.
+        globIgnores: ['version.json'],
         navigateFallbackDenylist: [/^\/api/],
         // SW soll sich SOFORT aktivieren wenn neue Version da ist —
         // ohne dass der User die App schließen + wieder öffnen muss.
