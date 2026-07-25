@@ -18461,12 +18461,18 @@ function DualRange({ min, max, low, high, onChange, active, step = 0.1 }) {
       onPointerUp={() => { dragRef.current = null; }}
       onPointerCancel={() => { dragRef.current = null; }}
       className="relative h-7 cursor-pointer touch-none select-none">
-      <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 rounded-full bg-slate-200" />
-      <div className={'absolute top-1/2 -translate-y-1/2 h-1 rounded-full ' + (active ? 'bg-[#FF9500]' : 'bg-slate-300')}
-        style={{ left: pct(low) + '%', width: Math.max(pct(high) - pct(low), 0) + '%' }} />
+      {/* WICHTIG: Farben inline, NICHT über bg-*-Klassen. index.css schreibt im
+          Dark Mode u. a. .bg-white auf #1C1C1E um — die Griffe wären dann fast
+          unsichtbar. Diese Grautöne funktionieren in hell UND dunkel. */}
+      <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 rounded-full"
+        style={{ background: 'rgba(120,120,128,0.30)' }} />
+      <div className="absolute top-1/2 -translate-y-1/2 h-1 rounded-full"
+        style={{ left: pct(low) + '%', width: Math.max(pct(high) - pct(low), 0) + '%',
+                 background: active ? '#FF9500' : 'rgba(120,120,128,0.45)' }} />
       {[low, high].map((v, i) => (
-        <div key={i} className="absolute top-1/2 w-[26px] h-[26px] -translate-y-1/2 -translate-x-1/2 rounded-full bg-white shadow-[0_1px_4px_rgba(0,0,0,0.28)] border border-black/5"
-          style={{ left: pct(v) + '%' }} />
+        <div key={i} className="absolute top-1/2 w-[26px] h-[26px] -translate-y-1/2 -translate-x-1/2 rounded-full"
+          style={{ left: pct(v) + '%', background: '#FFFFFF',
+                   boxShadow: '0 1px 4px rgba(0,0,0,0.45), 0 0 0 0.5px rgba(0,0,0,0.18)' }} />
       ))}
     </div>
   );
