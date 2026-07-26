@@ -1,0 +1,163 @@
+<title>ArtCyc Coach — Icon-Entwürfe, Runde 2</title>
+<style>
+:root{
+  --ground:#F1F0F4; --card:#FFFFFF; --ink:#16181D; --muted:#6E6A64;
+  --line:#DBD9D4; --ok:#1F7A4D; --warn:#8F5A10; --bad:#A32E28;
+  --chip-ok:#E3F0E9; --chip-warn:#F6EAD5; --chip-bad:#F6E2E0;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --ground:#0B0B0D; --card:#17181C; --ink:#F2F1EF; --muted:#9A958D;
+    --line:#2C2E34; --ok:#59C48D; --warn:#E0A85B; --bad:#F08076;
+    --chip-ok:#12291E; --chip-warn:#2A2113; --chip-bad:#2C1715; }
+}
+:root[data-theme="dark"]{ --ground:#0B0B0D; --card:#17181C; --ink:#F2F1EF; --muted:#9A958D;
+  --line:#2C2E34; --ok:#59C48D; --warn:#E0A85B; --bad:#F08076;
+  --chip-ok:#12291E; --chip-warn:#2A2113; --chip-bad:#2C1715; }
+:root[data-theme="light"]{ --ground:#F1F0F4; --card:#FFFFFF; --ink:#16181D; --muted:#6E6A64;
+  --line:#DBD9D4; --ok:#1F7A4D; --warn:#8F5A10; --bad:#A32E28;
+  --chip-ok:#E3F0E9; --chip-warn:#F6EAD5; --chip-bad:#F6E2E0; }
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  line-height:1.6;-webkit-text-size-adjust:100%}
+.wrap{max-width:660px;margin:0 auto;padding:26px 18px 60px;display:flex;flex-direction:column;gap:20px}
+h1{margin:0 0 6px;font-size:26px;font-weight:700;letter-spacing:-.02em;text-wrap:balance}
+.sub{margin:0;color:var(--muted);font-size:15px;max-width:54ch}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;
+  padding:17px;display:flex;flex-direction:column;gap:13px}
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+h2{margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em}
+.chip{font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.c-ok{background:var(--chip-ok);color:var(--ok)} .c-warn{background:var(--chip-warn);color:var(--warn)}
+.c-bad{background:var(--chip-bad);color:var(--bad)}
+.sizes{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap}
+.slot{display:flex;flex-direction:column;align-items:center;gap:6px}
+.px{font-size:11px;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-variant-numeric:tabular-nums;letter-spacing:.03em}
+.tile{border-radius:23%;overflow:hidden;display:block;flex:none}
+p.note{margin:0;font-size:14.5px;color:var(--muted)}
+p.note b{color:var(--ink);font-weight:600}
+footer{color:var(--muted);font-size:13.5px;border-top:1px solid var(--line);padding-top:15px}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<linearGradient id="gNavy" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#26385C"/><stop offset="1" stop-color="#0F172A"/></linearGradient>
+<linearGradient id="gOrange" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#F58C21"/><stop offset="1" stop-color="#C6580C"/></linearGradient>
+<radialGradient id="gLight" cx="0.5" cy="-0.15" r="0.95">
+  <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.18"/>
+  <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></radialGradient>
+
+<symbol id="k6" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="#101218"/>
+  <g stroke="#F58C21" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 30C15 47 21 58 32 58h36c11 0 17-11 17-28" stroke-width="13.5"/>
+    <path d="M50 58v22" stroke-width="10"/>
+  </g>
+</symbol>
+<symbol id="k7" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="url(#gNavy)"/><rect width="100" height="100" fill="url(#gLight)"/>
+  <path d="M20 74c4 6 9 6 14 6h32c5 0 10 0 14-6" fill="none" stroke="#fff" stroke-width="5.5" stroke-linecap="round"/>
+  <g stroke="#F58C21" fill="none" stroke-linecap="round">
+    <path d="M42 78 50 56" stroke-width="10"/><path d="M58 78 50 56" stroke-width="10"/>
+    <path d="M50 58V36" stroke-width="11.5"/>
+    <path d="M50 38 41 16" stroke-width="8.5"/><path d="M50 38 60 17" stroke-width="8.5"/>
+  </g><circle cx="59.5" cy="66.5" r="5" fill="#F58C21"/>
+</symbol>
+<symbol id="k8" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="url(#gOrange)"/><rect width="100" height="100" fill="url(#gLight)"/>
+  <path d="M14 74C40 72 56 56 86 50" fill="none" stroke="#fff" stroke-opacity=".3" stroke-width="7.5" stroke-linecap="round"/>
+  <path d="M14 84C44 84 58 40 84 28" fill="none" stroke="#fff" stroke-width="10.5" stroke-linecap="round"/>
+  <circle cx="84" cy="28" r="8.5" fill="#fff"/>
+</symbol>
+<symbol id="k9" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="#F4F2ED"/>
+  <g stroke="#101218" stroke-width="11.5" fill="none">
+    <path d="M6 106 50 -4"/><path d="M94 106 50 -4"/>
+  </g>
+  <path d="M24.5 62h51" stroke="#F58C21" stroke-width="11.5" fill="none"/>
+</symbol>
+<symbol id="k10" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="#1C5A60"/>
+  <g stroke="#F4F2ED" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="50" cy="64" r="24" stroke-width="7.5"/>
+    <path d="M50 64V30" stroke-width="5.5"/>
+    <path d="M20 14c0 12 5 16 13 16h34c8 0 13-4 13-16" stroke-width="7.5"/>
+  </g><circle cx="50" cy="64" r="4.5" fill="#F58C21"/>
+</symbol>
+</defs></svg>
+
+<div class="wrap">
+<header>
+  <h1>Runde 2 — neue Motive, jedes in anderer Machart</h1>
+  <p class="sub">Rad, A und Wertungszeichen sind gestrichen. Größen sind echt: 132 zum Beurteilen
+  der Form, 120 wie im App Store, 60 wie auf dem Homescreen.</p>
+</header>
+
+<div class="card">
+  <div class="top"><h2>Rad von vorne</h2><span class="chip c-ok">sagt am klarsten Kunstrad</span></div>
+  <div class="sizes">
+    <div class="slot"><svg class="tile" width="132" height="132"><use href="#k10"/></svg><span class="px">132</span></div>
+    <div class="slot"><svg class="tile" width="120" height="120"><use href="#k10"/></svg><span class="px">120</span></div>
+    <div class="slot"><svg class="tile" width="60" height="60"><use href="#k10"/></svg><span class="px">60</span></div>
+  </div>
+  <p class="note">Das Rad von vorn mit dem hochgebogenen Lenker — die Silhouette, die jeder
+  Kunstradfahrer sofort erkennt. Neue Palette: Petrol, Creme, oranger Nabenpunkt.
+  <b>Risiko:</b> aus dem Augenwinkel kann es als Stierkopf durchgehen.</p>
+</div>
+
+<div class="card">
+  <div class="top"><h2>Lenker, vollflächig</h2><span class="chip c-ok">stärkste Wucht</span></div>
+  <div class="sizes">
+    <div class="slot"><svg class="tile" width="132" height="132"><use href="#k6"/></svg><span class="px">132</span></div>
+    <div class="slot"><svg class="tile" width="120" height="120"><use href="#k6"/></svg><span class="px">120</span></div>
+    <div class="slot"><svg class="tile" width="60" height="60"><use href="#k6"/></svg><span class="px">60</span></div>
+  </div>
+  <p class="note">Nur der Lenker, fett und randfüllend. Hält jede Verkleinerung aus und wäre
+  als Zeichen sofort deins. <b>Aber:</b> ohne Rad bleibt es abstrakt — man kann es auch als
+  griechisches Psi oder Einkaufswagen-Griff lesen.</p>
+</div>
+
+<div class="card">
+  <div class="top"><h2>Wortmarke A</h2><span class="chip c-ok">professionellste Anmutung</span></div>
+  <div class="sizes">
+    <div class="slot"><svg class="tile" width="132" height="132"><use href="#k9"/></svg><span class="px">132</span></div>
+    <div class="slot"><svg class="tile" width="120" height="120"><use href="#k9"/></svg><span class="px">120</span></div>
+    <div class="slot"><svg class="tile" width="60" height="60"><use href="#k9"/></svg><span class="px">60</span></div>
+  </div>
+  <p class="note">Das A läuft über den Rand hinaus, der Querbalken ist orange, Grund cremeweiß
+  statt marineblau. Wirkt am meisten nach Marke und am wenigsten nach Bastelei.
+  <b>Sagt nichts über den Sport</b> — trägt nur den Namen.</p>
+</div>
+
+<div class="card">
+  <div class="top"><h2>Fortschritt</h2><span class="chip c-warn">hübsch, aber beliebig</span></div>
+  <div class="sizes">
+    <div class="slot"><svg class="tile" width="132" height="132"><use href="#k8"/></svg><span class="px">132</span></div>
+    <div class="slot"><svg class="tile" width="120" height="120"><use href="#k8"/></svg><span class="px">120</span></div>
+    <div class="slot"><svg class="tile" width="60" height="60"><use href="#k8"/></svg><span class="px">60</span></div>
+  </div>
+  <p class="note">Die steigende Kurve mit Verlauf und Lichtkante — das ist die Apple-Machart,
+  plastisch und wertig. <b>Inhaltlich austauschbar:</b> so könnte auch eine Finanz- oder
+  Fitness-App aussehen.</p>
+</div>
+
+<div class="card">
+  <div class="top"><h2>Handstand auf dem Lenker</h2><span class="chip c-bad">wieder misslungen</span></div>
+  <div class="sizes">
+    <div class="slot"><svg class="tile" width="132" height="132"><use href="#k7"/></svg><span class="px">132</span></div>
+    <div class="slot"><svg class="tile" width="120" height="120"><use href="#k7"/></svg><span class="px">120</span></div>
+    <div class="slot"><svg class="tile" width="60" height="60"><use href="#k7"/></svg><span class="px">60</span></div>
+  </div>
+  <p class="note">Zweiter Versuch, wieder daneben: die Figur liest sich als Schere, der Kopf
+  hängt als Klecks daneben, bei 60 Pixel ist es Matsch. <b>Meine Einschätzung:</b> eine Figur
+  aus Strichen wird das nie. Das bräuchte eine echte gezeichnete Silhouette — und dafür
+  jemanden, der illustrieren kann.</p>
+</div>
+
+<footer>Empfehlung: „Rad von vorne", wenn das Icon den Sport zeigen soll — „Wortmarke A",
+wenn es vor allem wertig wirken soll. Beide sind auf 60 Pixel eindeutig. Das Icon steckt im
+Build; ein Wechsel bedeutet neuen Build und neue Einreichung bei Apple.</footer>
+</div>
