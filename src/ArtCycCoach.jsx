@@ -8050,7 +8050,17 @@ function TrainingView({ data, setData, setView }) {
     // Eine Kennzahl als Regler-Zeile; ausgeblendet, wenn alle Werte gleich sind
     // (dann gibt es nichts zu filtern).
     const rangeRow = (label, b, pair, setPair) => {
-      if (!b || b[1] <= b[0]) return null;
+      if (!b) return null;
+      if (b[1] <= b[0]) {
+        // Alle Wertungen haben denselben Wert — nichts zu filtern. Zeile trotzdem
+        // zeigen (sonst wirkt sie verschwunden), aber ohne Regler.
+        return (
+          <div className="card-surface rounded-2xl px-4 py-2.5 flex items-center justify-between">
+            <span className="text-[14px] font-medium text-slate-700">{label}</span>
+            <span className="text-[13px] tabular-nums text-slate-400">{fmtNum(b[0])}</span>
+          </div>
+        );
+      }
       const [lo, hi] = b;
       const cur = [pair[0] ?? lo, pair[1] ?? hi];
       const act = pair[0] != null || pair[1] != null;
@@ -14516,7 +14526,12 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
                       <div className="text-right shrink-0">
                         <div className={'text-[14px] font-semibold tabular-nums ' + (r.avgDeduction >= 0.6 ? 'text-rose-600' : r.avgDeduction >= 0.15 ? 'text-amber-600' : 'text-emerald-600')}>−{r.avgDeduction.toFixed(2)}</div>
                         <div className="text-[11px] font-mono text-[#8E8E93]">
-                          {[['x', r.cross], ['~', r.wave], ['|', r.bar], ['○', r.circle]].filter(([, n]) => n > 0).map(([s, n]) => s + Math.round(n)).join(' ')}
+                          {/* Ø je Durchlauf statt Gesamtzahl: „85 Wellen" sagt nichts,
+                              solange man nicht weiß, über wie viele Durchläufe. */}
+                          {[['x', r.cross], ['~', r.wave], ['|', r.bar], ['○', r.circle]]
+                            .filter(([, n]) => n > 0)
+                            .map(([s, n]) => s + (r.competitions > 0 ? (n / r.competitions).toFixed(1).replace('.', ',') : '–'))
+                            .join(' ')}
                         </div>
                       </div>
                       <ChevronRight size={16} strokeWidth={2.4} className={'text-[#C7C7CC] shrink-0 transition-transform ' + (expandedDeduction === r.key ? 'rotate-90' : '')} />
@@ -18406,7 +18421,11 @@ function ExportView({ data, setView, defaultName = '' }) {
 // CSV Helper
 function downloadCSV(rows, filename) {
   const csv = rows.map(r => r.map(v => {
-    const s = String(v == null ? '' : v);
+    let s = String(v == null ? '' : v);
+    // Deutsches Excel erwartet bei ;-Trennung das KOMMA als Dezimalzeichen —
+    // mit Punkt liest es „5.70" als Text (oder als Datum). Nur reine Zahlen
+    // umstellen, damit Namen mit Punkt (z. B. „1186a. Maute-Sprung") bleiben.
+    if (/^-?\d+\.\d+$/.test(s)) s = s.replace('.', ',');
     return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   }).join(';')).join('\n');
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
