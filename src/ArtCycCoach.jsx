@@ -9,7 +9,7 @@ import {
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, FlaskConical, Zap,
-  SlidersHorizontal
+  SlidersHorizontal, Flag
 } from 'lucide-react';
 import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, moveAthleteData, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, upsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
@@ -2630,6 +2630,52 @@ function getAnerkanntePunkte(w, exercise) {
   if (!exercise) return 0;
   const t = Number((w && w.taktischePunkte) || 0);
   return t > 0 ? t : Number(exercise.points || 0);
+}
+
+// =============================================================
+// RANDABZÜGE — vor der ersten und nach der letzten Übung (Anfahren, Abfahren)
+// ---------------------------------------------------------------
+// Solche Fehler kommen vor, hängen aber an keiner Übung. Sie stehen darum als zwei
+// zusätzliche Einträge HINTER den Übungen in der Wertungstabelle: calcTableResult
+// summiert Ausführungs-Abzüge über ALLE Einträge, Punkte und Schwierigkeit dagegen
+// nur über die Programm-Übungen. Dadurch zählen sie in jedem Bildschirm automatisch
+// mit, ohne die Index-Zuordnung Eintrag ↔ Übung zu verschieben — und ohne Migration.
+// Sie tragen nur Fehlerzeichen: keine Punkte, keine Schwierigkeit, keine Aufwertung.
+// =============================================================
+const EDGE_SLOTS = [
+  { kind: 'pre',  label: 'Anfahren', hint: 'Fehler vor der ersten Übung' },
+  { kind: 'post', label: 'Abfahren', hint: 'Fehler nach der letzten Übung' },
+];
+
+// Position eines Randabzugs in der Wertungstabelle (hinter den Übungen).
+function edgeIndex(program, kind) {
+  const n = ((program && program.exercises) || []).length;
+  return kind === 'pre' ? n : n + 1;
+}
+
+// Eintrag über den Marker suchen, nicht über die Position — so wird er auch in
+// Alt-Daten mit anderer Länge gefunden.
+function edgeRowOf(entries, kind) {
+  return (entries || []).find(e => e && e.edge === kind) || null;
+}
+
+// Hängt die zwei Randabzug-Plätze hinten an und übernimmt vorhandene Werte.
+function withEdgeRows(rows, existing) {
+  const out = (rows || []).filter(e => !(e && e.edge));
+  for (const s of EDGE_SLOTS) {
+    const prev = edgeRowOf(existing, s.kind) || edgeRowOf(rows, s.kind);
+    out.push({
+      edge: s.kind, included: true,
+      cross: Number((prev && prev.cross) || 0), wave: Number((prev && prev.wave) || 0),
+      bar: Number((prev && prev.bar) || 0), circle: Number((prev && prev.circle) || 0),
+    });
+  }
+  return out;
+}
+
+// Summe der Randabzüge einer Tabelle (nur Fehlerzeichen).
+function edgeDeduction(entries, kind) {
+  return calcExerciseDeduction(edgeRowOf(entries, kind));
 }
 
 // Taktische Punkte-Skala aus dem Übungstext lesen, z. B. Lenkerdrehungen
@@ -14943,13 +14989,19 @@ function ValidationCheck({ pdfRef, t1, t2 }) {
 function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0, onUpdate, onUpdateSchwHits, onUpdateTaktHits, onClose }) {
   const N = Math.max(1, Math.min(4, Number(kampfgerichte || 2)));
   const exs = program.exercises || [];
-  const [idx, setIdx] = useState(() => Math.max(0, Math.min(startIndex || 0, (program.exercises || []).length - 1)));
+  // Durchlaufen wird in Fahrt-Reihenfolge: Anfahren, Übungen, Abfahren. In der Tabelle
+  // liegen die Randabzüge dagegen HINTEN (siehe RANDABZÜGE) — darum die Umrechnung.
+  const slotCount = exs.length + 2;
+  const [idx, setIdx] = useState(() => Math.max(0, Math.min(startIndex || 0, slotCount - 1)));
+  const edge = idx <= 0 ? 'pre' : (idx > exs.length ? 'post' : null);
+  const edgeInfo = edge ? EDGE_SLOTS.find(sl => sl.kind === edge) : null;
+  const row = edge ? edgeIndex(program, edge) : idx - 1;   // Position in der Wertungstabelle
   const [kg, setKg] = useState(1);            // aktives Kampfgericht (per-KG); Gesamt = immer 1
   const [pulse, setPulse] = useState(0);       // Haptik-Trigger
   const tapKg = gesamt ? 1 : kg;
-  const ex = exs[idx] || {};
+  const ex = (!edge && exs[row]) || {};
   const entries = tables[tapKg - 1] || [];
-  const e = entries[idx] || { cross: 0, wave: 0, bar: 0, circle: 0, schwPct: 0, taktischePunkte: 0 };
+  const e = entries[row] || { cross: 0, wave: 0, bar: 0, circle: 0, schwPct: 0, taktischePunkte: 0 };
   const std = Number(ex.points || 0);
   const byCode = getTaktScale(ex.code);
   const nameScale = parseTacticalScale(ex.name);
@@ -14979,15 +15031,21 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
         <button onClick={() => (idx > 0 ? setIdx(idx - 1) : onClose())} className="text-[#007AFF] text-[17px] active:opacity-60 px-1">
           {idx > 0 ? 'Zurück' : 'Schließen'}
         </button>
-        <div className="font-semibold text-[17px] text-slate-900 dark:text-white tabular-nums">Übung {idx + 1} / {exs.length}</div>
+        <div className="font-semibold text-[17px] text-slate-900 dark:text-white tabular-nums">
+          {edge ? 'Abzüge erfassen' : `Übung ${idx} / ${exs.length}`}
+        </div>
         <button onClick={onClose} className="text-[#FF9500] text-[17px] font-semibold active:opacity-60 px-1">Fertig</button>
       </div>
       {/* Übungs-Kopf */}
       <div className="text-center px-4 pt-3 shrink-0">
-        <div className="text-slate-900 dark:text-white text-xl font-bold leading-tight line-clamp-2">{localizedExerciseName(ex)}</div>
+        <div className="text-slate-900 dark:text-white text-xl font-bold leading-tight line-clamp-2">
+          {edgeInfo ? edgeInfo.label : localizedExerciseName(ex)}
+        </div>
         <div className="text-slate-500 dark:text-slate-400 text-sm mt-1">
-          {ex.code && <span className="font-mono">Nr. {ex.code} · </span>}
-          {std.toFixed(1).replace('.', ',')} Pkt
+          {edgeInfo ? edgeInfo.hint : (<>
+            {ex.code && <span className="font-mono">Nr. {ex.code} · </span>}
+            {std.toFixed(1).replace('.', ',')} Pkt
+          </>)}
           {total > 0 && <span className="text-[#FF9500] font-semibold ml-2 tabular-nums">Σ −{total.toFixed(1).replace('.', ',')}</span>}
         </div>
       </div>
@@ -15005,7 +15063,7 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
           const cnt = Number(e[m.k] || 0);
           const act = cnt > 0;
           return (
-            <button key={m.k} onClick={() => { bump(); onUpdate(tapKg, idx, m.k, cnt + 1); }}
+            <button key={m.k} onClick={() => { bump(); onUpdate(tapKg, row, m.k, cnt + 1); }}
               className={'relative rounded-3xl flex flex-col items-center justify-center gap-2 select-none active:scale-95 transition ' +
                 (act ? 'bg-[#FF9500]/15 ring-2 ring-[#FF9500]/50' : 'bg-white dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10')}>
               <div className="flex items-center gap-2">
@@ -15015,26 +15073,27 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
               <div className="text-slate-500 dark:text-slate-400 text-xs">{m.label} · −{m.w}</div>
               {act && (
                 <span role="button" aria-label="Zeichen entfernen"
-                  onClick={(ev) => { ev.stopPropagation(); onUpdate(tapKg, idx, m.k, Math.max(0, cnt - 1)); }}
+                  onClick={(ev) => { ev.stopPropagation(); onUpdate(tapKg, row, m.k, Math.max(0, cnt - 1)); }}
                   className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-[#FF9500] text-white flex items-center justify-center text-xl font-bold shadow">−</span>
               )}
             </button>
           );
         })}
       </div>
-      {/* Schwierigkeit + taktische Aufwertung */}
-      <div className="px-4 space-y-2.5 shrink-0">
+      {/* Schwierigkeit + taktische Aufwertung — nur je Übung; beim Anfahren und
+          Abfahren zählen ausschließlich Fehlerzeichen. */}
+      <div className={'px-4 space-y-2.5 shrink-0 ' + (edge ? 'hidden' : '')}>
         <div className="bg-white dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 rounded-2xl p-3">
           <div className="flex justify-between items-center mb-2">
             <span className="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wide">Schwierigkeit</span>
             {schw > 0 && <span className="text-[#FF9500] text-xs font-semibold tabular-nums">−{schw.toFixed(1).replace('.', ',')} Pkt</span>}
           </div>
           {gesamt ? (
-            <PanelTapButtons options={[10, 50, 100]} hits={e.schwHits || []} limit={N} onChange={(h) => onUpdateSchwHits(idx, h)} fmt={(v) => v + ' %'} />
+            <PanelTapButtons options={[10, 50, 100]} hits={e.schwHits || []} limit={N} onChange={(h) => onUpdateSchwHits(row, h)} fmt={(v) => v + ' %'} />
           ) : (
             <div className="grid grid-cols-4 gap-1.5">
               {[0, 10, 50, 100].map(p => (
-                <button key={p} onClick={() => onUpdate(tapKg, idx, 'schwPct', p)}
+                <button key={p} onClick={() => onUpdate(tapKg, row, 'schwPct', p)}
                   className={'text-sm py-2 rounded-xl font-medium border ' +
                     (Number(e.schwPct || 0) === p ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white/5 text-slate-300 border-white/10')}>
                   {p === 0 ? '—' : p + '%'}
@@ -15048,20 +15107,20 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
             <div className="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wide mb-2">Taktische Aufwertung</div>
             {gesamt ? (
               <div className="flex flex-wrap items-center gap-1.5">
-                <button onClick={() => onUpdateTaktHits(idx, [], std)}
+                <button onClick={() => onUpdateTaktHits(row, [], std)}
                   className={'text-xs px-3 py-2 rounded-full font-medium border ' + ((e.taktHits || []).filter(h => h > 0).length === 0 ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white/5 text-slate-300 border-white/10')}>
                   Standard
                 </button>
-                <PanelTapButtons options={scale.filter(v => v > std + 0.001)} hits={e.taktHits || []} limit={N} onChange={(h) => onUpdateTaktHits(idx, h, std)} fmt={(v) => v.toFixed(1).replace('.', ',')} />
+                <PanelTapButtons options={scale.filter(v => v > std + 0.001)} hits={e.taktHits || []} limit={N} onChange={(h) => onUpdateTaktHits(row, h, std)} fmt={(v) => v.toFixed(1).replace('.', ',')} />
               </div>
             ) : (
               <div className="flex flex-wrap gap-1.5">
-                <button onClick={() => onUpdate(tapKg, idx, 'taktischePunkte', '')}
+                <button onClick={() => onUpdate(tapKg, row, 'taktischePunkte', '')}
                   className={'text-xs px-3 py-2 rounded-full font-medium border ' + (cur <= 0 || Math.abs(cur - std) < 0.001 ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white/5 text-slate-300 border-white/10')}>
                   Standard · {std.toFixed(1).replace('.', ',')}
                 </button>
                 {scale.map(v => (
-                  <button key={v} onClick={() => onUpdate(tapKg, idx, 'taktischePunkte', String(Math.abs(v - std) < 0.001 ? '' : v))}
+                  <button key={v} onClick={() => onUpdate(tapKg, row, 'taktischePunkte', String(Math.abs(v - std) < 0.001 ? '' : v))}
                     className={'text-xs px-3 py-2 rounded-full font-medium border tabular-nums ' + (cur > 0 && Math.abs(cur - v) < 0.001 ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white/5 text-slate-300 border-white/10')}>
                     {v.toFixed(1).replace('.', ',')}
                   </button>
@@ -15075,7 +15134,7 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
       <div className="flex gap-2 px-4 py-4 shrink-0">
         <button disabled={idx <= 0} onClick={() => setIdx(idx - 1)}
           className="flex-1 py-3 rounded-2xl bg-white dark:bg-white/10 ring-1 ring-black/5 dark:ring-0 text-slate-900 dark:text-white text-xl font-bold disabled:opacity-30 active:scale-95 transition">‹</button>
-        <button disabled={idx >= exs.length - 1} onClick={() => setIdx(idx + 1)}
+        <button disabled={idx >= slotCount - 1} onClick={() => setIdx(idx + 1)}
           className="flex-1 py-3 rounded-2xl bg-white dark:bg-white/10 ring-1 ring-black/5 dark:ring-0 text-slate-900 dark:text-white text-xl font-bold disabled:opacity-30 active:scale-95 transition">›</button>
       </div>
     </div>,
@@ -15122,10 +15181,12 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
 
   const initEntries = (existing) => {
     if (!program) return [];
-    return program.exercises.map(ex => {
-      const found = existing && existing.find(e => e.exerciseId === ex.id);
+    const rows = program.exercises.map(ex => {
+      const found = existing && existing.find(e => e.exerciseId === ex.id && !e.edge);
       return found || { exerciseId: ex.id, included: true, cross: 0, wave: 0, bar: 0, circle: 0, schwPct: 0, taktischePunkte: 0 };
     });
+    // Anfahren/Abfahren hinten anhängen (siehe RANDABZÜGE oben).
+    return withEdgeRows(rows, existing);
   };
 
   const [table1, setTable1] = useState(() => initVal('table1', initEntries(competition && competition.table1)));
@@ -15213,6 +15274,34 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
     for (let i = 0; i < N; i++) sum += calcTableResult(program, allTables[i], schw[i]).ergebnis;
     return Math.round((sum / N) * 100) / 100;
   })();
+
+  // Listenzeile für einen Randabzug (Anfahren/Abfahren) — öffnet dieselbe Erfassung
+  // wie die Übungen, nur ohne Punkte/Schwierigkeit.
+  const edgeListRow = (sl) => {
+    const N2 = Math.max(1, Math.min(4, Number(kampfgerichte || 2)));
+    const row = edgeIndex(program, sl.kind);
+    const parts = abzugGesamt
+      ? [calcExerciseDeduction((table1 || [])[row])]
+      : Array.from({ length: N2 }, (_, k) => calcExerciseDeduction(([table1, table2, table3, table4][k] || [])[row]));
+    const any = parts.some(v => v > 0.0001);
+    return (
+      <button key={sl.kind} type="button"
+        onClick={() => { setScoringIdx(sl.kind === 'pre' ? 0 : (program.exercises || []).length + 1); setScoring(true); }}
+        className={'w-full flex items-start gap-2.5 px-3.5 py-3 text-left transition-colors active:bg-black/5 dark:active:bg-white/5 ' + (any ? 'bg-amber-500/[0.06]' : '')}>
+        <span className="w-5 shrink-0 pt-0.5 text-slate-400 dark:text-slate-500">
+          <Flag size={14} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="text-[15px] font-medium leading-snug text-slate-900 dark:text-slate-100">{sl.label}</div>
+          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{sl.hint}</div>
+        </div>
+        <span className={'text-xs font-semibold tabular-nums shrink-0 pt-0.5 ' + (any ? 'text-[#FF9500]' : 'text-slate-300 dark:text-slate-600')}>
+          {any ? parts.map(v => '−' + v.toFixed(1)).join(' / ') : '—'}
+        </span>
+        <ChevronRight size={16} className="text-slate-300 dark:text-slate-600 shrink-0 mt-1" />
+      </button>
+    );
+  };
 
   const tableSetters = [setTable1, setTable2, setTable3, setTable4];
   const updateEntry = (tableNum, idx, key, val) => {
@@ -15457,8 +15546,8 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           _conf: confOf(r)
         };
       });
-      setTable1(newT1);
-      setTable2(newT2);
+      setTable1(withEdgeRows(newT1, table1));
+      setTable2(withEdgeRows(newT2, table2));
       // Pauschal-Schwierigkeit auf 0 (jetzt pro Übung)
       setT1S(0);
       setT2S(0);
@@ -15481,8 +15570,8 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           exerciseId: ex.id, included: true,
           cross: 0, wave: 0, bar: 0, circle: 0, schwPct: 0, taktischePunkte: 0
         }));
-        setTable1(blankRows());
-        setTable2(blankRows());
+        setTable1(withEdgeRows(blankRows(), table1));
+        setTable2(withEdgeRows(blankRows(), table2));
       }
       if (typeof parsed.kg1_schwierigkeit === 'number') setT1S(parsed.kg1_schwierigkeit);
       if (typeof parsed.kg2_schwierigkeit === 'number') setT2S(parsed.kg2_schwierigkeit);
@@ -16015,8 +16104,10 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             <Zap size={18} /> Abzüge erfassen
           </button>
 
-          {/* Kompakte, tippbare Übungsliste (wie iOS) — Tipp öffnet den Vollbild-Scorer bei dieser Übung. */}
+          {/* Kompakte, tippbare Übungsliste (wie iOS) — Tipp öffnet den Vollbild-Scorer bei dieser Übung.
+              Anfahren steht davor, Abfahren dahinter: Fehler außerhalb der Übungen. */}
           <div className="card-surface rounded-[22px] overflow-hidden divide-y divide-black/5 dark:divide-white/10">
+            {EDGE_SLOTS.filter(sl => sl.kind === 'pre').map(sl => edgeListRow(sl))}
             {program.exercises.map((ex, idx) => {
               const ded = (t) => calcExerciseDeduction(t) + calcExerciseSchwierigkeit(t, ex);
               const parts = abzugGesamt
@@ -16025,7 +16116,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
               const any = parts.some(v => v > 0.0001);
               return (
                 <button key={ex.id || idx} type="button"
-                  onClick={() => { setScoringIdx(idx); setScoring(true); }}
+                  onClick={() => { setScoringIdx(idx + 1); setScoring(true); }}
                   className={'w-full flex items-start gap-2.5 px-3.5 py-3 text-left transition-colors active:bg-black/5 dark:active:bg-white/5 ' + (any ? 'bg-amber-500/[0.06]' : '')}>
                   <span className="w-5 shrink-0 text-sm font-semibold text-slate-400 dark:text-slate-500 tabular-nums pt-0.5">{idx + 1}</span>
                   <div className="flex-1 min-w-0">
@@ -16041,6 +16132,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 </button>
               );
             })}
+            {EDGE_SLOTS.filter(sl => sl.kind === 'post').map(sl => edgeListRow(sl))}
           </div>
 
           {/* Zeichen-Übersicht (nur pro-KG — Gesamt fasst ohnehin zusammen). */}
@@ -19111,6 +19203,29 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
                       <div className={'text-sm font-bold shrink-0 ' + (total > 0 ? 'text-rose-600' : 'text-slate-300')}>
                         {total > 0 ? '-' + total.toFixed(2) : '0'}
                       </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Randabzüge (Anfahren/Abfahren) — nur zeigen, wenn dort etwas steht. */}
+              {EDGE_SLOTS.map(sl => {
+                const e = edgeRowOf(entries, sl.kind);
+                const total = calcExerciseDeduction(e);
+                if (!(total > 0.0001)) return null;
+                return (
+                  <div key={sl.kind} className="rounded-lg p-2.5 bg-rose-50">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium leading-tight">{sl.label}</div>
+                        <div className="text-[11px] text-slate-500">{sl.hint}</div>
+                        <div className="flex flex-wrap gap-2 mt-1.5 text-xs">
+                          {e.cross > 0 && <span className="text-slate-700"><strong>x</strong>×{e.cross}</span>}
+                          {e.wave > 0 && <span className="text-slate-700"><strong>~</strong>×{e.wave}</span>}
+                          {e.bar > 0 && <span className="text-slate-700"><strong>|</strong>×{e.bar}</span>}
+                          {e.circle > 0 && <span className="text-rose-700"><strong>○</strong>×{e.circle}</span>}
+                        </div>
+                      </div>
+                      <div className="text-sm font-bold shrink-0 text-rose-600">-{total.toFixed(2)}</div>
                     </div>
                   </div>
                 );
