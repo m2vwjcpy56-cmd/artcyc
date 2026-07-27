@@ -2961,6 +2961,10 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
   const stats = {
     cross: 0, wave: 0, bar: 0, circle: 0,
     schwPctSum: 0,                     // Summe Schwierigkeits-Abwertung in % über alle Stellungen
+    schwPts: 0,                        // Abwertung in PUNKTEN — vom anerkannten Wert (taktische
+                                       // Aufwertung), je Wettkampf über die KG gemittelt.
+                                       // Prozente allein reichen nicht: 50 % sind je nach
+                                       // Aufwertung ein anderer Punktbetrag.
     schwPctNonZero: 0,                 // Anzahl Stellungen mit %-Abwertung > 0
     schwPctHist: {},                   // { '10': 2, '50': 1, '100': 3, ... } — Häufigkeit pro %-Stufe
     taktSum: 0,                        // Summe anerkannte taktische Punktzahl
@@ -2986,7 +2990,7 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
       // bewerten dieselbe Kür; Histogramme/Zähler bleiben pro KG-Eintrag.
       const cells = [(comp.table1 || [])[idx], (comp.table2 || [])[idx]].filter(Boolean);
       if (cells.length) {
-        let cx = 0, cw = 0, cb = 0, cc = 0;
+        let cx = 0, cw = 0, cb = 0, cc = 0, cs = 0;
         cells.forEach(e => {
           cx += Number(e.cross || 0);
           cw += Number(e.wave || 0);
@@ -2994,6 +2998,7 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
           cc += Number(e.circle || 0);
           const pct = Number(e.schwPct || 0);
           stats.schwPctSum += pct;
+          cs += calcExerciseSchwierigkeit(e, ex);
           if (pct > 0) {
             stats.schwPctNonZero += 1;
             const key = String(pct);
@@ -3013,6 +3018,7 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
         stats.wave += cw / d;
         stats.bar += cb / d;
         stats.circle += cc / d;
+        stats.schwPts += cs / d;
       }
     });
     if (foundInThisComp) stats.wettkaempfe += 1;
@@ -11374,8 +11380,8 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                 </div>
                 {(() => {
                   const dedSymbols = compStats.cross * 0.2 + compStats.wave * 0.5 + compStats.bar * 1.0 + compStats.circle * 2.0;
-                  const dedSchw = (Number(exercise.points || 0) * compStats.schwPctSum) / 100;
-                  const avgDed = compStats.count > 0 ? (dedSymbols + dedSchw) / compStats.count : 0;
+                  const dedSchw = compStats.schwPts;
+                  const avgDed = compStats.wettkaempfe > 0 ? (dedSymbols + dedSchw) / compStats.wettkaempfe : 0;
                   return (
                     <div className="bg-amber-50 border border-amber-100 rounded-2xl py-3 px-4 flex items-baseline justify-between">
                       <div>
@@ -11938,8 +11944,8 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                 </div>
                 {(() => {
                   const dedSymbols = compStats.cross * 0.2 + compStats.wave * 0.5 + compStats.bar * 1.0 + compStats.circle * 2.0;
-                  const dedSchw = (Number(exercise.points || 0) * compStats.schwPctSum) / 100;
-                  const avgDed = compStats.count > 0 ? (dedSymbols + dedSchw) / compStats.count : 0;
+                  const dedSchw = compStats.schwPts;
+                  const avgDed = compStats.wettkaempfe > 0 ? (dedSymbols + dedSchw) / compStats.wettkaempfe : 0;
                   return (
                     <div className="bg-amber-50 border border-amber-100 rounded-2xl py-3 px-4 flex items-baseline justify-between">
                       <div>
@@ -12165,9 +12171,9 @@ function UebungenView({ data, setData, onBack }) {
   const renderExerciseRow = (ex) => {
     const compStats = calcExerciseCompetitionStats(ex, data.programs || [], data.competitions || []);
     const dedSymbols = compStats.cross * 0.2 + compStats.wave * 0.5 + compStats.bar * 1.0 + compStats.circle * 2.0;
-    const dedSchw    = (Number(ex.points || 0) * compStats.schwPctSum) / 100;
+    const dedSchw    = compStats.schwPts;
     const totalDeduction = dedSymbols + dedSchw;
-    const avgDeduction = compStats.count > 0 ? totalDeduction / compStats.count : 0;
+    const avgDeduction = compStats.wettkaempfe > 0 ? totalDeduction / compStats.wettkaempfe : 0;
     const trainStats = calcExerciseTrainingStats(ex, data.sessions || []);
     const rateColor = trainStats.rate >= 80 ? 'text-[#34C759]'
       : trainStats.rate >= 60 ? 'text-[#FF9500]'
@@ -16468,7 +16474,7 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
       )}
 
       <p className="text-xs text-slate-400 mt-3 leading-relaxed">
-        Ausführung: <strong>x</strong> 0,2 · <strong>~</strong> 0,5 · <strong>|</strong> 1,0 · <strong>○</strong> 2,0 · Schwierigkeit: 10/50/100% des Übungs-Punktwerts
+        Ausführung: <strong>x</strong> 0,2 · <strong>~</strong> 0,5 · <strong>|</strong> 1,0 · <strong>○</strong> 2,0 · Schwierigkeit: 10/50/100% des anerkannten Punktwerts (mit taktischer Aufwertung)
       </p>
     </div>
   );
