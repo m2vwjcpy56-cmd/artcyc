@@ -13286,7 +13286,7 @@ function ProgrammeView({ data, setData, myUserId = null }) {
     return <ProgrammEditor
       program={editing}
       onSave={(p) => { upsert(p); setShowNew(false); setEditId(null); }}
-      onCancel={() => { setShowNew(false); setEditId(null); }}
+      onCancel={() => { setShowNew(false); setEditId(null); setPendingPdf(null); }}
       onDelete={editId ? () => { const id = editId; setShowNew(false); setEditId(null); setTimeout(() => remove(id), 0); } : undefined}
     />;
   }
@@ -14207,6 +14207,10 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
   const [viewId, setViewId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [chooser, setChooser] = useState(false);   // „+": Erfassungsart wählen (Parität iOS)
+  // PDF wird SCHON IM CHOOSER gewählt (echte Nutzer-Aktion) und dann an den Editor
+  // durchgereicht. Ein nachträglich per Code ausgelöster Datei-Dialog wird von
+  // Safari/iOS gern blockiert.
+  const [pendingPdf, setPendingPdf] = useState(null);
   const [endForm, setEndForm] = useState(null);     // „Nur Endergebnis"-Schnellerfassung
 
   useEffect(() => {
@@ -14298,6 +14302,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
       athletes={athletes}
       existingExercises={data.exercises || []}
       existingCompetitions={competitions}
+      initialPdf={pendingPdf}
       onSave={(payload) => {
         // ALLES in EINEM setData-Call → keine Race-Conditions
         const c = payload.competition;
@@ -14326,6 +14331,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
         });
         setShowNew(false);
         setEditId(null);
+        setPendingPdf(null);
       }}
       onCancel={() => { setShowNew(false); setEditId(null); }}
     />;
@@ -14415,11 +14421,21 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
           <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setChooser(false)}>
             <div className="bg-white rounded-3xl sm:rounded-2xl w-full max-w-sm p-4 shadow-2xl space-y-2" onClick={e => e.stopPropagation()}>
               <h3 className="font-semibold text-[17px] px-1 pb-1">Wie möchtest du erfassen?</h3>
-              <button onClick={() => { setChooser(false); setShowNew(true); }} className="w-full text-left px-4 py-3 rounded-xl bg-slate-50 active:bg-slate-100 flex items-center gap-3">
+              <label className="w-full text-left px-4 py-3 rounded-xl bg-slate-50 active:bg-slate-100 flex items-center gap-3 cursor-pointer">
+                <Upload size={18} className="text-[#FF9500] shrink-0" />
+                <span><span className="block text-[15px] font-medium">PDF importieren</span><span className="block text-[12px] text-slate-500">Original-Wertungsbericht — Stammdaten und alle Übungen in Sekunden</span></span>
+                <input type="file" accept="application/pdf" className="hidden"
+                  onChange={e => {
+                    const f = e.target.files && e.target.files[0];
+                    if (!f) return;
+                    setPendingPdf(f); setChooser(false); setShowNew(true);
+                  }} />
+              </label>
+              <button onClick={() => { setPendingPdf(null); setChooser(false); setShowNew(true); }} className="w-full text-left px-4 py-3 rounded-xl bg-slate-50 active:bg-slate-100 flex items-center gap-3">
                 <FileText size={18} className="text-[#FF9500] shrink-0" />
-                <span><span className="block text-[15px] font-medium">Wertungsbogen erfassen</span><span className="block text-[12px] text-slate-500">PDF importieren oder Abzüge manuell</span></span>
+                <span><span className="block text-[15px] font-medium">Wertungsbogen erfassen</span><span className="block text-[12px] text-slate-500">Abzüge Übung für Übung eintragen</span></span>
               </button>
-              <button onClick={() => { setChooser(false); setEndForm({ name: '', date: new Date().toISOString().slice(0, 10), location: '', endergebnis: '' }); }} className="w-full text-left px-4 py-3 rounded-xl bg-slate-50 active:bg-slate-100 flex items-center gap-3">
+              <button onClick={() => { setPendingPdf(null); setChooser(false); setEndForm({ name: '', date: new Date().toISOString().slice(0, 10), location: '', endergebnis: '' }); }} className="w-full text-left px-4 py-3 rounded-xl bg-slate-50 active:bg-slate-100 flex items-center gap-3">
                 <Trophy size={18} className="text-[#FF9500] shrink-0" />
                 <span><span className="block text-[15px] font-medium">Nur Endergebnis</span><span className="block text-[12px] text-slate-500">Schnell ohne Einzelübungen erfassen</span></span>
               </button>
@@ -15061,7 +15077,7 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
   );
 }
 
-function WettkampfEditor({ competition, programs, athletes, existingExercises, existingCompetitions, onSave, onCancel }) {
+function WettkampfEditor({ competition, programs, athletes, existingExercises, existingCompetitions, onSave, onCancel, initialPdf = null }) {
   const { t } = useI18n();
   const isNew = !competition;
 
@@ -15553,6 +15569,15 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
       setImportMsg('Fehler: ' + (err.message || 'PDF konnte nicht verarbeitet werden'));
     }
   };
+
+  // Aus dem „+"-Chooser kam schon eine PDF-Datei → sofort einlesen (einmalig).
+  const didAutoPdf = useRef(false);
+  useEffect(() => {
+    if (initialPdf && !didAutoPdf.current) {
+      didAutoPdf.current = true;
+      handlePdfImport(initialPdf);
+    }
+  }, [initialPdf]);
 
 
   const handlePasteImport = () => {
