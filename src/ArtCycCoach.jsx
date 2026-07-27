@@ -8034,6 +8034,7 @@ function TrainingView({ data, setData, setView }) {
   if (runEditorOpen) {
     return <WettkampfEditor
       competition={null}
+      kind="training"
       programs={(data.programs || []).filter(p => p.owner_id != null)}
       athletes={[]}
       existingExercises={data.exercises || []}
@@ -15146,7 +15147,7 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
   );
 }
 
-function WettkampfEditor({ competition, programs, athletes, existingExercises, existingCompetitions, onSave, onCancel, initialPdf = null }) {
+function WettkampfEditor({ competition, programs, athletes, existingExercises, existingCompetitions, onSave, onCancel, initialPdf = null, kind = 'wettkampf' }) {
   const { t } = useI18n();
   const isNew = !competition;
 
@@ -15200,7 +15201,10 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
   const [t1S, setT1S] = useState(() => initVal('t1S', (competition && competition.t1_schwierigkeit) || 0));
   const [t2S, setT2S] = useState(() => initVal('t2S', (competition && competition.t2_schwierigkeit) || 0));
   // Anzahl Kampfgerichte (1–4) + Erfassungs-Modus (pro KG / Gesamt) — wie nativ.
-  const [kampfgerichte, setKampfgerichte] = useState(() => initVal('kampfgerichte', Math.max(1, Math.min(4, Number((competition && competition.kampfgerichte) || 2)))));
+  // Standard: Trainingsdurchlauf = EIN Kampfgericht (da wertet in der Regel einer),
+  // Wettkampf = zwei. Bestehende Bögen bringen ihren gespeicherten Wert mit.
+  const defaultKG = ((competition ? (competition.kind || 'wettkampf') : kind) === 'training') ? 1 : 2;
+  const [kampfgerichte, setKampfgerichte] = useState(() => initVal('kampfgerichte', Math.max(1, Math.min(4, Number((competition && competition.kampfgerichte) || defaultKG)))));
   const [abzugGesamt, setAbzugGesamt] = useState(() => initVal('abzugGesamt', !!(competition && competition.abzug_gesamt)));
   const [activeTable, setActiveTable] = useState(1);
   const [showExercises, setShowExercises] = useState(true);
