@@ -2642,10 +2642,14 @@ function getAnerkanntePunkte(w, exercise) {
 // mit, ohne die Index-Zuordnung Eintrag ↔ Übung zu verschieben — und ohne Migration.
 // Sie tragen nur Fehlerzeichen: keine Punkte, keine Schwierigkeit, keine Aufwertung.
 // =============================================================
-const EDGE_SLOTS = [
-  { kind: 'pre',  label: 'Anfahren', hint: 'Fehler vor der ersten Übung' },
-  { kind: 'post', label: 'Abfahren', hint: 'Fehler nach der letzten Übung' },
-];
+const EDGE_SLOTS = [{ kind: 'pre' }, { kind: 'post' }];
+
+// Benannt wird über die Übungsnummer („Vor Übung 1" / „Nach Übung 30") — Fachbegriffe
+// wie Anfahren/Abfahren sagen nicht, wo im Bogen man gerade ist.
+function edgeLabel(kind, exerciseCount) {
+  const n = Math.max(1, Number(exerciseCount || 0));
+  return kind === 'pre' ? 'Vor Übung 1' : `Nach Übung ${n}`;
+}
 
 // Position eines Randabzugs in der Wertungstabelle (hinter den Übungen).
 function edgeIndex(program, kind) {
@@ -4112,7 +4116,7 @@ async function applyChatAction(action, data, setData, refreshers) {
       });
       if (error) return '⚠ DB-Fehler: ' + error.message;
       if (refreshers && refreshers.sessions) await refreshers.sessions();
-      return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Serien (' + succ + ' geklappt)' + ropeTag;
+      return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Versuche (' + succ + ' geklappt)' + ropeTag;
     }
     const newSession = {
       id: uid(),
@@ -4125,7 +4129,7 @@ async function applyChatAction(action, data, setData, refreshers) {
       athleteId: null,
     };
     setData({ ...data, sessions: [...(data.sessions || []), newSession] });
-    return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Serien (' + succ + ' geklappt)' + ropeTag;
+    return '✓ Session angelegt: ' + (ex ? ex.name : 'Übung') + ' · ' + entries.length + ' Versuche (' + succ + ' geklappt)' + ropeTag;
   }
   if (action.tool === 'propose_update_session') {
     const fields = p.fields || {};
@@ -7236,7 +7240,7 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf, b
 // Trainings-Heatmap — GitHub-Style Aktivitäts-Kalender
 // =============================================================
 // Zeigt die letzten 26 Wochen (≈6 Monate) als 7×26-Grid.
-// Jede Zelle ein Tag, gefärbt nach Anzahl Sessions/Serien.
+// Jede Zelle ein Tag, gefärbt nach Anzahl Sessions/Versuche.
 function TrainingHeatmap({ sessions }) {
   const { t } = useI18n();
   const { weeks, monthLabels, totalDaysActive, totalSeries } = useMemo(() => {
@@ -7292,7 +7296,7 @@ function TrainingHeatmap({ sessions }) {
     return { weeks, monthLabels, totalDaysActive, totalSeries };
   }, [sessions]);
 
-  // Farbskala: 0 / 1-9 / 10-19 / 20-29 / 30+ Serien
+  // Farbskala: 0 / 1-9 / 10-19 / 20-29 / 30+ Versuche
   const colorFor = (entries) => {
     if (entries === 0) return '#F2F2F7';
     if (entries < 10) return '#FED7AA';
@@ -7340,7 +7344,7 @@ function TrainingHeatmap({ sessions }) {
                 opacity={day.future ? 0.3 : 1}
                 stroke={day.future ? '#E5E5EA' : 'none'}
                 strokeWidth={day.future ? 1 : 0}>
-                <title>{day.date}{day.entries > 0 ? ' — ' + day.sessions + ' Session(s), ' + day.entries + ' Serien' : ''}</title>
+                <title>{day.date}{day.entries > 0 ? ' — ' + day.sessions + ' Session(s), ' + day.entries + ' Versuche' : ''}</title>
               </rect>
             ))
           )}
@@ -7532,7 +7536,7 @@ function groupSessionsByDate(sessions) {
   return { today, yesterday, week, months };
 }
 
-// Sessions nach Übung gruppieren — pro Übung: Anzahl Serien, Quote, Trend.
+// Sessions nach Übung gruppieren — pro Übung: Anzahl Versuche, Quote, Trend.
 function groupSessionsByExercise(sessions) {
   const byEx = new Map();
   for (const s of sessions) {
@@ -7776,7 +7780,7 @@ function TrainingView({ data, setData, setView }) {
           <div className="min-w-0 flex-1">
             <div className="font-medium text-[15px] truncate">{g.exerciseName}</div>
             <div className="text-[12px] text-[#8E8E93] mt-0.5">
-              {g.items.length} Sessions · {g.totalEntries} Serien · zuletzt {formatDateShort(g.lastDate)}
+              {g.items.length} Sessions · {g.totalEntries} Versuche · zuletzt {formatDateShort(g.lastDate)}
             </div>
           </div>
           <div className={'font-semibold text-[17px] ' + rateColor}>{rate}%</div>
@@ -8491,7 +8495,7 @@ function TrainingView({ data, setData, setView }) {
           {trainedExercises.map(({ ex, sessions, total, rate, lastDate }) => {
             const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 60 ? 'text-[#FF9500]' : 'text-[#FF3B30]';
             const meta = (ex.uci_code ? ('Nr. ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : ''));
-            const subtitle = (meta ? meta + ' · ' : '') + sessions + ' Sessions · ' + total + ' Serien';
+            const subtitle = (meta ? meta + ' · ' : '') + sessions + ' Sessions · ' + total + ' Versuche';
             return (
               <IOSListRow
                 key={ex.id}
@@ -8705,7 +8709,7 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
 
           {/* Entries — identisches 3-Spalten-Layout wie in Erfassen */}
           <div>
-            <label className="text-sm font-medium block mb-2">Serien · {entries.length}</label>
+            <label className="text-sm font-medium block mb-2">Versuche · {entries.length}</label>
             <div className={'grid gap-3 mb-3 ' + (use3 ? 'grid-cols-3' : 'grid-cols-2')}>
               <button onClick={(ev) => { pressFeedback(ev, 'success'); setEntries(prev => [...prev, 'success']); }}
                 className="bg-emerald-50 border border-emerald-100 text-emerald-700 py-3.5 rounded-[20px] font-semibold flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform">
@@ -14994,7 +14998,7 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
   const slotCount = exs.length + 2;
   const [idx, setIdx] = useState(() => Math.max(0, Math.min(startIndex || 0, slotCount - 1)));
   const edge = idx <= 0 ? 'pre' : (idx > exs.length ? 'post' : null);
-  const edgeInfo = edge ? EDGE_SLOTS.find(sl => sl.kind === edge) : null;
+  const edgeTitle = edge ? edgeLabel(edge, exs.length) : null;
   const row = edge ? edgeIndex(program, edge) : idx - 1;   // Position in der Wertungstabelle
   const [kg, setKg] = useState(1);            // aktives Kampfgericht (per-KG); Gesamt = immer 1
   const [pulse, setPulse] = useState(0);       // Haptik-Trigger
@@ -15039,10 +15043,10 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
       {/* Übungs-Kopf */}
       <div className="text-center px-4 pt-3 shrink-0">
         <div className="text-slate-900 dark:text-white text-xl font-bold leading-tight line-clamp-2">
-          {edgeInfo ? edgeInfo.label : localizedExerciseName(ex)}
+          {edgeTitle || localizedExerciseName(ex)}
         </div>
         <div className="text-slate-500 dark:text-slate-400 text-sm mt-1">
-          {edgeInfo ? edgeInfo.hint : (<>
+          {!edge && (<>
             {ex.code && <span className="font-mono">Nr. {ex.code} · </span>}
             {std.toFixed(1).replace('.', ',')} Pkt
           </>)}
@@ -15292,8 +15296,9 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           <Flag size={14} />
         </span>
         <div className="flex-1 min-w-0">
-          <div className="text-[15px] font-medium leading-snug text-slate-900 dark:text-slate-100">{sl.label}</div>
-          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{sl.hint}</div>
+          <div className="text-[15px] font-medium leading-snug text-slate-900 dark:text-slate-100">
+            {edgeLabel(sl.kind, (program.exercises || []).length)}
+          </div>
         </div>
         <span className={'text-xs font-semibold tabular-nums shrink-0 pt-0.5 ' + (any ? 'text-[#FF9500]' : 'text-slate-300 dark:text-slate-600')}>
           {any ? parts.map(v => '−' + v.toFixed(1)).join(' / ') : '—'}
@@ -19216,8 +19221,9 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
                   <div key={sl.kind} className="rounded-lg p-2.5 bg-rose-50">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium leading-tight">{sl.label}</div>
-                        <div className="text-[11px] text-slate-500">{sl.hint}</div>
+                        <div className="text-sm font-medium leading-tight">
+                          {edgeLabel(sl.kind, effProgram.exercises.length)}
+                        </div>
                         <div className="flex flex-wrap gap-2 mt-1.5 text-xs">
                           {e.cross > 0 && <span className="text-slate-700"><strong>x</strong>×{e.cross}</span>}
                           {e.wave > 0 && <span className="text-slate-700"><strong>~</strong>×{e.wave}</span>}
