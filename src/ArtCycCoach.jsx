@@ -16,7 +16,7 @@ import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './l
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
 import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud, fileToBase64 } from './lib/feedback.js';
-import { useProtoFeatures, setProtoFeatures } from './lib/featureFlags.js';
+import { setProtoFeatures } from './lib/featureFlags.js';
 import { suggestClubs, normClub, CLUBS, COUNTRY_FLAG } from './lib/clubs.js';
 import { parseProgramFile } from './lib/programImport.js';
 import { exportMauteVorlage } from './lib/mauteExport.js';
@@ -7632,6 +7632,7 @@ function TrainingView({ data, setData, setView }) {
   // „Erfassen"-Auswahl (Action-Sheet) + Übungs-Picker für Feedback.
   const [erfassenOpen, setErfassenOpen] = useState(false);
   const [runEditorOpen, setRunEditorOpen] = useState(false); // Trainings-Durchlauf werten
+  const [runPdf, setRunPdf] = useState(null);                 // gewähltes PDF für den Durchlauf
   const [viewRunId, setViewRunId] = useState(null);           // Durchlauf-Detail
   const [runsListOpen, setRunsListOpen] = useState(false);    // „Trainings-Wertungen"-Seite (Verwaltungsliste)
   const [runProgramFilter, setRunProgramFilter] = useState(''); // '' = alle Programme
@@ -8086,6 +8087,7 @@ function TrainingView({ data, setData, setView }) {
     return <WettkampfEditor
       competition={null}
       kind="training"
+      initialPdf={runPdf}
       programs={(data.programs || []).filter(p => p.owner_id != null)}
       athletes={[]}
       existingExercises={data.exercises || []}
@@ -8097,7 +8099,7 @@ function TrainingView({ data, setData, setView }) {
         setData({ ...data, competitions: exists ? full.map(x => x.id === c.id ? c : x) : [...full, c] });
         setRunEditorOpen(false);
       }}
-      onCancel={() => setRunEditorOpen(false)}
+      onCancel={() => { setRunPdf(null); setRunEditorOpen(false); }}
     />;
   }
   if (viewRunId) {
@@ -8441,8 +8443,11 @@ function TrainingView({ data, setData, setView }) {
           message="Was möchtest du erfassen?"
           actions={[
             { icon: Dumbbell, label: 'Wiederholung erfassen', sublabel: 'Versuche einer Übung — Geklappt / Nicht', onClick: () => setView('erfassen') },
-            { icon: FileText, label: 'Trainingsprogramm erfassen', sublabel: 'Ganzes Programm mit Abzügen werten', onClick: () => setRunEditorOpen(true) },
-            { icon: Upload, label: 'PDF importieren', sublabel: 'Wertungsbericht-PDF als Training', onClick: () => setRunEditorOpen(true) },
+            { icon: FileText, label: 'Trainingsprogramm erfassen', sublabel: 'Ganzes Programm mit Abzügen werten', onClick: () => { setRunPdf(null); setRunEditorOpen(true); } },
+            // PDF ist ein eigener Weg: Datei direkt hier wählen, der Editor
+            // importiert sie beim Öffnen (vorher öffnete beides nur das Formular).
+            { icon: Upload, label: 'PDF importieren', sublabel: 'Wertungsbericht-PDF als Training',
+              pickFile: true, onPick: (f) => { setRunPdf(f); setRunEditorOpen(true); } },
           ]}
         />
 
@@ -12230,7 +12235,10 @@ function UebungenView({ data, setData, onBack, onOpenView }) {
   // Feedback (Prototyp): zeigen, welche Übungen Feedback haben — und Übungen,
   // zu denen es Feedback gibt, die aber (noch) nicht in der Liste stehen,
   // automatisch als „nur Feedback"-Eintrag einblenden.
-  const proto = useProtoFeatures();
+  // Einheitliches Tor wie im Übungs-Detail: nur Accounts MIT eigenen Feedback-Daten
+  // sehen die Feedback-Hinweise. Vorher hing die Liste am Prototyp-Schalter, das
+  // Detail an den Daten — dieselbe Übung zeigte je Bildschirm etwas anderes.
+  const proto = !!data._hasCoachingFeedback;
   const viewingAthleteId = data._viewingAthleteId || null;
   const [feedbackEntries, setFeedbackEntries] = useState([]);
   useEffect(() => {
@@ -18218,6 +18226,35 @@ function ActionSheet({ open, onClose, title, message, actions = [], cancelLabel 
           )}
           {actions.map((a, i) => {
             const Icon = a.icon;
+            const cls = 'w-full px-5 py-3.5 transition active:bg-black/[0.06] dark:active:bg-white/10 '
+              + (i > 0 ? 'border-t border-black/10 dark:border-white/10 ' : '')
+              + (hasIcons ? 'flex items-center gap-3 text-left' : 'text-center');
+            // Aktion, die direkt eine Datei wählt (z. B. „PDF importieren"): als
+            // <label> mit verstecktem Datei-Feld — Safari öffnet den Auswahl-Dialog
+            // nur aus einer echten Nutzer-Interaktion, nicht nachträglich per Code.
+            if (a.pickFile) {
+              return (
+                <label key={i} className={cls + ' cursor-pointer'}>
+                  {hasIcons && (
+                    <span className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-[#FF9500]/12">
+                      {Icon && <Icon size={18} className="text-[#FF9500]" />}
+                    </span>
+                  )}
+                  <span className={hasIcons ? 'min-w-0' : ''}>
+                    <span className="block text-[15px] font-medium">{a.label}</span>
+                    {a.sublabel && <span className="block text-[12px] text-[#8E8E93] mt-0.5">{a.sublabel}</span>}
+                  </span>
+                  <input type="file" accept={a.accept || 'application/pdf'} className="hidden"
+                    onChange={ev => {
+                      const f = ev.target.files && ev.target.files[0];
+                      ev.target.value = '';
+                      if (!f) return;
+                      onClose();
+                      a.onPick && a.onPick(f);
+                    }} />
+                </label>
+              );
+            }
             return (
               <button key={i} onClick={() => { onClose(); a.onClick && a.onClick(); }}
                 className={'w-full px-5 py-3.5 transition active:bg-black/[0.06] dark:active:bg-white/10 '
