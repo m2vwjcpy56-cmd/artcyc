@@ -5832,7 +5832,7 @@ export default function App() {
   else if (view === 'training') viewEl = <TrainingView data={effectiveData} setData={save} setView={setView} />;
   else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
   else if (view === 'trainingsplan') viewEl = <TrainingsplanView data={effectiveData} setData={save} onBack={() => setView('training')} />;
-  else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} />;
+  else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} onOpenView={setView} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} myUserId={session?.user?.id || null} />;
   else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} dbAthleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={hasCoachingFeedback ? openFeedback : null} />;
   else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} athleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { chooseAthlete(id); setView('dashboard'); }} myAthleteId={myAthleteId} setView={setView} />;
@@ -7079,6 +7079,57 @@ function Dashboard({ data, setView, onOpenFeedback }) {
 // =============================================================
 // Wettkampf-Verlauf-Chart — Linie der Endergebnisse über Zeit
 // =============================================================
+// Abzug je Wettkampf über die Zeit — Gegenstück zum Ergebnis-Verlauf. Bewusst
+// schlicht (keine Scrub-Interaktion): der Ergebnis-Chart trägt die Detailarbeit.
+function DeductionTrendChart({ series }) {
+  if (!series || series.length < 2) {
+    return <div className="text-[13px] text-slate-400 py-6 text-center">Zu wenig Daten für diesen Zeitraum.</div>;
+  }
+  const W = 600, H = 180, PL = 26, PR = 10, PT = 12, PB = 18;
+  const vals = series.map(p => p.ded);
+  const maxY = Math.max(...vals), minY = Math.min(...vals);
+  const pad = Math.max(0.5, (maxY - minY) * 0.15);
+  const yMax = Math.ceil((maxY + pad) * 10) / 10;
+  const yMin = Math.max(0, Math.floor((minY - pad) * 10) / 10);
+  const x = (i) => PL + (i * (W - PL - PR)) / (series.length - 1);
+  const y = (v) => H - PB - ((v - yMin) / Math.max(0.01, yMax - yMin)) * (H - PT - PB);
+  const line = series.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.ded).toFixed(1)}`).join(' ');
+  const area = `${line} L${x(series.length - 1).toFixed(1)},${H - PB} L${PL},${H - PB} Z`;
+  const jahr = (d) => (d || '').slice(0, 4);
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" role="img"
+        aria-label="Abzug je Wettkampf im Zeitverlauf">
+        <defs>
+          <linearGradient id="dedFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#AF52DE" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#AF52DE" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {[yMin, (yMin + yMax) / 2, yMax].map((v, i) => (
+          <g key={i}>
+            <line x1={PL} x2={W - PR} y1={y(v)} y2={y(v)} stroke="currentColor" strokeOpacity="0.08" strokeWidth="1" />
+            <text x={PL - 4} y={y(v) + 3} textAnchor="end" fontSize="9" fill="currentColor" fillOpacity="0.45">
+              {v.toFixed(1)}
+            </text>
+          </g>
+        ))}
+        <path d={area} fill="url(#dedFill)" />
+        <path d={line} fill="none" stroke="#AF52DE" strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round"
+          vectorEffect="non-scaling-stroke" />
+        {series.map((p, i) => (
+          <circle key={i} cx={x(i)} cy={y(p.ded)} r="2.6" fill="#AF52DE" />
+        ))}
+      </svg>
+      <div className="flex justify-between text-[11px] text-slate-400 px-1 mt-1 tabular-nums">
+        <span>{jahr(series[0].date)}</span>
+        <span>{series.length} Wettkämpfe · Ø {(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)}</span>
+        <span>{jahr(series[series.length - 1].date)}</span>
+      </div>
+    </div>
+  );
+}
+
 function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf, bare = false }) {
   const points = useMemo(() => {
     const programMap = new Map(programs.map(p => [p.id, p]));
@@ -12147,13 +12198,16 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
 // =============================================================
 // ÜBUNGEN VERWALTEN
 // =============================================================
-function UebungenView({ data, setData, onBack }) {
+function UebungenView({ data, setData, onBack, onOpenView }) {
   const { t } = useI18n();
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [selected, setSelected] = useState(null); // Übung in Detail-Ansicht
   const [pendingDelete, setPendingDelete] = useState(null);
   const [statRange, setStatRange] = useState('m6'); // Statistik-Überblick Zeitraum (Parität iOS)
+  const [statVerlauf, setStatVerlauf] = useState('ergebnis'); // Verlauf: Ergebnis | Abzug
+  // Übungsliste: nach Abzug absteigend ist die Voreinstellung — die Baustellen zuerst.
+  const [statSort, setStatSort] = useState('abzug');
 
   // Sortierung wie beim Protokollieren: aktive Übungen zuerst, davon die
   // häufigst-trainierten oben (= „was ich oft anpacke ist sofort sichtbar"),
@@ -12353,6 +12407,54 @@ function UebungenView({ data, setData, onBack }) {
   const statFmt = (v) => v != null ? v.toFixed(2) : '—';
   const statHasData = statWk.length || statTr.length || statSessions.length;
 
+  // Wettkämpfe im Zeitraum (mit Programm) — Grundlage für beide Verlaufs-Kurven.
+  const statCompsWk = (data.competitions || [])
+    .filter(c => (c.kind || 'wettkampf') !== 'training' && inStatRange(c.date) && statPrograms.get(c.program_id));
+  // Abzug je Wettkampf über die Zeit (Mittel der Kampfgerichte) — wie nativ „Verlauf · Abzug".
+  const statDedSeries = statCompsWk
+    .map(c => {
+      const p = statPrograms.get(c.program_id);
+      const t1 = calcTableResult(p, c.table1, c.t1_schwierigkeit);
+      const t2 = calcTableResult(p, c.table2, c.t2_schwierigkeit);
+      return { date: c.date || '', name: c.name || '', ded: (t1.abzugGesamt + t2.abzugGesamt) / 2 };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+  // Ø Abzug je Übung (Wettkampf, im Zeitraum) — sortiert die Übungsliste.
+  const statDedByKey = (() => {
+    const rows = calcDeductionRanking(data.programs || [], statCompsWk, data.exercises || [], data.sessions || []);
+    const m = new Map();
+    const nrm = (n) => (n || '').toLowerCase().replace(/\s+/g, ' ').replace(/[ .]+$/, '').trim();
+    for (const r of rows) {
+      if (r.key) m.set(r.key, r.avgDeduction);
+      // Zusätzlich unter dem Namen ablegen: der Schlüssel des Rankings ist die
+      // Übungsnummer, sobald IRGENDEIN Programm sie kennt — eine Übung ohne
+      // eigene Nummer würde sonst nie gefunden und immer hinten landen.
+      const nk = nrm(r.name);
+      if (nk && !m.has(nk)) m.set(nk, r.avgDeduction);
+    }
+    return m;
+  })();
+  const dedKeyOf = (ex) => {
+    const code = ex.uci_code && String(ex.uci_code).trim().toLowerCase();
+    return code || (ex.name || '').toLowerCase().replace(/\s+/g, ' ').replace(/[ .]+$/, '').trim();
+  };
+  const statEvents = { wk: statWk.length, tr: statTr.length };
+
+  // Sortierung der Übungsliste: Abzug (Voreinstellung, absteigend), Trainingsquote
+  // oder Name. Übungen ohne Wert landen hinten, damit die Liste oben aussagt.
+  const sortForStats = (list) => {
+    const arr = [...list];
+    if (statSort === 'name') return arr.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+    if (statSort === 'training') {
+      const rate = (ex) => {
+        const st = calcExerciseTrainingStats(ex, data.sessions || []);
+        return st.total > 0 ? st.rate : -1;
+      };
+      return arr.sort((a, b) => rate(b) - rate(a));
+    }
+    return arr.sort((a, b) => (statDedByKey.get(dedKeyOf(b)) || -1) - (statDedByKey.get(dedKeyOf(a)) || -1));
+  };
+
   return (
     <div className="min-h-screen bg-[#F2F2F7] p-4 sm:p-8">
       <div className="max-w-3xl mx-auto space-y-1.5 sm:space-y-5">
@@ -12391,6 +12493,50 @@ function UebungenView({ data, setData, onBack }) {
           </section>
         ) : null}
 
+        {/* VERLAUF — Ergebnis oder Abzug über die Zeit (Parität zu iOS „Verlauf") */}
+        {(statCompsWk.length >= 2) && (
+          <section className="space-y-2 pt-1">
+            <div className="text-[12px] uppercase tracking-wide text-slate-400 font-medium px-1">Verlauf</div>
+            <SegmentedControl value={statVerlauf} onChange={setStatVerlauf}
+              options={[['ergebnis', 'Ergebnis'], ['abzug', 'Abzug']]} />
+            <div className="card-surface rounded-[22px] p-3">
+              {statVerlauf === 'ergebnis' ? (
+                <CompetitionTrendChart competitions={statCompsWk} programs={data.programs || []}
+                  best={statWk.length ? Math.max(...statWk) : null} bare />
+              ) : (
+                <DeductionTrendChart series={statDedSeries} />
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* WETTKÄMPFE & TRAININGS — Einstieg in die Einzel-Einträge (wie nativ) */}
+        {(statEvents.wk > 0 || statEvents.tr > 0) && (
+          <section className="space-y-1.5 pt-1">
+            <div className="text-[12px] uppercase tracking-wide text-slate-400 font-medium px-1">Wettkämpfe & Trainings</div>
+            <IOSList>
+              {statEvents.wk > 0 && (
+                <IOSListRow onClick={() => onOpenView && onOpenView('wettkampf')}>
+                  <div className="flex items-center gap-3">
+                    <Trophy size={17} className="text-[#FF9500] shrink-0" />
+                    <span className="text-[15px] font-medium flex-1">Wettkämpfe</span>
+                    <span className="text-[15px] font-semibold text-[#8E8E93] tabular-nums">{statEvents.wk}</span>
+                  </div>
+                </IOSListRow>
+              )}
+              {statEvents.tr > 0 && (
+                <IOSListRow onClick={() => onOpenView && onOpenView('training')}>
+                  <div className="flex items-center gap-3">
+                    <Dumbbell size={17} className="text-[#0A84FF] shrink-0" />
+                    <span className="text-[15px] font-medium flex-1">Trainings-Wertungen</span>
+                    <span className="text-[15px] font-semibold text-[#8E8E93] tabular-nums">{statEvents.tr}</span>
+                  </div>
+                </IOSListRow>
+              )}
+            </IOSList>
+          </section>
+        )}
+
         {/* iOS-style Inset Grouped List
             Layout pro Zeile:
               [Name groß]                           [Code mono + chevron]
@@ -12402,9 +12548,22 @@ function UebungenView({ data, setData, onBack }) {
         ) : (
           <div className="space-y-5">
             {activeExercises.length > 0 && (
-              <IOSList footer="Tippe auf eine Übung um Statistik (Training + Wettkampf) zu sehen.">
-                {activeExercises.map(renderExerciseRow)}
-              </IOSList>
+              <>
+                <div className="flex items-center justify-between px-1 pt-1">
+                  <div className="text-[12px] uppercase tracking-wide text-slate-400 font-medium">
+                    Übungen ({activeExercises.length})
+                  </div>
+                  <select value={statSort} onChange={e => setStatSort(e.target.value)}
+                    className="text-[13px] font-semibold text-[#FF9500] bg-transparent outline-none">
+                    <option value="abzug">Abzug</option>
+                    <option value="training">Training</option>
+                    <option value="name">Name</option>
+                  </select>
+                </div>
+                <IOSList footer="Tippe auf eine Übung um Statistik (Training + Wettkampf) zu sehen.">
+                  {sortForStats(activeExercises).map(renderExerciseRow)}
+                </IOSList>
+              </>
             )}
 
             {archivedExercises.length > 0 && (
