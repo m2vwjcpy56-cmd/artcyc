@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Trophy, ClipboardList, ScanLine, BarChart3, Users, ListChecks,
   Check, ChevronRight, X, Menu, ShieldCheck, Globe, BookOpen,
-  User, UserCog, Zap,
+  User, UserCog, Zap, Timer, WifiOff,
 } from 'lucide-react';
 
 // Apple-Logo (lucide führt keine Marken-Icons mehr) — für die „Im App Store"-Buttons.
@@ -105,13 +105,15 @@ function Section({ children, className }) {
 
 // ---- Start ---------------------------------------------------------------
 const FEATURES = [
-  { icon: ClipboardList, title: 'Training protokollieren', text: 'Übungen mit Geklappt/Nicht erfassen, Serien zählen, mit/ohne Seil — schnell direkt aus dem Trainingsplan.' },
+  { icon: ClipboardList, title: 'Training protokollieren', text: 'Übungen mit Geklappt/Nicht erfassen, Versuche zählen, mit/ohne Seil — schnell direkt aus dem Trainingsplan.' },
   { icon: ScanLine, title: 'Wertungsbögen scannen', text: 'Wettkampf-Wertungsbogen abfotografieren — die KI liest Übungen, Abzüge und Endergebnis automatisch aus.' },
   { icon: Zap, title: 'Wertungsbögen manuell erfassen', text: 'Übung für Übung durchtippen: große Flächen für die Fehlerzeichen, beide Kampfgerichte, Schwierigkeit — schnell und ohne Papier.' },
-  { icon: BarChart3, title: 'Statistik & Trends', text: 'Erfolgsquoten pro Übung, Verlauf über Wochen/Monate, Ø-Punktabzug pro Wettkampf und Bestleistungen.' },
+  { icon: BarChart3, title: 'Statistiken', text: 'Alles an einem Ort: Ø Ergebnis und Bestleistung, Verlauf über die Saison, Ø Abzug je Programm und je Übung — Übungen nach Abzug sortiert, damit die Baustellen oben stehen.' },
   { icon: ListChecks, title: 'Trainingspläne', text: 'Stehende Pläne mit verknüpften Übungen — direkt protokollieren, mit Verlaufs-Protokoll je Plan.' },
   { icon: Users, title: 'Mehrere Trainer & Sportler', text: 'Sportler per Code einladen, Co-Trainer verwalten — alle sehen dieselben Daten in Echtzeit.' },
-  { icon: Trophy, title: 'Wettkämpfe & Export', text: 'Wettkämpfe erfassen, taktische Aufwertungen, und Excel-Exporte erstellen.' },
+  { icon: Trophy, title: 'Wettkämpfe & Export', text: 'Wertungsbögen erfassen, taktische Aufwertungen, Abzüge auch vor der ersten und nach der letzten Übung. Ausgabe als offizielle Wettkampfstatistik, als einfache Tabelle oder CSV.' },
+  { icon: Timer, title: 'Trainingsdurchlauf werten', text: 'Ein ganzes Programm im Training wie im Wettkampf bewerten — mit Abzügen und Endergebnis. Fließt getrennt in die Statistiken ein, so lässt sich Training gegen Wettkampf halten.' },
+  { icon: WifiOff, title: 'Auch ohne Netz', text: 'In der Halle ist das Netz oft weg: Erfassen, Wettkämpfe und Programme gehen offline weiter und werden synchronisiert, sobald wieder Verbindung da ist.' },
   { icon: BookOpen, title: 'Komplettes Reglement', text: 'Alle offiziellen Kunstrad-Übungen mit Übungsnummer und Punkten sind hinterlegt — Übung suchen, antippen, fertig.' },
 ];
 
@@ -125,12 +127,14 @@ const REGLEMENT_SAMPLE = [
   { c: '1217b', n: 'Dornstandsteiger rw.', p: '6,0' },
 ];
 
+// Aufnahmen aus der aktuellen Version (Hellmodus, Simulator). Wenn sich die App
+// sichtbar ändert, hier mit erneuern — alte Bilder versprechen sonst Falsches.
 const PREVIEWS = [
   { img: 'dashboard', label: 'Dashboard' },
-  { img: 'trend', label: 'Übungs-Trend' },
-  { img: 'erfassen', label: 'Wertungsbogen erfassen' },
+  { img: 'training', label: 'Training' },
+  { img: 'erfassen', label: 'Abzüge erfassen' },
   { img: 'wettkampf', label: 'Wettkämpfe' },
-  { img: 'uebungen', label: 'Übungen' },
+  { img: 'statistiken', label: 'Statistiken' },
 ];
 
 function Home() {
@@ -358,6 +362,7 @@ const FAQS = [
   { q: 'Wie lade ich Sportler oder Co-Trainer ein?', a: 'In der App über einen Einlade-Code: Du erstellst pro Sportler bzw. Trainer einen Code, der einmalig eingelöst wird.' },
   { q: 'Können mehrere Trainer denselben Sportler betreuen?', a: 'Ja. Ein Sportler kann mehrere (Co-)Trainer freischalten — alle sehen dieselben Daten in Echtzeit. Jeder Sportler legt dabei pro Trainer fest, ob dieser nur eintragen oder auch bearbeiten und löschen darf.' },
   { q: 'Gibt es eine Team-/Vereinsfunktion?', a: 'Ja. Sportler und Trainer lassen sich in Teams bündeln; neue Mitglieder treten per Beitritts-Code bei. So behält ein Verein alle Aktiven an einem Ort im Blick.' },
+  { q: 'Funktioniert die App ohne Internet?', a: 'Zum größten Teil ja. Training erfassen, Wettkämpfe und Trainingsdurchläufe werten sowie Programme bearbeiten gehen offline; die Änderungen werden übertragen, sobald wieder Verbindung besteht. Nur der Foto-Scan und die Anmeldung brauchen Netz.' },
   { q: 'Sind meine Daten sicher?', a: 'Die Daten liegen verschlüsselt in der Cloud. Nur du und die von dir freigegebenen Trainer haben Zugriff.' },
   { q: 'Funktioniert der Wertungsbogen-Scan zuverlässig?', a: 'Die Erkennung prüft sich selbst gegen die Prüfsumme des Bogens und liest bei Bedarf nach, um Abzüge und Endergebnis korrekt zu übernehmen.' },
 ];
