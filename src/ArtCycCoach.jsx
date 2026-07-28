@@ -7555,6 +7555,58 @@ function TrendSparkline({ trend }) {
 // TRAINING (eigener Bereich, war vorher Home)
 // =============================================================
 // Gruppiert Sessions in Datums-Buckets relativ zum heutigen Tag.
+// Sessions nach TRAININGSTAG gruppieren (neueste zuerst) und je Tag pro Übung
+// zusammenfassen — so liest man einen Trainingstag als Ganzes statt als Liste
+// einzelner Logs. Gleiche Logik wie nativ (TrainingView.aggregate).
+function groupSessionsByDay(sessions) {
+  const byDay = new Map();
+  for (const s of sessions) {
+    const d = s.date || '';
+    if (!d) continue;
+    if (!byDay.has(d)) byDay.set(d, []);
+    byDay.get(d).push(s);
+  }
+  return [...byDay.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([date, items]) => ({ date, items }));
+}
+
+// Je Übung UND Seil-Variante zusammenfassen (mit/ohne Seil sind getrennte Zeilen,
+// weil sich die Quoten unterscheiden).
+function aggregateDay(items) {
+  const order = [];
+  const m = new Map();
+  for (const s of items) {
+    const exKey = s.exerciseId || s.exerciseName || '?';
+    const ropeKey = s.withRope === true ? '1' : s.withRope === false ? '0' : '-';
+    const key = exKey + '|' + ropeKey;
+    const entries = s.entries || [];
+    const att = entries.length;
+    const succ = entries.filter(e => e === 'success').length;
+    if (m.has(key)) {
+      const cur = m.get(key);
+      cur.attempts += att; cur.success += succ;
+    } else {
+      m.set(key, { key, exId: s.exerciseId || null, name: s.exerciseName || 'Übung',
+                   rope: s.withRope === true, attempts: att, success: succ });
+      order.push(key);
+    }
+  }
+  return order.map(k => {
+    const a = m.get(k);
+    return { ...a, rate: a.attempts > 0 ? Math.round((a.success / a.attempts) * 100) : 0 };
+  });
+}
+
+// „Heute" / „Gestern" / kurzes Datum als Tages-Überschrift.
+function dayHeading(iso) {
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (iso === today) return 'Heute';
+  if (iso === yesterday) return 'Gestern';
+  return formatDateShort(iso);
+}
+
 function groupSessionsByDate(sessions) {
   const todayIso = new Date().toISOString().slice(0, 10);
   const yesterdayIso = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
@@ -7750,6 +7802,11 @@ function TrainingView({ data, setData, setView }) {
 
   const groups = useMemo(() => groupSessionsByDate(filtered), [filtered]);
   const exerciseGroups = useMemo(() => groupSessionsByExercise(filtered), [filtered]);
+  // Trainingstage (neueste zuerst) für die Tages-Ansicht.
+  const dayGroups = useMemo(() => groupSessionsByDay(filtered), [filtered]);
+  const RECENT_DAYS = 7;                                  // wie nativ: letzte 7 Trainingstage
+  const [showAllDays, setShowAllDays] = useState(false);
+  const [expandedDays, setExpandedDays] = useState(() => new Set());
 
   const saveEdit = (updated) => {
     const next = (data.sessions || []).slice();
@@ -8076,11 +8133,78 @@ function TrainingView({ data, setData, setView }) {
   const previewV2 = true;
   if (previewV2) {
     const weekStreak = trainingWeekStreak(data.sessions);
+    // Tages-Ansicht (Parität zu iOS): pro Trainingstag eine Karte, darin je Übung
+    // eine zusammengefasste Zeile (antippbar → Übungs-Detail) und ausklappbar die
+    // einzelnen Logs. Voreinstellung sind die letzten 7 Trainingstage.
+    const dayList = () => {
+      const shown = showAllDays ? dayGroups : dayGroups.slice(0, RECENT_DAYS);
+      return (
+        <div className="space-y-3">
+          {shown.map(day => {
+            const open = expandedDays.has(day.date);
+            const attempts = day.items.reduce((n, s) => n + (s.entries || []).length, 0);
+            return (
+              <div key={day.date}>
+                <div className="flex items-baseline justify-between px-4 mb-1.5">
+                  <div className="text-[12px] uppercase tracking-wide font-medium text-[#8E8E93]">
+                    {dayHeading(day.date)}
+                  </div>
+                  <div className="text-[11px] text-[#8E8E93] tabular-nums">
+                    {day.items.length} Sessions · {attempts} Versuche
+                  </div>
+                </div>
+                <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
+                  {aggregateDay(day.items).map(agg => {
+                    const ex = agg.exId ? (data.exercises || []).find(e => e.id === agg.exId) : null;
+                    const rc = agg.rate >= 80 ? 'text-emerald-600' : agg.rate >= 50 ? 'text-amber-600' : 'text-rose-600';
+                    return (
+                      <button key={agg.key} onClick={() => ex && setSelectedExercise(ex)}
+                        className="w-full text-left px-4 py-3 flex items-center gap-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 active:bg-slate-100 transition">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-[15px] truncate">{agg.name}</span>
+                            {agg.rope && (
+                              <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">Seil</span>
+                            )}
+                          </div>
+                          <div className="text-[12px] text-[#8E8E93] mt-0.5 tabular-nums">
+                            {agg.attempts} Versuche · {agg.success} geklappt
+                          </div>
+                        </div>
+                        <span className={'text-[17px] font-semibold tabular-nums shrink-0 ' + rc}>{agg.rate}%</span>
+                        {ex && <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC] shrink-0" />}
+                      </button>
+                    );
+                  })}
+                  <button onClick={() => setExpandedDays(prev => {
+                      const n = new Set(prev);
+                      if (n.has(day.date)) n.delete(day.date); else n.add(day.date);
+                      return n;
+                    })}
+                    className="w-full px-4 py-2.5 flex items-center gap-2 text-[13px] text-[#8E8E93] border-t border-slate-100 active:bg-slate-100">
+                    <ChevronRight size={14} strokeWidth={2.4}
+                      className={'transition-transform ' + (open ? 'rotate-90' : '')} />
+                    Einzelne Logs anzeigen
+                  </button>
+                  {open && day.items.map(renderRow)}
+                </div>
+              </div>
+            );
+          })}
+          {dayGroups.length > RECENT_DAYS && (
+            <button onClick={() => setShowAllDays(v => !v)}
+              className="w-full py-2.5 text-[14px] font-medium text-[#FF9500] active:opacity-60">
+              {showAllDays ? 'Nur letzte Trainingstage' : `Alle Trainings anzeigen (${dayGroups.length} Tage)`}
+            </button>
+          )}
+        </div>
+      );
+    };
     const histList = filtered.length === 0
       ? <div className="text-[14px] text-[#8E8E93] text-center py-4">{t('training.noMatches')}</div>
       : sortMode === 'exercise'
         ? <div className="space-y-2">{exerciseGroups.map(renderExerciseGroup)}</div>
-        : <div className="space-y-1">{renderGroup(t('training.today'), groups.today)}{renderGroup(t('training.yesterday'), groups.yesterday)}{renderGroup(t('training.thisWeek'), groups.week)}{groups.months.map(m => renderGroup(m.label, m.items))}</div>;
+        : dayList();
     // Trainings-Durchlauf werten: gleicher Editor wie Wettkämpfe, aber kind='training'.
   if (runEditorOpen) {
     return <WettkampfEditor
