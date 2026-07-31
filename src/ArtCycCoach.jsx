@@ -14059,19 +14059,21 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete }) {
 
   const total = exercises.reduce((s, e) => s + Number(e.points || 0), 0);
 
-  const save = () => {
+  // asCopy: legt ein NEUES Programm mit diesen Übungen an, das Original bleibt.
+  // Simons Fall: „drei, vier Programme, die sich in einer Übung unterscheiden."
+  const save = (asCopy = false) => {
     if (!name.trim() || exercises.length === 0) return;
     if (!validation.valid) return;
     onSave({
-      id: (program && program.id) || uid(),
+      id: asCopy ? uid() : ((program && program.id) || uid()),
       // owner_id ERHALTEN — sonst fällt das Programm nach dem Sichern aus der
       // owner-gefilterten Liste („weg nach Sichern"), obwohl die DB es behält.
       owner_id: (program && program.owner_id) || undefined,
-      name: name.trim(),
+      name: asCopy ? (name.trim() + ' (Kopie)') : name.trim(),
       discipline,
       ageClass,
       exercises,
-      created: (program && program.created) || new Date().toISOString()
+      created: asCopy ? new Date().toISOString() : ((program && program.created) || new Date().toISOString())
     });
   };
 
@@ -14085,7 +14087,8 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete }) {
           <ChevronLeft size={22} strokeWidth={2.6} className="text-[#FF9500]" /> Zurück
         </button>
         <h1 className="font-semibold text-[17px] truncate px-2">{program ? 'Programm' : 'Neues Programm'}</h1>
-        <button onClick={save} disabled={!canSave}
+        {/* Klammern nötig: save(asCopy) bekäme sonst das Klick-Event als asCopy übergeben. */}
+        <button onClick={() => save()} disabled={!canSave}
           className="text-[17px] text-[#FF9500] font-semibold active:opacity-60 disabled:opacity-30 px-1">
           Fertig
         </button>
@@ -14228,6 +14231,20 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete }) {
           </div>
 
           {/* Programm löschen — nur bei bestehendem Programm, ganz unten. */}
+          {program && (
+            <>
+              <button
+                onClick={() => save(true)}
+                disabled={!name.trim() || exercises.length === 0 || !validation.valid}
+                className="w-full mt-2 py-3 rounded-2xl text-[15px] font-medium text-[#FF9500] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:bg-[#D1D1D6]/30 disabled:opacity-40 flex items-center justify-center gap-2">
+                <Copy size={16} /> Als Kopie sichern
+              </button>
+              <p className="text-[12px] text-[#8E8E93] px-2 mt-1.5 leading-snug">
+                Legt ein neues Programm mit diesen Übungen an — das Original bleibt unverändert.
+                Praktisch für Varianten, die sich in einer Übung unterscheiden.
+              </p>
+            </>
+          )}
           {program && onDelete && (
             <button
               onClick={() => setConfirmDel(true)}
