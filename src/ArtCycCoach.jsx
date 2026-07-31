@@ -6173,6 +6173,11 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
   const [err, setErr] = useState('');
   const [info, setInfo] = useState('');
   const [langPickerOpen, setLangPickerOpen] = useState(false);
+  // Bestätigung per Code: nötig, wenn der Link aus der Mail nicht funktioniert
+  // (manche Anbieter schreiben Links um oder rufen sie vorab ab) oder die Mail auf
+  // einem anderen Gerät liegt. Der Code steht in derselben Mail wie der Link.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [code, setCode] = useState('');
 
   const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
   const validPwd = password.length >= 10;
@@ -6204,15 +6209,59 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
         });
         if (error) throw error;
         if (data.user && !data.session) {
-          // Bestätigungs-E-Mail wurde geschickt
+          // Bestätigungs-E-Mail wurde geschickt — Code-Eingabe gleich mit anbieten,
+          // damit ein nicht funktionierender Link keine Sackgasse ist.
           setInfo(t('validation.confirmEmailSent', { email: email.trim() }));
+          setConfirmOpen(true);
         }
       }
     } catch (e) {
-      setErr(e.message || t('validation.genericError'));
+      // Sackgasse vermeiden: bei „E-Mail nicht bestätigt" direkt die Bestätigung
+      // anbieten, statt den Nutzer mit der Meldung allein zu lassen.
+      const msg = String(e.message || '');
+      if (/not confirmed|nicht bestätigt/i.test(msg) || e.code === 'email_not_confirmed') {
+        setConfirmOpen(true);
+        setErr('Deine E-Mail ist noch nicht bestätigt. Gib den Code aus der Mail ein oder lass sie dir neu schicken.');
+      } else {
+        setErr(msg || t('validation.genericError'));
+      }
     } finally {
       setBusy(false);
     }
+  };
+
+  // Code aus der Bestätigungs-Mail einlösen — bestätigt die Adresse und meldet an.
+  const confirmWithCode = async () => {
+    const token = code.replace(/\s+/g, '');
+    if (!validEmail || token.length < 6) { setErr('Bitte E-Mail und den Code aus der Mail eingeben.'); return; }
+    setBusy(true); setErr(''); setInfo('');
+    try {
+      // 'signup' ist der Typ der Bestätigungs-Mail; 'email' deckt Alt-Mails mit ab.
+      let res = await supabase.auth.verifyOtp({ email: email.trim(), token, type: 'signup' });
+      if (res.error) res = await supabase.auth.verifyOtp({ email: email.trim(), token, type: 'email' });
+      if (res.error) throw res.error;
+      setInfo('Danke — deine E-Mail ist bestätigt.');
+      setConfirmOpen(false); setCode('');
+    } catch (e) {
+      setErr(e.message || 'Der Code stimmt nicht oder ist abgelaufen. Lass dir die Mail neu schicken.');
+    } finally { setBusy(false); }
+  };
+
+  // Bestätigungs-Mail neu anfordern (neuer Link UND neuer Code; der alte verfällt).
+  const resendConfirm = async () => {
+    if (!validEmail) { setErr(t('validation.invalidEmail')); return; }
+    setBusy(true); setErr(''); setInfo('');
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup', email: email.trim(),
+        options: { emailRedirectTo: window.location.origin },
+      });
+      if (error) throw error;
+      setInfo('Mail ist unterwegs. Achtung: nur der neueste Link bzw. Code gilt.');
+      setConfirmOpen(true);
+    } catch (e) {
+      setErr(e.message || 'Konnte die Mail nicht senden.');
+    } finally { setBusy(false); }
   };
 
   const forgot = async () => {
@@ -6385,16 +6434,46 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
             </div>
           )}
 
+          {/* Bestätigung per Code — zweiter Weg, wenn der Link aus der Mail nicht
+              funktioniert (umgeschriebene Links, Vorab-Abruf durch den Mailanbieter)
+              oder die Mail auf einem anderen Gerät liegt. */}
+          {confirmOpen && (
+            <div className="bg-[#F2F2F7] dark:bg-white/5 rounded-2xl p-3 space-y-2.5">
+              <div className="text-[13px] text-slate-600 dark:text-slate-300">
+                Code aus der Bestätigungs-Mail:
+              </div>
+              <input value={code} onChange={(e) => setCode(e.target.value)}
+                inputMode="numeric" autoComplete="one-time-code" placeholder="123456"
+                className="w-full px-4 py-3 bg-white dark:bg-white/10 rounded-2xl text-[19px] tracking-[0.3em] text-center font-semibold outline-none focus:ring-2 focus:ring-[#FF9500]/40" />
+              <button type="button" onClick={confirmWithCode} disabled={busy || code.replace(/\s+/g, '').length < 6}
+                className="w-full bg-[#FF9500] text-white py-3 rounded-full font-semibold text-[15px] active:scale-[0.98] transition disabled:opacity-40">
+                E-Mail bestätigen
+              </button>
+              <button type="button" onClick={resendConfirm} disabled={busy}
+                className="w-full text-[14px] text-[#007AFF] py-1 active:opacity-60 disabled:opacity-50 font-medium">
+                Mail erneut senden
+              </button>
+            </div>
+          )}
+
           <button type="submit" disabled={!canSubmit || busy}
             className="bg-[#FF9500] text-white px-5 py-3.5 rounded-full font-semibold w-full text-[15px] active:scale-[0.98] transition shadow-[0_4px_14px_rgba(255,149,0,0.35)] disabled:opacity-40 disabled:shadow-none">
             {busy ? '…' : (mode === 'login' ? t('auth.signIn') : t('auth.signUp'))}
           </button>
 
           {mode === 'login' && (
-            <button type="button" onClick={forgot} disabled={busy}
-              className="text-[14px] text-[#007AFF] block mx-auto mt-2 active:opacity-60 disabled:opacity-50 font-medium">
-              {t('auth.forgotPassword')}
-            </button>
+            <>
+              <button type="button" onClick={forgot} disabled={busy}
+                className="text-[14px] text-[#007AFF] block mx-auto mt-2 active:opacity-60 disabled:opacity-50 font-medium">
+                {t('auth.forgotPassword')}
+              </button>
+              {!confirmOpen && (
+                <button type="button" onClick={() => setConfirmOpen(true)} disabled={busy}
+                  className="text-[13px] text-[#8E8E93] block mx-auto mt-1 active:opacity-60 font-medium">
+                  E-Mail noch nicht bestätigt?
+                </button>
+              )}
+            </>
           )}
         </form>
 
@@ -11388,7 +11467,9 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
   const [importStatus, setImportStatus] = useState(null);
   const [importMsg, setImportMsg] = useState('');
   const [importPreview, setImportPreview] = useState(null);
-  const [period, setPeriod] = useState(() => { try { return localStorage.getItem('artcyc:exDetailPeriod') || '6m'; } catch { return '6m'; } });
+  // Vorgabe „Gesamt" (Parität zu iOS): beim Öffnen erst das ganze Bild, dann eingrenzen.
+  // Eine selbst gewählte Einschränkung bleibt weiterhin gemerkt.
+  const [period, setPeriod] = useState(() => { try { return localStorage.getItem('artcyc:exDetailPeriod') || 'all'; } catch { return 'all'; } });
   const changePeriod = (v) => { setPeriod(v); try { localStorage.setItem('artcyc:exDetailPeriod', v); } catch { /* ignore */ } };
   const [mode, setMode] = useState('all'); // all | rope | noRope — steuert den GESAMTEN Screen
   const [kpiVariant, setKpiVariant] = useState(() => { try { return localStorage.getItem('artcyc:exDetailKpi') || 'number'; } catch { return 'number'; } });
@@ -11535,7 +11616,9 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                 <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Trend</h2>
                 <span className="text-[12px] text-slate-400 tabular-nums">{periodLabel}{modeLabel}</span>
               </div>
-              <TrendChart comp={comp} is3={is3} showHit={showHit} showDanger={showDanger} />
+              {/* labelFor: beim Scrubben steht neben der Quote der Zeitpunkt des Punktes. */}
+              <TrendChart comp={comp} is3={is3} showHit={showHit} showDanger={showDanger}
+                labelFor={(b) => formatDateShort(b.weekStart || b.date || '')} />
               <div className="flex items-center gap-2 flex-wrap">
                 <StatusLegendToggle active fixed color={STATUS.success} label={statusLabel(exercise, 'success')} />
                 {is3 && <StatusLegendToggle active={showHit} onClick={() => setShowHit(v => !v)} color={STATUS.hit} label={statusLabel(exercise, 'third')} />}

@@ -3,6 +3,7 @@
 // Props-basiert, keine App-Logik. Dark-Mode über bestehende CSS (card-surface,
 // ios-seg-active, Token-Overrides). Verwendet von den V2-Screens.
 // =============================================================
+import { useState, useRef } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { STATUS, TONE } from './tokens';
 
@@ -119,7 +120,12 @@ export function StatusLegendToggle({ active, onClick, color, label, fixed = fals
 
 // Trend-Chart — Geklappt grün (primär), Getroffen amber, Gefährlich rot
 // (sekundär, zuschaltbar). comp = [{label, success, third, fail, total}].
-export function TrendChart({ comp, is3 = false, showHit = false, showDanger = false }) {
+// Trend-Kurve mit Scrubbing: Finger/Maus über den Chart ziehen rastet auf den
+// nächstliegenden Messpunkt ein, zeigt Quote + Datum und gibt eine kurze Vibration —
+// dasselbe Verhalten wie der Wettkampf-Verlauf auf dem Dashboard (und nativ).
+export function TrendChart({ comp, is3 = false, showHit = false, showDanger = false, labelFor }) {
+  const [sel, setSel] = useState(null);
+  const lastSel = useRef(null);
   if (!comp || comp.length < 2) {
     return <div className="text-[13px] text-slate-400 py-6 text-center">Zu wenig Daten für diesen Zeitraum.</div>;
   }
@@ -129,8 +135,30 @@ export function TrendChart({ comp, is3 = false, showHit = false, showDanger = fa
   const r = (b, key) => b.total > 0 ? (b[key] / b.total) * 100 : 0;
   const line = (key) => comp.map((b, i) => `${i ? 'L' : 'M'}${xs(i).toFixed(1)},${ys(r(b, key)).toFixed(1)}`).join(' ');
   const area = `${line('success')} L${xs(comp.length - 1).toFixed(1)},${H - P} L${xs(0).toFixed(1)},${H - P} Z`;
+  // Fingerposition → nächstliegender Index. Vibration nur beim WECHSEL des Punktes,
+  // nicht bei jeder Bewegung — sonst brummt es durchgehend.
+  const pick = (ev) => {
+    const box = ev.currentTarget.getBoundingClientRect();
+    if (!box.width) return;
+    const rel = ((ev.clientX - box.left) / box.width) * W;
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < comp.length; i++) {
+      const d = Math.abs(xs(i) - rel);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (best !== lastSel.current) {
+      lastSel.current = best;
+      try { navigator.vibrate && navigator.vibrate(8); } catch { /* egal */ }
+    }
+    setSel(best);
+  };
+  const clear = () => { setSel(null); lastSel.current = null; };
+  const selRate = sel != null ? r(comp[sel], 'success') : null;
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full touch-none" preserveAspectRatio="none"
+      onPointerDown={pick} onPointerMove={(e) => { if (e.buttons || e.pointerType === 'touch') pick(e); }}
+      onPointerUp={clear} onPointerLeave={clear}>
       <defs><linearGradient id="ds-trend-grad" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stopColor={STATUS.success} stopOpacity="0.20" /><stop offset="100%" stopColor={STATUS.success} stopOpacity="0" />
       </linearGradient></defs>
@@ -140,6 +168,17 @@ export function TrendChart({ comp, is3 = false, showHit = false, showDanger = fa
       {showDanger && <path d={line('fail')} fill="none" stroke={STATUS.danger} strokeWidth="1.8" strokeOpacity="0.9" strokeDasharray="2 3" strokeLinecap="round" strokeLinejoin="round" />}
       <path d={line('success')} fill="none" stroke={STATUS.success} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
       {comp.map((b, i) => <circle key={i} cx={xs(i)} cy={ys(r(b, 'success'))} r="2.4" fill={STATUS.success} />)}
+      {sel != null && (
+        <g>
+          <line x1={xs(sel)} y1={P} x2={xs(sel)} y2={H - P} stroke="currentColor" strokeOpacity="0.28"
+            strokeWidth="1" className="text-slate-400" />
+          <circle cx={xs(sel)} cy={ys(selRate)} r="4.6" fill={STATUS.success} />
+          <text x={Math.min(Math.max(xs(sel), 24), W - 24)} y={Math.max(ys(selRate) - 8, 12)}
+            textAnchor="middle" fontSize="10" fontWeight="700" fill={STATUS.success}>
+            {Math.round(selRate)} %{labelFor ? ' · ' + labelFor(comp[sel]) : ''}
+          </text>
+        </g>
+      )}
     </svg>
   );
 }
