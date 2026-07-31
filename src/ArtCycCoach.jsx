@@ -5494,8 +5494,12 @@ export default function App() {
   // Default-Auswahl: zuletzt gewählter Sportler (pro Konto in localStorage gemerkt,
   // z. B. ein Team), sonst eigener Athlet, sonst der erste verfügbare
   // (= erster managed Sportler für reine Trainer ohne eigenen Eintrag).
+  // Läuft bei JEDER Änderung der Sportler-Liste, nicht nur solange nichts gewählt ist:
+  // vorher setzte der Effekt die Auswahl, sobald irgendwelche Sportler geladen waren
+  // (meist das eigene Profil), und `if (selectedAthleteId) return` sperrte danach jede
+  // Korrektur — das Team kam erst nach einem Reload. Eine gültige, bewusst getroffene
+  // Auswahl wird weiterhin nie überschrieben.
   useEffect(() => {
-    if (selectedAthleteId) return;
     const uid = session?.user?.id;
     let saved = null;
     try { saved = uid ? localStorage.getItem('artcyc:selectedAthlete:' + uid) : null; } catch { /* localStorage evtl. blockiert */ }
@@ -5504,14 +5508,19 @@ export default function App() {
       ? (dbTeamMembers || []).map(tm => tm.athlete_id === myAthleteId
           ? availableAthletes.find(a => a.id === tm.team_id && a.type === 'team')?.id : null).find(Boolean)
       : null;
+    const currentIsValid = selectedAthleteId && availableAthletes.some(a => a.id === selectedAthleteId);
     // Team-Mitglied OHNE bewusst abweichende Auswahl (nichts gemerkt oder nur eigenes Profil)
     // → eigenes Team vorbelegen (Simon-Wunsch).
-    if (myTeamId && (!saved || saved === myAthleteId)) { setSelectedAthleteId(myTeamId); return; }
+    if (myTeamId && (!saved || saved === myAthleteId)) {
+      if (selectedAthleteId !== myTeamId) setSelectedAthleteId(myTeamId);
+      return;
+    }
+    if (currentIsValid) return;
     // Zuletzt gewählte Auswahl BEHALTEN – z. B. der von einem Trainer betreute Sportler
     // (Marius → Ruben). Darf nicht verworfen werden, sonst landet der Trainer auf sich selbst.
     if (saved && availableAthletes.some(a => a.id === saved)) { setSelectedAthleteId(saved); return; }
     const auto = myTeamId || myAthleteId || (availableAthletes.length > 0 ? availableAthletes[0].id : null);
-    if (auto) setSelectedAthleteId(auto);
+    if (auto && auto !== selectedAthleteId) setSelectedAthleteId(auto);
   }, [myAthleteId, selectedAthleteId, availableAthletes, dbTeamMembers, session?.user?.id]);
 
   // Auswahl pro Konto merken, damit sie App-Neustart/Reload überlebt.
