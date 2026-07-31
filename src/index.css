@@ -279,3 +279,25 @@ html[data-theme="dark"] select.border-slate-300 {
   100% { transform: translateX(360%); }
 }
 .acc-indeterminate { animation: acc-indeterminate 1.15s ease-in-out infinite; }
+
+/* ---------------------------------------------------------------
+   Wertungsbogen drucken / als PDF speichern
+   Beim Drucken soll NUR der Bogen aufs Papier — alles andere wird
+   ausgeblendet. `visibility` statt `display`, damit die Positionierung
+   des Overlays erhalten bleibt und die Tabelle über Seiten umbrechen kann.
+   --------------------------------------------------------------- */
+@media print {
+  body { background: #fff !important; }
+  body * { visibility: hidden !important; }
+  .print-sheet, .print-sheet * { visibility: visible !important; }
+  .print-sheet {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+  .print-sheet tr { break-inside: avoid; }
+  .print-sheet thead { display: table-header-group; }   /* Kopfzeile je Seite */
+}

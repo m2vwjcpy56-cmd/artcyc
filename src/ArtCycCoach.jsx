@@ -13565,6 +13565,8 @@ function ProgrammeView({ data, setData, myUserId = null }) {
 
   // „Alle Programme"-Sheet (iOS-Style Bottom-Sheet)
   const [showAllProgramsSheet, setShowAllProgramsSheet] = useState(false);
+  // Kopie eines Programms, die im Editor liegt und noch NICHT gespeichert ist.
+  const [dupProgram, setDupProgram] = useState(null);
   // Duplikat-Bereinigung (doppelte Programme/Übungen zusammenführen)
   const [confirmCleanup, setConfirmCleanup] = useState(false);
 
@@ -13628,12 +13630,13 @@ function ProgrammeView({ data, setData, myUserId = null }) {
     setPendingDeleteExercise(null);
   };
 
-  if (showNew || editId) {
-    const editing = editId ? (data.programs || []).find(p => p.id === editId) : null;
+  if (showNew || editId || dupProgram) {
+    // dupProgram = fertige Kopie, die noch nicht gespeichert ist (siehe duplicateProgram).
+    const editing = editId ? (data.programs || []).find(p => p.id === editId) : (dupProgram || null);
     return <ProgrammEditor
       program={editing}
-      onSave={(p) => { upsert(p); setShowNew(false); setEditId(null); }}
-      onCancel={() => { setShowNew(false); setEditId(null); setPendingPdf(null); }}
+      onSave={(p) => { upsert(p); setShowNew(false); setEditId(null); setDupProgram(null); }}
+      onCancel={() => { setShowNew(false); setEditId(null); setDupProgram(null); setPendingPdf(null); }}
       onDelete={editId ? () => { const id = editId; setShowNew(false); setEditId(null); setTimeout(() => remove(id), 0); } : undefined}
     />;
   }
@@ -13754,6 +13757,19 @@ function ProgrammeView({ data, setData, myUserId = null }) {
     return rows;
   })();
 
+  // Programm duplizieren: neue ID, Namens-Zusatz, Übungen 1:1 — der typische Fall
+  // „mehrere Programme, die sich in einer Übung unterscheiden". Gespeichert wird erst
+  // beim Sichern im Editor: eine unveränderte Kopie würde vom Dubletten-Schutz
+  // ohnehin mit dem Original zusammengeführt.
+  const duplicateProgram = (p) => {
+    setDupProgram({
+      ...p,
+      id: uid(),
+      name: ((p.name || '') + ' (Kopie)').trim(),
+      exercises: (p.exercises || []).map(ex => ({ ...ex })),
+    });
+  };
+
   const renderProgramRow = (p) => {
     const total = (p.exercises || []).reduce((s, ex) => s + Number(ex.points || 0), 0);
     return (
@@ -13762,6 +13778,10 @@ function ProgrammeView({ data, setData, myUserId = null }) {
         onClick={() => setEditId(p.id)}
         trailing={
           <div className="flex items-center gap-1 shrink-0">
+            <button title="Duplizieren" onClick={(e) => { e.stopPropagation(); duplicateProgram(p); }}
+              className="p-2 text-[#8E8E93] active:bg-[#D1D1D6]/40 rounded-full">
+              <Copy size={16} />
+            </button>
             <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(p.id); }}
               className="p-2 text-[#FF3B30] active:bg-[#D1D1D6]/40 rounded-full">
               <Trash2 size={16} />
@@ -19305,10 +19325,162 @@ function ExportTraining({ data }) {
 // =============================================================
 // WETTKAMPF-DETAIL (read-only)
 // =============================================================
+// =============================================================
+// WERTUNGSBOGEN ALS SEITE (drucken / als PDF speichern)
+// ---------------------------------------------------------------
+// Simons Wunsch: „das Programm auch noch mal PDF-mäßig anschauen, wie man es
+// gewohnt ist." Im Web ohne PDF-Bibliothek: der Bogen wird im Papier-Aufbau
+// gerendert, `window.print()` bietet im Druck-Dialog „Als PDF speichern" (auch
+// auf iOS über Teilen → Drucken). Nativ erzeugt die App eine echte PDF-Datei —
+// gleiche Spalten, gleiche Reihenfolge, gleiche Summen.
+// =============================================================
+function WertungsbogenSheet({ competition: c, program, athleteName, scopeLabel, onClose }) {
+  const exercises = program.exercises || [];
+  const gesamt = isEffectiveGesamt(c);
+  const kgCount = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
+  const columns = gesamt ? 1 : kgCount;
+  const tables = [c.table1 || [], c.table2 || [], c.table3 || [], c.table4 || []];
+  const marks = ['cross', 'wave', 'bar', 'circle'];
+  const markLabels = ['x', '~', '|', '○'];
+  const num = (v) => (Number(v || 0) > 0 ? String(Number(v)) : '');
+
+  const rowFor = (ex, idx) => {
+    const entries = tables.slice(0, columns).map(t => t[idx]);
+    let sum = 0;
+    for (const e of entries) sum += calcExerciseDeduction(e) + calcExerciseSchwierigkeit(e, ex);
+    const takt = Number((entries[0] && entries[0].taktischePunkte) || 0);
+    const pts = takt > 0 && Math.abs(takt - Number(ex.points || 0)) > 0.001
+      ? takt.toFixed(1) + ' T' : Number(ex.points || 0).toFixed(1);
+    return { entries, sum, pts };
+  };
+
+  const totals = Array.from({ length: columns }, (_, i) =>
+    calcTableResult(program, tables[i], i === 0 ? c.t1_schwierigkeit : (i === 1 ? c.t2_schwierigkeit : 0)));
+  const final = compFinalScore(program, c);
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/40 overflow-auto print:bg-white print:static print:overflow-visible"
+      onClick={onClose}>
+      <div className="print-sheet bg-white mx-auto my-6 p-8 max-w-[820px] shadow-2xl print:shadow-none print:my-0 print:max-w-none"
+        onClick={e => e.stopPropagation()}>
+        {/* Bedienleiste — im Druck ausgeblendet */}
+        <div className="flex items-center justify-end gap-2 mb-4 print:hidden">
+          <button onClick={() => window.print()}
+            className="px-4 py-2 rounded-full bg-[#FF9500] text-white text-[14px] font-semibold active:scale-95 transition">
+            Drucken / als PDF speichern
+          </button>
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-full border border-slate-300 text-[14px] font-medium">Schließen</button>
+        </div>
+
+        <h1 className="text-[22px] font-bold leading-tight">{c.name || 'Wertungsbogen'}</h1>
+        <p className="text-[13px] text-slate-500 mt-0.5">
+          {[scopeLabel, formatDateShort(c.date), c.location, c.host].filter(Boolean).join(' · ')}
+        </p>
+        <p className="text-[13px] text-slate-700 mt-1">
+          Sportler: {athleteName || '—'}{program.name ? '   Programm: ' + program.name : ''}
+        </p>
+
+        <table className="w-full mt-4 text-[12px] border-collapse">
+          <thead>
+            <tr className="border-b border-slate-400">
+              <th className="text-left py-1 w-7 font-semibold text-slate-500">#</th>
+              <th className="text-left py-1 font-semibold text-slate-500">Übung</th>
+              <th className="text-right py-1 w-12 font-semibold text-slate-500">Pkt</th>
+              {Array.from({ length: columns }, (_, i) => (
+                <th key={i} colSpan={5} className="py-1 font-semibold text-slate-500 border-l border-slate-200">
+                  {gesamt ? 'Gesamt' : 'Kampfgericht ' + (i + 1)}
+                </th>
+              ))}
+              <th className="text-right py-1 w-14 font-semibold text-slate-500">Σ</th>
+            </tr>
+            <tr className="border-b border-slate-300 text-[10px] text-slate-400">
+              <th colSpan={3} />
+              {Array.from({ length: columns }, (_, i) => (
+                [...markLabels, '%'].map((l, k) => (
+                  <th key={i + '-' + k} className={'py-0.5 w-6 font-medium' + (k === 0 ? ' border-l border-slate-200' : '')}>{l}</th>
+                ))
+              ))}
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {exercises.map((ex, idx) => {
+              const r = rowFor(ex, idx);
+              return (
+                <tr key={idx} className="border-b border-slate-100">
+                  <td className="py-1 text-slate-400 tabular-nums">{idx + 1}</td>
+                  <td className="py-1 pr-2">{localizedExerciseName(ex)}</td>
+                  <td className="py-1 text-right tabular-nums">{r.pts}</td>
+                  {r.entries.map((e, i) => (
+                    [...marks.map(k => num(e && e[k])), (e && Number(e.schwPct || 0) > 0) ? String(Number(e.schwPct)) : '']
+                      .map((v, k) => (
+                        <td key={i + '-' + k}
+                          className={'py-1 text-center tabular-nums' + (k === 0 ? ' border-l border-slate-200' : '')}>{v}</td>
+                      ))
+                  ))}
+                  <td className="py-1 text-right tabular-nums font-medium">
+                    {r.sum > 0.0001 ? '−' + r.sum.toFixed(2) : ''}
+                  </td>
+                </tr>
+              );
+            })}
+            {/* Randabzüge (vor der ersten / nach der letzten Übung), nur wenn belegt */}
+            {EDGE_SLOTS.map(sl => {
+              const row = edgeIndex(program, sl.kind);
+              const entries = tables.slice(0, columns).map(t => t[row]);
+              const sum = entries.reduce((n, e) => n + calcExerciseDeduction(e), 0);
+              if (!(sum > 0.0001)) return null;
+              return (
+                <tr key={sl.kind} className="border-b border-slate-100">
+                  <td />
+                  <td className="py-1 pr-2">{edgeLabel(sl.kind, exercises.length)}</td>
+                  <td />
+                  {entries.map((e, i) => (
+                    [...marks.map(k => num(e && e[k])), '']
+                      .map((v, k) => (
+                        <td key={i + '-' + k}
+                          className={'py-1 text-center tabular-nums' + (k === 0 ? ' border-l border-slate-200' : '')}>{v}</td>
+                      ))
+                  ))}
+                  <td className="py-1 text-right tabular-nums font-medium">−{sum.toFixed(2)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        <div className="mt-5 pt-3 border-t border-slate-400 text-[12px] space-y-1">
+          {totals.map((r, i) => (
+            <div key={i} className="space-y-1">
+              {[['Aufgestellt', r.aufgestellt.toFixed(2)],
+                ['Abzug Ausführung', '−' + r.abzugAusfuehrung.toFixed(2)],
+                ['Abzug Schwierigkeit', '−' + r.abzugSchwierigkeit.toFixed(2)],
+                ['Abzug gesamt', '−' + r.abzugGesamt.toFixed(2)]].map(([label, value]) => (
+                  <div key={label} className="flex justify-between">
+                    <span className="text-slate-500">{(gesamt ? 'Gesamt' : 'Kampfgericht ' + (i + 1)) + ' — ' + label}</span>
+                    <span className="font-medium tabular-nums">{value}</span>
+                  </div>
+                ))}
+            </div>
+          ))}
+          {final != null && (
+            <div className="flex justify-between pt-2 text-[15px] font-bold">
+              <span>Endergebnis</span><span className="tabular-nums">{final.toFixed(2)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDelete }) {
   const { t } = useI18n();
   useEdgeSwipeBack(onBack);
   const [activeTable, setActiveTable] = useState(1);
+  // Wertungsbogen im Papier-Aufbau (zum Ansehen/Drucken/als PDF speichern).
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   if (!competition) return null;
 
@@ -19341,6 +19513,12 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
             {competition.date}{competition.location ? ' · ' + competition.location : ''}
           </p>
         </div>
+        {effProgram && (
+          <button onClick={() => setSheetOpen(true)}
+            className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg" title="Als PDF ansehen">
+            <FileText size={18} />
+          </button>
+        )}
         {onEdit && (
           <button onClick={onEdit}
             className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg" title="Bearbeiten">
@@ -19354,6 +19532,13 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
           </button>
         )}
       </header>
+
+      {sheetOpen && effProgram && (
+        <WertungsbogenSheet competition={competition} program={effProgram}
+          athleteName={(athlete && athlete.name) || ''}
+          scopeLabel={(competition.kind || 'wettkampf') === 'training' ? 'Trainings-Wertung' : 'Wettkampf'}
+          onClose={() => setSheetOpen(false)} />
+      )}
 
       {/* Stammdaten */}
       <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4">
