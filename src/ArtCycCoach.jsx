@@ -9422,6 +9422,20 @@ function TrainingsplanView({ data, setData, onBack }) {
     setData({ ...data, trainingPlans: (data.trainingPlans || []).map(p => p.id === plan.id ? { ...p, logged } : p) });
   };
 
+  // --- Durchgänge -------------------------------------------------------------
+  // „Abschließen" friert nur den Zählerstand ein (baseline); die Versuche bleiben
+  // im Training. Angezeigt wird danach, was SEITHER dazugekommen ist — der nächste
+  // Durchgang startet also bei 0. Felder und Schlüssel sind identisch zur iOS-App,
+  // beide lesen denselben Snapshot.
+  const runKeyEx = (exId, rope) => 'ex|' + exId + '|' + (rope ? 1 : 0);
+  const runKeyCheck = (itemId) => 'check|' + itemId;
+  const runsToday = ((plan?.runs) || [])
+    .filter(r => r.date === today)
+    .sort((a, b) => String(a.finishedAt).localeCompare(String(b.finishedAt)));
+  const runBase = (key) => Number(runsToday[runsToday.length - 1]?.baseline?.[key] || 0);
+  const runRate = (r) => (r.total > 0 ? Math.round((r.succ / r.total) * 100) : 0);
+  const runTime = (r) => String(r.finishedAt || '').split('T')[1]?.slice(0, 5) || '';
+
   // --- Abhaken-Zähler (Modus „Abhaken") ---------------------------------------
   // Wie oft wurde der Eintrag HEUTE gemacht (kann über/unter der Plan-Anzahl
   // liegen). Synchroner localStorage-Puffer wie beim Session-Zähler, damit der
@@ -9473,11 +9487,12 @@ function TrainingsplanView({ data, setData, onBack }) {
   };
   const scheduleDoneFlush = () => { clearTimeout(doneFlushTimer.current); doneFlushTimer.current = setTimeout(flushDone, 200); };
   const bumpDone = (it, delta) => {
-    const next = Math.max(0, getDone(it) + delta);
+    // Nicht unter den schon abgeschlossenen Durchgang zurückzählen.
+    const next = Math.max(runBase(runKeyCheck(it.id)), getDone(it) + delta);
     doneRef.current[it.id] = next;
     persistDoneBuf(); rerender(); scheduleDoneFlush();
     const reps = Number(it.reps || 0);
-    if (delta > 0 && reps > 0 && next === reps) {
+    if (delta > 0 && reps > 0 && next - runBase(runKeyCheck(it.id)) === reps) {
       setCelebrate({ id: it.id, title: (it.label || '').trim() || 'Übung', reps });
       setTimeout(() => setCelebrate(c => (c && c.id === it.id) ? null : c), 1700);
     }
@@ -9537,6 +9552,62 @@ function TrainingsplanView({ data, setData, onBack }) {
       if (flushDirty.current) { flushDirty.current = false; flushAll(); }
     }
   };
+  // Stand des LAUFENDEN Durchgangs — Grundlage für Zusammenfassung und Abschluss.
+  const currentRun = () => {
+    const baseline = {}; let succ = 0, total = 0, checks = 0;
+    for (const it of (plan?.items || [])) {
+      const ex = it.loggable && it.exerciseId ? activeExercises.find(e => e.id === it.exerciseId) : null;
+      if (ex) {
+        const key = runKeyEx(ex.id, !!it.hasRope);
+        const all = getEntries(ex.id);
+        baseline[key] = all.length;
+        const mine = all.slice(Math.min(runBase(key), all.length));
+        total += mine.length;
+        succ += mine.filter(e => e === 'success').length;
+      } else {
+        const key = runKeyCheck(it.id);
+        const cnt = getDone(it);
+        baseline[key] = cnt;
+        checks += Math.max(0, cnt - runBase(key));
+      }
+    }
+    return { baseline, succ, total, checks, any: total > 0 || checks > 0,
+             rate: total > 0 ? Math.round((succ / total) * 100) : 0 };
+  };
+
+  // Ortszeit im selben Format wie die native App (ISO mit Zonen-Offset) — sonst
+  // stünde in der Liste eine Uhrzeit, zu der gar nicht trainiert wurde.
+  const localStamp = () => {
+    const d = new Date(), p2 = (n) => String(n).padStart(2, '0');
+    const off = -d.getTimezoneOffset(), sign = off >= 0 ? '+' : '-', abs = Math.abs(off);
+    return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T` +
+           `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}` +
+           `${sign}${p2(Math.floor(abs / 60))}${p2(abs % 60)}`;
+  };
+
+  const finishRun = async () => {
+    if (!plan) return;
+    const r = currentRun();
+    if (!r.any) return;
+    // Erst die Puffer wegschreiben, sonst überholt der Durchgang die Versuche.
+    clearTimeout(flushTimer.current); clearTimeout(doneFlushTimer.current);
+    await flushRef.current(); await doneFlushRef.current();
+    const run = { id: uid(), date: today, finishedAt: localStamp(),
+                  succ: r.succ, total: r.total, baseline: r.baseline };
+    const cur = dataRef.current;
+    await setData({ ...cur, trainingPlans: (cur.trainingPlans || [])
+      .map(x => x.id === plan.id ? { ...x, runs: [...(x.runs || []), run] } : x) });
+  };
+
+  // Vertipper: Durchgang wieder aufheben — die Versuche bleiben erhalten und
+  // zählen danach wieder zum laufenden Durchgang.
+  const undoRun = async (id) => {
+    if (!plan) return;
+    const cur = dataRef.current;
+    await setData({ ...cur, trainingPlans: (cur.trainingPlans || [])
+      .map(x => x.id === plan.id ? { ...x, runs: (x.runs || []).filter(r => r.id !== id) } : x) });
+  };
+
   // Kurzer Debounce (200 ms) bündelt nur eine Tap-Salve, schreibt sonst quasi
   // sofort in die DB — so steht jede Aktion fast unmittelbar in der Datenbank.
   const scheduleFlush = () => { clearTimeout(flushTimer.current); flushTimer.current = setTimeout(flushAll, 200); };
@@ -9561,16 +9632,17 @@ function TrainingsplanView({ data, setData, onBack }) {
     optimisticRef.current[exId] = [...getEntries(exId), kind];
     persistBuf(); rerender(); scheduleFlush();
     const reps = Number(it.reps || 0);
-    if (reps > 0 && optimisticRef.current[exId].length === reps) {
+    const usedUp = runBase(runKeyEx(exId, !!it.hasRope));
+    if (reps > 0 && optimisticRef.current[exId].length - usedUp === reps) {
       const ex = activeExercises.find(e => e.id === exId);
       const title = (it.label || '').trim() || (ex ? localizedExerciseName(ex) : 'Übung');
       setCelebrate({ id: it.id, title, reps });
       setTimeout(() => setCelebrate(c => (c && c.id === it.id) ? null : c), 1700);
     }
   };
-  const undoEntry = (exId) => {
+  const undoEntry = (exId, rope) => {
     const cur = getEntries(exId);
-    if (cur.length === 0) return;
+    if (cur.length <= runBase(runKeyEx(exId, rope))) return;
     optimisticRef.current[exId] = cur.slice(0, -1);
     persistBuf(); rerender(); scheduleFlush();
   };
@@ -9747,7 +9819,9 @@ function TrainingsplanView({ data, setData, onBack }) {
               <div className="space-y-2">
                 {plan.items.map((it, i) => {
                   const ex = it.loggable && it.exerciseId ? activeExercises.find(e => e.id === it.exerciseId) : null;
-                  const entries = ex ? getEntries(ex.id) : [];
+                  // Nur was seit dem letzten abgeschlossenen Durchgang dazukam.
+                  const allEntries = ex ? getEntries(ex.id) : [];
+                  const entries = allEntries.slice(Math.min(ex ? runBase(runKeyEx(ex.id, !!it.hasRope)) : 0, allEntries.length));
                   const succ = entries.filter(e => e === 'success').length;
                   const fail = entries.filter(e => e === 'fail').length;
                   const third = entries.filter(e => e === 'third').length;
@@ -9831,7 +9905,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                                   {idx + 1}
                                 </button>
                               ))}
-                              <button onClick={() => undoEntry(ex.id)}
+                              <button onClick={() => undoEntry(ex.id, !!it.hasRope)}
                                 className="w-9 h-9 rounded-lg text-slate-500 border border-slate-200 flex items-center justify-center active:opacity-60"><RotateCcw size={15} /></button>
                             </div>
                           )}
@@ -9846,7 +9920,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                         <div className="text-[12px] text-amber-600 mt-1.5">Keine Übung verknüpft — unter „Bearbeiten" zuordnen.</div>
                       )}
                       {!it.loggable && (() => {
-                        const cnt = getDone(it);
+                        const cnt = Math.max(0, getDone(it) - runBase(runKeyCheck(it.id)));
                         const r = Number(it.reps || 0);
                         const reached = r > 0 && cnt >= r;
                         return (
@@ -9873,6 +9947,73 @@ function TrainingsplanView({ data, setData, onBack }) {
               </div>
             )}
             <div className="text-[12px] text-slate-400 px-1">„Geklappt/Nicht" wird direkt als Training für die verknüpfte Übung gespeichert (Datum heute) und fließt in die Statistiken.</div>
+
+            {/* Durchgang abschließen — steht unten, wo man nach dem Plan ankommt. */}
+            {(plan.items || []).length > 0 && (() => {
+              const r = currentRun();
+              return (
+                <div className="card-surface rounded-[22px] p-4 space-y-3">
+                  {r.any && (
+                    <div className="flex items-center gap-5">
+                      <div>
+                        <div className="text-[17px] font-bold tabular-nums text-slate-800 dark:text-slate-100">{r.succ}/{r.total}</div>
+                        <div className="text-[11px] text-slate-400">Versuche</div>
+                      </div>
+                      {r.checks > 0 && (
+                        <div>
+                          <div className="text-[17px] font-bold tabular-nums text-slate-800 dark:text-slate-100">{r.checks}</div>
+                          <div className="text-[11px] text-slate-400">abgehakt</div>
+                        </div>
+                      )}
+                      <div className="flex-1" />
+                      {r.total > 0 && (
+                        <div className={'text-[20px] font-bold tabular-nums ' + (r.rate >= 80 ? 'text-[#34C759]' : (r.rate >= 50 ? 'text-[#FF9500]' : 'text-[#FF3B30]'))}>{r.rate} %</div>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`${r.succ} von ${r.total} Versuchen geklappt. Durchgang abschließen? Die Zähler starten danach wieder bei 0 — deine Versuche bleiben im Training gespeichert.`)) finishRun();
+                    }}
+                    disabled={!r.any}
+                    className="w-full bg-[#FF9500] text-white disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-700 dark:disabled:text-slate-500 px-4 py-3 rounded-2xl text-[15px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99] transition shadow-sm">
+                    <Check size={18} strokeWidth={2.6} /> Trainingsplan abschließen
+                  </button>
+                  <p className="text-[12px] text-slate-400 leading-snug">
+                    {r.any
+                      ? 'Speichert den Durchgang und stellt die Zähler auf 0, damit du den Plan gleich noch einmal durchgehen kannst.'
+                      : 'Sobald du etwas erfasst hast, kannst du den Durchgang hier abschließen.'}
+                  </p>
+                </div>
+              );
+            })()}
+
+            {/* Heute schon abgeschlossene Durchgänge */}
+            {runsToday.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-4 font-medium">Heute abgeschlossen</div>
+                <div className="card-surface rounded-[22px] divide-y divide-black/5 dark:divide-white/10">
+                  {runsToday.map((r, i) => (
+                    <div key={r.id} className="flex items-center gap-2 px-4 py-3">
+                      <span className="text-[15px] font-medium text-slate-800 dark:text-slate-100">Durchgang {i + 1}</span>
+                      <span className="text-[12px] text-slate-400 tabular-nums">{runTime(r)}</span>
+                      <div className="flex-1" />
+                      {r.total > 0 && (
+                        <>
+                          <span className={'text-[15px] font-semibold tabular-nums ' + (runRate(r) >= 80 ? 'text-[#34C759]' : (runRate(r) >= 50 ? 'text-[#FF9500]' : 'text-[#FF3B30]'))}>{runRate(r)} %</span>
+                          <span className="text-[12px] text-slate-400 tabular-nums">{r.succ}/{r.total}</span>
+                        </>
+                      )}
+                      <button onClick={() => undoRun(r.id)} aria-label="Durchgang aufheben" title="Durchgang aufheben"
+                        className="ml-2 text-slate-400 hover:text-slate-600 active:opacity-60">
+                        <RotateCcw size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[12px] text-slate-400 px-4 leading-snug">Aufheben macht den Durchgang rückgängig. Die Versuche bleiben erhalten.</p>
+              </div>
+            )}
 
             {/* Protokoll — vergangene Trainingstage automatisch aus den Sessions */}
             {planLog.length > 0 && (
