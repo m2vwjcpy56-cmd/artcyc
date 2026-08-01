@@ -9,7 +9,7 @@ import {
   Mail, KeyRound, UserCog, MessageCircle, Send, Loader2,
   Sun, Moon, SunMoon, Globe, Paperclip, Image as ImageIcon,
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, FlaskConical, Zap,
-  SlidersHorizontal, Flag
+  SlidersHorizontal, Flag, ArrowUpCircle
 } from 'lucide-react';
 import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, moveAthleteData, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, upsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
@@ -15722,6 +15722,8 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           <div className="text-[15px] font-medium leading-snug text-slate-900 dark:text-slate-100">
             {edgeLabel(sl.kind, (program.exercises || []).length)}
           </div>
+          <MarkLine groups={(abzugGesamt ? [table1] : [table1, table2, table3, table4].slice(0, N2))
+            .map(t => entryMarks((t || [])[row], null, N2))} />
         </div>
         <span className={'text-xs font-semibold tabular-nums shrink-0 pt-0.5 ' + (any ? 'text-[#FF9500]' : 'text-slate-300 dark:text-slate-600')}>
           {any ? parts.map(v => '−' + v.toFixed(1)).join(' / ') : '—'}
@@ -16552,6 +16554,9 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                     <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                       {Number(ex.points || 0).toFixed(1)} Pkt{ex.uci_code ? ` · Nr. ${ex.uci_code}` : ''}
                     </div>
+                    {/* Welche Zeichen dahinterstecken — ohne die Übung öffnen zu müssen. */}
+                    <MarkLine groups={(abzugGesamt ? [table1] : allTables.slice(0, N))
+                      .map(t => entryMarks((t || [])[idx], ex, N))} />
                   </div>
                   <span className={'text-xs font-semibold tabular-nums shrink-0 pt-0.5 ' + (any ? 'text-[#FF9500]' : 'text-slate-300 dark:text-slate-600')}>
                     {any ? parts.map(v => '−' + v.toFixed(1)).join(' / ') : '—'}
@@ -16563,8 +16568,9 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             {EDGE_SLOTS.filter(sl => sl.kind === 'post').map(sl => edgeListRow(sl))}
           </div>
 
-          {/* Zeichen-Übersicht (nur pro-KG — Gesamt fasst ohnehin zusammen). */}
-          {!abzugGesamt && <MarkSummary table1={table1} table2={table2} />}
+          {/* Zeichen-Übersicht über alle aktiven Kampfgerichte. */}
+          <MarkSummary tables={abzugGesamt ? [table1] : allTables.slice(0, N)}
+                       program={program} kampfgerichte={N} gesamt={abzugGesamt} />
 
           {/* Vollbild-Dart-Scorer (wie native iOS) */}
           {scoring && (
@@ -16604,45 +16610,119 @@ function MarkMini({ kind, active, size = 18, stroke = 2.4, color }) {
   );
 }
 
-// Zeichen-Übersicht: Gesamtzahl der getippten Fehlerzeichen je Kampfgericht.
-function MarkSummary({ table1, table2 }) {
-  const tally = (t) => {
-    const s = { cross: 0, wave: 0, bar: 0, circle: 0, schw: 0 };
-    (t || []).forEach(e => {
-      s.cross += Number(e?.cross || 0); s.wave += Number(e?.wave || 0);
-      s.bar += Number(e?.bar || 0); s.circle += Number(e?.circle || 0);
-      if (Number(e?.schwPct || 0) > 0) s.schw += 1;
+// Fehlerzeichen EINER Position (Übung oder Randabzug) — Basis für die Zeile unter
+// dem Übungsnamen und, aufsummiert, für die Übersicht darunter.
+function entryMarks(e, ex, kampfgerichte = 2) {
+  const t = { cross: 0, wave: 0, bar: 0, circle: 0, schw10: 0, schw50: 0, schw100: 0, takt: 0 };
+  if (!e) return t;
+  t.cross = Number(e.cross || 0); t.wave = Number(e.wave || 0);
+  t.bar = Number(e.bar || 0); t.circle = Number(e.circle || 0);
+  // Schwierigkeits-Abwertungen: gespeicherte Einzelwerte bevorzugen, sonst schwPct zerlegen.
+  let hits = (e.schwHits || []).map(Number).filter(h => h > 0);
+  if (!hits.length) {
+    let rem = Math.round(Number(e.schwPct || 0));
+    const limit = Math.max(1, Math.min(4, Number(kampfgerichte || 2)));
+    for (const v of [100, 50, 10]) while (rem >= v && hits.length < limit) { hits.push(v); rem -= v; }
+  }
+  hits.forEach(h => { if (h === 10) t.schw10++; else if (h === 50) t.schw50++; else if (h === 100) t.schw100++; });
+  const th = (e.taktHits || []).map(Number).filter(v => v > 0);
+  if (th.length) t.takt = th.length;
+  else if (Number(e.taktischePunkte || 0) > Number(ex?.points || 0) + 0.001) t.takt = 1;
+  return t;
+}
+const marksAny = (t) => (t.cross + t.wave + t.bar + t.circle + t.schw10 + t.schw50 + t.schw100 + t.takt) > 0;
+
+// Die getippten Zeichen einer Position, kompakt unter dem Übungsnamen — je Kampfgericht
+// in derselben Reihenfolge wie die Abzugszahlen rechts, damit die Zeile Position für
+// Position mit dem Wertungsbogen abgeglichen werden kann.
+function MarkLine({ groups }) {
+  if (!groups.some(marksAny)) return null;
+  const chip = (key, kind, n) => (
+    <span key={key} className="flex items-center gap-1">
+      <MarkMini kind={kind} active size={11} stroke={1.8} />
+      <span className="text-[11px] tabular-nums text-slate-500 dark:text-slate-400">{n}</span>
+    </span>
+  );
+  const pct = (key, lvl, n) => (
+    <span key={key} className="flex items-center gap-0.5">
+      <span className="text-[11px] font-semibold tabular-nums text-[#FF9500]">{lvl} %</span>
+      {n > 1 && <span className="text-[11px] tabular-nums text-slate-500 dark:text-slate-400">×{n}</span>}
+    </span>
+  );
+  const nodes = [];
+  groups.forEach((t, i) => {
+    if (i > 0) nodes.push(<span key={'s' + i} className="text-[11px] text-slate-300 dark:text-slate-600">/</span>);
+    if (!marksAny(t)) {
+      // Platzhalter, damit bei mehreren Kampfgerichten die Zuordnung stimmt.
+      nodes.push(<span key={'e' + i} className="text-[11px] text-slate-300 dark:text-slate-600">–</span>);
+      return;
+    }
+    if (t.cross > 0) nodes.push(chip(i + 'c', 'cross', t.cross));
+    if (t.wave > 0) nodes.push(chip(i + 'w', 'wave', t.wave));
+    if (t.bar > 0) nodes.push(chip(i + 'b', 'bar', t.bar));
+    if (t.circle > 0) nodes.push(chip(i + 'o', 'circle', t.circle));
+    if (t.schw10 > 0) nodes.push(pct(i + 'p10', 10, t.schw10));
+    if (t.schw50 > 0) nodes.push(pct(i + 'p50', 50, t.schw50));
+    if (t.schw100 > 0) nodes.push(pct(i + 'p100', 100, t.schw100));
+    if (t.takt > 0) nodes.push(
+      <span key={i + 't'} className="flex items-center gap-0.5 text-[#FF9500]">
+        <ArrowUpCircle size={11} />
+        {t.takt > 1 && <span className="text-[11px] tabular-nums">×{t.takt}</span>}
+      </span>
+    );
+  });
+  return <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">{nodes}</div>;
+}
+
+// Zeichen-Übersicht: Gesamtzahl der getippten Fehlerzeichen je Kampfgericht —
+// zum schnellen Abgleich mit dem Papier-Bogen, damit Vertipper sofort auffallen.
+function MarkSummary({ tables, program, kampfgerichte, gesamt }) {
+  const totals = (tables || []).map(t => {
+    const s = { cross: 0, wave: 0, bar: 0, circle: 0, schw10: 0, schw50: 0, schw100: 0, takt: 0 };
+    (t || []).forEach((e, i) => {
+      const m = entryMarks(e, (program?.exercises || [])[i], kampfgerichte);
+      Object.keys(s).forEach(k => { s[k] += m[k]; });
     });
     return s;
-  };
-  const a = tally(table1), b = tally(table2);
-  const total = a.cross + a.wave + a.bar + a.circle + b.cross + b.wave + b.bar + b.circle;
-  if (total === 0) return null;
+  });
+  if (!totals.some(marksAny)) return null;
   const cell = (kind, n) => (
     <div className="flex items-center gap-1.5">
       <MarkMini kind={kind} active={n > 0} />
       <span className={'text-sm tabular-nums ' + (n > 0 ? 'font-semibold text-slate-800 dark:text-slate-100' : 'text-slate-400')}>{n}</span>
     </div>
   );
-  const row = (label, s) => (
-    <div>
+  const pct = (lvl, n) => (
+    <div key={lvl} className="flex items-center gap-1">
+      <span className="text-[13px] font-semibold tabular-nums text-[#FF9500]">{lvl} %</span>
+      <span className="text-sm tabular-nums text-slate-600 dark:text-slate-300">×{n}</span>
+    </div>
+  );
+  const row = (label, s, key) => (
+    <div key={key}>
       <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">{label}</div>
       <div className="flex flex-wrap gap-x-5 gap-y-2 items-center">
         {cell('cross', s.cross)}{cell('wave', s.wave)}{cell('bar', s.bar)}{cell('circle', s.circle)}
-        {s.schw > 0 && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-[15px] font-bold text-[#FF9500] leading-none">%</span>
-            <span className="text-sm tabular-nums font-semibold text-slate-800 dark:text-slate-100">{s.schw}</span>
-          </div>
-        )}
       </div>
+      {(s.schw10 + s.schw50 + s.schw100 + s.takt) > 0 && (
+        <div className="flex flex-wrap gap-x-4 gap-y-2 items-center mt-1.5">
+          {s.schw10 > 0 && pct(10, s.schw10)}
+          {s.schw50 > 0 && pct(50, s.schw50)}
+          {s.schw100 > 0 && pct(100, s.schw100)}
+          {s.takt > 0 && (
+            <div className="flex items-center gap-1 text-[#FF9500]">
+              <ArrowUpCircle size={14} />
+              <span className="text-sm tabular-nums font-semibold">{s.takt}</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
   return (
     <div className="card-surface rounded-[22px] p-4 space-y-3">
       <h3 className="text-[13px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Abzugs-Übersicht</h3>
-      {row('Kampfgericht 1', a)}
-      {row('Kampfgericht 2', b)}
+      {totals.map((s, i) => row(gesamt ? 'Gesamt' : `Kampfgericht ${i + 1}`, s, i))}
       <p className="text-[11px] text-slate-400 leading-snug">Gesamtzahl der getippten Fehlerzeichen je Kampfgericht — zum Abgleich mit dem Wertungsbogen.</p>
     </div>
   );
