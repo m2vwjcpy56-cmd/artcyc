@@ -62,39 +62,74 @@ const text = parsed.text;
 console.error(`  Seiten: ${parsed.pages?.length ?? '?'}, Zeichen: ${text.length}`);
 
 // =============================================================
-// Pattern: Code (4 Ziffern) + Buchstabe + Name (Greedy bis Komma-Punktzahl)
-// Beispiele:
-//   1001 a Reitsitz HR. 0,5
-//   1001 a Side saddle HR. 0.5
-//   1001 a Cavalier sur la jante 0,5
-// Das Komma- ODER Punkt-Trenner für Dezimalstellen wird beides akzeptiert.
+// Auswertung Zeile für Zeile. Wichtig: der Punktwert ist die LETZTE Zahl der
+// Zeile — bei taktischen Übungen steht die Basis HINTER der Klammer:
+//
+//   1001 a  Reitsitz HR. 0,5
+//   1175 b  Drehsprung 2-fach T (7,5 - 8,2 - 8,9 - 9,6 - 10,3) 6,8
+//                                 └─ Aufwertungsstufen ─┘      └ Basis
+//
+// Eine faule Regex über den Volltext würde hier nach „(7,5 -" abbrechen und
+// 8,2 als Punktwert nehmen. Deshalb: pro Zeile, mit Anker am Zeilenende.
+// Manche Einträge sind im PDF umgebrochen (Name endet auf „T", Klammer und
+// Punktwert stehen darunter) — die werden über die Folgezeilen eingesammelt.
 // =============================================================
-const pattern = /(\d{4})\s+([a-z])\s+([^\n\r]+?)\s+(\d+[.,]\d+)/g;
+const lines = text.split(/\r?\n/);
+// Code (4 Ziffern) + ein ODER ZWEI Suffixbuchstaben — „2070aa" ist ein
+// eigener Eintrag („aus Reitsitz“) und darf nicht auf „2070a" fallen.
+const FULL = /^\s*(\d{4})\s*([a-z]{1,2})\s+(\S.*?)\s+(\d{1,2}[.,]\d)\s*$/;
+const HEAD = /^\s*(\d{4})\s*([a-z]{1,2})\s+(\S.*?)\s*$/;
+const NUM  = /^\s*(\d{1,2}[.,]\d)\s*$/;
 
 // Disziplin aus erstem Code-Zeichen ableiten (UCI-Konvention)
 const DISC_BY_FIRST = { '1': '1er', '2': '2er', '4': '4er', '6': '6er' };
 
 const map = new Map(); // code → { name, points, discipline }
-let m;
-let total = 0;
-while ((m = pattern.exec(text)) !== null) {
-  total++;
-  const code = m[1] + m[2];
-  let name = m[3].trim();
-  const pts = parseFloat(m[4].replace(',', '.'));
+let total = 0, wrapped = 0, skipped = 0;
+
+const clean = (s) => s.replace(/\s+/g, ' ').trim();
+
+/** Übernimmt einen Treffer, wenn er plausibel ist. */
+function accept(code, name, pts) {
   // Plausibilitätscheck: Punktwerte zwischen 0.1 und 25.0
-  if (pts < 0.1 || pts > 25) continue;
-  // Code-Plausibilität: nur Codes für Disziplinen mit bekannter Zuordnung
-  const first = code[0];
-  const discipline = DISC_BY_FIRST[first];
-  if (!discipline) continue;
-  // Manchmal liefert pdf-parse Mehrfach-Whitespace im Namen
-  name = name.replace(/\s+/g, ' ');
+  if (!(pts >= 0.1 && pts <= 25)) { skipped++; return; }
+  const discipline = DISC_BY_FIRST[code[0]];
+  if (!discipline) { skipped++; return; }
+  // Überschriften und Reglement-Absätze aussperren („§ 2 2er Kunstradsport"),
+  // die sonst als Übung mit der Absatznummer als Punktwert durchrutschen.
+  if (/§/.test(name) || name.length < 3) { skipped++; return; }
+  // Klammern müssen paarig sein — sonst ist der Name abgeschnitten.
+  if ((name.match(/\(/g) || []).length !== (name.match(/\)/g) || []).length) { skipped++; return; }
+  total++;
   // Bei mehreren Hits für denselben Code: ersten Treffer nehmen (Reglement
   // wiederholt Codes manchmal in Beispiel-Tabellen)
   if (!map.has(code)) map.set(code, { name, points: pts, discipline });
 }
-console.error(`→ Gefunden: ${map.size} eindeutige Codes (aus ${total} Regex-Hits)`);
+
+for (let i = 0; i < lines.length; i++) {
+  const m = FULL.exec(lines[i]);
+  if (m) { accept(m[1] + m[2], clean(m[3]), parseFloat(m[4].replace(',', '.'))); continue; }
+
+  // Umbrochener Eintrag: Kopfzeile ohne Punktwert, darunter (Klammer und)
+  // Punktwert. Höchstens drei Folgezeilen weit schauen.
+  const h = HEAD.exec(lines[i]);
+  if (!h) continue;
+  let name = clean(h[3]);
+  let pts = null;
+  for (let j = i + 1; j <= i + 3 && j < lines.length; j++) {
+    const nxt = (lines[j] || '').trim();
+    if (!nxt) continue;
+    if (HEAD.test(nxt) && FULL.test(nxt)) break;   // schon der nächste Eintrag
+    const n = NUM.exec(nxt);
+    if (n) { pts = parseFloat(n[1].replace(',', '.')); break; }
+    // Fortsetzung mit den Aufwertungsstufen — mal „(7,7 - …)", mal „T (12,0 - …)",
+    // je nachdem, wo das PDF umbricht.
+    if (/^(T\s*)?\(/.test(nxt)) { name += ' ' + clean(nxt); continue; }
+    break;
+  }
+  if (pts !== null) { wrapped++; accept(h[1] + h[2], name, pts); }
+}
+console.error(`→ Gefunden: ${map.size} eindeutige Codes (${total} Treffer, davon ${wrapped} umbrochen, ${skipped} verworfen)`);
 
 // =============================================================
 // SQL-Output

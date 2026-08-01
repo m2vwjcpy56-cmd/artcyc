@@ -2,8 +2,8 @@
 -- UCI-Übungen: name_en-Updates aus PDF
 -- =============================================================
 -- Quelle: https://kunstradreglement.com/images/PDF/datenfiles_kufa/2026/PART_8_E_-_As_of_01.02.2026.pdf
--- Geparst: 2026-05-17T09:45:03.961Z
--- Treffer: 1422 Codes
+-- Geparst: 2026-08-01T11:04:39.252Z
+-- Treffer: 1448 Codes
 --
 -- Auto-generiert von scripts/parse-uci-pdf.mjs — NICHT manuell editieren.
 -- Idempotent (ON CONFLICT DO UPDATE).
@@ -157,10 +157,13 @@ update public.uci_exercises set name_en = 'Fronthandlebarstand C. out of reg. se
 update public.uci_exercises set name_en = 'Fronthandlebarstand S out of reg. seat', updated_at = now() where code = '1104g' and version = '2026';
 update public.uci_exercises set name_en = 'Fronthandlebarstand 8 out of reg. seat.', updated_at = now() where code = '1104h' and version = '2026';
 update public.uci_exercises set name_en = 'Fronthandlebarstand ½ turn', updated_at = now() where code = '1104i' and version = '2026';
-update public.uci_exercises set name_en = 'Fronthandlebarstand 1 turn T (6,4 -', updated_at = now() where code = '1104j' and version = '2026';
-update public.uci_exercises set name_en = 'Fronthandlebarstand 1½ turn T (7,2 -', updated_at = now() where code = '1104k' and version = '2026';
-update public.uci_exercises set name_en = 'Fronthandlebarstand 2 turns T (8,0 -', updated_at = now() where code = '1104l' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand 1 turn T (6,4 - 6,9 - 7,4 - 7,9)', updated_at = now() where code = '1104j' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand 1½ turn T (7,2 - 7,7 - 8,2 - 8,7)', updated_at = now() where code = '1104k' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand 2 turns T (8,0 - 8,5 - 9,0 - 9,5)', updated_at = now() where code = '1104l' and version = '2026';
 update public.uci_exercises set name_en = 'Fronthandlebarstand ½ turn out of reg. seat', updated_at = now() where code = '1104m' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand 1 turn out of reg. seat T (7,0 - 7,5 - 8,0 - 8,5)', updated_at = now() where code = '1104n' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand 1½ turn out of reg. seat T (7,8 - 8,3 - 8,8 - 9,3)', updated_at = now() where code = '1104o' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand 2 turns out of reg. seat T (8,6 - 9,1 - 9,6 - 10,1)', updated_at = now() where code = '1104p' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand rev. HC.', updated_at = now() where code = '1105a' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand rev. C.', updated_at = now() where code = '1105b' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand rev. S', updated_at = now() where code = '1105c' and version = '2026';
@@ -207,9 +210,10 @@ update public.uci_exercises set name_en = 'Saddle handlebar handstand HC.', upda
 update public.uci_exercises set name_en = 'Saddle handlebar handstand C.', updated_at = now() where code = '1123b' and version = '2026';
 update public.uci_exercises set name_en = 'Saddle handlebar handstand S', updated_at = now() where code = '1123c' and version = '2026';
 update public.uci_exercises set name_en = 'Saddle handlebar handstand 8', updated_at = now() where code = '1123d' and version = '2026';
-update public.uci_exercises set name_en = 'L-shape hold sdw. saddle handlebar handstand C. T (10,6 -', updated_at = now() where code = '1123f' and version = '2026';
-update public.uci_exercises set name_en = 'L-shape hold sdw. saddle handlebar handstand S T (11,4 -', updated_at = now() where code = '1123g' and version = '2026';
-update public.uci_exercises set name_en = 'L-shape hold sdw. saddle handlebar handstand 8 T (13,0 -', updated_at = now() where code = '1123h' and version = '2026';
+update public.uci_exercises set name_en = 'L-shape hold sdw. saddle handlebar handstand HC. T (9,8 - 10,4)', updated_at = now() where code = '1123e' and version = '2026';
+update public.uci_exercises set name_en = 'L-shape hold sdw. saddle handlebar handstand C. T (10,6 - 11,2)', updated_at = now() where code = '1123f' and version = '2026';
+update public.uci_exercises set name_en = 'L-shape hold sdw. saddle handlebar handstand S T (11,4 - 12,0)', updated_at = now() where code = '1123g' and version = '2026';
+update public.uci_exercises set name_en = 'L-shape hold sdw. saddle handlebar handstand 8 T (13,0 - 13,6)', updated_at = now() where code = '1123h' and version = '2026';
 update public.uci_exercises set name_en = 'L-shape hold sdw. Swiss saddle handlebar handstand HC.', updated_at = now() where code = '1123i' and version = '2026';
 update public.uci_exercises set name_en = 'L-shape hold sdw. Swiss saddle handlebar handstand C.', updated_at = now() where code = '1123j' and version = '2026';
 update public.uci_exercises set name_en = 'L-shape hold sdw. Swiss saddle handlebar handstand S', updated_at = now() where code = '1123k' and version = '2026';
@@ -222,10 +226,10 @@ update public.uci_exercises set name_en = 'Handlebar handstand HC.', updated_at 
 update public.uci_exercises set name_en = 'Handlebar handstand C.', updated_at = now() where code = '1124b' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebar handstand S', updated_at = now() where code = '1124c' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebar handstand 8', updated_at = now() where code = '1124d' and version = '2026';
-update public.uci_exercises set name_en = 'L-shape hold handlebar handstand HC. T (10,0 -', updated_at = now() where code = '1124e' and version = '2026';
-update public.uci_exercises set name_en = 'L-shape hold handlebar handstand C. T (10,8 -', updated_at = now() where code = '1124f' and version = '2026';
-update public.uci_exercises set name_en = 'L-shape hold handlebar handstand S T (11,6 -', updated_at = now() where code = '1124g' and version = '2026';
-update public.uci_exercises set name_en = 'L-shape hold handlebar handstand 8 T (13,2 –', updated_at = now() where code = '1124h' and version = '2026';
+update public.uci_exercises set name_en = 'L-shape hold handlebar handstand HC. T (10,0 - 10,6)', updated_at = now() where code = '1124e' and version = '2026';
+update public.uci_exercises set name_en = 'L-shape hold handlebar handstand C. T (10,8 - 11,4)', updated_at = now() where code = '1124f' and version = '2026';
+update public.uci_exercises set name_en = 'L-shape hold handlebar handstand S T (11,6 - 12,2)', updated_at = now() where code = '1124g' and version = '2026';
+update public.uci_exercises set name_en = 'L-shape hold handlebar handstand 8 T (13,2 – 13,8)', updated_at = now() where code = '1124h' and version = '2026';
 update public.uci_exercises set name_en = 'L-shape hold Swiss handlebar handstand HC.', updated_at = now() where code = '1124i' and version = '2026';
 update public.uci_exercises set name_en = 'L-shape hold Swiss handlebar handstand C.', updated_at = now() where code = '1124j' and version = '2026';
 update public.uci_exercises set name_en = 'L-shape hold Swiss handlebar handstand S', updated_at = now() where code = '1124k' and version = '2026';
@@ -266,10 +270,10 @@ update public.uci_exercises set name_en = 'Turning jump sidestand backhang', upd
 update public.uci_exercises set name_en = 'Turning jump reg. seat backhang', updated_at = now() where code = '1174b' and version = '2026';
 update public.uci_exercises set name_en = 'Turning jump backhang reg. seat', updated_at = now() where code = '1174c' and version = '2026';
 update public.uci_exercises set name_en = 'Turning jump 1 turn', updated_at = now() where code = '1175a' and version = '2026';
-update public.uci_exercises set name_en = 'Turning jump 2 turns T (7,5 -', updated_at = now() where code = '1175b' and version = '2026';
-update public.uci_exercises set name_en = 'Turning jump 3 turns T (9,5 -', updated_at = now() where code = '1175c' and version = '2026';
-update public.uci_exercises set name_en = 'Turning jump 4 turns T (10,7 -', updated_at = now() where code = '1175d' and version = '2026';
-update public.uci_exercises set name_en = 'Turning jump 5 turns T (11,8 -', updated_at = now() where code = '1175e' and version = '2026';
+update public.uci_exercises set name_en = 'Turning jump 2 turns T (7,5 - 8,2 - 8,9 - 9,6 - 10,3)', updated_at = now() where code = '1175b' and version = '2026';
+update public.uci_exercises set name_en = 'Turning jump 3 turns T (9,5 - 10,2 - 10,9 - 11,6 - 12,3)', updated_at = now() where code = '1175c' and version = '2026';
+update public.uci_exercises set name_en = 'Turning jump 4 turns T (10,7 - 11,4 - 12,1 - 12,8 - 13,5)', updated_at = now() where code = '1175d' and version = '2026';
+update public.uci_exercises set name_en = 'Turning jump 5 turns T (11,8 - 12,5 - 13,2 - 13,9 - 14,6)', updated_at = now() where code = '1175e' and version = '2026';
 update public.uci_exercises set name_en = 'Pedal jump', updated_at = now() where code = '1181a' and version = '2026';
 update public.uci_exercises set name_en = 'Jump Saddle handlebarstand to fronthandlebarstand', updated_at = now() where code = '1184a' and version = '2026';
 update public.uci_exercises set name_en = 'Maute jump', updated_at = now() where code = '1186a' and version = '2026';
@@ -412,7 +416,6 @@ update public.uci_exercises set name_en = 'Handlebarstand rev. stretchjump in fr
 update public.uci_exercises set name_en = 'Handlebarstand rev. stretchjump 1 twist in front of the bicycle', updated_at = now() where code = '1301m' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand rev. somersault bw. hooked legs', updated_at = now() where code = '1301n' and version = '2026';
 update public.uci_exercises set name_en = 'Handstand bicycle lying down', updated_at = now() where code = '1301o' and version = '2026';
-update public.uci_exercises set name_en = '(text modified on', updated_at = now() where code = '1301p' and version = '2026';
 update public.uci_exercises set name_en = 'Reg. seat HC.', updated_at = now() where code = '2001a' and version = '2026';
 update public.uci_exercises set name_en = 'Reg. seat C.', updated_at = now() where code = '2001b' and version = '2026';
 update public.uci_exercises set name_en = 'Reg. seat frh. HC.', updated_at = now() where code = '2001c' and version = '2026';
@@ -503,17 +506,33 @@ update public.uci_exercises set name_en = 'Saddlestand C.', updated_at = now() w
 update public.uci_exercises set name_en = 'Saddlestand s.r.', updated_at = now() where code = '2069e' and version = '2026';
 update public.uci_exercises set name_en = 'Saddlestand count. 8', updated_at = now() where code = '2069f' and version = '2026';
 update public.uci_exercises set name_en = 'Fronthandlebarstand separate HC.', updated_at = now() where code = '2070a' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand separate HC. out of regular seat', updated_at = now() where code = '2070aa' and version = '2026';
 update public.uci_exercises set name_en = 'Fronthandlebarstand separate C.', updated_at = now() where code = '2070b' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand separate C. out of regular seat', updated_at = now() where code = '2070ba' and version = '2026';
 update public.uci_exercises set name_en = 'Fronthandlebarstand HC.', updated_at = now() where code = '2070c' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand HC. out of regular seat', updated_at = now() where code = '2070ca' and version = '2026';
 update public.uci_exercises set name_en = 'Fronthandlebarstand C.', updated_at = now() where code = '2070d' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand C. out of regular seat', updated_at = now() where code = '2070da' and version = '2026';
 update public.uci_exercises set name_en = 'Fronthandlebarstand s.r.', updated_at = now() where code = '2070e' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand s.r. out of regular seat', updated_at = now() where code = '2070ea' and version = '2026';
 update public.uci_exercises set name_en = 'Fronthandlebarstand count. 8', updated_at = now() where code = '2070f' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand count. 8 out of regular seat', updated_at = now() where code = '2070fa' and version = '2026';
 update public.uci_exercises set name_en = 'Fronthandlebarstand ½ turn', updated_at = now() where code = '2070g' and version = '2026';
-update public.uci_exercises set name_en = 'Fronthandlebarstand 1 turn T (8,0 -', updated_at = now() where code = '2070h' and version = '2026';
-update public.uci_exercises set name_en = 'Fronthandlebarstand 1½ turns T (8,8 -', updated_at = now() where code = '2070i' and version = '2026';
-update public.uci_exercises set name_en = 'Fronthandlebarstand 2 turns T (9,5 -', updated_at = now() where code = '2070j' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand ½ turn out of regular seat', updated_at = now() where code = '2070ga' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand 1 turn T (8,0 - 8,5 - 9,0 - 9,5)', updated_at = now() where code = '2070h' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand 1 turn out of reg. seat T (8,8 - 9,3 - 9,8 - 10,3)', updated_at = now() where code = '2070ha' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand 1½ turns T (8,8 - 9,3 - 9,8 - 10,3)', updated_at = now() where code = '2070i' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand 1½ turns out of reg. seat T (9,6 - 10,1 - 10,6 - 11,1)', updated_at = now() where code = '2070ia' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand 2 turns T (9,5 - 10,0 - 10,5 - 11,0)', updated_at = now() where code = '2070j' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand 2 turns out of reg. seat T (10,3 - 10,8 - 11,3 - 11,8)', updated_at = now() where code = '2070ja' and version = '2026';
 update public.uci_exercises set name_en = 'Count. C fronthandlebarstand ½ turn', updated_at = now() where code = '2070k' and version = '2026';
-update public.uci_exercises set name_en = 'Count. C fronthandlebarstand 1 turn T (7,7 -', updated_at = now() where code = '2070l' and version = '2026';
+update public.uci_exercises set name_en = 'Count. C fronthandlebarstand ½ turn out of reg. seat', updated_at = now() where code = '2070ka' and version = '2026';
+update public.uci_exercises set name_en = 'Count. C fronthandlebarstand 1 turn T (7,7 - 8,2 - 8,7 - 9,2)', updated_at = now() where code = '2070l' and version = '2026';
+update public.uci_exercises set name_en = 'Count. C fronthandlebarstand 1 turn out of reg. seat T (8,5 - 9,0 - 9,5 - 10,0)', updated_at = now() where code = '2070la' and version = '2026';
+update public.uci_exercises set name_en = 'Count. C fronthandlebarstand 1½ turns T (8,5 - 9,0 - 9,5 - 10,0)', updated_at = now() where code = '2070m' and version = '2026';
+update public.uci_exercises set name_en = 'Count. C fronthandlebarstand 1½ turns out of regular seat T (9,3 - 9,8 - 10,3 - 10,8)', updated_at = now() where code = '2070ma' and version = '2026';
+update public.uci_exercises set name_en = 'Count. C fronthandlebarstand 2 turns T (9,2 - 9,7 - 10,2 - 10,7)', updated_at = now() where code = '2070n' and version = '2026';
+update public.uci_exercises set name_en = 'Count. C fronthandlebarstand 2 turns out of regular seat T (10,0 - 10,5 - 11,0 - 11,5)', updated_at = now() where code = '2070na' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand rev. separate HC.', updated_at = now() where code = '2071a' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand rev. separate C.', updated_at = now() where code = '2071b' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand rev. HC.', updated_at = now() where code = '2071c' and version = '2026';
@@ -532,9 +551,9 @@ update public.uci_exercises set name_en = 'L-shape hold sdw. German saddle handl
 update public.uci_exercises set name_en = 'Handlebar handstand separate HC.', updated_at = now() where code = '2077a' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebar handstand separate C.', updated_at = now() where code = '2077b' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebar handstand count. 8', updated_at = now() where code = '2077c' and version = '2026';
-update public.uci_exercises set name_en = 'L-shape hold handlebar handstand separate HC. T (11,9 -', updated_at = now() where code = '2077d' and version = '2026';
-update public.uci_exercises set name_en = 'L-shape hold handlebar handstand separate C. T (12,3 -', updated_at = now() where code = '2077e' and version = '2026';
-update public.uci_exercises set name_en = 'L-shape hold handlebar handstand count. 8 T (14,1 -', updated_at = now() where code = '2077f' and version = '2026';
+update public.uci_exercises set name_en = 'L-shape hold handlebar handstand separate HC. T (11,9 - 12,5)', updated_at = now() where code = '2077d' and version = '2026';
+update public.uci_exercises set name_en = 'L-shape hold handlebar handstand separate C. T (12,3 - 12,9)', updated_at = now() where code = '2077e' and version = '2026';
+update public.uci_exercises set name_en = 'L-shape hold handlebar handstand count. 8 T (14,1 - 14,7)', updated_at = now() where code = '2077f' and version = '2026';
 update public.uci_exercises set name_en = 'L-shape hold Swiss handlebar handstand separate HC.', updated_at = now() where code = '2077g' and version = '2026';
 update public.uci_exercises set name_en = 'L-shape hold Swiss handlebar handstand separate C.', updated_at = now() where code = '2077h' and version = '2026';
 update public.uci_exercises set name_en = 'L-shape hold Swiss handlebar handstand count. 8', updated_at = now() where code = '2077i' and version = '2026';
@@ -651,22 +670,22 @@ update public.uci_exercises set name_en = 'Standraiser rev. mill spin.', updated
 update public.uci_exercises set name_en = 'Standraiser rev. mill bw.', updated_at = now() where code = '2198a' and version = '2026';
 update public.uci_exercises set name_en = 'Standraiser rev. mill s.r. bw.', updated_at = now() where code = '2198b' and version = '2026';
 update public.uci_exercises set name_en = 'Raiser handlebarseat 1 turn', updated_at = now() where code = '2211a' and version = '2026';
-update public.uci_exercises set name_en = 'Raiser handlebarseat 2 turns T (6,8 -', updated_at = now() where code = '2211b' and version = '2026';
+update public.uci_exercises set name_en = 'Raiser handlebarseat 2 turns T (6,8 - 7,3)', updated_at = now() where code = '2211b' and version = '2026';
 update public.uci_exercises set name_en = 'Raiser handlebarseat 3 turns T (7,8)', updated_at = now() where code = '2211c' and version = '2026';
 update public.uci_exercises set name_en = 'Raiser handlebarseat rev. 1 turn', updated_at = now() where code = '2212a' and version = '2026';
-update public.uci_exercises set name_en = 'Raiser handlebarseat rev. 2 turns T (7,0 -', updated_at = now() where code = '2212b' and version = '2026';
+update public.uci_exercises set name_en = 'Raiser handlebarseat rev. 2 turns T (7,0 - 7,5)', updated_at = now() where code = '2212b' and version = '2026';
 update public.uci_exercises set name_en = 'Raiser handlebarseat rev. 3 turns T (8,1)', updated_at = now() where code = '2212c' and version = '2026';
 update public.uci_exercises set name_en = 'Raiser headtube 1 turn', updated_at = now() where code = '2213a' and version = '2026';
-update public.uci_exercises set name_en = 'Raiser headtube 2 turns T (6,5 -', updated_at = now() where code = '2213b' and version = '2026';
+update public.uci_exercises set name_en = 'Raiser headtube 2 turns T (6,5 - 7,0)', updated_at = now() where code = '2213b' and version = '2026';
 update public.uci_exercises set name_en = 'Raiser headtube 3 turns T (7,6)', updated_at = now() where code = '2213c' and version = '2026';
 update public.uci_exercises set name_en = 'Raiser headtube rev. 1 turn', updated_at = now() where code = '2214a' and version = '2026';
-update public.uci_exercises set name_en = 'Raiser headtube rev. 2 turns T (7,0 -', updated_at = now() where code = '2214b' and version = '2026';
+update public.uci_exercises set name_en = 'Raiser headtube rev. 2 turns T (7,0 - 7,5)', updated_at = now() where code = '2214b' and version = '2026';
 update public.uci_exercises set name_en = 'Raiser headtube rev. 3 turns T (8,1)', updated_at = now() where code = '2214c' and version = '2026';
 update public.uci_exercises set name_en = 'Standraiser 1 turn', updated_at = now() where code = '2215a' and version = '2026';
-update public.uci_exercises set name_en = 'Standraiser 2 turns T (7,4 -', updated_at = now() where code = '2215b' and version = '2026';
+update public.uci_exercises set name_en = 'Standraiser 2 turns T (7,4 - 7,9)', updated_at = now() where code = '2215b' and version = '2026';
 update public.uci_exercises set name_en = 'Standraiser 3 turns T (8,4)', updated_at = now() where code = '2215c' and version = '2026';
 update public.uci_exercises set name_en = 'Standraiser rev. 1 turn', updated_at = now() where code = '2216a' and version = '2026';
-update public.uci_exercises set name_en = 'Standraiser rev. 2 turns T (7,7 -', updated_at = now() where code = '2216b' and version = '2026';
+update public.uci_exercises set name_en = 'Standraiser rev. 2 turns T (7,7 - 8,2)', updated_at = now() where code = '2216b' and version = '2026';
 update public.uci_exercises set name_en = 'Standraiser rev. 3 turns T (8,7)', updated_at = now() where code = '2216c' and version = '2026';
 update public.uci_exercises set name_en = 'P. raiser reg. seat raiser handlebarseat', updated_at = now() where code = '2236a' and version = '2026';
 update public.uci_exercises set name_en = 'P. raiser handlebarseat raiser reg. seat', updated_at = now() where code = '2236b' and version = '2026';
@@ -824,11 +843,15 @@ update public.uci_exercises set name_en = 'Saddle handlebarstand / Handlebarstan
 update public.uci_exercises set name_en = 'Handlebarstand / Stand on pins HC.', updated_at = now() where code = '2358a' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand / Stand on pins C.', updated_at = now() where code = '2358b' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand ½ turn / Stand on pins', updated_at = now() where code = '2358c' and version = '2026';
-update public.uci_exercises set name_en = 'Handlebarstand 1 turn / Stand on pins T (7,2 -', updated_at = now() where code = '2358d' and version = '2026';
-update public.uci_exercises set name_en = 'Handlebarstand 2 turns / Stand on pins T (8,8 -', updated_at = now() where code = '2358f' and version = '2026';
+update public.uci_exercises set name_en = 'Handlebarstand 1 turn / Stand on pins T (7,2 - 7,7 - 8,2 - 8,7)', updated_at = now() where code = '2358d' and version = '2026';
+update public.uci_exercises set name_en = 'Handlebarstand 1½ turns / Stand on pins T (8,0 - 8,5 - 9,0 - 9,5)', updated_at = now() where code = '2358e' and version = '2026';
+update public.uci_exercises set name_en = 'Handlebarstand 2 turns / Stand on pins T (8,8 - 9,3 - 9,8 - 10,3)', updated_at = now() where code = '2358f' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand out of reg. seat / Stand on pins HC.', updated_at = now() where code = '2358g' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand out of reg. seat / Stand on pins C.', updated_at = now() where code = '2358h' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand ½ turn out of reg. seat / Stand on pins', updated_at = now() where code = '2358i' and version = '2026';
+update public.uci_exercises set name_en = 'Handlebarstand 1 turn out of reg. seat / Stand on pins T (8,0 - 8,5 - 9,0 - 9,5)', updated_at = now() where code = '2358j' and version = '2026';
+update public.uci_exercises set name_en = 'Handlebarstand 1½ turns out of reg. seat / Stand on pins T (8,8 - 9,3 - 9,8 - 10,3)', updated_at = now() where code = '2358k' and version = '2026';
+update public.uci_exercises set name_en = 'Handlebarstand 2 turns out of reg. seat / Stand on pins T (9,6 - 10,1 - 10,6 - 11,1)', updated_at = now() where code = '2358l' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand / Saddlestand ring grip HC.', updated_at = now() where code = '2359a' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand / Saddlestand ring grip C.', updated_at = now() where code = '2359b' and version = '2026';
 update public.uci_exercises set name_en = 'Handlebarstand / Saddlestand HC.', updated_at = now() where code = '2359c' and version = '2026';
@@ -1049,6 +1072,7 @@ update public.uci_exercises set name_en = '2 n.e.o. half shortline opp. dir. a.r
 update public.uci_exercises set name_en = '2 n.e.o. shortline opp. dir. a.r. bw.', updated_at = now() where code = '4045e' and version = '2026';
 update public.uci_exercises set name_en = '2 n.e.o. half shortline opp. dir. a.r. raiser bw. frh.', updated_at = now() where code = '4048a' and version = '2026';
 update public.uci_exercises set name_en = '2 n.e.o. shortline opp. dir. a.r. raiser bw. frh.', updated_at = now() where code = '4048b' and version = '2026';
+update public.uci_exercises set name_en = '2 n.e.o. shortline opp. dir. a.r. through raiser bw. frh. T (11,3 - 12,1)', updated_at = now() where code = '4048c' and version = '2026';
 update public.uci_exercises set name_en = '2 con. HC.', updated_at = now() where code = '4071a' and version = '2026';
 update public.uci_exercises set name_en = '2 con. C.', updated_at = now() where code = '4071b' and version = '2026';
 update public.uci_exercises set name_en = '2 con. HC. 2 con. s.r.l.', updated_at = now() where code = '4071c' and version = '2026';
@@ -1164,6 +1188,7 @@ update public.uci_exercises set name_en = 'Two insiderings raiser bw.', updated_
 update public.uci_exercises set name_en = 'Two insiderings raiser bw. inside indiv. frh.', updated_at = now() where code = '4134b' and version = '2026';
 update public.uci_exercises set name_en = 'Two insiderings raiser bw. in- a. outside indiv. frh.', updated_at = now() where code = '4134c' and version = '2026';
 update public.uci_exercises set name_en = 'Two insiderings 4 s.r.r. raiser bw. in- a. outside indiv. frh.', updated_at = now() where code = '4134d' and version = '2026';
+update public.uci_exercises set name_en = 'Two insiderings spin. raiser bw. in- a. outside indiv. frh. T (11,7)', updated_at = now() where code = '4134e' and version = '2026';
 update public.uci_exercises set name_en = 'Two outsiderings raiser', updated_at = now() where code = '4135a' and version = '2026';
 update public.uci_exercises set name_en = 'Two outsiderings raiser inside indiv.', updated_at = now() where code = '4135b' and version = '2026';
 update public.uci_exercises set name_en = 'Two outsiderings raiser inside indiv. frh.', updated_at = now() where code = '4135c' and version = '2026';
@@ -1173,6 +1198,7 @@ update public.uci_exercises set name_en = 'Two outsiderings raiser bw.', updated
 update public.uci_exercises set name_en = 'Two outsiderings raiser bw. inside indiv. frh.', updated_at = now() where code = '4136b' and version = '2026';
 update public.uci_exercises set name_en = 'Two outsiderings raiser bw. in- a. outside indiv. frh.', updated_at = now() where code = '4136c' and version = '2026';
 update public.uci_exercises set name_en = 'Two outsiderings 4 s.r.r. raiser bw. in- a. outside indiv. frh.', updated_at = now() where code = '4136d' and version = '2026';
+update public.uci_exercises set name_en = 'Two outsiderings spin. raiser bw. in- a. outside indiv. frh. T (13,1)', updated_at = now() where code = '4136e' and version = '2026';
 update public.uci_exercises set name_en = '4 con. HC.', updated_at = now() where code = '4151a' and version = '2026';
 update public.uci_exercises set name_en = '4 con. C.', updated_at = now() where code = '4151b' and version = '2026';
 update public.uci_exercises set name_en = '4 con. HC. 2 con. s.r.l.', updated_at = now() where code = '4151c' and version = '2026';
@@ -1435,4 +1461,4 @@ update public.uci_exercises set name_en = '4 con. raiser 2 turns on the spot', u
 -- Verifizieren:
 --   select code, name_en, name_de from public.uci_exercises where version = '2026' and name_en is not null limit 10;
 --   select count(*) from public.uci_exercises where version = '2026' and name_en is not null;
---   -- erwartet: ~1422
+--   -- erwartet: ~1448
