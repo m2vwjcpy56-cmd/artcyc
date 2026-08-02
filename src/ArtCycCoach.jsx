@@ -19963,36 +19963,6 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
         )
       )}
 
-      {/* Ø-Abzug je Übung — über die Kampfgerichte gemittelt: zeigt, welche Übung in
-          DIESEM Wettkampf durchschnittlich am meisten kostet (absteigend sortiert). */}
-      {effProgram && (() => {
-        const perEx = compExerciseDeductions(effProgram, competition);
-        const avg = compAvgDeductionPerExercise(effProgram, competition);
-        const ranked = effProgram.exercises
-          .map((ex, idx) => ({ ex, ded: perEx[idx] || 0 }))
-          .filter(r => r.ded > 0.0001)
-          .sort((a, b) => b.ded - a.ded);
-        if (!ranked.length) return null;
-        return (
-          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold flex items-center gap-2"><TrendingDown size={16} className="text-[#FF3B30]" /> Ø-Abzug je Übung</h3>
-              {avg != null && <span className="text-[13px] text-slate-500">Ø −{avg.toFixed(2)}/Übung</span>}
-            </div>
-            <div className="space-y-1.5">
-              {ranked.map(({ ex, ded }, i) => (
-                <div key={ex.id || i} className="flex items-center gap-2.5">
-                  <span className="w-5 text-right text-xs font-semibold text-slate-400 tabular-nums shrink-0">{i + 1}</span>
-                  <span className="flex-1 min-w-0 text-sm font-medium truncate">{localizedExerciseName(ex)}</span>
-                  <span className={'text-sm font-bold tabular-nums shrink-0 ' + (ded >= 0.6 ? 'text-rose-600' : ded >= 0.15 ? 'text-amber-600' : 'text-emerald-600')}>−{ded.toFixed(2)}</span>
-                </div>
-              ))}
-            </div>
-            <p className="text-[11px] text-slate-400 pt-2.5 leading-snug">Punktabzug je Übung, über die Kampfgerichte gemittelt (Ausführung + Schwierigkeit).</p>
-          </div>
-        );
-      })()}
-
       {/* Einzelübungen je Kampfgericht — nur Tabellen-Umschalter (Scores stehen
           bereits oben in den KPI-Karten; keine doppelte Ergebnis-Anzeige). */}
       {effProgram && (
@@ -20004,7 +19974,15 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
 
           {/* Übungs-Liste read-only */}
           <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4">
-            <h3 className="font-semibold mb-3">Übungen</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold">Übungen</h3>
+              {(() => {
+                // Stand vorher über der zweiten, nach Abzug sortierten Liste — die ist
+                // weg (dieselben Übungen doppelt), die Kennzahl bleibt.
+                const avg = compAvgDeductionPerExercise(effProgram, competition);
+                return avg != null ? <span className="text-[13px] text-slate-500 tabular-nums">Ø −{avg.toFixed(2)}/Übung</span> : null;
+              })()}
+            </div>
             <div className="space-y-1.5">
               {effProgram.exercises.map((ex, idx) => {
                 const e = entries[idx] || {};
