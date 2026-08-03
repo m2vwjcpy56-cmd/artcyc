@@ -108,6 +108,29 @@ function buildCellMap(comps) {
       if (kk && !idxByKey.has(kk)) idxByKey.set(kk, { ex, j });
     });
 
+    // Randabzüge (vor der ersten / nach der letzten Übung) haben in der offiziellen
+    // Statistik KEINE eigene Zeile. Sie werden auf die erste bzw. letzte Übung DIESES
+    // Wettkampfs angerechnet — sonst fehlten sie im Blatt und die Summe läge unter dem
+    // Ergebnis in der App. Randeinträge tragen nur Fehlerzeichen, keine Schwierigkeit
+    // und keine Aufwertung; die %-Spalten bleiben also unberührt.
+    const extra = new Map();                       // Übungs-Schlüssel → { cross, wave, bar, circle }
+    const edgeRow = (t, kind) => (t || []).find(e => e && e.edge === kind) || null;
+    const addEdge = (kind, ex) => {
+      const kk = ex ? exKey(ex) : '';
+      if (!kk) return;
+      const acc = extra.get(kk) || { cross: 0, wave: 0, bar: 0, circle: 0 };
+      usedTables.forEach((t) => {
+        const e = edgeRow(t, kind);
+        if (!e) return;
+        acc.cross += Number(e.cross || 0); acc.wave += Number(e.wave || 0);
+        acc.bar += Number(e.bar || 0); acc.circle += Number(e.circle || 0);
+      });
+      extra.set(kk, acc);
+    };
+    const own = c.exercises || [];
+    addEdge('pre', own[0]);
+    addEdge('post', own[own.length - 1]);
+
     U.forEach((u, i) => {
       const r = rowOf(i);
       const hit = idxByKey.get(u.key);
@@ -132,10 +155,11 @@ function buildCellMap(comps) {
       };
       const setN = (col, v) => { if (v) map.set(col + r, { kind: 'n', val: Math.round(v * 1000) / 1000 }); };
       setN(D, Math.max(0, ...entries.map(bonus)));
-      setN(E, sum(e => e.cross)); // X
-      setN(F, sum(e => e.wave));  // ~
-      setN(G, sum(e => e.bar));   // |
-      setN(H, sum(e => e.circle)); // ○
+      const add = extra.get(u.key) || { cross: 0, wave: 0, bar: 0, circle: 0 };
+      setN(E, sum(e => e.cross) + add.cross); // X (inkl. Randabzug)
+      setN(F, sum(e => e.wave) + add.wave);   // ~
+      setN(G, sum(e => e.bar) + add.bar);     // |
+      setN(H, sum(e => e.circle) + add.circle); // ○
       setN(I, pctCount(10));      // 10%
       setN(J, pctCount(50));      // 50%
       setN(K, pctCount(100));     // 100%

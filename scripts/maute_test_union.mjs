@@ -65,7 +65,10 @@ const rows = [
 let ok = 0, total = 0;
 for (const [label, got, exp] of rows) {
   if (!exp) { console.log('\n' + label); continue; }
-  const expVal = exp.split(' ')[0];
+  // Nur eine angehängte Klammer-Notiz abschneiden („1  (circle)" → „1"). Vorher stand
+  // hier split(' ')[0] — das zerlegte auch mehrwortige Erwartungen wie
+  // „1186a. Maute-Sprung" und meldete sie dauerhaft als Fehler.
+  const expVal = exp.replace(/\s*[(←].*$/, '').trim();
   const pass = String(got) === expVal;
   total++; if (pass) ok++;
   console.log(`${pass ? '✅' : '❌'} ${label.padEnd(24)} = ${String(got).padEnd(28)} (erwartet ${exp})`);

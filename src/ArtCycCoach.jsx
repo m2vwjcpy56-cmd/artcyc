@@ -15637,9 +15637,14 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
               </div>
               <div className="text-slate-500 dark:text-slate-400 text-xs">{m.label} · −{m.w}</div>
               {act && (
+                // Großzügige Klickfläche (vorher nur der 32-px-Kreis): ein knapper
+                // Fehlgriff landete auf der Karte und ERHÖHTE den Zähler. Die Fläche
+                // wächst nur nach innen, sichtbar bleibt der Kreis oben rechts.
                 <span role="button" aria-label="Zeichen entfernen"
                   onClick={(ev) => { ev.stopPropagation(); onUpdate(tapKg, row, m.k, Math.max(0, cnt - 1)); }}
-                  className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-[#FF9500] text-white flex items-center justify-center text-xl font-bold shadow">−</span>
+                  className="absolute top-0 right-0 w-[68px] h-[68px] flex items-start justify-end p-2.5">
+                  <span className="w-8 h-8 rounded-full bg-[#FF9500] text-white flex items-center justify-center text-xl font-bold shadow">−</span>
+                </span>
               )}
             </button>
           );
@@ -16893,7 +16898,9 @@ function PanelTapButtons({ options, hits, limit, onChange, fmt }) {
             </button>
             {active && (
               <button type="button" aria-label="Entfernen" onClick={() => remove(v)}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#FF9500] text-white text-[12px] font-bold leading-none flex items-center justify-center shadow">−</button>
+                className="absolute -top-1.5 -right-1.5 w-9 h-9 flex items-start justify-end">
+                <span className="w-5 h-5 rounded-full bg-[#FF9500] text-white text-[12px] font-bold leading-none flex items-center justify-center shadow">−</span>
+              </button>
             )}
           </div>
         );
@@ -16974,7 +16981,9 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
                       {count > 0 && (
                         <button type="button" aria-label="Zeichen entfernen"
                           onClick={() => onUpdate(idx, c.k, count - 1)}
-                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#FF9500] text-white text-[12px] font-bold leading-none flex items-center justify-center shadow">−</button>
+                          className="absolute -top-1.5 -right-1.5 w-9 h-9 flex items-start justify-end">
+                          <span className="w-5 h-5 rounded-full bg-[#FF9500] text-white text-[12px] font-bold leading-none flex items-center justify-center shadow">−</span>
+                        </button>
                       )}
                     </div>
                   );
@@ -19491,6 +19500,12 @@ function ExportWettkampf({ data, defaultName = '' }) {
             ))}
           </div>
           <p className="text-[12px] text-slate-500 mt-1.5 leading-snug">{fmt.hint}</p>
+          {/* Die Statistik hat keine Zeile für Fehler außerhalb der Übungen — offen sagen,
+              wo sie landen, damit der Vergleich mit der App nachvollziehbar bleibt. */}
+          <p className="text-[12px] text-slate-400 mt-1 leading-snug">
+            Abzüge vor der ersten und nach der letzten Übung haben in der Statistik keine
+            eigene Zeile — sie werden auf Übung 1 bzw. die letzte Übung angerechnet.
+          </p>
         </div>
 
         <div>
