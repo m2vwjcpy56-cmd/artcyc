@@ -3578,7 +3578,7 @@ function computeLastTrainingRecap(data, maxDaysAgo = 3) {
   return { lastDate, daysAgo, sessionCount, exercises, totalReps, totalSuccess };
 }
 
-function TrainingRecapCard({ data }) {
+function TrainingRecapCard({ data, onOpenExercise }) {
   const recap = useMemo(() => computeLastTrainingRecap(data), [data.sessions, data.exercises]);
   if (!recap) return null;
   const rel = recap.daysAgo === 0 ? 'heute' : recap.daysAgo === 1 ? 'gestern' : `vor ${recap.daysAgo} Tagen`;
@@ -3597,13 +3597,21 @@ function TrainingRecapCard({ data }) {
         <div><div className="text-xl font-bold">{recap.totalReps}</div><div className="text-[11px] text-[#8E8E93]">Versuche</div></div>
       </div>
       <div className="space-y-3 pt-2 border-t border-slate-100">
-        {recap.exercises.slice(0, 6).map(r => (
+        {recap.exercises.slice(0, 6).map(r => {
+          // Antippen führt ins Übungs-Detail — nur wenn die Übung noch existiert
+          // (bei Alt-Daten steht in `id` ersatzweise der Name).
+          const known = (data.exercises || []).some(e => e.id === r.id);
+          const openable = !!onOpenExercise && known;
+          return (
           <div key={r.id}>
-            <div className="flex items-center justify-between text-[14px]">
+            <div className={'flex items-center justify-between text-[14px] ' + (openable ? 'cursor-pointer active:opacity-60' : '')}
+              onClick={openable ? () => onOpenExercise(r.id) : undefined}
+              role={openable ? 'button' : undefined}>
               <span className="truncate pr-2 font-medium">{r.name}</span>
               <span className="flex items-center gap-2 shrink-0">
                 <span className={'font-semibold ' + rc(pct(r))}>{pct(r)}%</span>
                 <span className="text-[#8E8E93] text-[12px] tabular-nums">{r.success}/{r.total}</span>
+                {openable && <ChevronRight size={14} className="text-slate-300 dark:text-slate-600" />}
               </span>
             </div>
             {(r.ropeTotal > 0 && r.noRopeTotal > 0) && (
@@ -3613,7 +3621,8 @@ function TrainingRecapCard({ data }) {
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -4842,6 +4851,9 @@ export default function App() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('dashboard');
+  // Übung, die nach einem Ansichtswechsel direkt im Detail geöffnet werden soll
+  // (z. B. Tipp auf eine Übung im Trainings-Rückblick auf dem Dashboard).
+  const [focusExerciseId, setFocusExerciseId] = useState(null);
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -5836,11 +5848,11 @@ export default function App() {
 
   // View dispatcher
   let viewEl;
-  if (view === 'dashboard') viewEl = <Dashboard data={effectiveData} setView={setView} onOpenFeedback={hasCoachingFeedback ? openFeedback : null} />;
+  if (view === 'dashboard') viewEl = <Dashboard data={effectiveData} setView={setView} onOpenFeedback={hasCoachingFeedback ? openFeedback : null} onOpenExercise={(id) => { setFocusExerciseId(id); setView('uebungen'); }} />;
   else if (view === 'training') viewEl = <TrainingView data={effectiveData} setData={save} setView={setView} />;
   else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
   else if (view === 'trainingsplan') viewEl = <TrainingsplanView data={effectiveData} setData={save} onBack={() => setView('training')} />;
-  else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} onOpenView={setView} />;
+  else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} onOpenView={setView} focusExerciseId={focusExerciseId} onFocusConsumed={() => setFocusExerciseId(null)} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} myUserId={session?.user?.id || null} />;
   else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} dbAthleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={hasCoachingFeedback ? openFeedback : null} />;
   else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} athleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { chooseAthlete(id); setView('dashboard'); }} myAthleteId={myAthleteId} setView={setView} />;
@@ -6648,7 +6660,7 @@ function trainingWeekStreak(sessions) {
   return n;
 }
 
-function Dashboard({ data, setView, onOpenFeedback }) {
+function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
   const { t } = useI18n();
   // Saison-Filter
   const [season, setSeason] = useState('all'); // 'all' | '2026' | '2025' | '90d' | '30d'
@@ -6904,7 +6916,7 @@ function Dashboard({ data, setView, onOpenFeedback }) {
           ]}
         />
 
-        <TrainingRecapCard data={data} />
+        <TrainingRecapCard data={data} onOpenExercise={onOpenExercise} />
         {seasonPills}
 
         {/* OVERVIEW — Cockpit: mehrere starke Infos (Training + Wettkampf gemeinsam) */}
@@ -12559,12 +12571,20 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
 // =============================================================
 // ÜBUNGEN VERWALTEN
 // =============================================================
-function UebungenView({ data, setData, onBack, onOpenView }) {
+function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFocusConsumed }) {
   const { t } = useI18n();
   const [editing, setEditing] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [selected, setSelected] = useState(null); // Übung in Detail-Ansicht
   const [pendingDelete, setPendingDelete] = useState(null);
+
+  // Von außen vorgemerkte Übung (z. B. Tipp im Trainings-Rückblick) direkt öffnen.
+  useEffect(() => {
+    if (!focusExerciseId) return;
+    const ex = (data.exercises || []).find(e => e.id === focusExerciseId);
+    if (ex) setSelected(ex);
+    onFocusConsumed?.();
+  }, [focusExerciseId]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [statRange, setStatRange] = useState('m6'); // Statistik-Überblick Zeitraum (Parität iOS)
   const [statVerlauf, setStatVerlauf] = useState('ergebnis'); // Verlauf: Ergebnis | Abzug
   // Übungsliste: nach Abzug absteigend ist die Voreinstellung — die Baustellen zuerst.
