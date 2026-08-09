@@ -131,8 +131,27 @@ export function TrendChart({ comp, is3 = false, showHit = false, showDanger = fa
   }
   const W = 320, H = 110, P = 8;
   const xs = (i) => P + (i * (W - 2 * P)) / (comp.length - 1);
-  const ys = (v) => H - P - (v / 100) * (H - 2 * P);
   const r = (b, key) => b.total > 0 ? (b[key] / b.total) * 100 : 0;
+  // Sichtbarer Wertebereich. Fest 0–100 % ließ selbst 16 Punkte Unterschied wie eine
+  // gerade Linie aussehen. Jetzt auf die Daten gezoomt — mit Bremsen: mindestens
+  // MIN_SPAN Punkte Fensterbreite, damit fast gleiche Werte kein Zickzack werden,
+  // und auf Zehner gerundet für lesbare Achsenwerte. Alle SICHTBAREN Kurven zählen
+  // mit, sonst läuft eine zugeschaltete Linie aus dem Bild.
+  const MIN_SPAN = 30;
+  const shown = comp.flatMap(b => [
+    r(b, 'success'),
+    ...(showHit && is3 ? [r(b, 'third')] : []),
+    ...(showDanger ? [r(b, 'fail')] : []),
+  ]);
+  let lo = Math.min(...shown) - 5, hi = Math.max(...shown) + 5;
+  if (hi - lo < MIN_SPAN) { const mid = (Math.min(...shown) + Math.max(...shown)) / 2; lo = mid - MIN_SPAN / 2; hi = mid + MIN_SPAN / 2; }
+  lo = Math.max(0, Math.floor(lo / 10) * 10);
+  hi = Math.min(100, Math.ceil(hi / 10) * 10);
+  if (hi - lo < MIN_SPAN) { if (lo <= 0) hi = Math.min(100, MIN_SPAN); else lo = Math.max(0, hi - MIN_SPAN); }
+  const ys = (v) => H - P - ((v - lo) / (hi - lo)) * (H - 2 * P);
+  // Fläche nur, wenn die Achse bei 0 beginnt — sonst spiegelte sie eine Größe vor,
+  // die sie nicht abbildet.
+  const filled = lo === 0;
   const line = (key) => comp.map((b, i) => `${i ? 'L' : 'M'}${xs(i).toFixed(1)},${ys(r(b, key)).toFixed(1)}`).join(' ');
   const area = `${line('success')} L${xs(comp.length - 1).toFixed(1)},${H - P} L${xs(0).toFixed(1)},${H - P} Z`;
   // Fingerposition → nächstliegender Index. Vibration nur beim WECHSEL des Punktes,
@@ -156,14 +175,22 @@ export function TrendChart({ comp, is3 = false, showHit = false, showDanger = fa
   const selRate = sel != null ? r(comp[sel], 'success') : null;
 
   return (
+    <div className="relative">
+      {/* Achsenwerte als HTML: im gestreckten SVG (preserveAspectRatio="none") würde
+          Text horizontal verzerrt. Bei gezoomter Skala sind sie Pflicht — sonst weiß
+          niemand, welchen Ausschnitt die Kurve zeigt. */}
+      <span className="absolute right-0 top-0 text-[10px] text-slate-400 tabular-nums pointer-events-none">{hi} %</span>
+      <span className="absolute right-0 bottom-0 text-[10px] text-slate-400 tabular-nums pointer-events-none">{lo} %</span>
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full touch-none" preserveAspectRatio="none"
       onPointerDown={pick} onPointerMove={(e) => { if (e.buttons || e.pointerType === 'touch') pick(e); }}
       onPointerUp={clear} onPointerLeave={clear}>
       <defs><linearGradient id="ds-trend-grad" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stopColor={STATUS.success} stopOpacity="0.20" /><stop offset="100%" stopColor={STATUS.success} stopOpacity="0" />
       </linearGradient></defs>
-      <line x1={P} y1={ys(80)} x2={W - P} y2={ys(80)} stroke="currentColor" strokeOpacity="0.14" strokeDasharray="3 4" className="text-slate-400" />
-      <path d={area} fill="url(#ds-trend-grad)" />
+      {80 > lo && 80 < hi && (
+        <line x1={P} y1={ys(80)} x2={W - P} y2={ys(80)} stroke="currentColor" strokeOpacity="0.14" strokeDasharray="3 4" className="text-slate-400" />
+      )}
+      {filled && <path d={area} fill="url(#ds-trend-grad)" />}
       {showHit && is3 && <path d={line('third')} fill="none" stroke={STATUS.hit} strokeWidth="1.8" strokeOpacity="0.9" strokeLinecap="round" strokeLinejoin="round" />}
       {showDanger && <path d={line('fail')} fill="none" stroke={STATUS.danger} strokeWidth="1.8" strokeOpacity="0.9" strokeDasharray="2 3" strokeLinecap="round" strokeLinejoin="round" />}
       <path d={line('success')} fill="none" stroke={STATUS.success} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
@@ -180,6 +207,7 @@ export function TrendChart({ comp, is3 = false, showHit = false, showDanger = fa
         </g>
       )}
     </svg>
+    </div>
   );
 }
 

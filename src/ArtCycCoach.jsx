@@ -7618,7 +7618,19 @@ function TrendSparkline({ trend }) {
   }
 
   const stepX = (width - 2 * padding) / Math.max(trend.length - 1, 1);
-  const yFor = (rate) => padding + ((100 - rate) / 100) * (height - 2 * padding);
+  // Wie beim großen Trend: auf die Daten zoomen, sonst verschwinden Unterschiede
+  // von 10–15 Punkten auf der 0–100-Skala. Mindestfenster verhindert, dass fast
+  // gleiche Werte als Zickzack erscheinen.
+  const SPARK_MIN_SPAN = 30;
+  const rates = validPoints.map(p => p.rate);
+  let sLo = Math.min(...rates) - 5, sHi = Math.max(...rates) + 5;
+  if (sHi - sLo < SPARK_MIN_SPAN) {
+    const mid = (Math.min(...rates) + Math.max(...rates)) / 2;
+    sLo = mid - SPARK_MIN_SPAN / 2; sHi = mid + SPARK_MIN_SPAN / 2;
+  }
+  sLo = Math.max(0, sLo); sHi = Math.min(100, sHi);
+  if (sHi - sLo < SPARK_MIN_SPAN) { if (sLo <= 0) sHi = Math.min(100, SPARK_MIN_SPAN); else sLo = Math.max(0, sHi - SPARK_MIN_SPAN); }
+  const yFor = (rate) => padding + ((sHi - rate) / (sHi - sLo)) * (height - 2 * padding);
 
   const path = validPoints.map((p, i) => {
     const x = padding + p.x * stepX;
