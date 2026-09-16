@@ -21,6 +21,47 @@ const WERTUNGSBERICHT_COLS: Record<string, number> = {
 
 type Item = { text: string; x: number; y: number; width: number };
 
+/// Der EINZEL-Kampfgericht-Bogen (A4 hochkant) ist anders aufgebaut als der
+/// Wertungsbericht im Querformat: die Punktespalte heißt nicht „Pkte", sondern ist als
+/// „Punkt-" / „Wert" auf zwei Kopfzeilen verteilt, und die Fehlerzeichen stehen als
+/// X ~ | O nebeneinander. Ohne das Wort „Pkte" fiel `detectCols` durch, der Parser nahm
+/// das Querformat-Raster an und fand bei x≈339 nichts — Ergebnis: null Übungszeilen,
+/// obwohl der Bogen sauber lesbar ist.
+///
+/// Erkannt wird an der Zeichenzeile: X ~ | O müssen ZUSAMMEN auf einer Zeile stehen
+/// (im Fußteil kommt „X x 0,2 =" vor, das ist ein anderes Element und trifft nicht).
+function detectSinglePanelCols(items: Item[]): Record<string, number> | null {
+  const mid = (i: Item) => i.x + (i.width || 0) / 2;
+  const isCircle = (t: string) => t === "O" || t === "o" || t === "○" || t === "0";
+  for (const cand of items) {
+    if (cand.text !== "X") continue;
+    const line = items.filter((i) => Math.abs(i.y - cand.y) <= 4);
+    const wave = line.find((i) => i.text === "~");
+    const bar = line.find((i) => i.text === "|");
+    const circle = line.find((i) => isCircle(i.text));
+    const pct = line.find((i) => i.text === "%");
+    if (!wave || !bar || !circle || !pct) continue;
+    // Reihenfolge muss stimmen, sonst ist es eine andere Zeile mit ähnlichen Zeichen.
+    if (!(pct.x < cand.x && cand.x < wave.x && wave.x < bar.x && bar.x < circle.x)) continue;
+    // Punktespalte: „Wert" (zweite Kopfzeile) oder „Punkt-" (erste) — beide über der
+    // Zeichenzeile und links vom Prozentfeld.
+    const above = items.filter((i) => i.y < cand.y && cand.y - i.y < 20 && i.x < pct.x);
+    const wert = above.find((i) => i.text === "Wert") ?? above.find((i) => i.text === "Punkt-");
+    if (!wert) continue;
+    // Taktische Punkte liegen links davon („Punkte" unter „Takt-").
+    const takt = above.filter((i) => i.x < wert.x - 10)
+                      .sort((a, b) => b.x - a.x)
+                      .find((i) => i.text === "Punkte" || i.text === "Takt-");
+    const cols: Record<string, number> = {
+      Pkte: mid(wert), p1: mid(pct),
+      X1: mid(cand), W1: mid(wave), S1: mid(bar), K1: mid(circle),
+    };
+    if (takt) cols.T1 = mid(takt);
+    return cols;
+  }
+  return null;
+}
+
 function detectCols(items: Item[]): Record<string, number> | null {
   const pkte = items.find((i) => i.text === "Pkte");
   if (!pkte) return null;
@@ -61,7 +102,9 @@ function edgeRowFrom(line: { y: number; items: Item[] } | undefined,
   const out: any = { kg1: {}, kg2: {}, kg3: {} };
   let found = false;
   for (const it of line.items) {
-    if (it.x < 330) return null;                 // links steht Text → keine Randzeile
+    // Links der Wertespalten steht Text → dann ist es keine Randzeile. Die Grenze
+    // kommt aus den erkannten Spalten, damit sie auch beim Hochkant-Bogen sitzt.
+    if (it.x < Math.min(...Object.values(cols)) - 15) return null;
     const col = classify(it.x + (it.width || 0) / 2, cols, 15);
     if (!col) continue;
     const prefix = col.slice(0, -1);
@@ -74,9 +117,22 @@ function edgeRowFrom(line: { y: number; items: Item[] } | undefined,
 }
 
 function parseRows(items: Item[]) {
-  const cols = detectCols(items) || WERTUNGSBERICHT_COLS;
+  const wide = detectCols(items);
+  const single = wide ? null : detectSinglePanelCols(items);
+  const cols = wide || single || WERTUNGSBERICHT_COLS;
+  // Beim Hochkant-Bogen steht im Fußteil „+ Taktische Punkte: 0,50" und
+  // „- Gesamtabzug: 9,13" ZUFÄLLIG in der Punktespalte — beides sah wie eine
+  // Übungszeile aus und verfälschte die Summe um genau diese 9,63. Übungszeilen
+  // tragen dort immer eine Übungsnummer, Fußzeilen nie; also wird sie verlangt.
+  // Nur für dieses Format — beim Querformat bleibt es bei der alten Regel, damit
+  // dort kein Bogen ohne Nummern plötzlich leer bleibt.
+  const requireCode = single !== null;
   const anchorX = cols.Pkte;
   const anchorTol = cols === WERTUNGSBERICHT_COLS ? 12 : 8;
+  // Wo der Übungsname endet, ergibt sich aus der linkesten Wertespalte — beim
+  // Hochkant-Bogen liegt die woanders als im Querformat, und eine festverdrahtete
+  // Grenze von 330 hätte dort mitten in die Zahlenspalten gezeigt.
+  const nameMax = Math.min(...Object.values(cols)) - 15;
   const sorted = items.slice().sort((a, b) => a.y - b.y);
   const lines: { y: number; items: Item[] }[] = [];
   for (const it of sorted) {
@@ -101,7 +157,7 @@ function parseRows(items: Item[]) {
     for (const it of line.items) {
       if (it === anchor) continue;
       if (it.x < 60) { const m = it.text.match(/^\d{0,2}(\d{4}[a-z]?)$/); if (m) row.code = m[1]; continue; }
-      if (it.x < 330) { nameTokens.push({ x: it.x, text: it.text }); continue; }
+      if (it.x < nameMax) { nameTokens.push({ x: it.x, text: it.text }); continue; }
       const xMid = it.x + (it.width || 0) / 2;
       const col = classify(xMid, cols, 15);
       if (!col || col === "Pkte") continue;
@@ -111,6 +167,20 @@ function parseRows(items: Item[]) {
       const prefix = col.slice(0, -1);
       const target = row["kg" + kg];
       if (target) target[prefix] = num;
+    }
+    if (requireCode && !row.code) continue;
+    // Die Takt-Spalte bedeutet in den beiden Bogenformaten VERSCHIEDENES: im
+    // Querformat steht dort der ANERKANNTE Wert (z. B. 8,6), im Hochkant-Bogen nur
+    // der ZUSCHLAG (0,50) — die Fußzeile addiert dort ebenfalls nur die Zuschläge.
+    // Die App erwartet durchgehend den anerkannten Wert; ohne Umrechnung zählte die
+    // Übung mit 0,50 statt 8,6 und das Ergebnis lag um den Punktwert der Übung daneben.
+    // Sicherheitsnetz: ein Zuschlag ist immer kleiner als der Punktwert selbst.
+    if (single) {
+      for (const kg of [row.kg1, row.kg2, row.kg3]) {
+        if (kg && typeof kg.T === "number" && row.points && kg.T < row.points) {
+          kg.T = Math.round((row.points + kg.T) * 100) / 100;
+        }
+      }
     }
     nameTokens.sort((a, b) => a.x - b.x);
     row.name = nameTokens.map((t) => t.text).join(" ").replace(/\s+/g, " ").trim();
