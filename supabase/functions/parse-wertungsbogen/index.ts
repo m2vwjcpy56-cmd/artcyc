@@ -116,6 +116,53 @@ function edgeRowFrom(line: { y: number; items: Item[] } | undefined,
   return found ? out : null;
 }
 
+/// Die Fuß-Summen je Kampfgericht — ueber die POSITION, nicht ueber die Reihenfolge.
+///
+/// Die App las sie bisher aus reinem PDF-Text und nahm sie in der Reihenfolge, in der
+/// PDFKit sie liefert. Diese Reihenfolge ist aber nicht garantiert: auf einem Bogen kam
+/// „Abzug Ausfuehrung: 7,80" vor „9,50", und damit wurde die Rechnung von KG1 gegen den
+/// Sollwert von KG2 geprueft — die Pruefsumme meldete eine Abweichung von genau der
+/// Differenz der beiden (1,70), einmal zu viel und einmal zu wenig.
+///
+/// Hier stehen Koordinaten zur Verfuegung: die Vorkommen eines Etiketts werden nach x
+/// sortiert, das linkeste gehoert zu KG1. Damit ist die Zuordnung eindeutig.
+function parseFooter(items: Item[]): Record<string, number[]> {
+  const labels: Record<string, RegExp> = {
+    ausfuehrung: /^Abzug\s+Ausf(ü|ue)hrung:?$/i,
+    schwierigkeit: /^Abzug\s+Schwierigkeit:?$/i,
+    gesamtabzug: /^Gesamtabzug:?$/i,
+    ausgefahren: /^Ausgefahrene\s+Punkte:?$/i,
+  };
+  const out: Record<string, number[]> = {};
+  for (const [key, re] of Object.entries(labels)) {
+    const hits = items.filter((i) => re.test(i.text)).sort((a, b) => a.x - b.x);
+    const values: number[] = [];
+    for (const h of hits) {
+      // Der Wert steht RECHTS vom Etikett auf derselben Zeile — der naechste
+      // Zahlentreffer, nicht irgendeiner weiter hinten aus dem naechsten Block.
+      const same = items
+        .filter((i) => Math.abs(i.y - h.y) <= 4 && i.x > h.x && /^\d+[.,]\d+$/.test(i.text))
+        .sort((a, b) => a.x - b.x);
+      if (same.length) values.push(parseFloat(same[0].text.replace(",", ".")));
+    }
+    if (values.length) out[key] = values;
+  }
+  // Manche Boegen schreiben Etikett und Wert in EIN Textelement ("Abzug Ausführung: 7,80").
+  for (const [key, re] of Object.entries(labels)) {
+    if (out[key]) continue;
+    const src = re.source.replace(/:\?\$$/, "");
+    const combined = items
+      .filter((i) => new RegExp(src + "\\s*:?\\s*\\d", "i").test(i.text))
+      .sort((a, b) => a.x - b.x);
+    const values = combined
+      .map((i) => i.text.match(/(\d+[.,]\d+)\s*$/)?.[1])
+      .filter((v): v is string => !!v)
+      .map((v) => parseFloat(v.replace(",", ".")));
+    if (values.length) out[key] = values;
+  }
+  return out;
+}
+
 function parseRows(items: Item[]) {
   const wide = detectCols(items);
   const single = wide ? null : detectSinglePanelCols(items);
@@ -196,7 +243,7 @@ function parseRows(items: Item[]) {
     if (first > 0) edgePre = edgeRowFrom(lines[first - 1], cols);
     if (last + 1 < lines.length) edgePost = edgeRowFrom(lines[last + 1], cols);
   }
-  return { rows, edgePre, edgePost };
+  return { rows, edgePre, edgePost, footer: parseFooter(items) };
 }
 
 Deno.serve(async (req) => {
@@ -216,8 +263,8 @@ Deno.serve(async (req) => {
         items.push({ text: it.str.trim(), x: it.transform[4], y: vp.height - it.transform[5], width: it.width || 0 });
       }
     }
-    const { rows, edgePre, edgePost } = parseRows(items);
-    return new Response(JSON.stringify({ rows, edgePre, edgePost, itemCount: items.length }), { headers: { ...cors, "Content-Type": "application/json" } });
+    const { rows, edgePre, edgePost, footer } = parseRows(items);
+    return new Response(JSON.stringify({ rows, edgePre, edgePost, footer, itemCount: items.length }), { headers: { ...cors, "Content-Type": "application/json" } });
   } catch (e) {
     return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
   }
