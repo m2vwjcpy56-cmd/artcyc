@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.artcyc.coach",
+      "sha256_cert_fingerprints": [
+        "3A:65:96:56:4F:BA:75:AB:80:DE:DE:19:66:A3:71:9A:7A:93:6F:5A:A5:59:EA:B6:FD:FA:F1:AA:B0:40:90:9E"
+      ]
+    }
+  }
+]
