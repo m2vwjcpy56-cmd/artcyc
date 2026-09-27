@@ -11,7 +11,7 @@ import {
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, FlaskConical, Zap,
   SlidersHorizontal, Flag, ArrowUpCircle
 } from 'lucide-react';
-import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, moveAthleteData, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, upsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
+import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, MAGIC_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, moveAthleteData, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, upsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -4971,6 +4971,15 @@ export default function App() {
           // Token aus der URL entfernen, damit ein Reload ihn nicht erneut einlöst.
           try { window.history.replaceState({}, document.title, window.location.pathname); } catch { /* ignore */ }
         }
+        // Impersonation-Link aus der Admin-Ansicht (?token_hash=…&type=magiclink):
+        // Session per verifyOtp aufbauen. Vorher die eigene (Admin-)Session lokal
+        // verwerfen, damit danach eindeutig der Ziel-Nutzer eingeloggt ist.
+        if (MAGIC_TOKEN_HASH) {
+          try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* keine alte Session */ }
+          const { error: otpErr } = await supabase.auth.verifyOtp({ token_hash: MAGIC_TOKEN_HASH, type: 'magiclink' });
+          if (otpErr) setRecoveryLinkError('Der Login-Link ist abgelaufen oder wurde schon benutzt. Bitte erzeuge in der Admin-Ansicht einen neuen.');
+          try { window.history.replaceState({}, document.title, window.location.pathname); } catch { /* ignore */ }
+        }
         // Fehler-Links (z. B. abgelaufener Reset-Link) kommen als Query UND/ODER Hash:
         //   ?error=access_denied&error_code=otp_expired#error=…
         const errParams = new URLSearchParams(
@@ -6675,7 +6684,8 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
   // (im Training-Tab geht der Button direkt ins Protokollieren).
   const [erfassenOpen, setErfassenOpen] = useState(false);
   const [dashFocusExId, setDashFocusExId] = useState(null); // „Übung im Fokus" (Default: zuletzt trainiert)
-  const [barSel, setBarSel] = useState(null); // angetippter Monat im Trainings-Verlauf-Chart
+  const [barSel, setBarSel] = useState(null); // angetippter Monat im Erfolgsquoten-Chart
+  const [chartExId, setChartExId] = useState(null); // gewählte Übung im Erfolgsquoten-Chart (null = meist-trainierte)
   const seasonRange = useMemo(() => {
     const today = new Date();
     if (season === 'all') return { from: null, to: null, label: 'Alle Zeit' };
@@ -6758,26 +6768,47 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.sessions, season]);
 
-  // Trainings-Verlauf: Sessions pro Monat (Parität zu iOS „chart.trainTrend"), max. letzte 12.
-  const trainMonthly = useMemo(() => {
+  // Trainings-Erfolgsquote EINER Übung je Monat (Parität zu iOS „chart.trainRate"),
+  // max. letzte 8. „Sessions pro Monat" sagte nichts über die Entwicklung, und eine
+  // Quote über alle Übungen zusammen wäre Äpfel mit Birnen — Standard ist die
+  // meist-trainierte Übung im Zeitraum, oben rechts umschaltbar.
+  const trainExOptions = useMemo(() => {
     const sessions = (data.sessions || []).filter(s => season === 'all' ? true : inRange(s.date));
-    // Eindeutige Trainings-TAGE pro Monat (nicht Sessions) — sonst kann ein Monat
-    // >31 zeigen, weil mehrere Sessions pro Tag zählen.
+    const att = new Map(), cnt = new Map();
+    for (const s of sessions) {
+      if (!s.exerciseId) continue;
+      att.set(s.exerciseId, (att.get(s.exerciseId) || 0) + (s.entries || []).length);
+      cnt.set(s.exerciseId, (cnt.get(s.exerciseId) || 0) + 1);
+    }
+    return (data.exercises || [])
+      .filter(ex => (att.get(ex.id) || 0) > 0)
+      .map(ex => ({ id: ex.id, name: ex.name, attempts: att.get(ex.id), sessions: cnt.get(ex.id) || 0 }))
+      .sort((a, b) => b.attempts - a.attempts || a.name.localeCompare(b.name));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.sessions, data.exercises, season]);
+  const trainEx = trainExOptions.find(o => o.id === chartExId) || trainExOptions[0] || null;
+  const trainMonthly = useMemo(() => {
+    if (!trainEx) return [];
+    const sessions = (data.sessions || []).filter(s => s.exerciseId === trainEx.id && (season === 'all' ? true : inRange(s.date)));
     const byMonth = new Map();
     for (const s of sessions) {
-      const d = s.date || '';
-      const ym = d.slice(0, 7);
+      const ym = (s.date || '').slice(0, 7);
       if (ym.length !== 7) continue;
-      if (!byMonth.has(ym)) byMonth.set(ym, new Set());
-      byMonth.get(ym).add(d.slice(0, 10));
+      if (!byMonth.has(ym)) byMonth.set(ym, { attempts: 0, success: 0 });
+      const b = byMonth.get(ym);
+      for (const e of (s.entries || [])) { b.attempts++; if (e === 'success') b.success++; }
     }
     const MON = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
-    return [...byMonth.keys()].sort().slice(-12).map(ym => ({
-      label: MON[Number(ym.slice(5, 7)) - 1] || ym.slice(5, 7),
-      count: byMonth.get(ym).size,
-    }));
+    return [...byMonth.keys()].sort().slice(-8).map(ym => {
+      const b = byMonth.get(ym);
+      return {
+        label: MON[Number(ym.slice(5, 7)) - 1] || ym.slice(5, 7),
+        attempts: b.attempts, success: b.success,
+        rate: b.attempts > 0 ? b.success / b.attempts * 100 : null,
+      };
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.sessions, season]);
+  }, [data.sessions, season, trainEx?.id]);
 
   // Pro Übung: Quote + Trend über letzte 4 Wochen
   const perExercise = useMemo(() => {
@@ -6931,28 +6962,68 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
           <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub="Punkte" />
         </div>
 
-        {/* TRAININGS-VERLAUF — Trainingstage pro Monat (Parität zu iOS „chart.trainTrend"); Balken antippbar → genaue Zahl */}
-        {trainMonthly.length > 0 && (() => {
-          const max = Math.max(...trainMonthly.map(x => x.count), 1);
+        {/* TRAININGS-ERFOLGSQUOTE — Quote je Monat als Linie, Versuche als gedämpfte Balken
+            dahinter (max. 45 % Höhe, damit sie nicht wie Prozentwerte gelesen werden);
+            Monat antippbar → Treffer/Versuche. Parität zu iOS „chart.trainRate". */}
+        {trainMonthly.some(m => m.rate != null) && (() => {
+          const W = 100, H = 60, PADX = 6, PADY = 6;              // viewBox-Einheiten
+          const n = trainMonthly.length;
+          const x = i => n === 1 ? W / 2 : PADX + i * (W - 2 * PADX) / (n - 1);
+          const y = r => PADY + (H - 2 * PADY) * (1 - r / 100);
+          const maxAtt = Math.max(1, ...trainMonthly.map(m => m.attempts));
+          const pts = trainMonthly.map((m, i) => m.rate == null ? null : [x(i), y(m.rate)]).filter(Boolean);
+          const path = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(2) + ' ' + p[1].toFixed(2)).join(' ');
           const sel = barSel != null ? trainMonthly[barSel] : null;
+          const totalAttempts = trainMonthly.reduce((s, m) => s + m.attempts, 0);
+          const totalSuccess = trainMonthly.reduce((s, m) => s + m.success, 0);
+          const avg = totalAttempts > 0 ? Math.round(totalSuccess / totalAttempts * 100) : null;
+          const slot = (W - 2 * PADX) / Math.max(1, n - 1);
+          const barW = Math.min(10, slot * 0.55);
           return (
             <div className="card-surface rounded-[22px] p-4 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-[15px] font-semibold flex items-center gap-2"><BarChart3 size={16} className="text-[#FF9500]" /> Trainings-Verlauf</h2>
-                {sel && <span className="text-[13px] font-semibold text-[#FF9500] tabular-nums">{sel.label}: {sel.count} {sel.count === 1 ? 'Tag' : 'Tage'}</span>}
-              </div>
-              <div className="flex items-end gap-1.5 h-28">
-                {trainMonthly.map((m, i) => (
-                  <button key={i} onClick={() => setBarSel(barSel === i ? null : i)}
-                    className={'flex-1 rounded-t bg-[#FF9500] min-w-0 transition-opacity ' + (barSel == null || barSel === i ? 'opacity-90' : 'opacity-30')}
-                    style={{ height: Math.max(3, Math.round(m.count / max * 100)) + '%' }}
-                    title={m.count + (m.count === 1 ? ' Trainingstag' : ' Trainingstage')} aria-label={m.label + ': ' + m.count} />
+              {/* Titel, darunter die Übung — Kunstrad-Namen sind lang, nebeneinander bräche der Titel um. */}
+              <div className="space-y-0.5">
+                <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500] shrink-0" /> Erfolgsquote</h2>
+                {trainEx && (trainExOptions.length > 1 ? (
+                  <select value={trainEx.id} onChange={e => { setChartExId(e.target.value); setBarSel(null); }}
+                    aria-label="Übung wählen"
+                    className="max-w-full truncate text-[13px] font-semibold text-[#FF9500] bg-transparent border-0 p-0 pr-4 focus:outline-none appearance-none"
+                    style={{ backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'10\' viewBox=\'0 0 10 10\'><path d=\'M2 4l3 3 3-3\' fill=\'none\' stroke=\'%23FF9500\' stroke-width=\'1.6\' stroke-linecap=\'round\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right center' }}>
+                    {trainExOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </select>
+                ) : (
+                  <div className="truncate text-[13px] text-[#8E8E93]">{trainEx.name}</div>
                 ))}
               </div>
-              <div className="flex gap-1.5">
+              {sel && sel.rate != null && <div className="text-[13px] font-semibold text-[#FF9500] tabular-nums">{sel.label}: {Math.round(sel.rate)} % <span className="text-[#8E8E93] font-normal">· {sel.success}/{sel.attempts}</span></div>}
+              <div className="relative">
+                <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-32 block" aria-hidden="true">
+                  {[0, 25, 50, 75, 100].map(g => <line key={g} x1={0} x2={W} y1={y(g)} y2={y(g)} stroke="currentColor" className="text-[#8E8E93]/25" strokeWidth={0.3} vectorEffect="non-scaling-stroke" />)}
+                  {trainMonthly.map((m, i) => {
+                    const h = (H - 2 * PADY) * 0.45 * m.attempts / maxAtt;
+                    return <rect key={i} x={x(i) - barW / 2} y={H - PADY - h} width={barW} height={h} rx={1.5}
+                      fill="#FF9500" opacity={barSel == null || barSel === i ? 0.18 : 0.08} />;
+                  })}
+                  {pts.length > 1 && <path d={path} fill="none" stroke="#FF9500" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
+                  {trainMonthly.map((m, i) => m.rate == null ? null : (
+                    <circle key={i} cx={x(i)} cy={y(m.rate)} r={barSel === i ? 2.2 : 1.4} fill="#FF9500" />
+                  ))}
+                </svg>
+                <div className="absolute inset-y-0 right-0 flex flex-col justify-between text-[9px] text-[#8E8E93] tabular-nums pointer-events-none" style={{ paddingTop: PADY / H * 100 + '%', paddingBottom: PADY / H * 100 + '%' }}>
+                  <span>100 %</span><span>50 %</span><span>0 %</span>
+                </div>
+                {/* unsichtbare Tipp-Flächen je Monat */}
+                <div className="absolute inset-0 flex">
+                  {trainMonthly.map((m, i) => (
+                    <button key={i} type="button" onClick={() => setBarSel(barSel === i ? null : i)} className="flex-1 min-w-0"
+                      aria-label={m.label + ': ' + (m.rate != null ? Math.round(m.rate) + ' %, ' + m.success + ' von ' + m.attempts : 'keine Versuche')} />
+                  ))}
+                </div>
+              </div>
+              <div className="flex">
                 {trainMonthly.map((m, i) => <span key={i} className={'flex-1 text-[10px] text-center truncate ' + (barSel === i ? 'text-[#FF9500] font-semibold' : 'text-[#8E8E93]')}>{m.label}</span>)}
               </div>
-              <div className="text-[12px] text-[#8E8E93]">{trainStats.totalSessions} Sessions · {trainStats.distinctDays} Trainingstage</div>
+              <div className="text-[12px] text-[#8E8E93] tabular-nums">{trainEx ? trainEx.sessions : 0} Sessions · {totalAttempts} Versuche{avg != null ? ' · Ø ' + avg + ' %' : ''}</div>
             </div>
           );
         })()}

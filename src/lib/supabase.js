@@ -31,6 +31,18 @@ export const RECOVERY_TOKEN_HASH = (() => {
   } catch { return null; }
 })();
 
+// Token-Hash eines Impersonation-Links aus der Admin-Ansicht (?token_hash=…&type=magiclink).
+// Der Supabase-verify-Link leitet mit #access_token zurück — das ist ein Implicit-Callback,
+// den der PKCE-Client als „Not a valid PKCE flow url" verwirft und dabei die gespeicherte
+// Session löscht (Ruben landete so auf dem Login, 27.09.). verifyOtp braucht keine Rückleitung.
+export const MAGIC_TOKEN_HASH = (() => {
+  try {
+    if (typeof window === 'undefined') return null;
+    const sp = new URLSearchParams(window.location.search || '');
+    return sp.get('type') === 'magiclink' ? sp.get('token_hash') : null;
+  } catch { return null; }
+})();
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,

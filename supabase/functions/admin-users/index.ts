@@ -335,8 +335,17 @@ Deno.serve(async (req: Request) => {
           options: { redirectTo: redirectOrigin },
         });
         if (error) throw new Error(error.message);
+        // Token-Hash-Link statt der Supabase-verify-URL: die Web-App löst ihn per
+        // verifyOtp ein. Die verify-Rückleitung (#access_token) verwirft der PKCE-
+        // Client als „Not a valid PKCE flow url" — Ruben landete damit auf dem Login.
+        const tokenHash = data?.properties?.hashed_token;
         return ok(req, {
-          action_link: data?.properties?.action_link,
+          action_link: tokenHash
+            ? `${redirectOrigin}/web?token_hash=${encodeURIComponent(tokenHash)}&type=magiclink`
+            : data?.properties?.action_link,
+          verify_link: data?.properties?.action_link,
+          // Die native App löst den Hash selbst per verifyOTP ein (Session-Wechsel in der App).
+          token_hash: tokenHash,
           target_user: { id: targetUser.user.id, email: targetUser.user.email },
         });
       }
