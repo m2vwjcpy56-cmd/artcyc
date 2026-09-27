@@ -15,6 +15,9 @@ const cors = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const berlinFmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" });
+function berlinDay(d: Date): string { return berlinFmt.format(d); }   // "2023-04-02"
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 }
@@ -43,7 +46,10 @@ Deno.serve(async (req) => {
         if (ref.startsWith("!")) continue;
         const v = ws[ref]?.v;
         if (v === undefined || v === null || v === "") continue;
-        cells[ref] = typeof v === "number" ? String(v) : String(v);
+        // Numbers-Dateien liefern echte Datumswerte (Date). Als Kalendertag in
+        // deutscher Zeit ausgeben — der Rohwert (23:00 UTC) läge sonst einen Tag daneben.
+        if (v instanceof Date) { cells[ref] = berlinDay(v); continue; }
+        cells[ref] = String(v);
       }
       return json({ sheet: name, cells });
     }
