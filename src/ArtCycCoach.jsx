@@ -5770,8 +5770,11 @@ export default function App() {
     const viewerUid = session?.user?.id || null;
     const targetAthlete = coachView ? (dbAthletes || []).find(a => a.id === selectedAthleteId) : null;
     const programOwner = (targetAthlete && targetAthlete.auth_user_id) || viewerUid;
+    // Dazu die Sportler-Zuordnung (Parität zur nativen App): ein Programm mit athlete_id
+    // gehört EINEM Sportler; ohne (Alt-Daten) gilt es für alle Sportler des Besitzers.
     const programs = dbPrograms
-      .filter(p => p.owner_id === programOwner || (!coachView && p.owner_id == null))
+      .filter(p => (p.owner_id === programOwner || (!coachView && p.owner_id == null))
+        && (p.athlete_id == null || p.athlete_id === selectedAthleteId))
       .map(dbProgramToBlob);
     return {
       ...data,

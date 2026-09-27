@@ -571,7 +571,7 @@ export async function deleteCompetition(id) {
 export async function fetchPrograms() {
   const { data, error } = await supabase
     .from('programs')
-    .select('id, owner_id, name, discipline, exercises, created_at')
+    .select('id, owner_id, athlete_id, name, discipline, exercises, created_at')
     .is('deleted_at', null)
     .order('created_at', { ascending: true });
   if (error) { console.warn('Programs fetch:', error.message); return null; }
