@@ -55,31 +55,88 @@ function exKey(ex) {
 // So bildet der Export Programmwechsel über die Saison korrekt ab (statt alles an
 // EIN gewähltes Programm zu binden). Jeder Wettkampf `c` trägt sein eigenes
 // `c.exercises` (Programm-Übungen, index-treu zu table1..4).
-function buildCellMap(comps) {
-  const map = new Map();
-  const selected = (comps || []).slice(0, MAX_COMPS);
-  const rowOf = (i) => 4 + 2 * i; // Übung i (0-basiert) → Zeile
+// Zeilen-Belegung: 30 Positionen × 2 Zeilen (Parität zur nativen App, MauteExport.layout).
+//
+// Die Vorlage hat pro Position ZWEI Zeilen: die Hauptzeile (4, 6, … 62) für die
+// Übung, mit der die Saison begann, und darunter (5, 7, … 63) eine Zweitzeile für
+// die Übung, die sie später ersetzt hat. Welche der beiden pro Wettkampf gilt, sagt
+// die 1 in „i.P." — so bildet Maute Programmwechsel ab. Beide Zeilen sind
+// vollwertig (eigene Formeln, Summen, Schwierigkeitsblock).
+//
+// Regeln, die erste die greift gilt:
+//  a) an der eigenen Programmposition wurde eine Übung ersetzt → deren Zweitzeile
+//  b) die eigene Position ist noch leer (erstes Programm) → Hauptzeile
+//  c) irgendeine Position, deren Übung in diesem Wettkampf fehlt → deren Zweitzeile
+//  d) irgendeine freie Zeile — Hauptsache, die Übung hat eine (gemeldet)
+//  e) alle 60 Zeilen belegt → fällt heraus (gemeldet)
+const primaryRow = (i) => 4 + 2 * i;
+const secondaryRow = (i) => 5 + 2 * i;
 
-  // 1) Vereinigung aller Übungen über alle gewählten Wettkämpfe.
-  const union = [];
-  const unionIdx = new Map();
+// Chronologisch, ältester zuerst — so liest Maute das Blatt. Erst kappen, dann
+// sortieren, sonst fielen bei >15 gewählten die neuesten heraus.
+function orderedSelection(comps) {
+  return (comps || []).slice(0, MAX_COMPS).slice().sort((a, b) => {
+    const da = a.date || '9999', db = b.date || '9999';
+    if (da !== db) return da < db ? -1 : 1;
+    return String(a.created_at || a.createdAt || '') < String(b.created_at || b.createdAt || '') ? -1 : 1;
+  });
+}
+const compLabel = (c) => (String(c.name || '').trim() || c.date || '?');
+
+export function layoutMaute(comps) {
+  const selected = orderedSelection(comps);
+  const slots = Array.from({ length: MAX_EXERCISES }, () => ({ primary: null, secondary: null }));
+  const placed = new Map();
+  const compsOf = new Map();
+  const replaced = [], displaced = [], droppedKeys = [];
   selected.forEach((c) => {
-    (c.exercises || []).forEach((ex) => {
+    const exs = c.exercises || [];
+    const keys = new Set(exs.map(exKey).filter(Boolean));
+    const cname = compLabel(c);
+    exs.forEach((ex, pos) => {
       const k = exKey(ex);
       if (!k) return;
-      if (!unionIdx.has(k)) {
-        unionIdx.set(k, union.length);
-        union.push({ key: k, nr: ex.nr || ex.code || '', name: ex.name || '', points: Number(ex.points || 0) });
+      if (!compsOf.has(k)) compsOf.set(k, []);
+      compsOf.get(k).push(cname);
+      if (placed.has(k)) return;
+      const u = { key: k, nr: ex.nr || ex.code || '', name: ex.name || '', points: Number(ex.points || 0) };
+      const gone = (j) => !!slots[j].primary && !keys.has(slots[j].primary.key);
+      const n = MAX_EXERCISES;
+      if (pos < n && !slots[pos].secondary && gone(pos)) {                               // a
+        slots[pos].secondary = u; placed.set(k, pos);
+        replaced.push({ pos: pos + 1, from: slots[pos].primary.name, to: u.name, since: cname }); return;
       }
+      if (pos < n && !slots[pos].primary) { slots[pos].primary = u; placed.set(k, pos); return; }   // b
+      let j = slots.findIndex((s, i) => !s.secondary && gone(i));                          // c
+      if (j >= 0) { slots[j].secondary = u; placed.set(k, j); replaced.push({ pos: j + 1, from: slots[j].primary.name, to: u.name, since: cname }); return; }
+      j = slots.findIndex(s => !s.primary);                                                // d
+      if (j >= 0) { slots[j].primary = u; placed.set(k, j); displaced.push({ name: u.name, pos: j + 1, wanted: pos + 1 }); return; }
+      j = slots.findIndex(s => !s.secondary);                                              // d
+      if (j >= 0) { slots[j].secondary = u; placed.set(k, j); displaced.push({ name: u.name, pos: j + 1, wanted: pos + 1 }); return; }
+      placed.set(k, -1); droppedKeys.push({ key: k, name: u.name || 'Übung' });            // e
     });
   });
-  const U = union.slice(0, MAX_EXERCISES);
+  const rows = [];
+  slots.forEach((s, i) => {
+    if (s.primary) rows.push({ row: primaryRow(i), ex: s.primary });
+    if (s.secondary) rows.push({ row: secondaryRow(i), ex: s.secondary });
+  });
+  const dropped = droppedKeys.map(d => ({ name: d.name, comps: compsOf.get(d.key) || [] }));
+  return { selected, rows, replaced, displaced, dropped, total: placed.size };
+}
 
-  // 2) Stammdaten je Übung: Name (A) + Punkte (B).
-  U.forEach((u, i) => {
-    const r = rowOf(i);
-    const nr = u.nr ? u.nr + '. ' : (i + 1) + '. ';
-    map.set('A' + r, { kind: 's', val: nr + (u.name || ('Übung ' + (i + 1))) });
+function buildCellMap(comps) {
+  const map = new Map();
+  const L = layoutMaute(comps);
+  const selected = L.selected;
+
+  // 2) Stammdaten je Zeile: Name (A) + Punkte (B) — Haupt- UND Zweitzeilen. Die Punkte
+  //    der Zweitzeile zählen in der Vorlage über i.P. in „Aufgestellt" und im
+  //    Schwierigkeitsblock; sie müssen da sein.
+  L.rows.forEach(({ row: r, ex: u }) => {
+    const pos = (r - 4 >> 1) + 1;
+    const nr = u.nr ? u.nr + '. ' : pos + '. ';
+    map.set('A' + r, { kind: 's', val: nr + (u.name || ('Übung ' + pos)) });
     map.set('B' + r, { kind: 'n', val: u.points });
   });
 
@@ -131,13 +188,16 @@ function buildCellMap(comps) {
     addEdge('pre', own[0]);
     addEdge('post', own[own.length - 1]);
 
-    U.forEach((u, i) => {
-      const r = rowOf(i);
+    // Jede belegte Zeile bekommt pro Wettkampf ihre 1 oder 0 — auch die Zweitzeile.
+    L.rows.forEach(({ row: r, ex: u }) => {
       const hit = idxByKey.get(u.key);
       if (!hit) { map.set(iPcol + r, { kind: 'n', val: 0 }); return; } // nicht im Programm → i.P.=0
       map.set(iPcol + r, { kind: 'n', val: 1 });                       // im Programm → i.P.=1
       const ex = hit.ex, idx = hit.j;
-      const pick = (t) => (t.find(e => e && e.exerciseId === ex.id) || t[idx] || {});
+      // Nur über die ID zuordnen, wenn die Übung eine HAT — sonst ist
+      // `undefined === undefined` wahr und jede Zeile bekäme die Abzüge der
+      // ersten Zeile (so bei gescannten Wettkämpfen ohne Übungs-IDs).
+      const pick = (t) => ((ex.id && t.find(e => e && e.exerciseId === ex.id)) || t[idx] || {});
       const entries = usedTables.map(pick);
       const sum = (kp) => entries.reduce((acc, e) => acc + Number(kp(e) || 0), 0);
       const bonus = (e) => {
