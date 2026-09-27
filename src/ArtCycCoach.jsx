@@ -11,7 +11,7 @@ import {
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, FlaskConical, Zap,
   SlidersHorizontal, Flag, ArrowUpCircle
 } from 'lucide-react';
-import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, MAGIC_TOKEN_HASH, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, moveAthleteData, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, upsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
+import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, MAGIC_TOKEN_HASH, currentUserId, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, moveAthleteData, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, upsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
 import { STATUS } from './ui/tokens.js';
@@ -3186,6 +3186,19 @@ function ownsProgramForWrite(p, myUserId) {
 }
 function ownsExerciseForWrite(e, myUserId) {
   return e.owner_id === undefined || e.owner_id === myUserId;
+}
+
+// Eigene aktive Übung mit dieser Reglement-Nummer — pro Konto höchstens eine
+// (DB: exercises_owner_code_active_uniq). Fremde (Co-Trainer-Konten, Admin-Sicht)
+// zählen nicht; Alt-Übungen ohne Besitzer schon. Parität zu iOS `ownExercise(forCode:)`.
+function findOwnExerciseByCode(exercises, code, myUserId) {
+  const c = String(code || '').trim().toLowerCase();
+  if (!c) return null;
+  const me = myUserId || currentUserId();
+  return (exercises || []).find(e =>
+    e.active !== false && !e.deleted_at
+    && (e.owner_id == null || e.owner_id === me)
+    && String(e.uci_code || '').trim().toLowerCase() === c) || null;
 }
 
 // Wie viele Programme/Übungen sind doppelt? Zähl-Vorschau für die Bestätigung.
@@ -8280,7 +8293,14 @@ function TrainingView({ data, setData, setView }) {
   if (newExercise || editingExercise) {
     return <ExerciseEditor
       exercise={editingExercise}
+      existingCodes={new Set((data.exercises || []).filter(e => findOwnExerciseByCode([e], e.uci_code)).map(e => String(e.uci_code).trim().toLowerCase()))}
       onSave={(ex) => {
+        // Nummer schon im Konto? Dann ist DIE Übung das Ergebnis — keine Dublette.
+        const dup = !editingExercise && ex.uci_code ? findOwnExerciseByCode(data.exercises, ex.uci_code) : null;
+        if (dup && dup.id !== ex.id) {
+          setNewExercise(false); setEditingExercise(null); setSelectedExercise(dup);
+          return;
+        }
         upsertExercise(ex);
         const wasViewing = selectedExercise && editingExercise && selectedExercise.id === editingExercise.id;
         setNewExercise(false);
@@ -12819,7 +12839,11 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
   if (showNew || editing) {
     return <ExerciseEditor
       exercise={editing}
+      existingCodes={new Set((data.exercises || []).filter(e => findOwnExerciseByCode([e], e.uci_code)).map(e => String(e.uci_code).trim().toLowerCase()))}
       onSave={(ex) => {
+        // Nummer schon im Konto? Dann ist DIE Übung das Ergebnis — keine Dublette.
+        const dup = !editing && ex.uci_code ? findOwnExerciseByCode(data.exercises, ex.uci_code) : null;
+        if (dup && dup.id !== ex.id) { setShowNew(false); setEditing(null); setSelected(dup); return; }
         upsert(ex);
         setShowNew(false);
         setEditing(null);
@@ -13063,8 +13087,11 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
 // =============================================================
 // ÜBUNGS-EDITOR
 // =============================================================
-function ExerciseEditor({ exercise, onSave, onCancel }) {
-  const [mode, setMode] = useState(exercise && exercise.uci_code ? 'uci' : 'custom');
+function ExerciseEditor({ exercise, onSave, onCancel, existingCodes = null }) {
+  // Neue Übung = aus dem Reglement wählen (Parität zu iOS `ReglementPickerView`). Der
+  // freie Name ist nur der Nebenweg — vorher startete der Editor bei „Eigene Übung",
+  // daher „Mautesprung"/„Maute Sprung " in mehreren Konten für dieselbe Nummer.
+  const [mode, setMode] = useState(exercise ? (exercise.uci_code ? 'uci' : 'custom') : 'uci');
   const [uciCode, setUciCode] = useState((exercise && exercise.uci_code) || '');
   const [uciDisc, setUciDisc] = useState((exercise && exercise.uci_disc) || '1er');
   const [name, setName] = useState((exercise && exercise.name) || '');
@@ -13148,12 +13175,12 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
           <button onClick={() => setMode('uci')}
             className={'flex-1 py-1.5 text-[13px] font-medium rounded-[10px] transition ' +
               (mode === 'uci' ? 'ios-seg-active' : 'text-[#3C3C43]')}>
-            Aus UCI-Liste
+            Aus dem Reglement
           </button>
           <button onClick={() => setMode('custom')}
             className={'flex-1 py-1.5 text-[13px] font-medium rounded-[10px] transition ' +
               (mode === 'custom' ? 'ios-seg-active' : 'text-[#3C3C43]')}>
-            Eigene Übung
+            Freie Übung
           </button>
         </div>
 
@@ -13169,19 +13196,28 @@ function ExerciseEditor({ exercise, onSave, onCancel }) {
               <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
             </div>
             <div className="px-4 py-3">
-              <UciPicker discipline={uciDisc} onSelect={handleUciSelect} selectedCode={uciCode} />
+              <UciPicker discipline={uciDisc} onSelect={handleUciSelect} selectedCode={uciCode} existingCodes={existingCodes} />
             </div>
           </IOSList>
         )}
 
-        {/* Name */}
-        <IOSList header={mode === 'uci' ? 'Anzeigename' : 'Name'}>
-          <div className="px-4 py-3">
-            <input value={name} onChange={e => setName(e.target.value)}
-              placeholder={mode === 'custom' ? 'z. B. Maute-Sprung' : 'anpassbar'}
-              className="w-full bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
-          </div>
-        </IOSList>
+        {/* Name — bei Reglement-Übungen fest (keine Schreibvarianten mehr), sonst frei. */}
+        {(mode === 'uci' && uciCode) ? (
+          <IOSList header="Name" footer="Name und Punkte kommen aus dem Reglement.">
+            <div className="px-4 py-3 flex items-center justify-between gap-3">
+              <span className="text-[15px]">{name}</span>
+              <Lock size={14} className="text-[#C7C7CC] shrink-0" />
+            </div>
+          </IOSList>
+        ) : mode === 'custom' && (
+          <IOSList header="Name">
+            <div className="px-4 py-3">
+              <input value={name} onChange={e => setName(e.target.value)}
+                placeholder="z. B. Aufwärmen, Kraft, Balance"
+                className="w-full bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
+            </div>
+          </IOSList>
+        )}
 
         {/* UCI-Zuordnung (nur eigene Übung) — lose benannte Übung der richtigen
             Reglement-Übung zuweisen, OHNE den eigenen Namen zu ändern. So werden
@@ -13376,12 +13412,13 @@ function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung
   );
 }
 
-function UciPicker({ discipline, onSelect, selectedCode }) {
+function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null }) {
   const [query, setQuery] = useState('');
+  const haveIt = (code) => !!(existingCodes && existingCodes.has(String(code || '').trim().toLowerCase()));
 
   const filtered = useMemo(() => {
     const inDiscipline = getUciDb().filter(e => e.d === discipline);
-    if (!query.trim()) return inDiscipline.slice(0, 30);
+    if (!query.trim()) return inDiscipline;   // ganze Disziplin, Liste scrollt (Parität zu iOS)
     const q = query.toLowerCase();
     return inDiscipline.filter(e => e.n.toLowerCase().includes(q) || e.c.toLowerCase().includes(q)).slice(0, 50);
   }, [query, discipline]);
@@ -13416,7 +13453,7 @@ function UciPicker({ discipline, onSelect, selectedCode }) {
               <div className="flex items-center justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">{e.n}</div>
-                  <div className="text-xs text-slate-500">Nr. {e.c}</div>
+                  <div className={'text-xs ' + (haveIt(e.c) ? 'text-[#FF9500]' : 'text-slate-500')}>Nr. {e.c}{haveIt(e.c) ? ' · Schon in deinem Konto' : ''}</div>
                 </div>
                 <span className="bg-sky-100 text-sky-700 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">
                   {e.p} Pkt

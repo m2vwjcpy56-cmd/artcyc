@@ -52,6 +52,14 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
+// Synchron abrufbare User-ID (für Besitz-Prüfungen in Ansichten ohne Session-Prop).
+// Wird über den Auth-Listener aktuell gehalten; vor dem ersten Ereignis aus der
+// gespeicherten Session gefüllt.
+let _currentUserId = null;
+supabase.auth.getSession().then(({ data }) => { _currentUserId = data?.session?.user?.id || null; }).catch(() => {});
+supabase.auth.onAuthStateChange((_evt, s) => { _currentUserId = s?.user?.id || null; });
+export function currentUserId() { return _currentUserId; }
+
 export async function getCurrentProfile() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
