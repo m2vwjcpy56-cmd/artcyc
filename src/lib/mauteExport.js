@@ -148,7 +148,11 @@ function buildCellMap(comps) {
     const anzCol = colLetter(base + 1);     // D, M, …
     const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
     const gesamt = isGesamt(c);
-    map.set(nameCol + '1', { kind: 's', val: (c.name || 'Wettkampf') + (c.date ? ' ' + dateShort(c.date) : '') });
+    // Name in Zeile 1, Datum als Excel-Seriennummer in die Datumszelle darunter (Zeile 2,
+    // Datumsformat der Vorlage) — so führen es die echten Maute-Dateien. Parität zu iOS.
+    map.set(nameCol + '1', { kind: 's', val: c.name || 'Wettkampf' });
+    const serial = excelSerial(c.date);
+    if (serial != null) map.set(nameCol + '2', { kind: 'n', val: serial });
     map.set(anzCol + '2', { kind: 'n', val: n });
 
     const allTables = [c.table1, c.table2, c.table3, c.table4];
@@ -225,7 +229,56 @@ function buildCellMap(comps) {
       setN(K, pctCount(100));     // 100%
     });
   });
+  addCachedResults(map, selected.length);
   return map;
+}
+
+// Excel-Datumsseriennummer (Tage seit 1899-12-30) für ein ISO-Datum.
+function excelSerial(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+  if (!m) return null;
+  return Math.round((Date.UTC(+m[1], +m[2] - 1, +m[3]) - Date.UTC(1899, 11, 30)) / 86400000);
+}
+
+// Rechnet die Formeln der Vorlage vor und legt die Werte als Cache in die Formelzellen
+// (Formeln bleiben stehen). iPhone-Vorschau und Numbers rechnen nicht nach und zeigten
+// überall 0 („keine Abzüge, Punktzahl 00", Ruben 28.09.). Zeilen 4…62 = Übungen;
+// Schwierigkeitsblock: F(r+72) = (B+T)·i.P., I/J/K(r+71) = Flag·(B+T)·0,1/0,5/1·i.P.;
+// F75 = Σ = „Aufgestellt"; Zeile 63 = Summen je Fehlerart ÷ Anz.; J64 = Ergebnis;
+// Zeilen 75+k, Spalten A–E = Übersicht je Wettkampf. Parität zu iOS `addCachedResults`.
+function addCachedResults(map, blocks) {
+  const num = (ref) => { const t = map.get(ref); return t && t.kind === 'n' ? Number(t.val) || 0 : 0; };
+  const r3 = (v) => Math.round(v * 1000) / 1000;
+  const cached = (ref, v) => map.set(ref, { kind: 'c', val: r3(v) });
+  let pointsListed = 0;
+  for (let r = 4; r <= 62; r++) pointsListed += num('B' + r);
+  cached('B63', pointsListed);
+  for (let k = 0; k < blocks; k++) {
+    const base = 3 + 9 * k;
+    const C = colLetter(base), D = colLetter(base + 1), E = colLetter(base + 2), F = colLetter(base + 3),
+      G = colLetter(base + 4), H = colLetter(base + 5), I = colLetter(base + 6),
+      J = colLetter(base + 7), K = colLetter(base + 8);
+    const n = Math.max(1, num(D + '2'));
+    let aufgestellt = 0, sumX = 0, sumW = 0, sumB = 0, sumO = 0, s10 = 0, s50 = 0, s100 = 0;
+    for (let r = 4; r <= 62; r++) {
+      const ip = num(C + r), pts = num('B' + r) + num(D + r);
+      const f = pts * ip;
+      cached(F + (r + 72), f); aufgestellt += f;
+      const d10 = num(I + r) * pts * 0.1 * ip, d50 = num(J + r) * pts * 0.5 * ip, d100 = num(K + r) * pts * ip;
+      cached(I + (r + 71), d10); cached(J + (r + 71), d50); cached(K + (r + 71), d100);
+      s10 += d10; s50 += d50; s100 += d100;
+      sumX += num(E + r); sumW += num(F + r); sumB += num(G + r); sumO += num(H + r);
+    }
+    const row63 = [[E, sumX * 0.2 / n], [F, sumW * 0.5 / n], [G, sumB / n], [H, sumO * 2 / n], [I, s10 / n], [J, s50 / n], [K, s100 / n]];
+    let deductions = 0;
+    row63.forEach(([col, v]) => { cached(col + '63', v); deductions += v; });
+    const ergebnis = aufgestellt - deductions;
+    cached(F + '75', aufgestellt); cached(E + '64', aufgestellt); cached(J + '64', ergebnis);
+    cached(K + '73', ergebnis < aufgestellt ? 1 : 0);
+    const nm = map.get(E + '1');
+    if (nm && nm.kind === 's') map.set('A' + (75 + k), { kind: 'ct', val: nm.val });
+    cached('B' + (75 + k), aufgestellt); cached('C' + (75 + k), ergebnis); cached('E' + (75 + k), aufgestellt - ergebnis);
+  }
 }
 
 // „Gesamt"-Modus: Marker gesetzt ODER höchstens EIN Kampfgericht mit Eingaben
@@ -254,6 +307,16 @@ function applyCells(xml, cellMap) {
     const sAttr = (attr.match(/ s="\d+"/) || [''])[0];
     if (target.kind === 's') {
       return '<c r="' + ref + '"' + sAttr + ' t="inlineStr"><is><t xml:space="preserve">' + xmlEsc(target.val) + '</t></is></c>';
+    }
+    // Formel der Vorlage (falls vorhanden) — für Cache-Werte bleibt sie stehen.
+    const formula = (full.match(/<f[^>]*\/>|<f[^>]*>[\s\S]*?<\/f>/) || [''])[0];
+    if (target.kind === 'c') {
+      return '<c r="' + ref + '"' + sAttr + '>' + formula + '<v>' + target.val + '</v></c>';
+    }
+    if (target.kind === 'ct') {
+      return formula
+        ? '<c r="' + ref + '"' + sAttr + ' t="str">' + formula + '<v>' + xmlEsc(target.val) + '</v></c>'
+        : '<c r="' + ref + '"' + sAttr + ' t="inlineStr"><is><t xml:space="preserve">' + xmlEsc(target.val) + '</t></is></c>';
     }
     return '<c r="' + ref + '"' + sAttr + '><v>' + target.val + '</v></c>';
   });
