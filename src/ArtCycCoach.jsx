@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Trophy, Dumbbell, Plus, ChevronLeft, ChevronRight, Save, Check, X, Edit2, Trash2, Highlighter,
+  Trophy, Dumbbell, Plus, ChevronLeft, ChevronRight, Save, Check, X, Edit2, Trash2,
   Search, Info, Archive, AlertTriangle, ListChecks,
   Home, BarChart3, Users, Download, Upload, Sparkles, FileText, Lock,
   Settings as SettingsIcon, LogOut, Shield, User, RotateCcw,
@@ -14583,7 +14583,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete }) {
                 return (
                   <div key={e.id} className={
                     (idx < exercises.length - 1 ? 'border-b border-[#C6C6C8]/40 ' : '') +
-                    (hasError ? 'bg-rose-50/60' : (e.marked ? 'bg-[#FACC15]/20' : ''))
+                    (hasError ? 'bg-rose-50/60' : (e.marked ? 'bg-[#3B82F6]/15' : ''))
                   }>
                     <ProgrammExerciseRow
                       ex={e}
@@ -14650,15 +14650,12 @@ function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onToggleMark, on
   return (
     <div>
       <div className="flex items-start gap-3 px-4 py-3">
-        <div className={'text-[13px] w-6 shrink-0 font-medium pt-0.5 ' + (ex.marked ? 'text-[#CA8A04]' : 'text-[#8E8E93]')}>{ex.nr}</div>
+        <div className={'text-[13px] w-6 shrink-0 font-medium pt-0.5 ' + (ex.marked ? 'text-[#2563EB]' : 'text-[#8E8E93]')}>{ex.nr}</div>
         <div className="flex-1 min-w-0">
           {ex.name ? (
             <>
               {/* Voller Name (umbrechend) — lange 2er-Übungen fangen ähnlich an. */}
-              <div className="font-medium text-[15px] leading-snug flex items-start gap-1.5">
-                {ex.marked && <Highlighter size={14} className="text-[#CA8A04] shrink-0 mt-0.5" />}
-                <span className={ex.marked ? 'font-semibold' : ''}>{localizedExerciseName(ex)}</span>
-              </div>
+              <div className={'text-[15px] leading-snug ' + (ex.marked ? 'font-semibold' : 'font-medium')}>{localizedExerciseName(ex)}</div>
               <div className="text-[12px] text-[#8E8E93]">
                 {ex.code ? 'Nr. ' + ex.code : 'Eigene'} · {Number(ex.points).toFixed(1)} Pkt.
               </div>
@@ -14675,8 +14672,8 @@ function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onToggleMark, on
             der nativen App). Reine Planungshilfe, zählt nicht in die Wertung. */}
         <button onClick={onToggleMark} title={ex.marked ? 'Markierung entfernen' : 'Übung markieren'}
           aria-pressed={!!ex.marked}
-          className={'p-1.5 active:opacity-60 ' + (ex.marked ? 'text-[#CA8A04]' : 'text-[#C7C7CC]')}>
-          <Highlighter size={16} />
+          className={'p-1.5 active:opacity-60 ' + (ex.marked ? 'text-[#2563EB]' : 'text-[#C7C7CC]')}>
+          <Flag size={16} fill={ex.marked ? 'currentColor' : 'none'} />
         </button>
         <button onClick={onRemove}
           className="p-1.5 text-[#FF3B30] active:opacity-60">
