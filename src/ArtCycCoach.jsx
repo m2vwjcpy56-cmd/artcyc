@@ -18181,6 +18181,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
   const [teamEditing, setTeamEditing] = useState(null);   // Team-Objekt oder null
   const [showNewTeam, setShowNewTeam] = useState(false);
   const [teamDetail, setTeamDetail] = useState(null);     // geöffnetes Team
+  const [inviteTeam, setInviteTeam] = useState(null);     // frisch angelegtes Team → Einladen
   const [showJoinTeam, setShowJoinTeam] = useState(false);
   const [joinCode, setJoinCode] = useState('');
 
@@ -18301,8 +18302,10 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
         });
         if (error) throw error;
       } else {
-        const { error } = await createTeam(formData);
+        const { data: created, error } = await createTeam(formData);
         if (error) throw error;
+        // Direkt einladen — sonst sucht man den Weg dorthin (Paritaet zur nativen App).
+        if (created) setInviteTeam(created);
       }
       if (!formData.id || formData.notes !== (teamEditing?.notes || '')) trackClub(formData.notes);
       await refreshAthletes();
@@ -18700,6 +18703,10 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
           />
         );
       })()}
+
+      {inviteTeam && (
+        <TeamInviteModal team={inviteTeam} onClose={async () => { setInviteTeam(null); await refreshAthletes(); }} />
+      )}
 
       {showJoinTeam && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40"
@@ -19290,6 +19297,91 @@ function TeamDetailModal({ team, members, candidates, canManage, busy, onClose, 
               </button>
             </>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Einladen direkt nach dem Anlegen eines Teams (Paritaet zur nativen TeamInviteView).
+// Beitritts-Code fuer Sportler entsteht sofort; Trainer-Code auf Knopfdruck.
+function TeamInviteModal({ team, onClose }) {
+  const [joinCode, setJoinCode] = useState(team.join_code || null);
+  const [coachCode, setCoachCode] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [copied, setCopied] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!joinCode) {
+      (async () => {
+        const { data, error } = await regenerateTeamJoinCode(team.id);
+        if (cancelled) return;
+        if (error) setErr(error.message); else setJoinCode(typeof data === 'string' ? data : (data && data.join_code) || null);
+      })();
+    }
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [team.id]);
+
+  const share = async (text, key) => {
+    try {
+      if (navigator.share) { await navigator.share({ text }); return; }
+    } catch { /* abgebrochen */ }
+    try { await navigator.clipboard.writeText(text); setCopied(key); setTimeout(() => setCopied(''), 1600); } catch { /* egal */ }
+  };
+
+  const makeCoachCode = async () => {
+    setBusy(true); setErr('');
+    const { data, error } = await generateCoachInvite(team.id, null);
+    if (error) setErr(error.message);
+    else setCoachCode(data && data.claim_code);
+    setBusy(false);
+  };
+
+  const codeRow = (code, key, label, shareText) => (
+    <div className="px-4 py-3 flex items-center justify-between gap-3">
+      {code
+        ? <span className="font-mono text-lg tracking-wider">{code}</span>
+        : <span className="text-[15px] text-[#8E8E93]">{label}</span>}
+      {code && (
+        <button onClick={() => share(shareText(code), key)}
+          className="text-[13px] bg-[#FF9500]/15 text-[#C2410C] dark:text-[#FF9500] px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5 shrink-0">
+          {copied === key ? <><Check size={13} /> Kopiert</> : <><Send size={13} /> Teilen</>}
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-[#F2F2F7] dark:bg-[#1c1c1e] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
+        <div className="px-4 py-3 border-b border-[#C6C6C8]/40 flex items-center justify-between">
+          <span className="w-12" />
+          <h3 className="font-semibold text-[17px]">Team einladen</h3>
+          <button onClick={onClose} className="text-[#FF9500] font-semibold text-[15px] w-12 text-right">Fertig</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-3 space-y-4">
+          <p className="text-[15px] px-2">Team „{team.name}" ist angelegt. Wer soll dazu?</p>
+          <IOSList header="Sportler einladen"
+            footer="Die Sportler geben den Code in der App unter „Team beitreten“ ein.">
+            {codeRow(joinCode, 'join', 'Code wird erstellt …',
+              c => `Tritt meinem Team „${team.name}" in ArtCyc bei: Team-Code ${c}`)}
+          </IOSList>
+          <IOSList header="Trainer einladen"
+            footer="Ein Trainer mit diesem Code sieht und bearbeitet die Daten des Teams.">
+            {coachCode ? codeRow(coachCode, 'coach', '', c => `Trainer-Einladung für „${team.name}" in ArtCyc: Code ${c}`) : (
+              <button onClick={makeCoachCode} disabled={busy}
+                className="w-full text-left px-4 py-3 text-[15px] text-[#FF9500] font-medium flex items-center gap-2 disabled:opacity-50">
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Trainer-Code erstellen
+              </button>
+            )}
+          </IOSList>
+          {err && <p className="text-[13px] text-rose-600 px-2">{err}</p>}
+          <p className="text-[12px] text-[#8E8E93] px-2 leading-snug">
+            Weitere Sportler und Trainer kannst du jederzeit hinzufügen: Einstellungen → Sportler &amp; Teams → das Team antippen.
+          </p>
         </div>
       </div>
     </div>
