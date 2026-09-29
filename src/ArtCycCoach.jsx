@@ -11,6 +11,8 @@ import {
   Copy, ExternalLink, RefreshCw, MailCheck, Crown, UserX, FlaskConical, Zap,
   SlidersHorizontal, Flag, ArrowUpCircle
 } from 'lucide-react';
+import { loadCompetitions, scoreEntries, programSnapshot, isTraining, hasMarks } from './lib/mauteImport';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './lib/supabase';
 import { supabase, RECOVERY_FROM_URL, RECOVERY_TOKEN_HASH, MAGIC_TOKEN_HASH, currentUserId, getCurrentProfile, updateMyLastName, fetchCloudSnapshot, pushCloudSnapshot, fetchAthletes, fetchProfiles, createAthlete, updateAthlete, deleteAthlete, generateClaimCodeForAthlete, clearClaimCodeForAthlete, redeemAthleteCode, migrateBlobToTables, mergeAthlete, moveAthleteData, fetchFeedbackCounts, fetchTeamMembers, createTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember, joinTeamByCode, regenerateTeamJoinCode, fetchClubs, registerClub, normalizeClub, recordClubEntry, updateMyClub, updateMyDisplayName, updateMyLicense, saveLicenseIfEmpty, fetchFeedback, addFeedback, updateFeedback, deleteFeedback, summarizeFeedback, fetchSessions, insertSession, updateSession, deleteSession, bulkInsertSessions, upsertSessions, deleteSessionsByExercise, bulkUpdateSessions, fetchCompetitions, upsertCompetition, deleteCompetition, fetchPrograms, upsertProgram, deleteProgram, fetchExercises, upsertExercise, deleteExercise, isAppOwner, adminListUsers, adminResendConfirmation, adminSendMagicLink, adminSendPasswordReset, adminConfirmEmail, adminSetRole, adminSetDisplayName, adminUpdateEmail, adminDeleteUser, adminCreateImpersonation, generateCoachInvite, rotateStaleCoachInvites, fetchCoachInvites, deleteCoachInvite, fetchAthleteCoaches, removeAthleteCoach, setCoachAdmin, fetchTrash, restoreTrashItem, purgeTrashItem, TRASH_RETENTION_DAYS, deleteMyAccount } from './lib/supabase';
 import { useI18n, LANGUAGES, SUPPORTED_LANG_CODES, detectBrowserLang } from './lib/i18n.jsx';
 import { SegmentedControl, MetricCard, StatusBreakdown, EmptyState, DisclosureToggle, StatusLegendToggle, TrendChart, HeroKPI } from './ui/primitives.jsx';
@@ -5881,6 +5883,7 @@ export default function App() {
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} myUserId={session?.user?.id || null} />;
   else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} dbAthleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={hasCoachingFeedback ? openFeedback : null} />;
   else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} athleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { chooseAthlete(id); setView('dashboard'); }} myAthleteId={myAthleteId} setView={setView} />;
+  else if (view === 'mauteimport') viewEl = <MauteImportView data={effectiveData} setData={save} setView={setView} athleteId={selectedAthleteId || myAthleteId || null} />;
   else if (view === 'export') viewEl = <ExportView data={effectiveData} setView={setView} defaultName={[profile?.display_name, profile?.last_name].filter(Boolean).join(' ')} />;
   else if (view === 'kuer' || view === 'video') {
     viewEl = <ComingSoon viewId={view} />;
@@ -10694,6 +10697,19 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
           <span className="flex items-center gap-3">
             <Users size={18} className="text-[#007AFF]" />
             <span className="text-[15px] font-medium">{t('nav.sportler')}</span>
+          </span>
+        </IOSListRow>
+      </IOSList>
+
+      {/* Import — Gegenstück zum Export (Parität zur nativen App) */}
+      <IOSList header="Import"
+        footer="Eine ausgefüllte Wettkampfstatistik von Dieter Maute einlesen — Wettkämpfe und Trainings mit allen Abzügen.">
+        <IOSListRow
+          onClick={() => setView && setView('mauteimport')}
+          trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
+          <span className="flex items-center gap-3">
+            <Upload size={17} className="text-[#FF9500] shrink-0" />
+            <span className="text-[15px]">Wettkampfstatistik importieren</span>
           </span>
         </IOSListRow>
       </IOSList>
@@ -19338,6 +19354,210 @@ function InviteModal({ open, athlete, onClose, onInvite }) {
 // =============================================================
 // EXPORT
 // =============================================================
+// =============================================================
+// MAUTE-WETTKAMPFSTATISTIK IMPORTIEREN
+// =============================================================
+// Gegenstück zum Export: eine ausgefüllte Maute-Datei zurück in die App holen.
+// Parität zur nativen `MauteImportView`. .xlsm/.xlsx liest der Browser selbst,
+// .xls und Numbers gehen an die Edge Function `parse-maute`.
+function MauteImportView({ data, setData, setView, athleteId }) {
+  const [comps, setComps] = useState([]);
+  const [chosen, setChosen] = useState(() => new Set());
+  const [dates, setDates] = useState({});          // Blockschlüssel → ISO-Datum
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [skippedEmpty, setSkippedEmpty] = useState(0);
+  const [imported, setImported] = useState(0);
+  const [onlyTraining, setOnlyTraining] = useState(false);
+  const fileRef = useRef(null);
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Schon vorhanden? Gleicher Name UND gleicher Tag — Wettkämpfe wiederholen sich
+  // jedes Jahr, der Name allein sagt nichts.
+  const existing = (c) => {
+    const iso = dates[c.id] || c.dateISO || today;
+    return (data.competitions || []).find(x =>
+      String(x.name || '').trim() === String(c.name || '').trim() && String(x.date || '').startsWith(iso));
+  };
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setBusy(true); setErr(null); setImported(0);
+    try {
+      const all = await loadCompetitions(file, {
+        supabaseUrl: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY,
+        isOnline: typeof navigator === 'undefined' || navigator.onLine,
+      });
+      // Blöcke ohne ein einziges Fehlerzeichen sind unbenutzte Spalten der Vorlage.
+      const found = all.filter(hasMarks);
+      setSkippedEmpty(all.length - found.length);
+      setComps(found);
+      const d = {};
+      found.forEach(c => { d[c.id] = c.dateISO || today; });
+      setDates(d);
+      setChosen(new Set(found.filter(c => !existingIn(found, c, d, data)).map(c => c.id)));
+    } catch (e) {
+      setComps([]); setChosen(new Set());
+      setErr(e && e.message ? e.message : 'Die Datei konnte nicht gelesen werden.');
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  // Vorauswahl braucht die Prüfung, bevor `dates` im State steht.
+  function existingIn(list, c, d, dd) {
+    const iso = d[c.id] || c.dateISO || today;
+    return (dd.competitions || []).some(x =>
+      String(x.name || '').trim() === String(c.name || '').trim() && String(x.date || '').startsWith(iso));
+  }
+
+  const toggle = (id) => {
+    const next = new Set(chosen);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setChosen(next);
+  };
+
+  const runImport = () => {
+    const picked = comps.filter(c => chosen.has(c.id));
+    if (!picked.length) return;
+    const newComps = picked.map(c => ({
+      id: uid(),
+      name: c.name,
+      date: dates[c.id] || c.dateISO || today,
+      location: '', host: '', start_nr: '',
+      athlete_id: athleteId || null,
+      program_id: null,
+      table1: scoreEntries(c),
+      table2: [],
+      t1_schwierigkeit: 0,
+      t2_schwierigkeit: 0,
+      kampfgerichte: c.kampfgerichte,
+      // Das Blatt kennt nur Summen über alle Kampfgerichte — genau das ist „Gesamt".
+      abzug_gesamt: true,
+      kind: isTraining(c) ? 'training' : 'wettkampf',
+      // Ohne verknüpftes Programm rechnet die Wertung über den Schnappschuss.
+      pdf_ref: { program_snapshot: programSnapshot(c) },
+      created: new Date().toISOString(),
+    }));
+    setData({ ...data, competitions: [...(data.competitions || []), ...newComps] });
+    setOnlyTraining(picked.every(isTraining));
+    setImported(newComps.length);
+    setComps([]); setChosen(new Set());
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto px-3 py-4 space-y-4 pb-28">
+      <div className="flex items-center gap-2">
+        <button onClick={() => setView('einstellungen')} className="text-[#007AFF] flex items-center -ml-1">
+          <ChevronLeft size={22} strokeWidth={2.6} className="text-[#FF9500]" /> Zurück
+        </button>
+        <h1 className="font-semibold text-[17px]">Wettkampfstatistik importieren</h1>
+      </div>
+
+      {imported > 0 ? (
+        <div className="card-surface rounded-[22px] p-5 text-center space-y-3">
+          <Check size={32} className="mx-auto text-emerald-500" strokeWidth={2.4} />
+          <div className="text-[15px] font-medium">
+            {imported} {imported === 1 ? 'Eintrag' : 'Einträge'} importiert
+          </div>
+          <div className="flex gap-2 justify-center">
+            <button onClick={() => setView(onlyTraining ? 'training' : 'wettkampf')}
+              className="bg-[#FF9500] text-white px-5 py-2.5 rounded-xl text-[15px] font-semibold">
+              {onlyTraining ? 'Trainings anzeigen' : 'Wettkämpfe anzeigen'}
+            </button>
+            <button onClick={() => setImported(0)}
+              className="px-5 py-2.5 rounded-xl text-[15px] font-medium bg-slate-100 dark:bg-white/10">
+              Weitere Datei
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="card-surface rounded-[22px] p-4 space-y-3">
+            <p className="text-[13px] text-[#8E8E93] leading-snug">
+              Wähle eine ausgefüllte Wettkampfstatistik von Dieter Maute. Die App liest daraus
+              Wettkämpfe und Trainings mit allen Abzügen. Formate: .xlsm, .xlsx, .xls und Numbers.
+            </p>
+            <label className="inline-flex bg-[#FF9500] text-white px-5 py-2.5 rounded-xl text-[15px] font-semibold cursor-pointer items-center gap-2">
+              <Upload size={16} strokeWidth={2.4} /> Datei wählen
+              <input ref={fileRef} type="file" className="hidden"
+                accept=".xlsm,.xlsx,.xls,.numbers,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={e => handleFile(e.target.files && e.target.files[0])} />
+            </label>
+            {busy && <div className="text-[13px] text-slate-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Datei wird gelesen …</div>}
+            {err && <div className="text-[13px] text-rose-600">{err}</div>}
+          </div>
+
+          {comps.length > 0 && (
+            <div className="space-y-2">
+              <div className="px-1 text-[12px] uppercase tracking-wide text-slate-400 font-medium">
+                Gefunden ({comps.length})
+              </div>
+              <IOSList>
+                {comps.map(c => {
+                  const on = chosen.has(c.id);
+                  const dup = existing(c);
+                  return (
+                    <div key={c.id} className="px-4 py-3 border-b border-[#C6C6C8]/40 last:border-0">
+                      <button onClick={() => toggle(c.id)} className="w-full flex items-start gap-3 text-left active:opacity-60">
+                        <span className={'w-5 h-5 mt-0.5 rounded-md border flex items-center justify-center shrink-0 ' +
+                          (on ? 'bg-[#FF9500] border-[#FF9500]' : 'border-slate-300 dark:border-slate-600')}>
+                          {on && <Check size={14} className="text-white" strokeWidth={3} />}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="flex items-center gap-2">
+                            <span className="text-[15px] font-medium truncate">{c.name}</span>
+                            {isTraining(c) && (
+                              <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[#0A84FF]/15 text-[#0A84FF] shrink-0">Training</span>
+                            )}
+                          </span>
+                          <span className="block text-[12px] text-[#8E8E93]">
+                            {c.exercises.length} Übungen · {c.kampfgerichte} {c.kampfgerichte === 1 ? 'Kampfgericht' : 'Kampfgerichte'} · Block {c.column}
+                          </span>
+                          {dup && (
+                            <span className="block text-[12px] text-amber-600 dark:text-amber-400 mt-0.5">
+                              Schon vorhanden: gleicher Name am {formatDateShort(dup.date)}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                      <div className="flex items-center gap-2 mt-2 pl-8">
+                        <span className="text-[12px] text-[#8E8E93]">Datum</span>
+                        <input type="date" value={dates[c.id] || ''}
+                          onChange={e => setDates({ ...dates, [c.id]: e.target.value })}
+                          className="text-[13px] bg-transparent outline-none border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1" />
+                        {!c.dateISO && <span className="text-[12px] text-amber-600">kein Datum in der Datei</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </IOSList>
+              {skippedEmpty > 0 && (
+                <p className="text-[12px] text-[#8E8E93] px-2">
+                  {skippedEmpty} {skippedEmpty === 1 ? 'leerer Block' : 'leere Blöcke'} übersprungen (keine Abzüge eingetragen).
+                </p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {comps.length > 0 && imported === 0 && (
+        <div className="sticky z-20 bottom-[calc(env(safe-area-inset-bottom)+84px)] sm:bottom-4">
+          <div className="rounded-2xl p-2 bg-white/90 dark:bg-[#1c1c1e]/90 backdrop-blur-xl border border-slate-200/60 dark:border-slate-800 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
+            <button onClick={runImport} disabled={chosen.size === 0}
+              className="w-full bg-[#FF9500] text-white disabled:opacity-40 px-5 py-3 rounded-xl font-semibold flex items-center gap-2 justify-center">
+              <Download size={18} /> {chosen.size === 0 ? 'Importieren' : `Importieren · ${chosen.size}`}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExportView({ data, setView, defaultName = '' }) {
   const { t } = useI18n();
   const [tab, setTab] = useState('wettkampf');

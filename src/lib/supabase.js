@@ -3,8 +3,8 @@ import { normClub } from './clubs.js';
 
 // Anon-Key ist explizit als public gedacht und durch Row Level Security
 // in der DB abgesichert — kann/darf im Frontend stehen.
-const SUPABASE_URL = 'https://cpxsfctijcsezkspjlxy.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNweHNmY3RpamNzZXprc3BqbHh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4MjA0NzUsImV4cCI6MjA5MzM5NjQ3NX0.kbEF8fYUUoznrQMdmAKvoGQ03kSTCh3qN505Af9yNS4';
+export const SUPABASE_URL = 'https://cpxsfctijcsezkspjlxy.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNweHNmY3RpamNzZXprc3BqbHh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4MjA0NzUsImV4cCI6MjA5MzM5NjQ3NX0.kbEF8fYUUoznrQMdmAKvoGQ03kSTCh3qN505Af9yNS4';
 
 // Recovery-Marker SYNCHRON beim Modul-Load festhalten — BEVOR createClient mit
 // detectSessionInUrl die Auth-Parameter aus der URL entfernt. Sonst gibt es ein
