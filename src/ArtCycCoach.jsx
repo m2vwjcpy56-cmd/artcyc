@@ -20,7 +20,7 @@ import { STATUS } from './ui/tokens.js';
 import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attachGlobalFeedbackBridge, pushFeedbackToCloud, fileToBase64 } from './lib/feedback.js';
 import { suggestClubs, normClub, CLUBS, COUNTRY_FLAG } from './lib/clubs.js';
 import { parseProgramFile } from './lib/programImport.js';
-import { exportMauteVorlage } from './lib/mauteExport.js';
+import { exportMauteVorlage, layoutMaute } from './lib/mauteExport.js';
 import { loadUciExercisesFromDb, getRulesLanguage, getTaktScale, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram } from './lib/uciRules.js';
 
 // =============================================================
@@ -13944,7 +13944,7 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
 // =============================================================
 // PROGRAMME
 // =============================================================
-function ProgrammeView({ data, setData, myUserId = null }) {
+function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
   const { t } = useI18n();
   const [editId, setEditId] = useState(null);
   const [showNew, setShowNew] = useState(false);
@@ -14027,6 +14027,7 @@ function ProgrammeView({ data, setData, myUserId = null }) {
     const editing = editId ? (data.programs || []).find(p => p.id === editId) : (dupProgram || null);
     return <ProgrammEditor
       program={editing}
+      athletes={dbAthletes}
       onSave={(p) => { upsert(p); setShowNew(false); setEditId(null); setDupProgram(null); }}
       onCancel={() => { setShowNew(false); setEditId(null); setDupProgram(null); setPendingPdf(null); }}
       onDelete={editId ? () => { const id = editId; setShowNew(false); setEditId(null); setTimeout(() => remove(id), 0); } : undefined}
@@ -14367,12 +14368,15 @@ function ProgrammeView({ data, setData, myUserId = null }) {
 // =============================================================
 // PROGRAMM-EDITOR
 // =============================================================
-function ProgrammEditor({ program, onSave, onCancel, onDelete }) {
+function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [] }) {
   const { t } = useI18n();
   const [confirmDel, setConfirmDel] = useState(false);
   const [name, setName] = useState((program && program.name) || '');
   const [discipline, setDiscipline] = useState((program && program.discipline) || '1er');
   const [exercises, setExercises] = useState((program && program.exercises) || []);
+  // Ein Programm gehoert zu EINEM Sportler — ohne Zuordnung sahen alle Sportler
+  // eines Besitzers dieselben Programme (Paritaet zur nativen App).
+  const [athleteId, setAthleteId] = useState((program && program.athlete_id) || null);
   // Altersklasse für Reglement-Validierung. Wird mit dem Programm
   // gespeichert, damit der Validator beim Bearbeiten konsistent prüft.
   const [ageClass, setAgeClass] = useState((program && program.ageClass) || 'elite');
@@ -14464,6 +14468,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete }) {
       name: asCopy ? (name.trim() + ' (Kopie)') : name.trim(),
       discipline,
       ageClass,
+      athlete_id: athleteId,
       exercises,
       created: asCopy ? new Date().toISOString() : ((program && program.created) || new Date().toISOString())
     });
@@ -14500,6 +14505,19 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete }) {
             <select value={discipline} onChange={e => setDiscipline(e.target.value)}
               className="flex-1 bg-transparent text-[15px] outline-none appearance-none text-right">
               {DISCIPLINES.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+            </select>
+            <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
+          </div>
+          {/* Wem gehoert das Programm? Ohne Zuordnung sehen alle Sportler eines
+              Besitzers dieselben Programme (Paritaet zur nativen App). */}
+          <div className="px-4 py-3 flex items-center gap-3">
+            <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">Sportler</label>
+            <select value={athleteId || ''} onChange={e => setAthleteId(e.target.value || null)}
+              className="flex-1 bg-transparent text-[15px] outline-none appearance-none text-right">
+              <option value="">Alle Sportler</option>
+              {(athletes || []).map(a => (
+                <option key={a.id} value={a.id}>{[a.name, a.last_name].filter(Boolean).join(' ')}</option>
+              ))}
             </select>
             <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
           </div>
@@ -15019,7 +15037,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
             {t('competition.programs')}
           </button>
         </div>
-        <ProgrammeView data={data} setData={setData} myUserId={myUserId} />
+        <ProgrammeView data={data} setData={setData} myUserId={myUserId} dbAthletes={dbAthletes} />
       </div>
     );
   }
@@ -19822,6 +19840,16 @@ function ExportWettkampf({ data, defaultName = '' }) {
     if (exportFormat === 'xlsx') return exportMauteXLSX();
     return exportMauteCSV();
   };
+  // Programmwechsel im Blatt: die Vorlage hat je Position eine zweite Zeile. Kein
+  // Fehler — aber man soll vorher wissen, was drinsteht (Paritaet zur nativen App).
+  const layoutReport = useMemo(() => {
+    if (exportFormat !== 'xlsm' || selected.length === 0) return null;
+    try { return layoutMaute(selected.map(c => ({ ...c, exercises: exercisesFor(c) }))); }
+    catch { return null; }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, exportFormat]);
+  const [showChanges, setShowChanges] = useState(false);
+
   const exportVorlage = async () => {
     if (selected.length === 0) return;
     setVorlageBusy(true); setVorlageErr('');
@@ -19931,6 +19959,45 @@ function ExportWettkampf({ data, defaultName = '' }) {
           damit man nicht ans Listenende scrollen muss. */}
       <div className="sticky z-20 bottom-[calc(env(safe-area-inset-bottom)+84px)] sm:bottom-4">
         <div className="rounded-2xl p-2 bg-white/90 backdrop-blur-xl border border-slate-200/60 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
+          {/* Programmwechsel: eine Zeile, Details auf Tippen — der volle Text war zu viel. */}
+          {layoutReport && (layoutReport.replaced.length + layoutReport.displaced.length) > 0 && (
+            <div className="px-1 pb-2">
+              <button onClick={() => setShowChanges(v => !v)}
+                className="w-full flex items-center gap-1.5 text-[12px] text-[#8E8E93] active:opacity-60">
+                <RefreshCw size={12} className="shrink-0" />
+                <span className="flex-1 text-left">
+                  {(layoutReport.replaced.length + layoutReport.displaced.length) === 1
+                    ? '1 Position mit Programmwechsel'
+                    : (layoutReport.replaced.length + layoutReport.displaced.length) + ' Positionen mit Programmwechsel'}
+                </span>
+                <ChevronRight size={12} className={'shrink-0 transition-transform ' + (showChanges ? 'rotate-90' : '')} />
+              </button>
+              {showChanges && (
+                <div className="mt-1.5 pl-5 space-y-1">
+                  {layoutReport.replaced.map((r, i) => (
+                    <div key={'r' + i} className="text-[12px]">
+                      <span className="font-medium">Pos. {r.pos} · ab {r.since}</span>
+                      <span className="block text-[#8E8E93]">{r.from} → {r.to}</span>
+                    </div>
+                  ))}
+                  {layoutReport.displaced.map((d, i) => (
+                    <div key={'d' + i} className="text-[12px] text-[#8E8E93]">
+                      {d.name} · Pos. {d.pos} statt {d.wanted} (dort schon doppelt belegt)
+                    </div>
+                  ))}
+                  <div className="text-[12px] text-[#C7C7CC]">
+                    Die neue Übung steht in der 2. Zeile der Position – so sieht es die Vorlage vor.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {layoutReport && layoutReport.dropped.length > 0 && (
+            <div className="px-1 pb-2 text-[12px] text-amber-600">
+              {layoutReport.total} Übungen — {layoutReport.dropped.length} passen nicht mehr ins Blatt:
+              {' ' + layoutReport.dropped.map(d => d.name).join(', ')}
+            </div>
+          )}
           <button onClick={runExport}
             disabled={selected.length === 0 || vorlageBusy}
             className="w-full bg-[#FF9500] text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed px-5 py-3 rounded-xl font-semibold flex items-center gap-2 justify-center active:scale-[0.99] transition">
