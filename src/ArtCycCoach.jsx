@@ -13000,6 +13000,20 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
               <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(statSessions.length)} sub="im Zeitraum" />
               <MetricCard accent="emerald" icon={Activity} label="Serie" value={statStreak > 0 ? String(statStreak) : '—'} sub={statStreak === 1 ? 'Woche' : 'Wochen'} />
             </div>
+            {/* Wettkampf vs. Training — die Zeile, die nativ unter den Kacheln steht. */}
+            {statWk.length > 0 && statTr.length > 0 && (() => {
+              const d = statAvg(statWk) - statAvg(statTr);
+              const txt = Math.abs(d) < 0.05 ? 'gleich stark wie im Training'
+                : d < 0 ? Math.abs(d).toFixed(2) + ' Pkt schwächer als im Training'
+                : d.toFixed(2) + ' Pkt stärker als im Training';
+              return (
+                <div className="card-surface rounded-[22px] px-4 py-3 flex items-center gap-3">
+                  <Activity size={17} className="text-[#FF9500] shrink-0" />
+                  <span className="text-[15px] flex-1">Im Wettkampf</span>
+                  <span className="text-[15px] font-semibold tabular-nums">{txt}</span>
+                </div>
+              );
+            })()}
           </section>
         ) : null}
 
@@ -18830,6 +18844,20 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
               </p>
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              {/* Quelle zuerst und gross — beim Verschieben muss ohne Nachdenken klar
+                  sein, WESSEN Daten wandern (Paritaet zur nativen App). */}
+              <div className="bg-white dark:bg-white/5 rounded-2xl px-4 py-3 flex items-center gap-3">
+                <Users size={20} className="text-[#FF9500] shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[12px] uppercase tracking-wide text-[#8E8E93]">Von</div>
+                  <div className="text-[17px] font-semibold truncate">{moveSource.name}</div>
+                  <div className="text-[12px] text-[#8E8E93]">
+                    {(ownData?.sessions || []).filter(x => x.athleteId === moveSource.id || x.athlete_id === moveSource.id).length} Sessions
+                    {' · '}
+                    {(ownData?.competitions || []).filter(x => x.athlete_id === moveSource.id).length} Wettkämpfe
+                  </div>
+                </div>
+              </div>
               <div>
                 <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">Was verschieben?</div>
                 <div className="bg-white dark:bg-white/5 rounded-2xl overflow-hidden">
