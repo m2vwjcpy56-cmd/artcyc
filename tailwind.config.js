@@ -4,10 +4,10 @@ export default {
     "./index.html",
     "./src/**/*.{js,jsx,ts,tsx}",
   ],
-  // Folgt automatisch der System-Einstellung (prefers-color-scheme).
-  // Dark-Mode-Styling läuft primär über index.css mit
-  // @media (prefers-color-scheme: dark) Overrides der Tailwind-Klassen.
-  darkMode: 'media',
+  // dark: folgt der App-Einstellung (html[data-theme], gesetzt aus Hell/Dunkel/
+  // Automatisch) — wie index.css. Vorher 'media': mit „Hell" auf einem dunkel
+  // eingestellten Gerät griffen die dark:-Klassen trotzdem (verwaschene Karten).
+  darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
       fontFamily: {
