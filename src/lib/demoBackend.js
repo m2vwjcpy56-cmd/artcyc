@@ -229,13 +229,15 @@ class Query {
       const list = [].concat(this.payload || []);
       const key = (this.opts.onConflict || (this.t === 'user_data_snapshots' ? 'user_id' : 'id')).split(',')[0].trim();
       for (const raw of list) {
-        const row = { ...raw };
+        // Wie PostgREST: undefined-Felder fallen beim JSON weg und bleiben unverändert.
+        const row = JSON.parse(JSON.stringify(raw));
         if (this.t !== 'user_data_snapshots' && this.t !== 'app_notices_dismissed' && !row.id) row.id = uuid();
+        const i = (this.op === 'upsert' && row[key] != null) ? rows.findIndex(x => x[key] === row[key]) : -1;
+        if (i >= 0) { rows[i] = { ...rows[i], ...row }; out.push(rows[i]); continue; }
+        // Nur beim Anlegen: Spalten-Defaults wie in der DB.
         if (!row.created_at && this.t !== 'user_data_snapshots') row.created_at = new Date().toISOString();
         if (this.t === 'sessions' || this.t === 'competitions') row.created_by = row.created_by || ME;
-        const i = (this.op === 'upsert' && row[key] != null) ? rows.findIndex(x => x[key] === row[key]) : -1;
-        if (i >= 0) { rows[i] = { ...rows[i], ...row }; out.push(rows[i]); }
-        else { rows.push(row); out.push(row); }
+        rows.push(row); out.push(row);
       }
       persist();
     } else if (this.op === 'update') {

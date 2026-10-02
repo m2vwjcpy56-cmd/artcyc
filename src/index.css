@@ -15,7 +15,7 @@ body {
 }
 
 /* Tap-Highlight auf Mobile entfernen */
-button, a {
+button, a, [role="button"] {
   -webkit-tap-highlight-color: transparent;
 }
 

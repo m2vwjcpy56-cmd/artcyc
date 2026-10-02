@@ -2784,6 +2784,25 @@ function compFinalScore(program, c) {
   return Math.round((sum / n) * 100) / 100;
 }
 
+// Abzug eines Wettkampfs, wie er ins Endergebnis eingeht (Spiegel von compFinalScore):
+// „Gesamt" = kombinierter Abzug ÷ Anzahl KG, sonst Schnitt über die gewerteten KG.
+// Vorher stand an mehreren Stellen fest (KG1 + KG2) ÷ 2 — falsch bei 1, 3 oder 4 KG
+// und im Gesamt-Modus.
+function compTotalDeduction(program, c) {
+  program = program || programForCompetition(c, null);
+  if (!program) return null;
+  const n = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
+  if (isEffectiveGesamt(c)) {
+    const tbl = tableHasContent(c.table1) ? c.table1 : (tableHasContent(c.table2) ? c.table2 : c.table1);
+    return Math.round((calcTableResult(program, tbl, c.t1_schwierigkeit).abzugGesamt / n) * 100) / 100;
+  }
+  const tables = [c.table1, c.table2, c.table3, c.table4];
+  const schw = [c.t1_schwierigkeit, c.t2_schwierigkeit, 0, 0];
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += calcTableResult(program, tables[i], schw[i]).abzugGesamt;
+  return Math.round((sum / n) * 100) / 100;
+}
+
 // Effektiver Punktabzug JE ÜBUNG in EINEM Wettkampf — über die Kampfgerichte gemittelt
 // (bei „Gesamt" ist es die kombinierte Erfassung ÷ Anzahl KG). Spiegelt exakt die Logik
 // von compFinalScore wider, nur pro Übung aufgeschlüsselt. Rückgabe: Array [ded je Übung].
@@ -2864,15 +2883,16 @@ function CompMetricChart({ compList }) {
     { key: 'wave', label: 'Welle' }, { key: 'bar', label: 'Strich' },
     { key: 'circle', label: 'Sturz' }, { key: 'schw', label: 'Schwierigkeit' },
   ];
+  // Je KG gemittelt wie im Endergebnis (exerciseCompRows: 1–4 KG bzw. Gesamt-Modus).
   const val = (c) => {
+    const a = c.avg || { cross: 0, wave: 0, bar: 0, circle: 0, schwPct: 0 };
     switch (metric) {
-      case 'cross': return (c.k1cross + c.k2cross) / 2;
-      case 'wave': return (c.k1wave + c.k2wave) / 2;
-      case 'bar': return (c.k1bar + c.k2bar) / 2;
-      case 'circle': return (c.k1circle + c.k2circle) / 2;
-      case 'schw': return ((c.k1schwPct || 0) + (c.k2schwPct || 0)) / 2;
-      default: return ((c.k1cross * 0.2 + c.k1wave * 0.5 + c.k1bar * 1.0 + c.k1circle * 2.0)
-                     + (c.k2cross * 0.2 + c.k2wave * 0.5 + c.k2bar * 1.0 + c.k2circle * 2.0)) / 2;
+      case 'cross': return a.cross;
+      case 'wave': return a.wave;
+      case 'bar': return a.bar;
+      case 'circle': return a.circle;
+      case 'schw': return a.schwPct;
+      default: return a.cross * 0.2 + a.wave * 0.5 + a.bar * 1.0 + a.circle * 2.0;
     }
   };
   const series = [...compList].reverse().map(c => ({ name: c.competition.name || 'Wettkampf', date: c.competition.date, v: val(c) }));
@@ -2950,7 +2970,7 @@ function calcDeductionRanking(programs, competitions, exercises, sessions) {
   // Pass 1: Name→Nummer, damit nummernlose Einträge zur Nummern-Gruppe finden.
   const codeByName = new Map();
   for (const comp of (competitions || [])) {
-    const program = programMap.get(comp.program_id);
+    const program = programForCompetition(comp, programMap);
     if (!program || !program.exercises) continue;
     const sig = sigOf(program);
     program.exercises.forEach((ex, idx) => {
@@ -2962,11 +2982,17 @@ function calcDeductionRanking(programs, competitions, exercises, sessions) {
   // Pass 2: Aggregation (Fehlerbild, Histogramm, Serie).
   const acc = new Map();
   for (const comp of (competitions || [])) {
-    const program = programMap.get(comp.program_id);
+    const program = programForCompetition(comp, programMap);
     if (!program || !program.exercises) continue;
     const sig = sigOf(program);
     const seen = new Set();
     const dedThis = new Map();
+    // Bögen wie gewertet (siehe calcExerciseCompetitionStats): Gesamt = ein Bogen ÷ KG.
+    const kgN = Math.max(1, Math.min(4, Number(comp.kampfgerichte || 2)));
+    const gesamt = isEffectiveGesamt(comp);
+    const sheets = gesamt
+      ? [tableHasContent(comp.table1) ? comp.table1 : (tableHasContent(comp.table2) ? comp.table2 : comp.table1)]
+      : [comp.table1, comp.table2, comp.table3, comp.table4].slice(0, kgN);
     program.exercises.forEach((ex, idx) => {
       const name = resolvedName(ex, idx, sig);
       const nk = norm(name);
@@ -2977,9 +3003,9 @@ function calcDeductionRanking(programs, competitions, exercises, sessions) {
       if (!s) { s = { key, name, competitions: 0, cross: 0, wave: 0, bar: 0, circle: 0, schwPctHist: {}, series: [] }; acc.set(key, s); }
       if (isPlaceholder(s.name) && !isPlaceholder(name)) s.name = name;
       let ded = 0;
-      // Über die Kampfgerichte MITTELN, nicht summieren: beide KG bewerten dieselbe
+      // Über die Kampfgerichte MITTELN, nicht summieren: alle KG bewerten dieselbe
       // Kür, die Wellen-/Fehlerzahl ist der Mittelwert (sonst zählt alles pro KG doppelt).
-      const cells = [(comp.table1 || [])[idx], (comp.table2 || [])[idx]].filter(Boolean);
+      const cells = sheets.map(t => (t || [])[idx]).filter(Boolean);
       if (cells.length) {
         let cx = 0, cw = 0, cb = 0, cc = 0;
         cells.forEach(e => {
@@ -2988,7 +3014,7 @@ function calcDeductionRanking(programs, competitions, exercises, sessions) {
           const pct = String(Number(e.schwPct || 0));
           if (pct !== '0') s.schwPctHist[pct] = (s.schwPctHist[pct] || 0) + 1;
         });
-        const d = cells.length;
+        const d = gesamt ? kgN : cells.length;
         cx /= d; cw /= d; cb /= d; cc /= d;
         s.cross += cx; s.wave += cw; s.bar += cb; s.circle += cc;
         ded += cx * 0.2 + cw * 0.5 + cb * 1.0 + cc * 2.0;
@@ -3050,15 +3076,24 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
       && Number(ex.points || 0) === Number(exercise.points || 0);
   };
   for (const comp of competitions) {
-    const program = programMap.get(comp.program_id);
+    // Auch importierte/gescannte Wettkämpfe (Übungen am Wettkampf selbst).
+    const program = programForCompetition(comp, programMap);
     if (!program || !program.exercises) continue;
+    // Bögen wie gewertet: im Gesamt-Modus EIN Bogen für alle KG (Zeichen ÷ Anzahl KG),
+    // sonst je gewertetem KG einer — vorher fest KG 1 + 2, wodurch 1-KG-Wertungen
+    // (leerer zweiter Bogen) nur halb zählten.
+    const kgN = Math.max(1, Math.min(4, Number(comp.kampfgerichte || 2)));
+    const gesamt = isEffectiveGesamt(comp);
+    const sheets = gesamt
+      ? [tableHasContent(comp.table1) ? comp.table1 : (tableHasContent(comp.table2) ? comp.table2 : comp.table1)]
+      : [comp.table1, comp.table2, comp.table3, comp.table4].slice(0, kgN);
     let foundInThisComp = false;
     program.exercises.forEach((ex, idx) => {
       if (!matches(ex)) return;
       foundInThisComp = true;
-      // Fehlerzeichen über die Kampfgerichte MITTELN (nicht summieren) — beide KG
+      // Fehlerzeichen über die Kampfgerichte MITTELN (nicht summieren) — alle KG
       // bewerten dieselbe Kür; Histogramme/Zähler bleiben pro KG-Eintrag.
-      const cells = [(comp.table1 || [])[idx], (comp.table2 || [])[idx]].filter(Boolean);
+      const cells = sheets.map(t => (t || [])[idx]).filter(Boolean);
       if (cells.length) {
         let cx = 0, cw = 0, cb = 0, cc = 0, cs = 0;
         cells.forEach(e => {
@@ -3083,7 +3118,7 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
           }
           stats.count += 1;
         });
-        const d = cells.length;
+        const d = gesamt ? kgN : cells.length;
         stats.cross += cx / d;
         stats.wave += cw / d;
         stats.bar += cb / d;
@@ -3094,6 +3129,53 @@ function calcExerciseCompetitionStats(exercise, programs, competitions) {
     if (foundInThisComp) stats.wettkaempfe += 1;
   }
   return stats;
+}
+
+// Je Wettkampf, in dem die Übung vorkommt, eine Zeile mit den Zeichen — für die
+// Liste „Pro Wettkampf" und das Kennzahl-Diagramm im Übungs-Detail. Bögen wie
+// gewertet (1–4 KG bzw. Gesamt-Modus): `sum*` = alle Zeichen der Bögen, `avg` = je
+// KG gemittelt wie im Endergebnis. k1*/k2* bleiben für Altstellen erhalten.
+function exerciseCompRows(exercise, programs, comps) {
+  const programMap = new Map((programs || []).map(p => [p.id, p]));
+  const matches = (ex) => {
+    if (exercise.uci_code && ex.code) return exercise.uci_code === ex.code;
+    return (ex.name || '').trim().toLowerCase() === (exercise.name || '').trim().toLowerCase()
+      && Number(ex.points || 0) === Number(exercise.points || 0);
+  };
+  const result = [];
+  for (const comp of (comps || [])) {
+    const program = programForCompetition(comp, programMap);
+    if (!program || !program.exercises) continue;
+    const kgN = Math.max(1, Math.min(4, Number(comp.kampfgerichte || 2)));
+    const gesamt = isEffectiveGesamt(comp);
+    const sheets = gesamt
+      ? [tableHasContent(comp.table1) ? comp.table1 : (tableHasContent(comp.table2) ? comp.table2 : comp.table1)]
+      : [comp.table1, comp.table2, comp.table3, comp.table4].slice(0, kgN);
+    program.exercises.forEach((ex, idx) => {
+      if (!matches(ex)) return;
+      const cells = sheets.map(t => (t || [])[idx]).filter(Boolean);
+      const d = gesamt ? kgN : Math.max(1, cells.length);
+      const sum = (f) => cells.reduce((s, e) => s + Number(e[f] || 0), 0);
+      const e1 = (comp.table1 || [])[idx] || {};
+      const e2 = (comp.table2 || [])[idx] || {};
+      result.push({
+        competition: comp,
+        k1cross: Number(e1.cross || 0), k1wave: Number(e1.wave || 0), k1bar: Number(e1.bar || 0), k1circle: Number(e1.circle || 0),
+        k2cross: Number(e2.cross || 0), k2wave: Number(e2.wave || 0), k2bar: Number(e2.bar || 0), k2circle: Number(e2.circle || 0),
+        k1schwPct: Number(e1.schwPct || 0), k2schwPct: Number(e2.schwPct || 0),
+        k1takt: Number(e1.taktischePunkte || 0), k2takt: Number(e2.taktischePunkte || 0),
+        sumCross: sum('cross'), sumWave: sum('wave'), sumBar: sum('bar'), sumCircle: sum('circle'),
+        maxSchwPct: Math.max(0, ...cells.map(e => Number(e.schwPct || 0))),
+        maxTakt: Math.max(0, ...cells.map(e => Number(e.taktischePunkte || 0))),
+        avg: {
+          cross: sum('cross') / d, wave: sum('wave') / d, bar: sum('bar') / d, circle: sum('circle') / d,
+          schwPct: sum('schwPct') / d,
+        },
+      });
+    });
+  }
+  result.sort((a, b) => (b.competition.date || '').localeCompare(a.competition.date || ''));
+  return result;
 }
 
 // =============================================================
@@ -5353,6 +5435,13 @@ export default function App() {
     start_nr: c.start_nr || '',
     table1: c.table1 || [],
     table2: c.table2 || [],
+    // KG-Anzahl, Gesamt-Modus und KG 3/4 gehören dazu — fehlten sie, rechnete das Web
+    // jeden Wettkampf mit 2 KG (1-KG-Wertungen: Abzug halbiert) und ein Bearbeiten
+    // überschrieb Modus und Tabellen 3/4 (Fehler, 02.10.2026).
+    table3: c.table3 || null,
+    table4: c.table4 || null,
+    kampfgerichte: c.kampfgerichte == null ? 2 : Number(c.kampfgerichte),
+    abzug_gesamt: !!c.abzug_gesamt,
     t1_schwierigkeit: Number(c.t1_schwierigkeit || 0),
     t2_schwierigkeit: Number(c.t2_schwierigkeit || 0),
     pdf_ref: c.pdf_ref,
@@ -5364,6 +5453,7 @@ export default function App() {
     discipline: p.discipline,
     exercises: p.exercises || [],
     owner_id: p.owner_id,
+    athlete_id: p.athlete_id || null,   // Sportler-Zuordnung (null = für alle)
     created: p.created_at
   }), []);
   const dbExerciseToBlob = useCallback((e) => ({
@@ -5484,7 +5574,10 @@ export default function App() {
   const normalizeProgram = useCallback((p) => ({
     name: p.name,
     discipline: p.discipline,
-    exercises: p.exercises || []
+    exercises: p.exercises || [],
+    // Sportler-Zuordnung nur mitschicken, wenn der Eintrag sie kennt — sonst würde
+    // ein Upsert eine in der App gesetzte Zuordnung auf „für alle" zurücksetzen.
+    ...(('athlete_id' in p) ? { athlete_id: p.athlete_id || null } : {})
   }), []);
   const normalizeExercise = useCallback((e) => ({
     name: e.name,
@@ -5673,6 +5766,19 @@ export default function App() {
     target_score: c.target_score
   }), [selectedAthleteId, myAthleteId]);
 
+  // Welche Programme die aktuelle Ansicht zeigt — EINE Regel für Anzeige (effectiveData)
+  // und Speichern. Das Speichern vergleicht alt/neu nur innerhalb dieser Menge; vorher
+  // galten ausgeblendete Programme (einem anderen Sportler zugeordnet) als „gelöscht"
+  // und wurden beim nächsten Speichern mit-gelöscht (Fehler, 02.10.2026).
+  const programInView = useCallback((p) => {
+    const coachView = !!selectedAthleteId && !isOwnAthlete;
+    const viewerUid = session?.user?.id || null;
+    const targetAthlete = coachView ? (dbAthletes || []).find(a => a.id === selectedAthleteId) : null;
+    const programOwner = (targetAthlete && targetAthlete.auth_user_id) || viewerUid;
+    return (p.owner_id === programOwner || (!coachView && p.owner_id == null))
+      && (p.athlete_id == null || p.athlete_id === selectedAthleteId);
+  }, [selectedAthleteId, isOwnAthlete, session?.user?.id, dbAthletes]);
+
   const save = useCallback(async (next) => {
     setActiveDb(next.uci_custom);
 
@@ -5687,19 +5793,25 @@ export default function App() {
     const sf = (s) => !filterId || (s.athleteId || s.athlete_id) === filterId;
     const cf = (c) => !filterId || (c.athlete_id || c.athleteId) === filterId;
     const ownerWritable = isOwnAthlete; // = eigener Athlet ODER kein Filter
+    // Programme/Übungen gehören dem Konto: beim eigenen Profil UND bei selbst angelegten
+    // Sportlern ohne eigenes Konto bin das ich → speichern. Vorher nur beim eigenen
+    // Profil — ein für so einen Sportler angelegtes Programm verschwand nach „Fertig"
+    // (Fehler, 02.10.2026). Hat der Sportler ein eigenes Konto, gehören sie ihm.
+    const catalogWritable = ownerWritable || !(selectedAthlete && selectedAthlete.auth_user_id);
 
     if (data && data.migrated_to_tables) {
       const syncErrors = [];
       const offline = typeof navigator !== 'undefined' && !navigator.onLine;
       try {
         // Übungen: offline (noch) nicht in die Outbox — werden selten offline erstellt.
-        if (ownerWritable && next.exercises && !offline) {
+        if (catalogWritable && next.exercises && !offline) {
           const current = dbExercises.map(dbExerciseToBlob);
           syncErrors.push(...(await syncListToDb(current, next.exercises, upsertExercise, deleteExercise, normalizeExercise) || []));
           await refreshExercises();
         }
-        if (ownerWritable && next.programs) {
-          const current = dbPrograms.map(dbProgramToBlob);
+        if (catalogWritable && next.programs) {
+          // Nur die sichtbaren Programme vergleichen (siehe programInView).
+          const current = dbPrograms.filter(programInView).map(dbProgramToBlob);
           if (offline) {
             const ops = diffToUpsertOps(current, next.programs, normalizeProgram, 'program');
             if (ops.length) { enqueueOps(ops); setDbPrograms(prev => mergeRows(prev, ops.map(o => o.row))); }
@@ -5767,7 +5879,7 @@ export default function App() {
     syncSessionsToDb, syncListToDb,
     refreshSessions, refreshCompetitions, refreshPrograms, refreshExercises,
     normalizeCompetition, normalizeProgram, normalizeExercise,
-    selectedAthleteId, isOwnAthlete,
+    selectedAthleteId, isOwnAthlete, programInView, selectedAthlete,
     enqueueOps, mergeRows, diffToUpsertOps, sessionBlobToRow
   ]);
 
@@ -5825,15 +5937,10 @@ export default function App() {
     // nichts verloren. Daher auf den Besitzer scopen:
     //  • Coach-Sicht (fremder Athlet) → nur dessen Programme (owner = auth_user_id).
     //  • eigene Sicht → nur eigene (owner = ich) + verwaiste (owner null).
-    const viewerUid = session?.user?.id || null;
-    const targetAthlete = coachView ? (dbAthletes || []).find(a => a.id === selectedAthleteId) : null;
-    const programOwner = (targetAthlete && targetAthlete.auth_user_id) || viewerUid;
     // Dazu die Sportler-Zuordnung (Parität zur nativen App): ein Programm mit athlete_id
     // gehört EINEM Sportler; ohne (Alt-Daten) gilt es für alle Sportler des Besitzers.
-    const programs = dbPrograms
-      .filter(p => (p.owner_id === programOwner || (!coachView && p.owner_id == null))
-        && (p.athlete_id == null || p.athlete_id === selectedAthleteId))
-      .map(dbProgramToBlob);
+    // Regel in programInView — dieselbe gilt beim Speichern.
+    const programs = dbPrograms.filter(programInView).map(dbProgramToBlob);
     return {
       ...data,
       sessions,
@@ -5844,7 +5951,7 @@ export default function App() {
       _isReadOnly: isReadOnlyView,
       _hasCoachingFeedback: hasCoachingFeedback,
     };
-  }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob, selectedAthleteId, myAthleteId, isReadOnlyView, isOwnAthlete, dbAthletes, session?.user?.id, hasCoachingFeedback]);
+  }, [data, dbSessions, dbCompetitions, dbPrograms, dbExercises, dbSessionToBlob, dbCompetitionToBlob, dbProgramToBlob, dbExerciseToBlob, selectedAthleteId, myAthleteId, isReadOnlyView, isOwnAthlete, dbAthletes, session?.user?.id, hasCoachingFeedback, programInView]);
 
   if (!authChecked || loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#F2F2F7] gap-5"
@@ -6205,13 +6312,18 @@ function IOSList({ children, header, footer }) {
 
 // iOS Listenelement mit Pfeil rechts
 function IOSListRow({ onClick, children, trailing, className = '' }) {
+  // <div role="button"> statt <button>: manche Zeilen tragen eigene Knöpfe
+  // (Kopieren/Löschen) — Knopf-in-Knopf ist ungültiges HTML.
   return (
-    <button
+    <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
-      className={'w-full text-left px-4 py-3.5 flex items-center gap-3 active:bg-[#D1D1D6]/40 transition ' + className}>
+      onKeyDown={onClick ? (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); onClick(e); } } : undefined}
+      className={'w-full text-left px-4 py-3.5 flex items-center gap-3 active:bg-[#D1D1D6]/40 transition ' + (onClick ? 'cursor-pointer ' : '') + className}>
       <div className="flex-1 min-w-0">{children}</div>
       {trailing !== undefined ? trailing : <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC] shrink-0" />}
-    </button>
+    </div>
   );
 }
 
@@ -6780,11 +6892,9 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
         const ef = (ref && ref.endergebnis != null) ? Number(ref.endergebnis) : null;
         return ef != null ? { competition: c, final: ef, ded: null } : null;
       }
-      const t1 = calcTableResult(program, c.table1, c.t1_schwierigkeit);
-      const t2 = calcTableResult(program, c.table2, c.t2_schwierigkeit);
       const final = compFinalScore(program, c);
-      // Gesamtabzug pro KG-Mittel — identische Berechnung wie in WettkampfView
-      const ded = Math.round(((t1.abzugGesamt + t2.abzugGesamt) / 2) * 100) / 100;
+      // Abzug wie er ins Endergebnis eingeht — identische Berechnung wie in WettkampfView
+      const ded = compTotalDeduction(program, c);
       return { competition: c, final, ded };
     }).filter(Boolean);
     const sorted = withResult.slice().filter(x => x.final != null).sort((a, b) => b.final - a.final);
@@ -7923,6 +8033,7 @@ function TrainingView({ data, setData, setView }) {
   const [runEditorOpen, setRunEditorOpen] = useState(false); // Trainings-Durchlauf werten
   const [runPdf, setRunPdf] = useState(null);                 // gewähltes PDF für den Durchlauf
   const [viewRunId, setViewRunId] = useState(null);           // Durchlauf-Detail
+  const [editRunId, setEditRunId] = useState(null);           // Durchlauf bearbeiten
   const [runsListOpen, setRunsListOpen] = useState(false);    // „Trainings-Wertungen"-Seite (Verwaltungsliste)
   const [runProgramFilter, setRunProgramFilter] = useState(''); // '' = alle Programme
   const [runRange, setRunRange] = useState('');              // '' = Gesamt; '28d/90d/180d/365d'; 'y2026'…
@@ -8451,13 +8562,16 @@ function TrainingView({ data, setData, setView }) {
         ? <div className="space-y-2">{exerciseGroups.map(renderExerciseGroup)}</div>
         : dayList();
     // Trainings-Durchlauf werten: gleicher Editor wie Wettkämpfe, aber kind='training'.
-  if (runEditorOpen) {
+  // Neu (runEditorOpen) oder vorhandene Wertung bearbeiten (editRunId) — derselbe Editor.
+  const editingRun = editRunId ? (data.competitions || []).find(x => x.id === editRunId) : null;
+  if (runEditorOpen || editingRun) {
     return <WettkampfEditor
-      competition={null}
+      competition={editingRun}
       kind="training"
-      initialPdf={runPdf}
+      initialPdf={editingRun ? null : runPdf}
       programs={(data.programs || []).filter(p => p.owner_id != null)}
       athletes={[]}
+      defaultAthleteId={data._viewingAthleteId || null}
       existingExercises={data.exercises || []}
       existingCompetitions={(data.competitions || []).filter(c => (c.kind || 'wettkampf') === 'training')}
       onSave={(payload) => {
@@ -8466,8 +8580,9 @@ function TrainingView({ data, setData, setView }) {
         const exists = full.find(x => x.id === c.id);
         setData({ ...data, competitions: exists ? full.map(x => x.id === c.id ? c : x) : [...full, c] });
         setRunEditorOpen(false);
+        setEditRunId(null);
       }}
-      onCancel={() => { setRunPdf(null); setRunEditorOpen(false); }}
+      onCancel={() => { setRunPdf(null); setRunEditorOpen(false); setEditRunId(null); }}
     />;
   }
   if (viewRunId) {
@@ -8478,7 +8593,7 @@ function TrainingView({ data, setData, setView }) {
         program={(data.programs || []).find(p => p.id === c.program_id)}
         athlete={null}
         onBack={() => setViewRunId(null)}
-        onEdit={undefined}
+        onEdit={data._isReadOnly ? undefined : () => setEditRunId(c.id)}
         onDelete={data._isReadOnly ? undefined : () => {
           if (!confirm('„' + (c.name || 'Training') + '" wird in den Papierkorb verschoben und ist dort 30 Tage wiederherstellbar.')) return;
           setData({ ...data, competitions: (data.competitions || []).filter(x => x.id !== c.id) });
@@ -8497,9 +8612,7 @@ function TrainingView({ data, setData, setView }) {
     { const seen = new Set(); for (const c of baseRuns) { const pid = c.program_id; if (pid && !seen.has(pid)) { seen.add(pid); runPrograms.push({ id: pid, name: (programMap.get(pid) && programMap.get(pid).name) || 'Training' }); } } }
     const dedOf = (c) => {
       const p = programForCompetition(c, programMap); if (!p) return 0;
-      const t1 = calcTableResult(p, c.table1, c.t1_schwierigkeit);
-      const t2 = calcTableResult(p, c.table2, c.t2_schwierigkeit);
-      return (t1.abzugGesamt + t2.abzugGesamt) / 2;
+      return compTotalDeduction(p, c) || 0;
     };
     const aufOf = (c) => { const p = programForCompetition(c, programMap); return p ? (p.exercises || []).reduce((s, e) => s + Number(e.points || 0), 0) : 0; };
     // Jahre, die in den Wertungen vorkommen (für den Zeitraum-Filter)
@@ -11836,33 +11949,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
   // Über ALLE Bereiche (gesamt) — steuert, ob der Block überhaupt gezeigt wird, damit
   // der Bereichs-Umschalter sichtbar bleibt, auch wenn der gewählte Bereich leer ist.
   const anyCompStats = calcExerciseCompetitionStats(exercise, data.programs || [], data.competitions || []);
-  const compList = (() => {
-    const programMap = new Map((data.programs || []).map(p => [p.id, p]));
-    const matches = (ex) => {
-      if (exercise.uci_code && ex.code) return exercise.uci_code === ex.code;
-      return (ex.name || '').trim().toLowerCase() === (exercise.name || '').trim().toLowerCase()
-        && Number(ex.points || 0) === Number(exercise.points || 0);
-    };
-    const result = [];
-    for (const comp of scopedComps) {
-      const program = programMap.get(comp.program_id);
-      if (!program || !program.exercises) continue;
-      program.exercises.forEach((ex, idx) => {
-        if (!matches(ex)) return;
-        const e1 = (comp.table1 || [])[idx] || {};
-        const e2 = (comp.table2 || [])[idx] || {};
-        result.push({
-          competition: comp,
-          k1cross: Number(e1.cross || 0), k1wave: Number(e1.wave || 0), k1bar: Number(e1.bar || 0), k1circle: Number(e1.circle || 0),
-          k2cross: Number(e2.cross || 0), k2wave: Number(e2.wave || 0), k2bar: Number(e2.bar || 0), k2circle: Number(e2.circle || 0),
-          k1schwPct: Number(e1.schwPct || 0), k2schwPct: Number(e2.schwPct || 0),
-          k1takt: Number(e1.taktischePunkte || 0), k2takt: Number(e2.taktischePunkte || 0),
-        });
-      });
-    }
-    result.sort((a, b) => (b.competition.date || '').localeCompare(a.competition.date || ''));
-    return result;
-  })();
+  const compList = exerciseCompRows(exercise, data.programs || [], scopedComps);
 
   // Verbindliche Status-Farbsemantik (app-weit identisch zu KPI-Karten/Labels).
   const STATUS = { success: '#34C759', hit: '#FF9F0A', danger: '#FF453A' };
@@ -12070,15 +12157,15 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                 <div className="pt-2 border-t border-slate-100 space-y-2">
                   <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium">Pro Wettkampf</div>
                   {compList.map((c, i) => {
-                    const xSum = c.k1cross + c.k2cross, wSum = c.k1wave + c.k2wave, bSum = c.k1bar + c.k2bar, cSum = c.k1circle + c.k2circle;
+                    const xSum = c.sumCross, wSum = c.sumWave, bSum = c.sumBar, cSum = c.sumCircle;
                     const totalSymbols = xSum + wSum + bSum + cSum;
-                    const schwPct = Math.max(c.k1schwPct, c.k2schwPct), taktPts = Math.max(c.k1takt, c.k2takt);
+                    const schwPct = c.maxSchwPct, taktPts = c.maxTakt;
                     const hasMod = schwPct > 0 || taktPts > 0;
                     return (
                       <div key={i} className="flex items-start justify-between gap-2 text-sm py-1">
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{c.competition.name}</div>
-                          <div className="text-xs text-slate-500 tabular-nums">{c.competition.date}</div>
+                          <div className="text-xs text-slate-500 tabular-nums">{formatDateShort(c.competition.date)}</div>
                         </div>
                         <div className="flex flex-wrap gap-1 text-xs justify-end shrink-0 max-w-[55%]">
                           {totalSymbols === 0 && !hasMod ? <span className="text-emerald-700 font-medium">✓ sauber</span> : (
@@ -12245,33 +12332,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
   const compStats = calcExerciseCompetitionStats(exercise, data.programs || [], scopedComps);
 
   // Liste aller Wettkämpfe mit dieser Übung (für die eingeklappte Sektion)
-  const compList = (() => {
-    const programMap = new Map((data.programs || []).map(p => [p.id, p]));
-    const matches = (ex) => {
-      if (exercise.uci_code && ex.code) return exercise.uci_code === ex.code;
-      return (ex.name || '').trim().toLowerCase() === (exercise.name || '').trim().toLowerCase()
-        && Number(ex.points || 0) === Number(exercise.points || 0);
-    };
-    const result = [];
-    for (const comp of scopedComps) {
-      const program = programMap.get(comp.program_id);
-      if (!program || !program.exercises) continue;
-      program.exercises.forEach((ex, idx) => {
-        if (!matches(ex)) return;
-        const e1 = (comp.table1 || [])[idx] || {};
-        const e2 = (comp.table2 || [])[idx] || {};
-        result.push({
-          competition: comp,
-          k1cross: Number(e1.cross || 0), k1wave: Number(e1.wave || 0), k1bar: Number(e1.bar || 0), k1circle: Number(e1.circle || 0),
-          k2cross: Number(e2.cross || 0), k2wave: Number(e2.wave || 0), k2bar: Number(e2.bar || 0), k2circle: Number(e2.circle || 0),
-          k1schwPct: Number(e1.schwPct || 0), k2schwPct: Number(e2.schwPct || 0),
-          k1takt: Number(e1.taktischePunkte || 0), k2takt: Number(e2.taktischePunkte || 0),
-        });
-      });
-    }
-    result.sort((a, b) => (b.competition.date || '').localeCompare(a.competition.date || ''));
-    return result;
-  })();
+  const compList = exerciseCompRows(exercise, data.programs || [], scopedComps);
 
   // Trend-Chip im Hero: Richtung der letzten 4 Wochen.
   const delta = vm.successDelta;
@@ -12634,15 +12695,15 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                 <div className="pt-2 border-t border-slate-100 space-y-2">
                   <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium">Pro Wettkampf</div>
                   {compList.map((c, i) => {
-                    const xSum = c.k1cross + c.k2cross, wSum = c.k1wave + c.k2wave, bSum = c.k1bar + c.k2bar, cSum = c.k1circle + c.k2circle;
+                    const xSum = c.sumCross, wSum = c.sumWave, bSum = c.sumBar, cSum = c.sumCircle;
                     const totalSymbols = xSum + wSum + bSum + cSum;
-                    const schwPct = Math.max(c.k1schwPct, c.k2schwPct), taktPts = Math.max(c.k1takt, c.k2takt);
+                    const schwPct = c.maxSchwPct, taktPts = c.maxTakt;
                     const hasMod = schwPct > 0 || taktPts > 0;
                     return (
                       <div key={i} className="flex items-start justify-between gap-2 text-sm py-1">
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{c.competition.name}</div>
-                          <div className="text-xs text-slate-500 tabular-nums">{c.competition.date}</div>
+                          <div className="text-xs text-slate-500 tabular-nums">{formatDateShort(c.competition.date)}</div>
                         </div>
                         <div className="flex flex-wrap gap-1 text-xs justify-end shrink-0 max-w-[55%]">
                           {totalSymbols === 0 && !hasMod ? <span className="text-emerald-700 font-medium">✓ sauber</span> : (
@@ -12962,7 +13023,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
   const statAvg = (a) => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
   const statDeds = (data.competitions || [])
     .filter(c => (c.kind || 'wettkampf') !== 'training' && inStatRange(c.date))
-    .map(c => { const p = programForCompetition(c, statPrograms); if (!p) return null; const t1 = calcTableResult(p, c.table1, c.t1_schwierigkeit); const t2 = calcTableResult(p, c.table2, c.t2_schwierigkeit); return (t1.abzugGesamt + t2.abzugGesamt) / 2; })
+    .map(c => compTotalDeduction(programForCompetition(c, statPrograms), c))
     .filter(v => v != null);
   const statSessions = (data.sessions || []).filter(s => inStatRange(s.date));
   const statStreak = trainingWeekStreak(data.sessions || []);
@@ -12976,9 +13037,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
   const statDedSeries = statCompsWk
     .map(c => {
       const p = programForCompetition(c, statPrograms);
-      const t1 = calcTableResult(p, c.table1, c.t1_schwierigkeit);
-      const t2 = calcTableResult(p, c.table2, c.t2_schwierigkeit);
-      return { date: c.date || '', name: c.name || '', ded: (t1.abzugGesamt + t2.abzugGesamt) / 2 };
+      return { date: c.date || '', name: c.name || '', ded: compTotalDeduction(p, c) || 0 };
     })
     .sort((a, b) => a.date.localeCompare(b.date));
   // Ø Abzug je Übung (Wettkampf, im Zeitraum) — sortiert die Übungsliste.
@@ -14059,8 +14118,15 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
         return norm(a.name) === norm(b.name) && programPointSeq(a) === programPointSeq(b)
           && (a.exercises || []).length === (b.exercises || []).length;
       };
-      const dup = list.find(p => p.id !== prog.id && ownsProgramForWrite(p, myUserId) && sameContent(p, prog));
-      if (dup) return; // identisches Programm existiert bereits → wiederverwenden
+      // Nur innerhalb derselben Sportler-Zuordnung: dasselbe Programm für einen
+      // zweiten Sportler ist gewollt, kein Duplikat.
+      const sameAthlete = (a, b) => (a.athlete_id || null) === (b.athlete_id || null);
+      const dup = list.find(p => p.id !== prog.id && ownsProgramForWrite(p, myUserId) && sameAthlete(p, prog) && sameContent(p, prog));
+      if (dup) {
+        // Nicht still verwerfen — sonst wirkt „Fertig" wie kaputt.
+        alert('„' + (dup.name || 'Programm') + '" hat schon genau diese Übungen — es wurde kein zweites Programm angelegt. Ändere mindestens eine Übung oder ordne es einem anderen Sportler zu.');
+        return false;   // Editor bleibt offen, nichts geht verloren
+      }
     }
     // owner_id sicherstellen: vom Bestand übernehmen, sonst = ich. Ohne owner_id
     // fiele das Programm aus der owner-gefilterten Liste („weg nach Sichern").
@@ -14110,7 +14176,8 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
     return <ProgrammEditor
       program={editing}
       athletes={dbAthletes}
-      onSave={(p) => { upsert(p); setShowNew(false); setEditId(null); setDupProgram(null); }}
+      defaultAthleteId={data._viewingAthleteId || null}
+      onSave={(p) => { if (upsert(p) === false) return; setShowNew(false); setEditId(null); setDupProgram(null); }}
       onCancel={() => { setShowNew(false); setEditId(null); setDupProgram(null); }}
       onDelete={editId ? () => { const id = editId; setShowNew(false); setEditId(null); setTimeout(() => remove(id), 0); } : undefined}
     />;
@@ -14291,7 +14358,7 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
         <>
           {currentProgram ? (
             <>
-              <IOSList header="Aktuelles Programm" footer={lastCompetition ? `Vom Wettkampf am ${lastCompetition.date || '—'}` : null}>
+              <IOSList header="Aktuelles Programm" footer={lastCompetition ? `Vom Wettkampf am ${formatDateShort(lastCompetition.date) || '—'}` : null}>
                 {renderProgramRow(currentProgram)}
               </IOSList>
               {otherPrograms.length > 0 && (
@@ -14338,7 +14405,7 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
             const positions = stats.count || 0;
             const meta = (ex.uci_code ? ('Nr. ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : ''));
             const statsLine = stats.wettkaempfe > 0
-              ? (stats.wettkaempfe + ' Wettk' + (stats.wettkaempfe === 1 ? '' : 'ä') + 'mpf' + (stats.wettkaempfe === 1 ? '' : 'e') + ' · ' + positions + (positions === 1 ? ' Wertung' : ' Wertungen'))
+              ? (stats.wettkaempfe + (stats.wettkaempfe === 1 ? ' Wettkampf' : ' Wettkämpfe') + ' · ' + positions + (positions === 1 ? ' Wertung' : ' Wertungen'))
               : (inCurrent ? 'Noch keine Daten' : '');
             return (
               <IOSListRow
@@ -14420,9 +14487,9 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
         return (
           <DeleteConfirmModal
             title="Programm löschen?"
-            message={'„' + p.name + '" wirklich löschen?'
+            message={'„' + p.name + '" wird in den Papierkorb verschoben und ist dort 30 Tage wiederherstellbar.'
               + (linked > 0
-                ? ' ' + linked + ' Wettkampf' + (linked === 1 ? '' : 'e') + ' nutzen dieses Programm. Die Endergebnisse bleiben gespeichert; die Übungs-Einzelwerte werden über den im Wettkampf gesicherten Programm-Schnappschuss weiter angezeigt.'
+                ? ' ' + linked + (linked === 1 ? ' Wettkampf nutzt' : ' Wettkämpfe nutzen') + ' dieses Programm. Die Endergebnisse bleiben gespeichert; die Übungs-Einzelwerte werden über den im Wettkampf gesicherten Programm-Schnappschuss weiter angezeigt.'
                 : '')}
             onConfirm={() => {
               const id = confirmDeleteId;
@@ -14450,7 +14517,7 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
 // =============================================================
 // PROGRAMM-EDITOR
 // =============================================================
-function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [] }) {
+function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], defaultAthleteId = null }) {
   const { t } = useI18n();
   const [confirmDel, setConfirmDel] = useState(false);
   const [name, setName] = useState((program && program.name) || '');
@@ -14458,7 +14525,8 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [] }) 
   const [exercises, setExercises] = useState((program && program.exercises) || []);
   // Ein Programm gehoert zu EINEM Sportler — ohne Zuordnung sahen alle Sportler
   // eines Besitzers dieselben Programme (Paritaet zur nativen App).
-  const [athleteId, setAthleteId] = useState((program && program.athlete_id) || null);
+  // Neues Programm: gehört wie nativ dem oben gewählten Sportler.
+  const [athleteId, setAthleteId] = useState(program ? (program.athlete_id || null) : defaultAthleteId);
   // Altersklasse für Reglement-Validierung. Wird mit dem Programm
   // gespeichert, damit der Validator beim Bearbeiten konsistent prüft.
   const [ageClass, setAgeClass] = useState((program && program.ageClass) || 'elite');
@@ -14697,7 +14765,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [] }) 
               {exercises.map((e, idx) => {
                 const hasError = errorIndexSet.has(idx);
                 return (
-                  <div key={e.id} className={
+                  <div key={e.id || idx} className={
                     (idx < exercises.length - 1 ? 'border-b border-[#C6C6C8]/40 ' : '') +
                     (hasError ? 'bg-rose-50/60' : (e.marked ? 'bg-[#3B82F6]/15' : ''))
                   }>
@@ -15184,6 +15252,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
       competition={editing}
       programs={programs}
       athletes={athletes}
+      defaultAthleteId={data._viewingAthleteId || null}
       existingExercises={data.exercises || []}
       existingCompetitions={competitions}
       initialPdf={pendingPdf}
@@ -15228,11 +15297,9 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
     const snapEx = c.program_snapshot || (ref && ref.program_snapshot) || null;
     const program = programs.find(p => p.id === c.program_id)
       || (snapEx && snapEx.length ? { name: 'Gespeichertes Programm', exercises: snapEx } : null);
-    const t1 = program ? calcTableResult(program, c.table1, c.t1_schwierigkeit) : null;
-    const t2 = program ? calcTableResult(program, c.table2, c.t2_schwierigkeit) : null;
     const final = program ? compFinalScore(program, c)
       : (ref && ref.endergebnis != null ? Number(ref.endergebnis) : null);
-    const ded = (t1 && t2) ? Math.round(((t1.abzugGesamt + t2.abzugGesamt) / 2) * 100) / 100
+    const ded = program ? compTotalDeduction(program, c)
       : (ref && ref.kg1_gesamt != null && ref.kg2_gesamt != null
         ? Math.round(((Number(ref.kg1_gesamt) + Number(ref.kg2_gesamt)) / 2) * 100) / 100 : null);
     // Ø-Abzug pro Übung (KG-gemittelt) für die Kennzeichnung an der Karte.
@@ -15856,8 +15923,12 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
   // Per Portal an <body>, damit `fixed inset-0` wirklich den ganzen Viewport
   // deckt — sonst richtet sich der Overlay an einem transformierten Vorfahren
   // (Editor-Container) aus und scrollt/leuchtet der Inhalt darunter durch.
+  // bg-[#F2F2F7] ist die Vollbild-Farbe der App (im Dunkelmodus deckend #0B0B0D).
+  // Vorher bg-slate-50 + dark:… — `dark:` folgt der SYSTEM-Einstellung, die App aber
+  // data-theme, und die globale Umschreibung machte die Fläche zu 4 % Weiß: im
+  // Dunkelmodus schien das Formular durch (Fehler, 02.10.2026).
   return createPortal(
-    <div className="fixed inset-0 z-[60] bg-slate-50 dark:bg-[#0b0b0d] flex flex-col overscroll-none">
+    <div className="fixed inset-0 z-[60] bg-[#F2F2F7] flex flex-col overscroll-none">
       {/* Kopf */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-black/5 dark:border-white/10 shrink-0">
         <button onClick={() => (idx > 0 ? setIdx(idx - 1) : onClose())} className="text-[#007AFF] text-[17px] active:opacity-60 px-1">
@@ -15979,17 +16050,20 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
   );
 }
 
-function WettkampfEditor({ competition, programs, athletes, existingExercises, existingCompetitions, onSave, onCancel, initialPdf = null, kind = 'wettkampf' }) {
+function WettkampfEditor({ competition, programs, athletes, existingExercises, existingCompetitions, onSave, onCancel, initialPdf = null, kind = 'wettkampf', defaultAthleteId = null }) {
   const { t } = useI18n();
   const isNew = !competition;
 
   // Draft-Persistierung: alle Form-Felder werden bei Änderung in localStorage
   // gespiegelt, damit ein Tab-Wechsel oder App-Reload nichts wegwirft.
   // Beim Speichern + bewussten Verwerfen wird der Draft gelöscht.
-  const DRAFT_KEY = 'artcyc:wk-draft:' + (competition?.id || 'new');
+  // „v2:" bei bestehenden Wettkämpfen: Entwürfe aus der Zeit, als der Editor die
+  // Zeilen falsch zugeordnet hat, sollen nicht wiederhergestellt werden.
+  const DRAFT_KEY = 'artcyc:wk-draft:' + (competition?.id ? 'v2:' + competition.id : 'new');
   const draftRef = useRef(null);
   if (draftRef.current === null) {
     try {
+      if (competition?.id) localStorage.removeItem('artcyc:wk-draft:' + competition.id);
       const raw = localStorage.getItem(DRAFT_KEY);
       draftRef.current = raw ? JSON.parse(raw) : false;
     } catch {
@@ -16006,25 +16080,48 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
   const [location, setLocation] = useState(() => initVal('location', (competition && competition.location) || ''));
   const [host, setHost] = useState(() => initVal('host', (competition && competition.host) || ''));
   const [startNr, setStartNr] = useState(() => initVal('startNr', (competition && competition.start_nr) || ''));
-  const [athleteId, setAthleteId] = useState(() => initVal('athleteId', (competition && competition.athlete_id) || ((athletes || [])[0] && (athletes || [])[0].id) || ''));
-  const [programId, setProgramId] = useState(() => initVal('programId', (competition && competition.program_id) || (programs[0] && programs[0].id) || ''));
+  // Sportler = der oben ausgewählte (wie nativ). Gespeichert wird nur dessen
+  // Datenbestand — ein anderer Sportler hier ginge beim Speichern still verloren.
+  const [athleteId, setAthleteId] = useState(() => (competition && competition.athlete_id) || defaultAthleteId
+    || initVal('athleteId', ((athletes || [])[0] && (athletes || [])[0].id) || ''));
+  // Neues Blatt: zuletzt genutztes Programm dieses Sportlers, sonst das erste.
+  const lastUsedProgramId = (() => {
+    const ids = new Set(programs.map(p => p.id));
+    const last = (existingCompetitions || []).filter(c => c && ids.has(c.program_id))
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
+    return (last && last.program_id) || (programs[0] && programs[0].id) || '';
+  })();
+  const [programId, setProgramId] = useState(() => initVal('programId', competition ? (competition.program_id || '') : lastUsedProgramId));
   // Beim PDF-Import: neue Programme und Übungen werden hier zwischengespeichert,
   // erst beim Speichern committet (eine atomare Datenänderung statt mehrere)
   const [pendingNewProgram, setPendingNewProgram] = useState(() => initVal('pendingNewProgram', null));
   const [pendingNewExercises, setPendingNewExercises] = useState(() => initVal('pendingNewExercises', []));
 
+  // Übungen, die am Wettkampf selbst hängen (Maute-Import, Scan, Programm gelöscht) —
+  // ohne diesen Rückfall ließ sich so ein Wettkampf weder anzeigen noch speichern.
+  const snapshotProgram = competition ? programForCompetition({ ...competition, program_id: null }, null) : null;
+  const linkedProgram = programs.find(p => p.id === programId) || null;
   // pendingNewProgram hat Vorrang — neu erstelltes Programm aus PDF wird angezeigt, bevor es gespeichert ist
-  const program = pendingNewProgram || programs.find(p => p.id === programId);
+  const program = pendingNewProgram || linkedProgram
+    || ((snapshotProgram && (!programId || programId === (competition && competition.program_id))) ? snapshotProgram : null);
 
-  const initEntries = (existing) => {
-    if (!program) return [];
-    const rows = program.exercises.map(ex => {
-      const found = existing && existing.find(e => e.exerciseId === ex.id && !e.edge);
-      return found || { exerciseId: ex.id, included: true, cross: 0, wave: 0, bar: 0, circle: 0, schwPct: 0, taktischePunkte: 0 };
+  // Zuordnung Eintrag ↔ Übung wie überall sonst (calcTableResult, nativ): über die
+  // Position. Über die ID nur, wenn BEIDE Seiten durchgehend IDs tragen — die meisten
+  // Programme haben keine Übungs-IDs, dann wäre undefined === undefined überall wahr
+  // und jede Zeile bekäme die Abzüge der ersten.
+  const initEntriesFor = (prog, existing) => {
+    if (!prog) return [];
+    const base = (existing || []).filter(e => e && !e.edge);
+    const byId = base.length > 0 && prog.exercises.every(ex => ex && ex.id) && base.every(e => e.exerciseId);
+    const rows = prog.exercises.map((ex, idx) => {
+      const found = byId ? base.find(e => e.exerciseId === ex.id) : base[idx];
+      if (found) return ex.id ? { ...found, exerciseId: ex.id } : { ...found };
+      return { exerciseId: ex.id, included: true, cross: 0, wave: 0, bar: 0, circle: 0, schwPct: 0, taktischePunkte: 0 };
     });
     // Anfahren/Abfahren hinten anhängen (siehe RANDABZÜGE oben).
     return withEdgeRows(rows, existing);
   };
+  const initEntries = (existing) => initEntriesFor(program, existing);
 
   const [table1, setTable1] = useState(() => initVal('table1', initEntries(competition && competition.table1)));
   const [table2, setTable2] = useState(() => initVal('table2', initEntries(competition && competition.table2)));
@@ -16539,8 +16636,9 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
   const save = () => {
     if (!name.trim()) return;
     // Wenn ein neues Programm aus PDF erzeugt wurde, dessen ID nehmen
+    // (Ohne verknüpftes Programm — Übungen am Wettkampf selbst — bleibt program_id wie es war.)
     const finalProgramId = pendingNewProgram ? pendingNewProgram.id : programId;
-    if (!finalProgramId) return;
+    if (!program) return;
     clearDraft(); // erfolgreich gespeichert → Draft entsorgen
     onSave({
       competition: {
@@ -16550,7 +16648,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
         date, location, host,
         start_nr: startNr,
         athlete_id: athleteId || null,
-        program_id: finalProgramId,
+        program_id: finalProgramId || null,
         table1, table2,
         // KG-Anzahl + Modus + Tabellen 3/4 aus dem Editor-State (pro KG / Gesamt).
         table3: abzugGesamt ? null : (N >= 3 ? table3 : ((competition && competition.table3) || null)),
@@ -16566,8 +16664,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           ...(pdfRef || {}),
           program_snapshot: (program && program.exercises) ? program.exercises
             : ((pdfRef && pdfRef.program_snapshot) || null),
-          program_name: program ? program.name
-            : ((pdfRef && pdfRef.program_name) || null),
+          program_name: (program && program.name) || (pdfRef && pdfRef.program_name) || null,
         },
         created: (competition && competition.created) || new Date().toISOString()
       },
@@ -16625,7 +16722,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
         <button onClick={handleCancel} className="text-[17px] text-[#007AFF] active:opacity-60 px-1">
           {t('common.cancel')}
         </button>
-        <h1 className="font-semibold text-[17px] truncate px-2">{isNew ? t('competition.scoreSheet') : t('competition.editTitle')}</h1>
+        <h1 className="font-semibold text-[17px] truncate px-2">{isNew ? t('competition.scoreSheet') : ((competition.kind || 'wettkampf') === 'training' ? 'Durchlauf bearbeiten' : t('competition.editTitle'))}</h1>
         <button onClick={save} disabled={!canSave}
           className="text-[17px] text-[#FF9500] font-semibold active:opacity-60 disabled:opacity-30 px-1">
           {t('common.save')}
@@ -16700,10 +16797,21 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
               <div className="text-[10px] text-slate-400 uppercase tracking-wide leading-tight">{t('competition.tabled')}</div>
               <div className="text-[17px] font-bold leading-tight tabular-nums">{(t1 && t1.aufgestellt || 0).toFixed(2)}</div>
             </div>
-            <div className="text-center">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wide leading-tight">KG 1 · 2</div>
-              <div className="text-[13px] font-bold leading-tight tabular-nums">
-                {t1 && t1.ergebnis.toFixed(2)}<span className="text-slate-500 mx-1">·</span>{t2 && t2.ergebnis.toFixed(2)}
+            {/* Mitte je nach Modus: Gesamt-Abzug (ein Bogen für alle KG) bzw. die
+                Ergebnisse der tatsächlich gewerteten Kampfgerichte (1–4). */}
+            <div className="text-center min-w-0">
+              <div className="text-[10px] text-slate-400 uppercase tracking-wide leading-tight">
+                {abzugGesamt ? 'Gesamt-Abzug' : 'KG ' + Array.from({ length: N }, (_, k) => k + 1).join(' · ')}
+              </div>
+              <div className={'font-bold leading-tight tabular-nums ' + (N >= 3 && !abzugGesamt ? 'text-[11px]' : 'text-[13px]')}>
+                {abzugGesamt
+                  ? (t1 ? t1.abzugGesamt.toFixed(2) : '0.00')
+                  : kgResults.slice(0, N).map((r, k) => (
+                      <span key={k}>
+                        {k > 0 && <span className="text-slate-500 mx-1">·</span>}
+                        {r ? r.ergebnis.toFixed(2) : '–'}
+                      </span>
+                    ))}
               </div>
             </div>
             <div className="text-center">
@@ -16842,7 +16950,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
 
       {/* Stammdaten */}
       <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 space-y-3">
-        <h2 className="font-semibold mb-1">Wettkampf</h2>
+        <h2 className="font-semibold mb-1">{((competition ? (competition.kind || 'wettkampf') : kind) === 'training') ? 'Trainingsdurchlauf' : 'Wettkampf'}</h2>
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-medium text-slate-500 block mb-1">Name *</label>
@@ -16873,7 +16981,15 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
               placeholder="z.B. 117"
               className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
           </div>
-          {(athletes || []).length > 0 && (
+          {(athletes || []).length > 0 && (defaultAthleteId ? (
+            // Fest der oben gewählte Sportler — gewechselt wird oben in der Leiste.
+            <div>
+              <label className="text-xs font-medium text-slate-500 block mb-1">Sportler/Team</label>
+              <div className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-sm text-slate-700">
+                {((athletes || []).find(a => a.id === athleteId) || {}).name || '—'}
+              </div>
+            </div>
+          ) : (
             <div>
               <label className="text-xs font-medium text-slate-500 block mb-1">Sportler/Team</label>
               <select value={athleteId} onChange={e => setAthleteId(e.target.value)}
@@ -16882,16 +16998,44 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 {athletes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
-          )}
+          ))}
           <div>
             <label className="text-xs font-medium text-slate-500 block mb-1">Programm</label>
-            <div className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-sm text-slate-700">
-              {program ? (
-                <span><strong>{program.name}</strong> · {(program.exercises || []).length} Übungen</span>
-              ) : (
-                <span className="text-slate-400">Wird beim PDF-Import automatisch erkannt oder neu angelegt</span>
-              )}
-            </div>
+            {pendingNewProgram ? (
+              <div className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-sm text-slate-700">
+                <span><strong>{pendingNewProgram.name}</strong> · {(pendingNewProgram.exercises || []).length} Übungen</span>
+              </div>
+            ) : (programs.length > 0 || snapshotProgram) ? (
+              // Auswahl wie nativ; Punktsumme dazu, weil Namen oft nicht eindeutig sind.
+              // Abzüge bleiben beim Wechsel nach Position erhalten (wie nativ resizeTables).
+              <select value={linkedProgram ? linkedProgram.id : (program ? '__snapshot__' : '')}
+                onChange={e => {
+                  const v = e.target.value;
+                  const nextId = v === '__snapshot__' ? ((competition && competition.program_id) || '') : v;
+                  const nextProg = programs.find(p => p.id === nextId) || (v === '__snapshot__' ? snapshotProgram : null);
+                  setProgramId(nextId);
+                  setTable1(prev => initEntriesFor(nextProg, prev));
+                  setTable2(prev => initEntriesFor(nextProg, prev));
+                  setTable3(prev => initEntriesFor(nextProg, prev));
+                  setTable4(prev => initEntriesFor(nextProg, prev));
+                }}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
+                {!program && <option value="">Programm wählen …</option>}
+                {snapshotProgram && (
+                  <option value="__snapshot__">
+                    {(snapshotProgram.name || 'Übungen vom Wertungsbogen') + ' · ' + (snapshotProgram.exercises || []).length + ' Übungen'}
+                  </option>
+                )}
+                {programs.map(p => {
+                  const pts = (p.exercises || []).reduce((s, ex) => s + Number((ex && ex.points) || 0), 0);
+                  return <option key={p.id} value={p.id}>{(p.name || 'Programm') + ' · ' + (Math.round(pts * 100) / 100) + ' Pkt'}</option>;
+                })}
+              </select>
+            ) : (
+              <div className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-sm text-slate-400">
+                Noch kein Programm — lege eins unter Wettkampf › Programme an oder importiere oben ein PDF.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -16972,7 +17116,8 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                       .map(t => entryMarks((t || [])[idx], ex, N))} />
                   </div>
                   <span className={'text-xs font-semibold tabular-nums shrink-0 pt-0.5 ' + (any ? 'text-[#FF9500]' : 'text-slate-300 dark:text-slate-600')}>
-                    {any ? parts.map(v => '−' + v.toFixed(1)).join(' / ') : '—'}
+                    {/* Zwei Stellen, sobald Schwierigkeits-% dabei ist (0.97 nicht als 1.0). */}
+                    {any ? parts.map(v => '−' + (Math.abs(v * 10 - Math.round(v * 10)) < 1e-6 ? v.toFixed(1) : v.toFixed(2))).join(' / ') : '—'}
                   </span>
                   <ChevronRight size={16} className="text-slate-300 dark:text-slate-600 shrink-0 mt-1" />
                 </button>
@@ -19959,7 +20104,9 @@ function ExportWettkampf({ data, defaultName = '' }) {
     rows.push(r0, r1, r2);
     // Zeilen = Vereinigung aller Übungen; i.P. je Wettkampf (1, wenn in dessen Programm).
     const U = unionOf(selected);
-    const compMeta = selected.map(c => { const m = new Map(); exercisesFor(c).forEach(ex => { const k = mauteExKey(ex); if (k && !m.has(k)) m.set(k, ex); }); return m; });
+    // Merkt sich neben der Übung ihre Position: die Wertungstabelle ist über die
+    // Position zugeordnet (die meisten Programme haben keine Übungs-IDs).
+    const compMeta = selected.map(c => { const m = new Map(); exercisesFor(c).forEach((ex, idx) => { const k = mauteExKey(ex); if (k && !m.has(k)) m.set(k, { ...ex, _idx: idx }); }); return m; });
     U.forEach(u => {
       const uk = mauteExKey(u);
       const row = [(u.nr ? u.nr + '. ' : '') + (u.name || ''), Number(u.points || 0).toFixed(1), ''];
@@ -19968,7 +20115,7 @@ function ExportWettkampf({ data, defaultName = '' }) {
         [1, 2].forEach(tNum => {
           if (!inProg) { row.push(0, '', '', '', '', '', '', '', ''); return; }
           const tableEntries = (tNum === 1 ? c.table1 : c.table2) || [];
-          const e = tableEntries.find(en => en.exerciseId === inProg.id) || { cross: 0, wave: 0, bar: 0, circle: 0 };
+          const e = tableEntries[inProg._idx] || { cross: 0, wave: 0, bar: 0, circle: 0 };
           row.push(1, e.cross || '', e.wave || '', e.bar || '', e.circle || '', '', '', '', '');
         });
       });
@@ -19992,12 +20139,11 @@ function ExportWettkampf({ data, defaultName = '' }) {
         fEnd.push(r.ergebnis.toFixed(2), '', '', '', '', '', '', '', '');
       });
     });
-    const fFinal = ['Endergebnis (Ø KG1+KG2)', '', ''];
+    // Wie überall: Endergebnis nach KG-Anzahl und Modus (nicht fest Ø KG1+KG2).
+    const fFinal = ['Endergebnis', '', ''];
     selected.forEach(c => {
       const pr = progFor(c);
-      const t1 = calcTableResult(pr, c.table1, c.t1_schwierigkeit);
-      const t2 = calcTableResult(pr, c.table2, c.t2_schwierigkeit);
-      fFinal.push(((t1.ergebnis + t2.ergebnis) / 2).toFixed(2), '', '', '', '', '', '', '', '');
+      fFinal.push((compFinalScore(pr, c) || 0).toFixed(2), '', '', '', '', '', '', '', '');
       fFinal.push('', '', '', '', '', '', '', '', '');
     });
     rows.push([], fAuf, fSchw, fAusf, fGes, fEnd, fFinal);
@@ -20465,14 +20611,22 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
     ? { name: snapName || 'Gespeichertes Programm', exercises: snapEx }
     : null);
 
-  const t1 = effProgram ? calcTableResult(effProgram, competition.table1, competition.t1_schwierigkeit) : null;
-  const t2 = effProgram ? calcTableResult(effProgram, competition.table2, competition.t2_schwierigkeit) : null;
+  // Kampfgerichte wie gewertet: Anzahl 1–4 und Modus. Im Gesamt-Modus gibt es nur
+  // EINEN Bogen (den befüllten), sonst je KG einen — vorher fest KG 1 + KG 2.
+  const kgN = Math.max(1, Math.min(4, Number(competition.kampfgerichte || 2)));
+  const gesamt = isEffectiveGesamt(competition);
+  const kgTables = [competition.table1, competition.table2, competition.table3, competition.table4];
+  const kgSchw = [competition.t1_schwierigkeit, competition.t2_schwierigkeit, 0, 0];
+  const gesamtIdx = tableHasContent(competition.table1) ? 0 : (tableHasContent(competition.table2) ? 1 : 0);
+  const kgRes = effProgram ? kgTables.map((tb, i) => calcTableResult(effProgram, tb, kgSchw[i])) : [];
+  const t1 = kgRes[0] || null;
   const finalScore = effProgram
     ? compFinalScore(effProgram, competition)
     : (ref && ref.endergebnis != null ? Number(ref.endergebnis) : null);
-
-  const entries = activeTable === 1 ? (competition.table1 || []) : (competition.table2 || []);
-  const result = activeTable === 1 ? t1 : t2;
+  const sheetIdx = gesamt ? gesamtIdx : Math.min(activeTable, kgN) - 1;
+  const entries = kgTables[sheetIdx] || [];
+  const result = kgRes[sheetIdx] || null;
+  const KG_COLORS = ['sky', 'emerald', 'violet', 'amber'];
 
   return (
     <div className="space-y-5">
@@ -20481,7 +20635,7 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold truncate">{competition.name}</h1>
           <p className="text-slate-500 text-sm">
-            {competition.date}{competition.location ? ' · ' + competition.location : ''}
+            {formatDateLong(competition.date)}{competition.location ? ' · ' + competition.location : ''}
           </p>
         </div>
         {effProgram && (
@@ -20542,7 +20696,7 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
       </div>
 
       {/* Ergebnis-Übersicht — farbige StatCards im Dashboard-Stil */}
-      {t1 && t2 && (
+      {t1 && (
         <div className="grid grid-cols-2 gap-3">
           <StatCard
             icon={Trophy}
@@ -20560,20 +20714,25 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
             color="violet"
             size="large"
           />
-          <StatCard
-            icon={BarChart3}
-            label={t('detail.kg1Score')}
-            value={t1.ergebnis.toFixed(2)}
-            sub={'-' + t1.abzugAusfuehrung.toFixed(2) + ' · -' + t1.abzugSchwierigkeit.toFixed(2)}
-            color="sky"
-          />
-          <StatCard
-            icon={BarChart3}
-            label={t('detail.kg2Score')}
-            value={t2.ergebnis.toFixed(2)}
-            sub={'-' + t2.abzugAusfuehrung.toFixed(2) + ' · -' + t2.abzugSchwierigkeit.toFixed(2)}
-            color="emerald"
-          />
+          {gesamt ? (
+            // Ein Bogen für alle Kampfgerichte: Abzug gesamt, im Ergebnis ÷ Anzahl KG.
+            <StatCard
+              icon={BarChart3}
+              label={kgN > 1 ? 'Gesamt-Abzug' : 'Abzug'}
+              value={kgRes[gesamtIdx].abzugGesamt.toFixed(2)}
+              sub={kgN > 1 ? '÷ ' + kgN + ' KG = ' + (kgRes[gesamtIdx].abzugGesamt / kgN).toFixed(2) : 'Ausführung ' + kgRes[gesamtIdx].abzugAusfuehrung.toFixed(2) + ' · Schw. ' + kgRes[gesamtIdx].abzugSchwierigkeit.toFixed(2)}
+              color="sky"
+            />
+          ) : kgRes.slice(0, kgN).map((r, i) => (
+            <StatCard
+              key={i}
+              icon={BarChart3}
+              label={t('detail.kg1Score').replace('1', String(i + 1))}
+              value={r.ergebnis.toFixed(2)}
+              sub={'Abzug ' + r.abzugAusfuehrung.toFixed(2) + ' · Schw. ' + r.abzugSchwierigkeit.toFixed(2)}
+              color={KG_COLORS[i]}
+            />
+          ))}
         </div>
       )}
 
@@ -20608,10 +20767,14 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
           bereits oben in den KPI-Karten; keine doppelte Ergebnis-Anzeige). */}
       {effProgram && (
         <>
-          <div className="space-y-2">
-            <div className="text-[12px] uppercase tracking-wide text-slate-400 px-1 font-medium">Einzelübungen je Kampfgericht</div>
-            <SegmentedControl value={activeTable} onChange={setActiveTable} options={[[1, 'Kampfgericht 1'], [2, 'Kampfgericht 2']]} />
-          </div>
+          {/* Umschalter nur, wenn es wirklich mehrere Bögen gibt. */}
+          {!gesamt && kgN > 1 && (
+            <div className="space-y-2">
+              <div className="text-[12px] uppercase tracking-wide text-slate-400 px-1 font-medium">Einzelübungen je Kampfgericht</div>
+              <SegmentedControl value={Math.min(activeTable, kgN)} onChange={setActiveTable}
+                options={Array.from({ length: kgN }, (_, i) => [i + 1, kgN > 2 ? 'KG ' + (i + 1) : t('detail.kg1Score').replace('1', String(i + 1))])} />
+            </div>
+          )}
 
           {/* Übungs-Liste read-only */}
           <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4">
@@ -20630,15 +20793,16 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
                 const exec = calcExerciseDeduction(e);
                 const schw = calcExerciseSchwierigkeit(e, ex);
                 const total = exec + schw;
-                const hasAnyValue = (e.cross || e.wave || e.bar || e.circle || e.schwPct);
+                // Boolesch — sonst rendert React bei lauter Nullen eine einzelne „0".
+                const hasAnyValue = !!(e.cross || e.wave || e.bar || e.circle || e.schwPct);
                 const isTaktisch = Number(e.taktischePunkte || 0) > 0 && Number(e.taktischePunkte) !== Number(ex.points);
                 return (
-                  <div key={ex.id}
+                  <div key={ex.id || idx}
                     className={'rounded-lg p-2.5 ' + (hasAnyValue ? 'bg-rose-50' : 'bg-slate-50')}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 text-xs flex-wrap">
-                          <span className="text-slate-500">#{ex.nr}</span>
+                          <span className="text-slate-500">#{ex.nr || idx + 1}</span>
                           {ex.code && <span className="text-[10px] text-slate-400">{ex.code}</span>}
                           <span className="text-slate-500">·</span>
                           {isTaktisch ? (
@@ -20721,10 +20885,12 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
 
       {/* Aktionen */}
       <div className="flex gap-2">
-        <button onClick={onEdit}
-          className="flex-1 bg-slate-900 text-white px-4 py-3 rounded-xl font-medium flex items-center justify-center gap-2">
-          <Edit2 size={16} /> Bearbeiten
-        </button>
+        {onEdit && (
+          <button onClick={onEdit}
+            className="flex-1 bg-slate-900 text-white px-4 py-3 rounded-xl font-medium flex items-center justify-center gap-2">
+            <Edit2 size={16} /> Bearbeiten
+          </button>
+        )}
         <button onClick={onBack}
           className="flex-1 bg-white border border-slate-300 px-4 py-3 rounded-xl font-medium">
           Zurück
