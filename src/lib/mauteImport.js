@@ -189,7 +189,7 @@ export function isTraining(c) {
 /// unbenutzte Spalte — die i.P.-Formeln schleppen nur die 1er mit.
 export function hasMarks(c) {
   return (c.exercises || []).some(e =>
-    e.cross + e.wave + e.bar + e.circle > 0 || e.p10 + e.p50 + e.p100 > 0 || e.t !== 0);
+    e.cross + e.wave + e.bar + e.circle > 0 || e.p10 + e.p50 + e.p100 > 0 || e.t > 0);
 }
 
 /// Wertungstabelle im Gesamt-Modus: Fehlerzeichen als Summe, %-Stufen als Liste
@@ -207,9 +207,10 @@ export function scoreEntries(c) {
       circle: e.circle > 0 ? e.circle : null,
       schwPct: hits.length ? hits.reduce((a, b) => a + b, 0) : null,
       schwHits: hits.length ? hits : null,
-      // T kann NEGATIV sein (taktische Übung tiefer gefahren als geplant) — Maute rechnet
-      // (Punkte + T); nur positive zu übernehmen kostete 0,50 Pkt bei Rubens Quali 2026.
-      taktischePunkte: e.t !== 0 ? e.points + e.t : null,
+      // Die T-Spalte trägt den ZUSCHLAG einer taktischen Aufwertung; der ist laut
+      // Reglement immer positiv (Abwertungen laufen über die %-Spalten). Ein negativer
+      // Wert ist ein Erfassungsfehler im Blatt und wird nicht übernommen.
+      taktischePunkte: e.t > 0 ? e.points + e.t : null,
       points: e.points,
       name: e.name,
       code: e.code || undefined,
