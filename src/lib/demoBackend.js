@@ -190,7 +190,7 @@ class Query {
     this.t = tableName; this.op = 'select'; this.payload = null; this.filters = [];
     this.orderBy = []; this.lim = null; this.rng = null; this.one = null; this.returning = false; this.opts = {};
   }
-  select() { if (this.op !== 'select') this.returning = true; return this; }
+  select(_cols, o = {}) { if (this.op !== 'select') this.returning = true; if (o.count) this.countMode = o.count; if (o.head) this.head = true; return this; }
   insert(v) { this.op = 'insert'; this.payload = v; return this; }
   upsert(v, opts = {}) { this.op = 'upsert'; this.payload = v; this.opts = opts; return this; }
   update(v) { this.op = 'update'; this.payload = v; return this; }
@@ -257,6 +257,8 @@ class Query {
     }
     if (this.rng) out = out.slice(this.rng[0], this.rng[1] + 1);
     if (this.lim != null) out = out.slice(0, this.lim);
+    // count/head wie supabase-js: Anzahl der Treffer, bei head ohne Zeilen.
+    if (this.countMode && this.op === 'select') return { data: this.head ? null : clone(out), count: out.length, error: null };
     const data = clone(out);
     if (this.op !== 'select' && !this.returning && !this.one) return { data: null, error: null };
     if (this.one === 'single') {

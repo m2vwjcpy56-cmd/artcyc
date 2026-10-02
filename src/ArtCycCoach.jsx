@@ -8477,7 +8477,7 @@ function TrainingView({ data, setData, setView }) {
         {pendingDeleteExercise && (
           <DeleteConfirmModal
             title="Übung löschen?"
-            message={'„' + pendingDeleteExercise.name + '" wirklich löschen? Erfasste Sessions bleiben erhalten.'}
+            message={'„' + pendingDeleteExercise.name + '" wird in den Papierkorb verschoben und ist dort 30 Tage wiederherstellbar. Erfasste Sessions bleiben erhalten.'}
             onConfirm={() => removeExercise(pendingDeleteExercise.id)}
             onCancel={() => setPendingDeleteExercise(null)}
           />
@@ -12898,6 +12898,13 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
     const dedSchw    = compStats.schwPts;
     const totalDeduction = dedSymbols + dedSchw;
     const avgDeduction = compStats.wettkaempfe > 0 ? totalDeduction / compStats.wettkaempfe : 0;
+    // Gezählt wird über Wettkämpfe UND Trainings-Wertungen — getrennt ausweisen (wie
+    // nativ Pokal/Trainings-Zähler), statt alles „× Wettkampf" zu nennen.
+    const nWk = compStats.wettkaempfe > 0
+      ? calcExerciseCompetitionStats(ex, data.programs || [], (data.competitions || []).filter(c => (c.kind || 'wettkampf') !== 'training')).wettkaempfe
+      : 0;
+    const nTr = compStats.wettkaempfe - nWk;
+    const countLabel = [nWk > 0 ? nWk + '× Wettkampf' : null, nTr > 0 ? nTr + '× Training' : null].filter(Boolean).join(' · ');
     const trainStats = calcExerciseTrainingStats(ex, data.sessions || []);
     const rateColor = trainStats.rate >= 80 ? 'text-[#34C759]'
       : trainStats.rate >= 60 ? 'text-[#FF9500]'
@@ -12928,7 +12935,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
           {compStats.wettkaempfe > 0 && (
             <>
               {Number(ex.points) > 0 && <span>·</span>}
-              <span>{compStats.wettkaempfe}× Wettkampf</span>
+              <span>{countLabel}</span>
               <span>·</span>
               {totalDeduction === 0
                 ? <span className="text-[#34C759]">Ø sauber ✓</span>
@@ -13000,7 +13007,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
         {pendingDelete && (
           <DeleteConfirmModal
             title="Übung löschen?"
-            message={'"' + pendingDelete.name + '" wirklich löschen? Erfasste Sessions bleiben erhalten.'}
+            message={'„' + pendingDelete.name + '" wird in den Papierkorb verschoben und ist dort 30 Tage wiederherstellbar. Erfasste Sessions bleiben erhalten.'}
             onConfirm={() => remove(pendingDelete.id)}
             onCancel={() => setPendingDelete(null)}
           />
@@ -13763,9 +13770,10 @@ function Erfassen({ data, setData, dbAthletes, onDone, selectedAthleteId = null 
   );
   // Sportler: der OBEN gewählte. Vorher immer der erste der Liste — wer für Lena
   // erfasste, speicherte ohne Blick aufs Feld bei sich selbst (Fehler, 02.10.2026).
-  const [athleteId, setAthleteId] = useState(bootDraft?.athleteId ??
-    ((selectedAthleteId && athletes.some(a => a.id === selectedAthleteId)) ? selectedAthleteId
-      : ((athletes[0] && athletes[0].id) || '')));
+  // Ist oben ein Sportler gewählt, ist er fest (auch gegen einen alten Entwurf).
+  const lockedAthlete = selectedAthleteId ? (athletes.find(a => a.id === selectedAthleteId) || null) : null;
+  const [athleteId, setAthleteId] = useState(lockedAthlete ? lockedAthlete.id : (bootDraft?.athleteId ??
+    ((athletes[0] && athletes[0].id) || '')));
   const [entries, setEntries] = useState(bootDraft?.entries || []);
   const [notes, setNotes] = useState(bootDraft?.notes || '');
   const [withRope, setWithRope] = useState(typeof bootDraft?.withRope === 'boolean' ? bootDraft.withRope : true);
@@ -13946,15 +13954,23 @@ function Erfassen({ data, setData, dbAthletes, onDone, selectedAthleteId = null 
           {athletes.length > 0 && (
             <div>
               <label className="text-sm font-medium block mb-1.5">{t('log.athlete')}</label>
-              <select value={athleteId} onChange={e => setAthleteId(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
-                <option value="">{t('log.athleteNone')}</option>
-                {athletes.map(a => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}{a.type === 'team' ? ' (Team)' : ''}
-                  </option>
-                ))}
-              </select>
+              {lockedAthlete ? (
+                // Fest der oben gewählte Sportler: gespeichert wird nur dessen Bestand —
+                // ein anderer Sportler hier ging beim Speichern still verloren.
+                <div className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-700">
+                  {lockedAthlete.name}{lockedAthlete.type === 'team' ? ' (Team)' : ''}
+                </div>
+              ) : (
+                <select value={athleteId} onChange={e => setAthleteId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
+                  <option value="">{t('log.athleteNone')}</option>
+                  {athletes.map(a => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}{a.type === 'team' ? ' (Team)' : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           )}
 
@@ -14212,7 +14228,7 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
         {pendingDeleteExercise && (
           <DeleteConfirmModal
             title="Übung löschen?"
-            message={'„' + pendingDeleteExercise.name + '" wirklich löschen? Erfasste Sessions bleiben erhalten.'}
+            message={'„' + pendingDeleteExercise.name + '" wird in den Papierkorb verschoben und ist dort 30 Tage wiederherstellbar. Erfasste Sessions bleiben erhalten.'}
             onConfirm={() => removeExercise(pendingDeleteExercise.id)}
             onCancel={() => setPendingDeleteExercise(null)}
           />
@@ -14901,7 +14917,10 @@ const WK_VIEW_STATE_KEY = 'artcyc:wk-view:v1';
 function BulkImportModal({ data, athletes, onApply, onClose }) {
   const [items, setItems] = useState([]); // { filename, parsed, duplicate, error, selected, athleteId }
   const [busy, setBusy] = useState(false);
-  const defaultAthleteId = (athletes && athletes[0] && athletes[0].id) || '';
+  // Fest der oben gewählte Sportler (wie Editor/Erfassen): gespeichert wird nur dessen
+  // Bestand — ein anderer Sportler je Datei ging beim Speichern still verloren.
+  const lockedAthleteId = (data && data._viewingAthleteId) || null;
+  const defaultAthleteId = lockedAthleteId || (athletes && athletes[0] && athletes[0].id) || '';
 
   const handleFiles = async (fileList) => {
     if (!fileList || fileList.length === 0) return;
@@ -15112,7 +15131,7 @@ function BulkImportModal({ data, athletes, onApply, onClose }) {
                           <span>Bereits importiert — „{item.duplicate.name}" am {formatDateShort(item.duplicate.date)}</span>
                         </div>
                       )}
-                      {athletes && athletes.length > 1 && (
+                      {!lockedAthleteId && athletes && athletes.length > 1 && (
                         <select value={item.athleteId} onChange={e => setAthlete(i, e.target.value)}
                           className="mt-2 text-xs bg-white dark:bg-white/10 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 w-full text-slate-900 dark:text-slate-100">
                           <option value="">— Sportler:in wählen —</option>
@@ -15486,7 +15505,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
                       <div className="min-w-0 flex-1">
                         <div className="text-[14px] font-medium truncate">{r.name}</div>
                         <div className="text-[12px] text-[#8E8E93]">
-                          {r.competitions}× Wettkampf
+                          {r.competitions}× {dedScope === 'training' ? 'Training' : dedScope === 'wettkampf' ? 'Wettkampf' : 'gewertet'}
                           {r.trainingRate != null && <> · Training <span className={r.trainingRate >= 80 ? 'text-emerald-600' : r.trainingRate >= 50 ? 'text-amber-600' : 'text-rose-600'}>{r.trainingRate}%</span></>}
                         </div>
                       </div>
@@ -18336,6 +18355,20 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
   const [moveSource, setMoveSource] = useState(null);
   const [moveSessions, setMoveSessions] = useState(true);
   const [moveComps, setMoveComps] = useState(true);
+  // Wie viel liegt bei der Quelle? Direkt aus der DB gezählt — die geladenen Listen
+  // enthalten nur den oben ausgewählten Sportler (vorher stand bei anderen „0 · 0").
+  const [moveCounts, setMoveCounts] = useState(null);
+  useEffect(() => {
+    if (!moveSource) { setMoveCounts(null); return; }
+    let cancelled = false;
+    setMoveCounts(null);
+    const cnt = (tbl) => supabase.from(tbl).select('id', { count: 'exact', head: true })
+      .eq('athlete_id', moveSource.id).is('deleted_at', null);
+    Promise.all([cnt('sessions'), cnt('competitions')]).then(([s, c]) => {
+      if (!cancelled) setMoveCounts({ sessions: s.count ?? null, competitions: c.count ?? null });
+    }).catch(() => { /* Anzeige bleibt „…" */ });
+    return () => { cancelled = true; };
+  }, [moveSource]);
   // Feedback-Anzahl je Athlet — zeigt, an welchem Eintrag Feedback hängt.
   const [fbCounts, setFbCounts] = useState({});
   useEffect(() => {
@@ -18617,6 +18650,13 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
 
   const onMove = async (targetId) => {
     if (!moveSource || (!moveSessions && !moveComps)) return;
+    // Ein Fehltipp auf ein Ziel verschob vorher sofort alles — erst nachfragen.
+    const target = (athletes || []).find(a => a.id === targetId);
+    const parts = [];
+    const n = (k) => (moveCounts && moveCounts[k] != null ? moveCounts[k] : null);
+    if (moveSessions) parts.push(n('sessions') != null ? n('sessions') + (n('sessions') === 1 ? ' Training' : ' Trainings') : 'die Trainings');
+    if (moveComps) parts.push(n('competitions') != null ? n('competitions') + (n('competitions') === 1 ? ' Wettkampf' : ' Wettkämpfe') : 'die Wettkämpfe');
+    if (!window.confirm(parts.join(' und ') + ' von „' + moveSource.name + '" zu „' + ((target && target.name) || 'Ziel') + '" verschieben?')) return;
     setBusy(true); setErr(''); setInfo('');
     const { error } = await moveAthleteData(moveSource.id, targetId, { sessions: moveSessions, competitions: moveComps });
     if (error) { setErr(error.message); setBusy(false); setMoveSource(null); return; }
@@ -19071,10 +19111,10 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
                 <div className="min-w-0">
                   <div className="text-[12px] uppercase tracking-wide text-[#8E8E93]">Von</div>
                   <div className="text-[17px] font-semibold truncate">{moveSource.name}</div>
-                  <div className="text-[12px] text-[#8E8E93]">
-                    {(ownData?.sessions || []).filter(x => x.athleteId === moveSource.id || x.athlete_id === moveSource.id).length} Sessions
+                  <div className="text-[12px] text-[#8E8E93] tabular-nums">
+                    {moveCounts && moveCounts.sessions != null ? moveCounts.sessions : '…'} Sessions
                     {' · '}
-                    {(ownData?.competitions || []).filter(x => x.athlete_id === moveSource.id).length} Wettkämpfe
+                    {moveCounts && moveCounts.competitions != null ? moveCounts.competitions : '…'}{moveCounts && moveCounts.competitions === 1 ? ' Wettkampf' : ' Wettkämpfe'}
                   </div>
                 </div>
               </div>
@@ -19519,6 +19559,7 @@ function TeamDetailModal({ team, members, candidates, canManage, busy, onClose, 
 // Einladen direkt nach dem Anlegen eines Teams (Paritaet zur nativen TeamInviteView).
 // Beitritts-Code fuer Sportler entsteht sofort; Trainer-Code auf Knopfdruck.
 function TeamInviteModal({ team, onClose }) {
+  const { t } = useI18n();
   const [joinCode, setJoinCode] = useState(team.join_code || null);
   const [coachCode, setCoachCode] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -19593,7 +19634,7 @@ function TeamInviteModal({ team, onClose }) {
           </IOSList>
           {err && <p className="text-[13px] text-rose-600 px-2">{err}</p>}
           <p className="text-[12px] text-[#8E8E93] px-2 leading-snug">
-            Weitere Sportler und Trainer kannst du jederzeit hinzufügen: Einstellungen → Sportler &amp; Teams → das Team antippen.
+            Weitere Sportler und Trainer kannst du jederzeit hinzufügen: Einstellungen → {t('nav.sportler')} → beim Team.
           </p>
         </div>
       </div>
@@ -20126,11 +20167,16 @@ function ExportWettkampf({ data, defaultName = '' }) {
     const fSchw = ['Abzug Schwierigkeit', '', ''];
     const fAusf = ['Abzug Ausführung', '', ''];
     const fGes = ['Gesamtabzug', '', ''];
-    const fEnd = ['Endergebnis', '', ''];
+    const fEnd = ['Ergebnis je KG', '', ''];
     selected.forEach(c => {
       const pr = progFor(c);
       const tp = exercisesFor(c).reduce((s, e) => s + Number(e.points || 0), 0);
       [1, 2].forEach(tNum => {
+        // Nur 1 Kampfgericht gewertet: zweite Spalte leer statt „voller Punktzahl".
+        if (tNum > Math.max(1, Number(c.kampfgerichte || 2))) {
+          [fAuf, fSchw, fAusf, fGes, fEnd].forEach(row => row.push('', '', '', '', '', '', '', '', ''));
+          return;
+        }
         const r = calcTableResult(pr, tNum === 1 ? c.table1 : c.table2, tNum === 1 ? c.t1_schwierigkeit : c.t2_schwierigkeit);
         fAuf.push(tp.toFixed(2), '', '', '', '', '', '', '', '');
         fSchw.push(r.abzugSchwierigkeit.toFixed(2), '', '', '', '', '', '', '', '');
