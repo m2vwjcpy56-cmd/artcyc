@@ -236,7 +236,7 @@ const UCI_DB_2026 = [
 {c:'1104k',n:'Frontlenkerstanddrehung 1-½fach T (7,2 - 7,7 - 8,2 - 8,7)',p:6.7,d:'1er'},
 {c:'1104l',n:'Frontlenkerstanddrehung 2-fach T (8,0 - 8,5 - 9,0 - 9,5)',p:7.5,d:'1er'},
 {c:'1104m',n:'Frontlenkerstanddrehung ½-fach aus Reitsitz',p:5.7,d:'1er'},
-{c:'1104p',n:'Frontlenkerstanddrehung 2-fach aus Reitsitz T',p:8.1,d:'1er'},
+{c:'1104p',n:'Frontlenkerstanddrehung 2-fach aus Reitsitz T (8,6 - 9,1 - 9,6 - 10,1)',p:8.1,d:'1er'},
 {c:'1105a',n:'Kehrlenkerstand HR.',p:4.4,d:'1er'},
 {c:'1105b',n:'Kehrlenkerstand R.',p:4.6,d:'1er'},
 {c:'1105c',n:'Kehrlenkerstand S',p:5.1,d:'1er'},
