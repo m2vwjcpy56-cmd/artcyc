@@ -2749,7 +2749,26 @@ function isEffectiveGesamt(c) {
 // Endergebnis. „Gesamt" (kombiniert): anerkannt − Gesamt-Abzug ÷ Anzahl KG. Sonst
 // Durchschnitt aller gewählten Kampfgerichte. `isEffectiveGesamt` fängt auch den Fall ab,
 // dass der Gesamt-Marker verloren ging (nur ein KG erfasst).
+// Programm, mit dem ein Wettkampf gewertet wird: das verknüpfte Programm, sonst der
+// gespeicherte Schnappschuss (Maute-Import, PDF/Scan), sonst aus der Wertungstabelle
+// abgeleitet (jede Zeile trägt Name/Nummer/Punkte). Vorher rechneten viele Stellen NUR
+// mit dem verknüpften Programm — importierte Wettkämpfe fehlten dann im Dashboard, in
+// den Statistiken und in den Trainings-Wertungen (Fehler, 02.10.2026).
+function programForCompetition(c, programMap) {
+  if (!c) return null;
+  const linked = c.program_id && programMap ? programMap.get(c.program_id) : null;
+  if (linked) return linked;
+  const ref = c.pdf_ref || null;
+  const snap = c.program_snapshot || (ref && ref.program_snapshot) || null;
+  if (Array.isArray(snap) && snap.length) return { id: null, name: (ref && ref.program_name) || null, exercises: snap };
+  const pick = (t) => (Array.isArray(t) && t.some(e => e && Number(e.points) > 0)) ? t : null;
+  const src = pick(c.table1) || pick(c.table2);
+  if (src) return { id: null, name: null, exercises: src.map(e => ({ name: e && e.name, code: (e && (e.code || e.nr)) || undefined, points: Number(e && e.points) || 0 })) };
+  return null;
+}
+
 function compFinalScore(program, c) {
+  program = program || programForCompetition(c, null);
   if (!program) return null;
   if (isEffectiveGesamt(c)) {
     const tbl = tableHasContent(c.table1) ? c.table1 : (tableHasContent(c.table2) ? c.table2 : c.table1);
@@ -4861,6 +4880,9 @@ function PullToRefreshIndicator({ pull, refreshing }) {
   );
 }
 
+// Bewusst gewählter Sportler (nur bei aktiver Wahl geschrieben) — siehe Auswahl-Effekt in App.
+const CHOSEN_ATHLETE_KEY = 'artcyc:chosenAthlete:';
+
 export default function App() {
   const { t, lang, langPref, setLangPref } = useI18n();
   const [data, setData] = useState(null);
@@ -5537,8 +5559,17 @@ export default function App() {
   // Auswahl wird weiterhin nie überschrieben.
   useEffect(() => {
     const uid = session?.user?.id;
-    let saved = null;
+    let saved = null, chosen = null;
     try { saved = uid ? localStorage.getItem('artcyc:selectedAthlete:' + uid) : null; } catch { /* localStorage evtl. blockiert */ }
+    // BEWUSSTE Wahl (nur chooseAthlete schreibt sie) — geht vor allem anderen. Die alte
+    // Merk-Stelle speichert auch automatische Auswahlen; daran konnte die Team-Regel
+    // „ich selbst bewusst gewählt" nicht von „noch nichts gewählt" unterscheiden und
+    // setzte Team-Mitglieder bei jedem Laden aufs Team zurück (Fehler, 02.10.2026).
+    try { chosen = uid ? localStorage.getItem(CHOSEN_ATHLETE_KEY + uid) : null; } catch { /* egal */ }
+    if (chosen && availableAthletes.some(a => a.id === chosen)) {
+      if (selectedAthleteId !== chosen) setSelectedAthleteId(chosen);
+      return;
+    }
     // Team, in dem ICH (als Sportler) Mitglied bin.
     const myTeamId = myAthleteId
       ? (dbTeamMembers || []).map(tm => tm.athlete_id === myAthleteId
@@ -5566,7 +5597,10 @@ export default function App() {
   }, [selectedAthleteId, session?.user?.id]);
 
   // Vom Nutzer im Picker getroffene Auswahl (wird über die Persistenz-Effect pro Konto gemerkt).
-  const chooseAthlete = useCallback((id) => { setSelectedAthleteId(id); }, []);
+  const chooseAthlete = useCallback((id) => {
+    setSelectedAthleteId(id);
+    try { const uid = session?.user?.id; if (uid && id) localStorage.setItem(CHOSEN_ATHLETE_KEY + uid, id); } catch { /* egal */ }
+  }, [session?.user?.id]);
 
   // Bei jedem Wechsel des aktiven Sportlers ALLE Daten neu laden — sonst
   // bleiben veraltete Cache-Daten in dbSessions/dbCompetitions/etc. stehen
@@ -5877,7 +5911,7 @@ export default function App() {
   let viewEl;
   if (view === 'dashboard') viewEl = <Dashboard data={effectiveData} setView={setView} onOpenFeedback={hasCoachingFeedback ? openFeedback : null} onOpenExercise={(id) => { setFocusExerciseId(id); setView('uebungen'); }} />;
   else if (view === 'training') viewEl = <TrainingView data={effectiveData} setData={save} setView={setView} />;
-  else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} onDone={() => setView('training')} />;
+  else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} selectedAthleteId={selectedAthleteId} onDone={() => setView('training')} />;
   else if (view === 'trainingsplan') viewEl = <TrainingsplanView data={effectiveData} setData={save} onBack={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} onOpenView={setView} focusExerciseId={focusExerciseId} onFocusConsumed={() => setFocusExerciseId(null)} />;
   else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} myUserId={session?.user?.id || null} />;
@@ -6739,7 +6773,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
     const comps = (data.competitions || []).filter(c => (c.kind || 'wettkampf') !== 'training' && (season === 'all' ? true : inRange(c.date)));
     const programMap = new Map((data.programs || []).map(p => [p.id, p]));
     const withResult = comps.map(c => {
-      const program = programMap.get(c.program_id);
+      const program = programForCompetition(c, programMap);
       if (!program) {
         // „Nur Endergebnis"-Wettkampf (kein Programm) → Endergebnis aus pdf_ref; kein Abzug.
         const ref = c.pdf_ref || null;
@@ -7025,9 +7059,12 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
                     <circle key={i} cx={x(i)} cy={y(m.rate)} r={barSel === i ? 2.2 : 1.4} fill="#FF9500" />
                   ))}
                 </svg>
-                <div className="absolute inset-y-0 right-0 flex flex-col justify-between text-[9px] text-[#8E8E93] tabular-nums pointer-events-none" style={{ paddingTop: PADY / H * 100 + '%', paddingBottom: PADY / H * 100 + '%' }}>
-                  <span>100 %</span><span>50 %</span><span>0 %</span>
-                </div>
+                {/* Je Beschriftung an ihrer Gitterlinie ausrichten. Vorher per padding in % —
+                    das bezieht sich in CSS auf die BREITE, „0 %" stand dann auf halber Höhe. */}
+                {[100, 50, 0].map(g => (
+                  <span key={g} className="absolute right-0 -translate-y-1/2 text-[9px] text-[#8E8E93] tabular-nums pointer-events-none"
+                    style={{ top: (y(g) / H * 100) + '%' }}>{g} %</span>
+                ))}
                 {/* unsichtbare Tipp-Flächen je Monat */}
                 <div className="absolute inset-0 flex">
                   {trainMonthly.map((m, i) => (
@@ -7049,7 +7086,6 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
           <section className="space-y-3">
             <div className="px-1 text-[12px] uppercase tracking-wide text-slate-400 font-medium">Trends</div>
             <div className="card-surface rounded-[22px] p-4 space-y-2">
-              <h2 className="text-[15px] font-semibold flex items-center gap-2"><Trophy size={16} className="text-[#FF9500]" /> Wettkampf-Verlauf</h2>
               <CompetitionTrendChart competitions={(data.competitions || []).filter(c => (c.kind || 'wettkampf') !== 'training' && (season === 'all' ? true : inRange(c.date)))} programs={data.programs || []} best={compStats.best} onTapWettkampf={() => setView('wettkampf')} />
             </div>
           </section>
@@ -7324,7 +7360,7 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf, b
     const programMap = new Map(programs.map(p => [p.id, p]));
     return competitions
       .map(c => {
-        const program = programMap.get(c.program_id);
+        const program = programForCompetition(c, programMap);
         if (!program) return null;
         const t1 = calcTableResult(program, c.table1, c.t1_schwierigkeit);
         const t2 = calcTableResult(program, c.table2, c.t2_schwierigkeit);
@@ -8460,12 +8496,12 @@ function TrainingView({ data, setData, setView }) {
     const runPrograms = [];
     { const seen = new Set(); for (const c of baseRuns) { const pid = c.program_id; if (pid && !seen.has(pid)) { seen.add(pid); runPrograms.push({ id: pid, name: (programMap.get(pid) && programMap.get(pid).name) || 'Training' }); } } }
     const dedOf = (c) => {
-      const p = programMap.get(c.program_id); if (!p) return 0;
+      const p = programForCompetition(c, programMap); if (!p) return 0;
       const t1 = calcTableResult(p, c.table1, c.t1_schwierigkeit);
       const t2 = calcTableResult(p, c.table2, c.t2_schwierigkeit);
       return (t1.abzugGesamt + t2.abzugGesamt) / 2;
     };
-    const aufOf = (c) => { const p = programMap.get(c.program_id); return p ? (p.exercises || []).reduce((s, e) => s + Number(e.points || 0), 0) : 0; };
+    const aufOf = (c) => { const p = programForCompetition(c, programMap); return p ? (p.exercises || []).reduce((s, e) => s + Number(e.points || 0), 0) : 0; };
     // Jahre, die in den Wertungen vorkommen (für den Zeitraum-Filter)
     const runYears = Array.from(new Set(baseRuns.map(c => (c.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
     // Immer neueste zuerst; die Filter grenzen die Liste ein (keine Sortier-Optionen).
@@ -8477,7 +8513,7 @@ function TrainingView({ data, setData, setView }) {
     }
     const inRange = (v, [lo, hi]) => (lo == null || v >= lo) && (hi == null || v <= hi);
     const rangeSet = (p) => p[0] != null || p[1] != null;
-    if (rangeSet(runErg)) runs = runs.filter(c => { const v = compFinalScore(programMap.get(c.program_id), c); return v != null && inRange(v, runErg); });
+    if (rangeSet(runErg)) runs = runs.filter(c => { const v = compFinalScore(programForCompetition(c, programMap), c); return v != null && inRange(v, runErg); });
     if (rangeSet(runAuf)) runs = runs.filter(c => inRange(aufOf(c), runAuf));
     if (rangeSet(runAbz)) runs = runs.filter(c => inRange(dedOf(c), runAbz));
     const filtersActive = !!(runProgramFilter || runRange) || rangeSet(runErg) || rangeSet(runAuf) || rangeSet(runAbz);
@@ -8485,7 +8521,7 @@ function TrainingView({ data, setData, setView }) {
     const resetRunFilters = () => { setRunProgramFilter(''); setRunRange(''); setRunErg([null, null]); setRunAuf([null, null]); setRunAbz([null, null]); };
     // Wertebereiche aus den Daten — der Regler braucht Anfang und Ende.
     const boundsOf = (vals) => { const xs = vals.filter(v => v != null && isFinite(v)); return xs.length ? [Math.min(...xs), Math.max(...xs)] : null; };
-    const ergB = boundsOf(baseRuns.map(c => compFinalScore(programMap.get(c.program_id), c)));
+    const ergB = boundsOf(baseRuns.map(c => compFinalScore(programForCompetition(c, programMap), c)));
     const aufB = boundsOf(baseRuns.map(aufOf));
     const abzB = boundsOf(baseRuns.map(dedOf));
     const fmtNum = (v) => Number.isInteger(v) ? String(v) : v.toFixed(1);
@@ -8568,7 +8604,7 @@ function TrainingView({ data, setData, setView }) {
           ) : (
             <div className="card-surface rounded-[22px] overflow-hidden">
               {runs.map((c, i) => {
-                const v = compFinalScore(programMap.get(c.program_id), c);
+                const v = compFinalScore(programForCompetition(c, programMap), c);
                 return (
                   <button key={c.id} onClick={() => setViewRunId(c.id)}
                     className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/30 transition ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
@@ -8626,7 +8662,7 @@ function TrainingView({ data, setData, setView }) {
             const shown = showAllRuns ? runs : runs.slice(0, 3);
             return (<>
               {shown.map(c => {
-              const program = (data.programs || []).find(p => p.id === c.program_id);
+              const program = programForCompetition(c, new Map((data.programs || []).map(p => [p.id, p])));
               const final = compFinalScore(program, c);
               return (
                 <button key={c.id} onClick={() => setViewRunId(c.id)}
@@ -8654,14 +8690,30 @@ function TrainingView({ data, setData, setView }) {
         <p className="px-1 text-[12px] leading-snug text-[#8E8E93]">Ein Programmdurchlauf, wie im Wettkampf mit Abzügen bewertet. Fließt getrennt in die Statistiken unter „Training“ ein.</p>
 
         {/* OVERVIEW — getönte Karten; Erfolgsquote NICHT als Warnung (violet, neutral-positiv) */}
-        {totalCount > 0 && (
-          <div className="grid grid-cols-2 gap-3">
-            <MetricCard accent="violet" icon={TrendingUp} label="Erfolgsquote" value={trainTopStats.rate + ' %'} sub="über alle Sessions" />
-            <MetricCard accent="emerald" icon={Activity} label="Aktuelle Serie" value={weekStreak > 0 ? weekStreak + (weekStreak === 1 ? ' Woche' : ' Wochen') : '—'} sub={weekStreak > 0 ? 'in Folge' : 'keine aktive Serie'} />
-            <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(trainTopStats.sessionCount)} sub={trainTopStats.exCount + ' Übungen'} />
-            <MetricCard accent="amber" icon={Calendar} label="Trainingstage" value={String(trainTopStats.days)} sub="aktive Tage" />
-          </div>
-        )}
+        {/* Kacheln wie nativ (27.09.): Sessions · Übungen · Ø 12 Monate · Letzter. Eine
+            Erfolgsquote über ALLE Übungen zusammen sagt nichts (Ruben) — sie gibt es nur
+            noch je Übung; Serie und Trainingstage sind raus. */}
+        {totalCount > 0 && (() => {
+          const pm = new Map((data.programs || []).map(p => [p.id, p]));
+          const cut = new Date(); cut.setMonth(cut.getMonth() - 12);
+          const cutoff = cut.toISOString().slice(0, 10);
+          const runs = (data.competitions || []).filter(c => (c.kind || 'wettkampf') === 'training')
+            .map(c => ({ date: c.date || '', v: compFinalScore(programForCompetition(c, pm), c) }))
+            .filter(x => x.v != null).sort((a, b) => a.date.localeCompare(b.date));
+          const recent = runs.filter(x => x.date >= cutoff);
+          const avg = recent.length ? recent.reduce((sum, x) => sum + x.v, 0) / recent.length : null;
+          const last = runs.length ? runs[runs.length - 1] : null;
+          return (
+            <div className="grid grid-cols-2 gap-3">
+              <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(trainTopStats.sessionCount)} sub="insgesamt" />
+              <MetricCard accent="amber" icon={Activity} label="Übungen" value={String(trainTopStats.exCount)} sub="trainiert" />
+              <MetricCard accent="violet" icon={TrendingUp} label="Ø 12 Monate" value={avg != null ? avg.toFixed(2) : '—'}
+                sub={recent.length === 1 ? '1 Trainingsprogramm' : recent.length + ' Trainingsprogramme'} />
+              <MetricCard accent="emerald" icon={Calendar} label="Letzter" value={last ? last.v.toFixed(2) : '—'}
+                sub={last ? formatDateShort(last.date) : 'noch keine Wertung'} />
+            </div>
+          );
+        })()}
 
         {/* ÜBUNGEN — kompakter, primärer Einstieg (keine Rohdaten) */}
         {activeExerciseRows.length > 0 && (() => {
@@ -12904,13 +12956,13 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
   const statPrograms = new Map((data.programs || []).map(p => [p.id, p]));
   const statFinals = (isTraining) => (data.competitions || [])
     .filter(c => ((c.kind || 'wettkampf') === 'training') === isTraining && inStatRange(c.date))
-    .map(c => compFinalScore(statPrograms.get(c.program_id), c))
+    .map(c => compFinalScore(programForCompetition(c, statPrograms), c))
     .filter(v => v != null);
   const statWk = statFinals(false), statTr = statFinals(true);
   const statAvg = (a) => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
   const statDeds = (data.competitions || [])
     .filter(c => (c.kind || 'wettkampf') !== 'training' && inStatRange(c.date))
-    .map(c => { const p = statPrograms.get(c.program_id); if (!p) return null; const t1 = calcTableResult(p, c.table1, c.t1_schwierigkeit); const t2 = calcTableResult(p, c.table2, c.t2_schwierigkeit); return (t1.abzugGesamt + t2.abzugGesamt) / 2; })
+    .map(c => { const p = programForCompetition(c, statPrograms); if (!p) return null; const t1 = calcTableResult(p, c.table1, c.t1_schwierigkeit); const t2 = calcTableResult(p, c.table2, c.t2_schwierigkeit); return (t1.abzugGesamt + t2.abzugGesamt) / 2; })
     .filter(v => v != null);
   const statSessions = (data.sessions || []).filter(s => inStatRange(s.date));
   const statStreak = trainingWeekStreak(data.sessions || []);
@@ -12919,11 +12971,11 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
 
   // Wettkämpfe im Zeitraum (mit Programm) — Grundlage für beide Verlaufs-Kurven.
   const statCompsWk = (data.competitions || [])
-    .filter(c => (c.kind || 'wettkampf') !== 'training' && inStatRange(c.date) && statPrograms.get(c.program_id));
+    .filter(c => (c.kind || 'wettkampf') !== 'training' && inStatRange(c.date) && programForCompetition(c, statPrograms));
   // Abzug je Wettkampf über die Zeit (Mittel der Kampfgerichte) — wie nativ „Verlauf · Abzug".
   const statDedSeries = statCompsWk
     .map(c => {
-      const p = statPrograms.get(c.program_id);
+      const p = programForCompetition(c, statPrograms);
       const t1 = calcTableResult(p, c.table1, c.t1_schwierigkeit);
       const t2 = calcTableResult(p, c.table2, c.t2_schwierigkeit);
       return { date: c.date || '', name: c.name || '', ded: (t1.abzugGesamt + t2.abzugGesamt) / 2 };
@@ -13599,7 +13651,7 @@ function ReglementSearchModal({ open, onClose, onPick, existingByCode, t }) {
   );
 }
 
-function Erfassen({ data, setData, dbAthletes, onDone }) {
+function Erfassen({ data, setData, dbAthletes, onDone, selectedAthleteId = null }) {
   const { t } = useI18n();
   const activeExercises = data.exercises.filter(e => e.active);
   // Athletes aus DB (Phase 9a). Fallback auf data.athletes für legacy
@@ -13632,13 +13684,29 @@ function Erfassen({ data, setData, dbAthletes, onDone }) {
   });
 
   const [date, setDate] = useState(bootDraft?.date || new Date().toISOString().slice(0, 10));
-  // Default-Übung: die häufigst-trainierte, sonst erste der Liste (oder aus Entwurf)
+  // Zuletzt erfasste Übung — wer mehrere Serien derselben Übung nacheinander einträgt,
+  // soll nicht jedes Mal neu wählen (Parität zur nativen App: lastUsedExercise).
+  const lastUsedId = useMemo(() => {
+    let best = null;
+    for (const s of (data.sessions || [])) {
+      if (!s || !s.exerciseId || !activeExercises.some(e => e.id === s.exerciseId)) continue;
+      const key = (s.date || '') + '|' + (s.created_at || s.created || '');
+      if (!best || key > best.key) best = { key, id: s.exerciseId };
+    }
+    return best ? best.id : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Default-Übung: Entwurf → zuletzt erfasste → häufigst-trainierte → erste der Liste
   const [exerciseId, setExerciseId] = useState(
-    bootDraft?.exerciseId ||
+    bootDraft?.exerciseId || lastUsedId ||
     (exerciseSort.trained[0] && exerciseSort.trained[0].id) ||
     (activeExercises[0] && activeExercises[0].id) || ''
   );
-  const [athleteId, setAthleteId] = useState(bootDraft?.athleteId ?? ((athletes[0] && athletes[0].id) || ''));
+  // Sportler: der OBEN gewählte. Vorher immer der erste der Liste — wer für Lena
+  // erfasste, speicherte ohne Blick aufs Feld bei sich selbst (Fehler, 02.10.2026).
+  const [athleteId, setAthleteId] = useState(bootDraft?.athleteId ??
+    ((selectedAthleteId && athletes.some(a => a.id === selectedAthleteId)) ? selectedAthleteId
+      : ((athletes[0] && athletes[0].id) || '')));
   const [entries, setEntries] = useState(bootDraft?.entries || []);
   const [notes, setNotes] = useState(bootDraft?.notes || '');
   const [withRope, setWithRope] = useState(typeof bootDraft?.withRope === 'boolean' ? bootDraft.withRope : true);
@@ -14043,7 +14111,7 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
       program={editing}
       athletes={dbAthletes}
       onSave={(p) => { upsert(p); setShowNew(false); setEditId(null); setDupProgram(null); }}
-      onCancel={() => { setShowNew(false); setEditId(null); setDupProgram(null); setPendingPdf(null); }}
+      onCancel={() => { setShowNew(false); setEditId(null); setDupProgram(null); }}
       onDelete={editId ? () => { const id = editId; setShowNew(false); setEditId(null); setTimeout(() => remove(id), 0); } : undefined}
     />;
   }
@@ -17511,7 +17579,7 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
     const programMap = new Map(programs.map(p => [p.id, p]));
     return competitions
       .map(c => {
-        const program = programMap.get(c.program_id);
+        const program = programForCompetition(c, programMap);
         if (!program) return null;
         const t1 = calcTableResult(program, c.table1, c.t1_schwierigkeit);
         const t2 = calcTableResult(program, c.table2, c.t2_schwierigkeit);

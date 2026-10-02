@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { normClub } from './clubs.js';
+import { createDemoClient, demoRequested } from './demoBackend.js';
 
 // Anon-Key ist explizit als public gedacht und durch Row Level Security
 // in der DB abgesichert — kann/darf im Frontend stehen.
@@ -43,7 +44,13 @@ export const MAGIC_TOKEN_HASH = (() => {
   } catch { return null; }
 })();
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+// Demo-Modus NUR in der lokalen Entwicklung (`npm run dev`, /web?demo): ein Speicher im
+// Browser statt der echten Datenbank, damit sich alles ohne Login testen lässt.
+// `import.meta.env.DEV` ist im Produktions-Build fest `false` — der Zweig und das
+// Demo-Modul fallen dort weg (geprüft: kein „artcyc:demo-db" im Live-Bundle).
+export const DEMO_MODE = import.meta.env.DEV && demoRequested();
+
+export const supabase = DEMO_MODE ? createDemoClient() : createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
