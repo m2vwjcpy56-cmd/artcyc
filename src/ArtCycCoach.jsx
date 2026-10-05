@@ -5770,14 +5770,18 @@ export default function App() {
   // und Speichern. Das Speichern vergleicht alt/neu nur innerhalb dieser Menge; vorher
   // galten ausgeblendete Programme (einem anderen Sportler zugeordnet) als „gelöscht"
   // und wurden beim nächsten Speichern mit-gelöscht (Fehler, 02.10.2026).
+  // Ein Programm gehört GENAU EINEM Sportler (Entscheidung 05.10.2026) — also zeigt
+  // die Liste genau dessen Programme, egal ob ich oder der Sportler sie angelegt hat.
+  // Vorher wurde zusätzlich nach Besitzer gefiltert: Programme, die ich für einen
+  // Sportler MIT eigenem Konto angelegt hatte, fielen dadurch aus seiner Liste.
+  // Alt-Daten ohne Zuordnung nur in der EIGENEN Sicht — sonst tauchten verwaiste
+  // Programme aus Alt-Importen bei jedem Nutzer auf (sie sind inzwischen alle
+  // zugeordnet; so geht aber nichts verloren, falls doch eins auftaucht).
   const programInView = useCallback((p) => {
-    const coachView = !!selectedAthleteId && !isOwnAthlete;
-    const viewerUid = session?.user?.id || null;
-    const targetAthlete = coachView ? (dbAthletes || []).find(a => a.id === selectedAthleteId) : null;
-    const programOwner = (targetAthlete && targetAthlete.auth_user_id) || viewerUid;
-    return (p.owner_id === programOwner || (!coachView && p.owner_id == null))
-      && (p.athlete_id == null || p.athlete_id === selectedAthleteId);
-  }, [selectedAthleteId, isOwnAthlete, session?.user?.id, dbAthletes]);
+    if (!selectedAthleteId) return true;
+    if (p.athlete_id) return p.athlete_id === selectedAthleteId;
+    return p.owner_id === undefined || p.owner_id === (session?.user?.id || null);
+  }, [selectedAthleteId, session?.user?.id]);
 
   const save = useCallback(async (next) => {
     setActiveDb(next.uci_custom);
@@ -5793,11 +5797,12 @@ export default function App() {
     const sf = (s) => !filterId || (s.athleteId || s.athlete_id) === filterId;
     const cf = (c) => !filterId || (c.athlete_id || c.athleteId) === filterId;
     const ownerWritable = isOwnAthlete; // = eigener Athlet ODER kein Filter
-    // Programme/Übungen gehören dem Konto: beim eigenen Profil UND bei selbst angelegten
-    // Sportlern ohne eigenes Konto bin das ich → speichern. Vorher nur beim eigenen
-    // Profil — ein für so einen Sportler angelegtes Programm verschwand nach „Fertig"
-    // (Fehler, 02.10.2026). Hat der Sportler ein eigenes Konto, gehören sie ihm.
-    const catalogWritable = ownerWritable || !(selectedAthlete && selectedAthlete.auth_user_id);
+    // Programme/Übungen sind immer schreibbar: Was mir gehört sowieso, und für einen
+    // betreuten Sportler lässt die Datenbank es seit 05.10.2026 über den Sportler zu
+    // (programs_write: owner_id = ich ODER can_manage_athlete). Einzelne fremde
+    // Einträge lehnt dann die Datenbank ab — das meldet der Sync, statt dass hier
+    // pauschal gar nichts gespeichert wird (Fehler: „Programm nicht speicherbar").
+    const catalogWritable = true;
 
     if (data && data.migrated_to_tables) {
       const syncErrors = [];
@@ -10533,7 +10538,10 @@ function TrashSettings() {
               <span className="text-[10px] font-semibold uppercase tracking-wide text-[#8E8E93] bg-[#8E8E93]/12 rounded px-1.5 py-0.5 shrink-0 w-[74px] text-center">{it.kindLabel}</span>
               <span className="flex flex-col min-w-0 flex-1">
                 <span className="text-[14px] text-[#1C1C1E] truncate">{it.label}</span>
-                <span className="text-[11px] text-[#8E8E93]">gelöscht {relTime(it.deleted_at)}</span>
+                {/* Wessen Eintrag? Ein Trainer sieht hier auch Gelöschtes seiner Sportler. */}
+                <span className="text-[11px] text-[#8E8E93] truncate">
+                  {it.athlete ? it.athlete + ' · ' : ''}gelöscht {relTime(it.deleted_at)}
+                </span>
               </span>
               <button
                 onClick={() => restore(it)} disabled={busy}
@@ -14640,7 +14648,8 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
     });
   };
 
-  const canSave = name.trim().length > 0 && exercises.length > 0 && validation.valid;
+  // Sportler ist Pflicht: ein Programm gehoert genau einem Sportler.
+  const canSave = name.trim().length > 0 && exercises.length > 0 && validation.valid && !!athleteId;
 
   return (
     <div className="-mx-3 sm:mx-0">
@@ -14674,13 +14683,13 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
             </select>
             <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
           </div>
-          {/* Wem gehoert das Programm? Ohne Zuordnung sehen alle Sportler eines
-              Besitzers dieselben Programme (Paritaet zur nativen App). */}
+          {/* Jedes Programm gehoert GENAU EINEM Sportler (Entscheidung 05.10.2026) —
+              ohne Zuordnung sahen alle Sportler eines Besitzers dieselben Programme. */}
           <div className="px-4 py-3 flex items-center gap-3">
             <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">Sportler</label>
             <select value={athleteId || ''} onChange={e => setAthleteId(e.target.value || null)}
-              className="flex-1 bg-transparent text-[15px] outline-none appearance-none text-right">
-              <option value="">Alle Sportler</option>
+              className={'flex-1 bg-transparent text-[15px] outline-none appearance-none text-right ' + (athleteId ? '' : 'text-[#FF3B30]')}>
+              <option value="">Bitte wählen …</option>
               {(athletes || []).map(a => (
                 <option key={a.id} value={a.id}>{[a.name, a.last_name].filter(Boolean).join(' ')}</option>
               ))}
@@ -14812,7 +14821,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
             <>
               <button
                 onClick={() => save(true)}
-                disabled={!name.trim() || exercises.length === 0 || !validation.valid}
+                disabled={!name.trim() || exercises.length === 0 || !validation.valid || !athleteId}
                 className="w-full mt-2 py-3 rounded-2xl text-[15px] font-medium text-[#FF9500] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:bg-[#D1D1D6]/30 disabled:opacity-40 flex items-center justify-center gap-2">
                 <Copy size={16} /> Als Kopie sichern
               </button>
@@ -18519,6 +18528,17 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
         });
         if (error) throw error;
       } else {
+        // Gleicher Name schon da? Nachfragen — zwei „Mia" sind später nicht mehr
+        // auseinanderzuhalten, und meist ist es ein Versehen (Wunsch 05.10.2026).
+        const neu = [formData.name, formData.last_name].filter(Boolean).join(' ').trim().toLowerCase();
+        const schonDa = (athletes || []).find(a =>
+          [a.name, a.last_name].filter(Boolean).join(' ').trim().toLowerCase() === neu);
+        if (schonDa && !window.confirm(
+            '„' + [schonDa.name, schonDa.last_name].filter(Boolean).join(' ') +
+            '" gibt es schon. Trotzdem ein zweites Profil mit demselben Namen anlegen?')) {
+          setBusy(false);
+          return;
+        }
         const { error } = await createAthlete(formData);
         if (error) throw error;
       }

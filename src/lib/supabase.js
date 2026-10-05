@@ -666,19 +666,24 @@ export async function fetchTrash() {
     .not('deleted_at', 'is', null)
     .gte('deleted_at', cutoff)
     .order('deleted_at', { ascending: false });
-  const [se, co, ex, pr, fb] = await Promise.all([
+  const [se, co, ex, pr, fb, ath] = await Promise.all([
     q('sessions', 'id, athlete_id, exercise_name, date, deleted_at'),
     q('competitions', 'id, athlete_id, name, date, deleted_at'),
     q('exercises', 'id, owner_id, name, uci_code, deleted_at'),
-    q('programs', 'id, owner_id, name, deleted_at'),
+    q('programs', 'id, owner_id, athlete_id, name, deleted_at'),
     q('feedback_entries', 'id, athlete_id, deleted_at'),
+    supabase.from('athletes').select('id, name, last_name'),
   ]);
+  // Wessen Eintrag ist das? Die Regeln lassen einen Trainer auch Gelöschtes seiner
+  // Sportler sehen — ohne Namen war nicht erkennbar, zu wem ein Eintrag gehört.
+  const athName = new Map((ath.data || []).map(a => [a.id, [a.name, a.last_name].filter(Boolean).join(' ')]));
+  const who = (id) => (id && athName.get(id)) || null;
   const items = [];
-  (se.data || []).forEach(r => items.push({ kind: 'session', kindLabel: 'Training', table: 'sessions', id: r.id, label: (r.exercise_name || 'Training') + (r.date ? ' · ' + r.date : ''), deleted_at: r.deleted_at }));
-  (co.data || []).forEach(r => items.push({ kind: 'competition', kindLabel: 'Wettkampf', table: 'competitions', id: r.id, label: (r.name || 'Wettkampf') + (r.date ? ' · ' + r.date : ''), deleted_at: r.deleted_at }));
+  (se.data || []).forEach(r => items.push({ kind: 'session', kindLabel: 'Training', table: 'sessions', id: r.id, label: (r.exercise_name || 'Training') + (r.date ? ' · ' + r.date : ''), athlete: who(r.athlete_id), deleted_at: r.deleted_at }));
+  (co.data || []).forEach(r => items.push({ kind: 'competition', kindLabel: 'Wettkampf', table: 'competitions', id: r.id, label: (r.name || 'Wettkampf') + (r.date ? ' · ' + r.date : ''), athlete: who(r.athlete_id), deleted_at: r.deleted_at }));
   (ex.data || []).forEach(r => items.push({ kind: 'exercise', kindLabel: 'Übung', table: 'exercises', id: r.id, label: r.name || (r.uci_code || 'Übung'), deleted_at: r.deleted_at }));
-  (pr.data || []).forEach(r => items.push({ kind: 'program', kindLabel: 'Programm', table: 'programs', id: r.id, label: r.name || 'Programm', deleted_at: r.deleted_at }));
-  (fb.data || []).forEach(r => items.push({ kind: 'feedback', kindLabel: 'Feedback', table: 'feedback_entries', id: r.id, label: 'Feedback-Eintrag', deleted_at: r.deleted_at }));
+  (pr.data || []).forEach(r => items.push({ kind: 'program', kindLabel: 'Programm', table: 'programs', id: r.id, label: r.name || 'Programm', athlete: who(r.athlete_id), deleted_at: r.deleted_at }));
+  (fb.data || []).forEach(r => items.push({ kind: 'feedback', kindLabel: 'Feedback', table: 'feedback_entries', id: r.id, label: 'Feedback-Eintrag', athlete: who(r.athlete_id), deleted_at: r.deleted_at }));
   items.sort((a, b) => (b.deleted_at || '').localeCompare(a.deleted_at || ''));
   return items;
 }
