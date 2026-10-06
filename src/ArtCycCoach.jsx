@@ -2848,7 +2848,7 @@ function DeductionBars({ series }) {
       <div className="text-[11px] h-4 leading-4 truncate">
         {sel
           ? <span className="text-[#3C3C43] font-medium">{sel.name || 'Wettkampf'} <span className="text-[#8E8E93] font-normal">· {formatDateShort(sel.date)} · −{sel.ded.toFixed(2)}</span></span>
-          : <span className="text-[#C7C7CC]">Balken antippen — zeigt Wettkampf, Datum und Abzug.</span>}
+          : <span className="text-[#C7C7CC]">{t('chart.tapBarDeduction')}</span>}
       </div>
       {/* Maus: Drüberfahren scrubbt (wie nativ), Verlassen setzt zurück. Touch: Klick toggelt. */}
       <div className="flex items-end gap-1.5" onMouseLeave={() => setSel(null)}>
@@ -2916,7 +2916,7 @@ function CompMetricChart({ compList }) {
           <div className="text-[11px] h-4 leading-4 truncate">
             {sel
               ? <span className="text-[#3C3C43] font-medium">{sel.name} <span className="text-[#8E8E93] font-normal">· {formatDateShort(sel.date)} · {fmt(sel.v)}</span></span>
-              : <span className="text-[#C7C7CC]">Balken antippen — zeigt Wettkampf, Datum und Wert.</span>}
+              : <span className="text-[#C7C7CC]">{t('chart.tapBarValue')}</span>}
           </div>
           <div className="flex items-end gap-1.5" onMouseLeave={() => setSel(null)}>
             {series.map((s, i) => {
@@ -3704,7 +3704,7 @@ function TrainingRecapCard({ data, onOpenExercise }) {
   return (
     <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="font-semibold flex items-center gap-2 text-[#FF9500]"><Activity size={16} /> Letztes Training</span>
+        <span className="font-semibold flex items-center gap-2 text-[#FF9500]"><Activity size={16} /> {t('dashboard.lastTraining')}</span>
         <span className="text-[13px] text-[#8E8E93]">{formatDateShort(recap.lastDate)} · {rel}</span>
       </div>
       <div className="flex items-baseline gap-7">
@@ -4595,7 +4595,7 @@ function FloatingChat({ data, setData, profile, refreshers, open, onClose }) {
                       <AlertTriangle size={16} className="text-amber-700" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[11px] font-semibold text-amber-800 uppercase tracking-wide mb-0.5">Bestätigung nötig</div>
+                      <div className="text-[11px] font-semibold text-amber-800 uppercase tracking-wide mb-0.5">{t('common.confirmNeeded')}</div>
                       <div className="text-[15px] text-slate-900 font-semibold leading-tight">
                         {toolLabel(pendingAction.action.tool)}
                       </div>
@@ -6124,7 +6124,7 @@ export default function App() {
         <button onClick={() => setChatOpen(true)}
           className="mt-3 flex items-center gap-3 px-3 py-2.5 rounded-2xl text-left transition bg-gradient-to-br from-[#FF9500] to-[#FF6D00] text-white shadow-[0_2px_8px_rgba(255,149,0,0.25)] hover:brightness-105 active:scale-[0.98]">
           <Sparkles size={18} strokeWidth={2.4} />
-          <span className="font-semibold">Coach öffnen</span>
+          <span className="font-semibold">{t('nav.openCoach')}</span>
         </button>
       </aside>
 
@@ -6538,7 +6538,7 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
               <div className="mt-1 text-[12px] opacity-80">Gib oben deine E-Mail ein und fordere einen frischen Link an (72 h gültig):</div>
               <button type="button" onClick={forgot} disabled={busy}
                 className="mt-2 bg-[#007AFF] text-white text-[13px] font-semibold px-3.5 py-2 rounded-full active:opacity-70 disabled:opacity-50">
-                Neuen Link an meine E-Mail senden
+                {t('auth.sendNewLink')}
               </button>
               {onClearLinkError && (
                 <button type="button" onClick={onClearLinkError}
@@ -6631,7 +6631,7 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
           {confirmOpen && (
             <div className="bg-[#F2F2F7] dark:bg-white/5 rounded-2xl p-3 space-y-2.5">
               <div className="text-[13px] text-slate-600 dark:text-slate-300">
-                Code aus der Bestätigungs-Mail:
+                {t('auth.codeFromMail')}
               </div>
               <input value={code} onChange={(e) => setCode(e.target.value)}
                 inputMode="numeric" autoComplete="one-time-code" placeholder="123456"
@@ -6642,7 +6642,7 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
               </button>
               <button type="button" onClick={resendConfirm} disabled={busy}
                 className="w-full text-[14px] text-[#007AFF] py-1 active:opacity-60 disabled:opacity-50 font-medium">
-                Mail erneut senden
+                {t('auth.resendMail')}
               </button>
             </div>
           )}
@@ -6731,7 +6731,7 @@ function SetNewPasswordScreen({ onDone }) {
           <div className="w-14 h-14 bg-gradient-to-br from-slate-900 to-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm">
             <KeyRound className="text-amber-400" size={26} />
           </div>
-          <h1 className="text-[24px] font-bold tracking-tight">Neues Passwort setzen</h1>
+          <h1 className="text-[24px] font-bold tracking-tight">{t('auth.setNewPassword')}</h1>
           <p className="text-[#8E8E93] text-[14px] mt-1">Wähle ein neues Passwort für dein Konto.</p>
         </div>
 
@@ -6743,7 +6743,7 @@ function SetNewPasswordScreen({ onDone }) {
           <form onSubmit={submit} className="space-y-3">
             <div>
               <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">
-                Neues Passwort <span className="text-[#C7C7CC]">(min. 10)</span>
+                {t('auth.newPassword')} <span className="text-[#C7C7CC]">(min. 10)</span>
               </label>
               <div className="relative">
                 <KeyRound size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
@@ -6764,7 +6764,7 @@ function SetNewPasswordScreen({ onDone }) {
                   className="w-full pl-11 pr-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
               </div>
               {confirm.length > 0 && !matches && (
-                <p className="text-[12px] text-rose-500 mt-1 px-1">Die Passwörter stimmen nicht überein.</p>
+                <p className="text-[12px] text-rose-500 mt-1 px-1">{t('auth.passwordMismatch')}</p>
               )}
             </div>
 
@@ -7471,6 +7471,7 @@ function DeductionTrendChart({ series }) {
 }
 
 function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf, bare = false }) {
+  const { t } = useI18n();
   const points = useMemo(() => {
     const programMap = new Map(programs.map(p => [p.id, p]));
     return competitions
@@ -7578,7 +7579,7 @@ function CompetitionTrendChart({ competitions, programs, best, onTapWettkampf, b
                   <circle cx={p.x} cy={p.y} r={isBest ? 6 : 3.5} fill={isBest ? '#FBBF24' : '#FF9500'} stroke="#fff" strokeWidth="1.5" />
                   {isBest && !activeP && (
                     <text x={p.x} y={p.y - 12} fontSize="10" fontWeight="700" fill="#92400E" textAnchor="middle">
-                      Best
+                      {t('common.best')}
                     </text>
                   )}
                 </g>
@@ -8545,7 +8546,7 @@ function TrainingView({ data, setData, setView }) {
                     className="w-full px-4 py-2.5 flex items-center gap-2 text-[13px] text-[#8E8E93] border-t border-slate-100 active:bg-slate-100">
                     <ChevronRight size={14} strokeWidth={2.4}
                       className={'transition-transform ' + (open ? 'rotate-90' : '')} />
-                    Einzelne Logs anzeigen
+                    {t('admin.showSingleLogs')}
                   </button>
                   {open && day.items.map(renderRow)}
                 </div>
@@ -9416,7 +9417,7 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
       {coaches.length === 0 && invites.length === 0 && (
         <div className="px-4 py-3.5 flex items-center gap-3">
           <Shield size={18} className="text-[#8E8E93]" />
-          <span className="text-[15px] text-[#8E8E93]">Noch keine Trainer verknüpft.</span>
+          <span className="text-[15px] text-[#8E8E93]">{t('athletes.noCoaches')}</span>
         </div>
       )}
       {coaches.map(c => {
@@ -9467,7 +9468,7 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
       <button onClick={onGenerate} disabled={busy}
         className="w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 disabled:opacity-50">
         <Plus size={18} className="text-[#FF9500]" />
-        <span className="text-[15px] text-[#FF9500] font-medium">Neuen Trainer einladen</span>
+        <span className="text-[15px] text-[#FF9500] font-medium">{t('athletes.inviteCoach')}</span>
       </button>
       {err && <div className="px-4 py-2 text-[12px] text-[#FF3B30]">✗ {err}</div>}
       {info && !err && <div className="px-4 py-2 text-[12px] text-[#34C759]">✓ {info}</div>}
@@ -10008,7 +10009,7 @@ function TrainingsplanView({ data, setData, onBack }) {
             )}
             <button onClick={createPlan}
               className="w-full bg-[#FF9500] text-white py-3 rounded-full font-semibold active:scale-95 transition flex items-center justify-center gap-1.5">
-              <Plus size={18} strokeWidth={2.5} /> Neuer Plan
+              <Plus size={18} strokeWidth={2.5} /> {t('plan.newPlan')}
             </button>
             {allPlansLog.length > 0 && (
               <div className="space-y-1.5 pt-3">
@@ -10092,7 +10093,7 @@ function TrainingsplanView({ data, setData, onBack }) {
             </div>
             <button onClick={addItem}
               className="w-full border border-dashed border-slate-300 text-[#007AFF] py-2.5 rounded-xl font-medium flex items-center justify-center gap-1.5 active:opacity-60">
-              <Plus size={16} strokeWidth={2.6} /> Eintrag hinzufügen
+              <Plus size={16} strokeWidth={2.6} /> {t('plan.addEntry')}
             </button>
             <div className="flex gap-2">
               <button onClick={finishEdit} className="flex-1 bg-[#FF9500] text-white py-3 rounded-full font-semibold active:scale-95 transition">Fertig</button>
@@ -10228,7 +10229,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                             </div>
                             <button onClick={(ev) => { pressFeedback(ev, 'success'); bumpDone(it, +1); }}
                               className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-100 text-emerald-700 px-5 h-11 rounded-full font-semibold active:scale-95 transition">
-                              <Check size={18} strokeWidth={2.6} /> Erledigt
+                              <Check size={18} strokeWidth={2.6} /> {t('common.done')}
                             </button>
                           </div>
                         );
@@ -10467,6 +10468,7 @@ function ChangePasswordRow() {
 // erlaubt Wiederherstellen bzw. endgültiges Löschen. Nach dem Wiederherstellen
 // wird neu geladen, damit der Eintrag überall wieder auftaucht.
 function TrashSettings() {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState(null);
@@ -10528,7 +10530,7 @@ function TrashSettings() {
       {open && (
         loading ? (
           <div className="px-4 py-4 flex items-center gap-2 text-[14px] text-[#8E8E93] border-t border-[#E5E5EA]/60">
-            <Loader2 size={16} className="animate-spin" /> Lade …
+            <Loader2 size={16} className="animate-spin" /> {t('common.loading')}
           </div>
         ) : (items && items.length === 0 ? (
           <div className="px-4 py-4 text-[14px] text-[#8E8E93] border-t border-[#E5E5EA]/60">Papierkorb ist leer.</div>
@@ -10925,7 +10927,7 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
           trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
           <span className="flex items-center gap-3">
             <RefreshCw size={18} className="text-[#FF9500]" />
-            <span className="text-[15px] font-medium">App-Cache leeren + neu laden</span>
+            <span className="text-[15px] font-medium">{t('settings.clearCache')}</span>
           </span>
         </IOSListRow>
         <IOSListRow
@@ -10981,7 +10983,7 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
           trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
           <span className="flex items-center gap-3">
             <Trash2 size={18} className="text-[#FF3B30]" />
-            <span className="text-[15px] text-[#FF3B30] font-medium">Konto löschen</span>
+            <span className="text-[15px] text-[#FF3B30] font-medium">{t('settings.deleteAccount')}</span>
           </span>
         </IOSListRow>
       </IOSList>
@@ -11223,7 +11225,7 @@ function FeedbackModal({ onClose }) {
 
           {/* Klarstellung: Senden = Auto-Mail an Entwickler */}
           <p className="text-[12px] text-[#8E8E93] text-center px-3 leading-snug -mt-2">
-            Geht direkt an den Entwickler — keine weitere Aktion nötig.
+            {t('feedback.goesToDev')}
           </p>
 
           {justSent && (
@@ -11281,15 +11283,15 @@ function FeedbackModal({ onClose }) {
                   onClick={sendByMail}
                   trailing={<Mail size={18} className="text-[#007AFF]" />}>
                   <span className="flex flex-col">
-                    <span className="text-[15px] text-[#007AFF] font-medium">Nicht gesendete als Mail schicken</span>
-                    <span className="text-[12px] text-[#8E8E93]">Fallback falls Online-Versand fehlschlug</span>
+                    <span className="text-[15px] text-[#007AFF] font-medium">{t('feedback.sendUnsentAsMail')}</span>
+                    <span className="text-[12px] text-[#8E8E93]">{t('feedback.fallbackHint')}</span>
                   </span>
                 </IOSListRow>
               )}
               <IOSListRow
                 onClick={clearAll}
                 trailing={<Trash2 size={18} className="text-[#FF3B30]" />}>
-                <span className="text-[15px] text-[#FF3B30] font-medium">Lokale History löschen</span>
+                <span className="text-[15px] text-[#FF3B30] font-medium">{t('feedback.clearLocalHistory')}</span>
               </IOSListRow>
             </IOSList>
           )}
@@ -11337,17 +11339,17 @@ function BackupSettings({ data, setData }) {
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 space-y-3">
-      <h2 className="font-semibold flex items-center gap-2"><Archive size={16} /> App-Backup</h2>
+      <h2 className="font-semibold flex items-center gap-2"><Archive size={16} /> {t('settings.appBackup')}</h2>
       <p className="text-sm text-slate-500">
         Komplettes Backup aller Daten (Übungen, Sessions, Wettkämpfe, Sportler, Programme, UCI-DB) als JSON.
       </p>
       <div className="grid grid-cols-2 gap-2">
         <button onClick={exportAll}
           className="bg-white border border-slate-300 hover:bg-slate-50 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center">
-          <Download size={14} /> Backup speichern
+          <Download size={14} /> {t('settings.saveBackup')}
         </button>
         <label className="bg-white border border-slate-300 hover:bg-slate-50 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
-          <FileText size={14} /> Backup laden
+          <FileText size={14} /> {t('settings.loadBackup')}
           <input type="file" accept="application/json"
             onChange={e => importAll(e.target.files && e.target.files[0])}
             className="hidden" />
@@ -11752,7 +11754,7 @@ function FeedbackEditor({ open, athleteId, exercise, entry, onClose, onSaved }) 
               </div>
             ))}
             <div className="px-4 py-3 flex items-center justify-between gap-3">
-              <span className="text-[15px] text-[#3C3C43]">Hilfreich?</span>
+              <span className="text-[15px] text-[#3C3C43]">{t('feedback.helpful')}</span>
               <RatingPicker value={helpful} onChange={setHelpful} />
             </div>
           </IOSList>
@@ -11837,10 +11839,10 @@ function FeedbackSection({ athleteId, exercise, defaultOpen = false }) {
         <div className="bg-[#FF9500]/10 border border-[#FF9500]/25 rounded-2xl px-4 py-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Sparkles size={14} className="text-[#FF9500]" />
-            <span className="text-[12px] font-semibold text-[#FF9500] uppercase tracking-wide">KI-Zusammenfassung</span>
+            <span className="text-[12px] font-semibold text-[#FF9500] uppercase tracking-wide">{t('feedback.aiSummary')}</span>
           </div>
           {summaryBusy && !summary
-            ? <div className="text-[13px] text-[#8E8E93]">Fasse zusammen …</div>
+            ? <div className="text-[13px] text-[#8E8E93]">{t('feedback.summarizing')}</div>
             : <div className="text-[14px] text-black leading-snug">{summary}</div>}
         </div>
       )}
@@ -11850,10 +11852,10 @@ function FeedbackSection({ athleteId, exercise, defaultOpen = false }) {
           Wähle oben einen Sportler/ein Team, um Feedback zu erfassen.
         </div>
       ) : loading ? (
-        <div className="bg-white rounded-2xl px-4 py-4 text-[13px] text-[#8E8E93] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">Lädt …</div>
+        <div className="bg-white rounded-2xl px-4 py-4 text-[13px] text-[#8E8E93] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">{t('common.loadingShort')}</div>
       ) : entries.length === 0 ? (
         <div className="bg-white rounded-2xl px-4 py-4 text-[13px] text-[#8E8E93] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-          Noch kein Feedback zu dieser Übung. Tippe oben auf „Feedback".
+          {t('feedback.noneForExercise')}
         </div>
       ) : (
         <div className="bg-white rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
@@ -13333,12 +13335,12 @@ function ExerciseEditor({ exercise, onSave, onCancel, existingCodes = null }) {
           <button onClick={() => setMode('uci')}
             className={'flex-1 py-1.5 text-[13px] font-medium rounded-[10px] transition ' +
               (mode === 'uci' ? 'ios-seg-active' : 'text-[#3C3C43]')}>
-            Aus dem Reglement
+            {t('exercises.fromReglement')}
           </button>
           <button onClick={() => setMode('custom')}
             className={'flex-1 py-1.5 text-[13px] font-medium rounded-[10px] transition ' +
               (mode === 'custom' ? 'ios-seg-active' : 'text-[#3C3C43]')}>
-            Freie Übung
+            {t('exercises.freeExercise')}
           </button>
         </div>
 
@@ -13406,7 +13408,7 @@ function ExerciseEditor({ exercise, onSave, onCancel, existingCodes = null }) {
                 {assignQ.trim().length >= 2 && (
                   <div className="bg-white dark:bg-white/5 rounded-xl overflow-hidden -mx-1">
                     {assignMatches.length === 0 ? (
-                      <div className="px-3 py-2.5 text-[13px] text-[#8E8E93]">Keine Treffer im Reglement.</div>
+                      <div className="px-3 py-2.5 text-[13px] text-[#8E8E93]">{t('reglement.noHits')}</div>
                     ) : assignMatches.map((u, i) => (
                       <button key={u.c} onClick={() => handleUciAssign(u)}
                         className={'w-full text-left px-3 py-2.5 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/40 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
@@ -13500,6 +13502,7 @@ function useKeyboardInset() {
 }
 
 function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung wählen' }) {
+  const { t } = useI18n();
   const kbInset = useKeyboardInset();
   const [query, setQuery] = useState('');
   useEffect(() => { if (open) setQuery(''); }, [open]);
@@ -13532,7 +13535,7 @@ function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung
         </div>
         <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-4">
           <div>
-            <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">Meine Übungen</div>
+            <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">{t('exercises.mine')}</div>
             <div className="bg-white dark:bg-white/5 rounded-2xl overflow-hidden">
               {mine.length === 0 ? (
                 <div className="px-4 py-3 text-[13px] text-[#8E8E93]">{q ? 'Keine Treffer.' : 'Noch keine Übungen.'}</div>
@@ -13549,7 +13552,7 @@ function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung
             <div className="text-[12px] text-[#8E8E93] px-3">Tippe mind. 2 Zeichen, um im UCI-Reglement zu suchen.</div>
           ) : uci.length > 0 && (
             <div>
-              <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">Aus dem Reglement</div>
+              <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">{t('exercises.fromReglement')}</div>
               <div className="bg-white dark:bg-white/5 rounded-2xl overflow-hidden">
                 {uci.map((u, i) => (
                   <button key={u.c} onClick={() => { onPick(fromUci(u), true); onClose(); }}
@@ -13602,7 +13605,7 @@ function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null })
 
       <div className="mt-2 border border-slate-200 rounded-xl max-h-64 overflow-y-auto">
         {filtered.length === 0 ? (
-          <div className="p-4 text-sm text-slate-500 text-center">Keine Übung gefunden</div>
+          <div className="p-4 text-sm text-slate-500 text-center">{t('exercises.notFound')}</div>
         ) : (
           filtered.map(e => (
             <button key={e.c} onClick={() => onSelect(e)}
@@ -13859,7 +13862,7 @@ function Erfassen({ data, setData, dbAthletes, onDone, selectedAthleteId = null 
           <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center">
             <Dumbbell size={32} className="mx-auto text-slate-300 mb-3" />
             <h3 className="font-semibold mb-1">Keine aktiven Übungen</h3>
-            <p className="text-sm text-slate-500 mb-4">Füge eine Übung aus dem Reglement hinzu.</p>
+            <p className="text-sm text-slate-500 mb-4">{t('programs.addFromReglement')}</p>
             <button onClick={() => setAddOpen(true)}
               className="bg-[#FF9500] text-white px-5 py-2.5 rounded-xl font-medium inline-flex items-center gap-1.5 active:opacity-60">
               <Plus size={16} strokeWidth={2.6} /> {t('programs.addExercise')}
@@ -14026,7 +14029,7 @@ function Erfassen({ data, setData, dbAthletes, onDone, selectedAthleteId = null 
 
           {draftRestored && entries.length > 0 && (
             <div className="mb-3 flex items-center justify-between gap-2 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2 text-[13px] text-sky-900">
-              <span className="flex items-center gap-1.5"><RotateCcw size={14} className="shrink-0" /> Entwurf wiederhergestellt</span>
+              <span className="flex items-center gap-1.5"><RotateCcw size={14} className="shrink-0" /> {t('editor.draftRestored')}</span>
               <button type="button"
                 onClick={(ev) => { pressFeedback(ev, 'light'); setEntries([]); setNotes(''); setRepCount(0); setDraftRestored(false); try { localStorage.removeItem(DRAFT_KEY); } catch { /* egal */ } }}
                 className="font-medium text-sky-700 active:opacity-60 shrink-0">
@@ -14410,7 +14413,7 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
           className="w-full flex items-start gap-3 text-left bg-[#FF9500]/10 border border-[#FF9500]/30 rounded-2xl px-4 py-3 active:scale-[0.99] transition">
           <Sparkles size={18} className="text-[#FF9500] shrink-0 mt-0.5" strokeWidth={2.2} />
           <div className="min-w-0">
-            <div className="text-[15px] font-semibold text-[#000]">Doppelte aufräumen</div>
+            <div className="text-[15px] font-semibold text-[#000]">{t('exercises.cleanDuplicates')}</div>
             <div className="text-[13px] text-[#8E8E93] mt-0.5 leading-snug">
               {dupInfo.programsRemoved > 0 && `${dupInfo.programsRemoved} doppelte Programme`}
               {dupInfo.programsRemoved > 0 && dupInfo.exercisesRemoved > 0 && ' · '}
@@ -14499,7 +14502,7 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
               <button
                 onClick={() => { setShowAllProgramsSheet(false); setShowNew(true); }}
                 className="w-full bg-[#FF9500] text-white px-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition">
-                <Plus size={18} strokeWidth={2.5} /> Neues Programm
+                <Plus size={18} strokeWidth={2.5} /> {t('programs.new')}
               </button>
             </div>
           </div>
@@ -14825,7 +14828,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
                 onClick={() => save(true)}
                 disabled={!name.trim() || exercises.length === 0 || !validation.valid || !athleteId}
                 className="w-full mt-2 py-3 rounded-2xl text-[15px] font-medium text-[#FF9500] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:bg-[#D1D1D6]/30 disabled:opacity-40 flex items-center justify-center gap-2">
-                <Copy size={16} /> Als Kopie sichern
+                <Copy size={16} /> {t('programs.saveAsCopy')}
               </button>
               <p className="text-[12px] text-[#8E8E93] px-2 mt-1.5 leading-snug">
                 Legt ein neues Programm mit diesen Übungen an — das Original bleibt unverändert.
@@ -15089,7 +15092,7 @@ function BulkImportModal({ data, athletes, onApply, onClose }) {
         onClick={e => e.stopPropagation()}>
         <div className="px-4 py-3 flex items-center justify-between border-b border-slate-200/60 dark:border-slate-800">
           <button onClick={onClose} className="text-[#007AFF] font-medium text-[15px]">Abbrechen</button>
-          <span className="font-semibold text-[15px]">Mehrere PDFs</span>
+          <span className="font-semibold text-[15px]">{t('pdfImport.severalPdfs')}</span>
           <button onClick={apply} disabled={selectedCount === 0}
             className="text-[#FF9500] font-semibold text-[15px] disabled:opacity-30">
             {selectedCount > 0 ? selectedCount + ' anlegen' : 'Anlegen'}
@@ -15888,7 +15891,7 @@ function ValidationCheck({ pdfRef, t1, t2 }) {
         {comparison}
         <div className="flex items-start gap-2 text-emerald-900">
           <Check size={16} className="text-emerald-600 shrink-0 mt-0.5" />
-          <span><strong>Passt:</strong> Ergebnis stimmt mit dem Bogen überein.</span>
+          <span><strong>Passt:</strong> {t('editor.matchesSheet')}</span>
         </div>
       </div>
     );
@@ -17063,7 +17066,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
               </select>
             ) : (
               <div className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-sm text-slate-400">
-                Noch kein Programm — lege eins unter Wettkampf › Programme an oder importiere oben ein PDF.
+                {t('editor.noProgramHint')}
               </div>
             )}
           </div>
@@ -17099,7 +17102,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                   </button>
                   <button type="button" onClick={() => setAbzugGesamt(true)}
                     className={'flex-1 py-2 rounded-xl text-sm font-semibold border ' + (abzugGesamt ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
-                    Gesamt-Abzug
+                    {t('editor.totalDeduction')}
                   </button>
                 </div>
                 <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
@@ -17118,7 +17121,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           {/* Abzüge erfassen — Vollbild-Dart-Scorer (wie native iOS) */}
           <button onClick={() => { setScoringIdx(0); setScoring(true); }}
             className="w-full bg-[#FF9500] text-white px-4 py-3 rounded-2xl text-[15px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99] transition shadow-sm">
-            <Zap size={18} /> Abzüge erfassen
+            <Zap size={18} /> {t('editor.enterDeductions')}
           </button>
 
           {/* Kompakte, tippbare Übungsliste (wie iOS) — Tipp öffnet den Vollbild-Scorer bei dieser Übung.
@@ -17309,7 +17312,7 @@ function MarkSummary({ tables, program, kampfgerichte, gesamt }) {
   );
   return (
     <div className="card-surface rounded-[22px] p-4 space-y-3">
-      <h3 className="text-[13px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Abzugs-Übersicht</h3>
+      <h3 className="text-[13px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t('editor.deductionOverview')}</h3>
       {totals.map((s, i) => row(gesamt ? 'Gesamt' : `Kampfgericht ${i + 1}`, s, i))}
       <p className="text-[11px] text-slate-400 leading-snug">Gesamtzahl der getippten Fehlerzeichen je Kampfgericht — zum Abgleich mit dem Wertungsbogen.</p>
     </div>
@@ -17393,7 +17396,7 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
                   <div className="font-medium text-sm leading-tight mt-0.5">{localizedExerciseName(ex)}</div>
                   {unsicher && (
                     <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-800 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded">
-                      <AlertTriangle size={10} /> KI unsicher gelesen — bitte prüfen
+                      <AlertTriangle size={10} /> {t('scan.uncertain')}
                     </div>
                   )}
                 </div>
@@ -17667,7 +17670,7 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
       )}
 
       <p className="text-xs text-slate-400 mt-3 leading-relaxed">
-        Ausführung: <strong>x</strong> 0,2 · <strong>~</strong> 0,5 · <strong>|</strong> 1,0 · <strong>○</strong> 2,0 · Schwierigkeit: 10/50/100% des anerkannten Punktwerts (mit taktischer Aufwertung)
+        {t('editor.executionColon')} <strong>x</strong> 0,2 · <strong>~</strong> 0,5 · <strong>|</strong> 1,0 · <strong>○</strong> 2,0 · Schwierigkeit: 10/50/100% des anerkannten Punktwerts (mit taktischer Aufwertung)
       </p>
     </div>
   );
@@ -17790,7 +17793,7 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
 
       {loading && (
         <div className="bg-white rounded-2xl border border-slate-200/60 p-8 text-center text-slate-500 text-sm">
-          Lade Daten…
+          {t('common.loadingData')}
         </div>
       )}
       {err && (
@@ -17884,9 +17887,9 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
           {sessions.length === 0 && competitions.length === 0 && (
             <div className="bg-white rounded-2xl border border-slate-200/60 p-8 text-center">
               <Sparkles size={32} className="mx-auto text-slate-300 mb-3" />
-              <h3 className="font-semibold mb-1">Noch keine Daten</h3>
+              <h3 className="font-semibold mb-1">{t('common.noDataYet')}</h3>
               <p className="text-sm text-slate-500">
-                Dieser Sportler hat bisher weder Trainings noch Wettkämpfe eingetragen.
+                {t('athletes.noDataYet')}
               </p>
             </div>
           )}
@@ -18023,7 +18026,7 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
           <button onClick={onClose} className="text-[17px] text-[#FF9500] active:opacity-60 px-1 flex items-center gap-1">
             <ChevronLeft size={20} strokeWidth={2.6} /> Zurück
           </button>
-          <h3 className="font-semibold text-[17px]">Admin · Account</h3>
+          <h3 className="font-semibold text-[17px]">{t('admin.account')}</h3>
           <span className="w-12" />
         </div>
 
@@ -18087,7 +18090,7 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
               <span className="text-[13px] text-[#8E8E93]">{fmtDateTime(user.created_at)}</span>
             </div>
             <div className="px-4 py-3 flex items-center justify-between gap-3">
-              <span className="text-[15px] text-[#3C3C43]">Letzter Login</span>
+              <span className="text-[15px] text-[#3C3C43]">{t('admin.lastLogin')}</span>
               <span className="text-[13px] text-[#8E8E93]">{fmtDateTime(user.last_sign_in_at)}</span>
             </div>
             <div className="px-4 py-3 flex items-center justify-between gap-3">
@@ -18106,7 +18109,7 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
                 disabled={busy}
                 className="w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 disabled:opacity-50">
                 <MailCheck size={18} className="text-[#FF9500]" />
-                <span className="text-[15px]">Bestätigungs-Mail erneut senden</span>
+                <span className="text-[15px]">{t('auth.resendConfirmation')}</span>
               </button>
             )}
             {!isConfirmed && (
@@ -18121,7 +18124,7 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
               disabled={busy}
               className="w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 disabled:opacity-50">
               <KeyRound size={18} className="text-[#007AFF]" />
-              <span className="text-[15px]">Magic-Login-Link erzeugen</span>
+              <span className="text-[15px]">{t('admin.magicLink')}</span>
             </button>
             <button onClick={() => run('Passwort-Reset-Mail erzeugt', () => adminSendPasswordReset({ user_id: user.id }))}
               disabled={busy}
@@ -18134,11 +18137,11 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
           {/* Action-Link Anzeige */}
           {actionLink && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-2">
-              <div className="text-[12px] font-semibold text-amber-900 uppercase tracking-wide">Action-Link</div>
+              <div className="text-[12px] font-semibold text-amber-900 uppercase tracking-wide">{t('admin.actionLink')}</div>
               <div className="text-[11px] font-mono text-amber-900 break-all">{actionLink}</div>
               <div className="flex gap-2">
                 <button onClick={copyLink} className="flex-1 bg-white border border-amber-300 px-3 py-1.5 rounded-full text-[12px] font-medium flex items-center justify-center gap-1.5 active:opacity-60">
-                  <Copy size={12} /> Kopieren
+                  <Copy size={12} /> {t('common.copy')}
                 </button>
                 <a href={actionLink} target="_blank" rel="noopener noreferrer"
                   className="flex-1 bg-amber-600 text-white px-3 py-1.5 rounded-full text-[12px] font-medium flex items-center justify-center gap-1.5 active:opacity-60">
@@ -18153,12 +18156,12 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
             <button onClick={doImpersonate} disabled={busy}
               className="w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 disabled:opacity-50">
               <Crown size={18} className="text-[#FF9500]" />
-              <span className="text-[15px]">Als dieser User einloggen</span>
+              <span className="text-[15px]">{t('admin.loginAsUser')}</span>
             </button>
             <button onClick={() => setConfirmDelete(true)} disabled={busy}
               className="w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 disabled:opacity-50">
               <UserX size={18} className="text-[#FF3B30]" />
-              <span className="text-[15px] text-[#FF3B30]">Account komplett löschen</span>
+              <span className="text-[15px] text-[#FF3B30]">{t('settings.deleteAccountFull')}</span>
             </button>
           </IOSList>
 
@@ -18194,7 +18197,7 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
         {confirmDelete && (
           <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
             <div className="bg-white rounded-3xl p-5 max-w-sm w-full" onClick={e => e.stopPropagation()}>
-              <h3 className="font-semibold text-[17px] mb-2">Account löschen?</h3>
+              <h3 className="font-semibold text-[17px] mb-2">{t('settings.deleteAccountTitle')}</h3>
               <p className="text-[14px] text-[#8E8E93] mb-4">
                 „{user.email}" wird endgültig gelöscht. Alle verknüpften Sportler-Einträge, Sessions, Wettkämpfe etc. werden via Cascade ebenfalls entfernt. Das ist nicht rückgängig zu machen.
               </p>
@@ -18264,7 +18267,7 @@ function AdminAccountsView({ open, onClose, initialFilter = '', autoOpenUserId =
         <button onClick={onClose} className="text-[17px] text-[#FF9500] active:opacity-60 px-1 flex items-center gap-1">
           <ChevronLeft size={20} strokeWidth={2.6} /> Zurück
         </button>
-        <h3 className="font-semibold text-[17px]">Alle Accounts</h3>
+        <h3 className="font-semibold text-[17px]">{t('admin.allAccounts')}</h3>
         <button onClick={reload} className="text-[#007AFF] active:opacity-60 px-1">
           <RefreshCw size={18} />
         </button>
@@ -18297,10 +18300,10 @@ function AdminAccountsView({ open, onClose, initialFilter = '', autoOpenUserId =
 
         {users === null ? (
           <div className="text-center py-12 text-[#8E8E93]">
-            <Loader2 size={20} className="animate-spin mx-auto mb-2" /> Lade Accounts…
+            <Loader2 size={20} className="animate-spin mx-auto mb-2" /> {t('admin.loadingAccounts')}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-[#8E8E93]">Keine Accounts gefunden.</div>
+          <div className="text-center py-12 text-[#8E8E93]">{t('admin.noAccounts')}</div>
         ) : (
           <IOSList header={`${filtered.length} Account${filtered.length === 1 ? '' : 's'}`}>
             {filtered.map(u => {
@@ -18794,7 +18797,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
           {(isManagedByMe || isAdmin) && !linkedToUser && a.type !== 'team' && (
             <button onClick={() => setMergeSource(a)} disabled={busy}
               className="text-[13px] bg-slate-100 text-slate-800 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
-              <Users size={13} /> Mit Konto zusammenführen
+              <Users size={13} /> {t('athletes.mergeWithAccount')}
             </button>
           )}
           {/* Trainings/Wettkämpfe auf einen anderen Sportler/ein Team verschieben —
@@ -19083,7 +19086,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
                 <button onClick={() => setMergeSource(null)} className="p-1 text-[#8E8E93] active:opacity-60"><X size={20} /></button>
               </div>
               <p className="text-[13px] text-[#8E8E93] mt-1 leading-snug">
-                Daten von <strong className="text-[#000] dark:text-white">{mergeSource.name}</strong> (ohne Login)
+                {t('athletes.dataFrom')} <strong className="text-[#000] dark:text-white">{mergeSource.name}</strong> (ohne Login)
                 in ein echtes Konto überführen. Der Platzhalter wird danach gelöscht.
               </p>
             </div>
@@ -19627,7 +19630,7 @@ function TeamInviteModal({ team, onClose }) {
       {code && (
         <button onClick={() => share(shareText(code), key)}
           className="text-[13px] bg-[#FF9500]/15 text-[#C2410C] dark:text-[#FF9500] px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5 shrink-0">
-          {copied === key ? <><Check size={13} /> Kopiert</> : <><Send size={13} /> Teilen</>}
+          {copied === key ? <><Check size={13} /> {t('common.copied')}</> : <><Send size={13} /> Teilen</>}
         </button>
       )}
     </div>
@@ -19668,6 +19671,7 @@ function TeamInviteModal({ team, onClose }) {
 }
 
 function InviteModal({ open, athlete, onClose, onInvite }) {
+  const { t } = useI18n();
   const [email, setEmail] = useState('');
   const [err, setErr] = useState('');
   const [copied, setCopied] = useState(false);
@@ -19720,13 +19724,13 @@ function InviteModal({ open, athlete, onClose, onInvite }) {
                   <span className="font-semibold truncate">{athlete.email}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-400 text-xs">Code:</span>
+                  <span className="text-slate-400 text-xs">{t('common.codeColon')}</span>
                   <span className="font-bold text-lg tracking-wider text-amber-400">{athlete.login_code}</span>
                 </div>
               </div>
               <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-medium text-slate-600">Als Nachricht kopieren:</span>
+                  <span className="text-xs font-medium text-slate-600">{t('feedback.copyAsMessage')}</span>
                   <button onClick={copyShare}
                     className="text-xs text-slate-500 hover:text-slate-900 px-2 py-1 rounded-lg hover:bg-slate-100">
                     {copied ? 'Kopiert!' : 'Kopieren'}
@@ -19757,7 +19761,7 @@ function InviteModal({ open, athlete, onClose, onInvite }) {
                 </button>
                 <button onClick={submit}
                   className="flex-1 bg-slate-900 text-white px-5 py-3 rounded-xl font-medium">
-                  Einladen
+                  {t('common.invite')}
                 </button>
               </div>
             </div>
@@ -19903,7 +19907,7 @@ function MauteImportView({ data, setData, setView, athleteId }) {
                 accept=".xlsm,.xlsx,.xls,.numbers,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 onChange={e => handleFile(e.target.files && e.target.files[0])} />
             </label>
-            {busy && <div className="text-[13px] text-slate-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Datei wird gelesen …</div>}
+            {busy && <div className="text-[13px] text-slate-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> {t('common.readingFile')}</div>}
             {err && <div className="text-[13px] text-rose-600">{err}</div>}
           </div>
 
@@ -20391,7 +20395,7 @@ function ExportWettkampf({ data, defaultName = '' }) {
                     </div>
                   ))}
                   <div className="text-[12px] text-[#C7C7CC]">
-                    Die neue Übung steht in der 2. Zeile der Position – so sieht es die Vorlage vor.
+                    {t('export.secondRowHint')}
                   </div>
                 </div>
               )}
@@ -20497,14 +20501,14 @@ function ExportTraining({ data }) {
 
         {sessions.length === 0 && (
           <p className="text-sm text-slate-500 mt-3 text-center">
-            Noch keine Trainings-Sessions zum Exportieren.
+            {t('export.noSessions')}
           </p>
         )}
       </div>
 
       <div className="bg-slate-50 rounded-xl p-4 text-xs text-slate-600 space-y-1">
-        <div><strong>Spalten:</strong> Datum · Sportler · Übung · Serie · Status · Notizen</div>
-        <div><strong>Eine Zeile pro Serie</strong> (für Pivot-Auswertungen in Excel/Numbers)</div>
+        <div><strong>Spalten:</strong> {t('export.csvColumns')}</div>
+        <div><strong>{t('export.oneRowPerSeries')}</strong> (für Pivot-Auswertungen in Excel/Numbers)</div>
       </div>
     </div>
   );
@@ -20556,7 +20560,7 @@ function WertungsbogenSheet({ competition: c, program, athleteName, scopeLabel, 
         <div className="flex items-center justify-end gap-2 mb-4 print:hidden">
           <button onClick={() => window.print()}
             className="px-4 py-2 rounded-full bg-[#FF9500] text-white text-[14px] font-semibold active:scale-95 transition">
-            Drucken / als PDF speichern
+            {t('common.printOrPdf')}
           </button>
           <button onClick={onClose}
             className="px-4 py-2 rounded-full border border-slate-300 text-[14px] font-medium">Schließen</button>
@@ -21004,7 +21008,7 @@ function LastNameModal({ firstName, onSaved, onLater }) {
               {firstName ? `Hallo ${firstName}! 👋` : 'Kurz noch dein Nachname'}
             </h3>
             <p className="text-[13px] text-[#3C3C43] dark:text-slate-300 leading-snug">
-              Bitte ergänze einmalig deinen <strong>Nachnamen</strong>. Angesprochen wirst
+              {t('settings.addOnce')} <strong>{t('settings.lastNameWord')}</strong>. Angesprochen wirst
               du weiterhin nur mit deinem Vornamen — der Nachname liegt nur in den Daten.
             </p>
           </div>
@@ -21066,7 +21070,7 @@ function ClubModal({ firstName, onSaved, onLater }) {
               {firstName ? `Noch dein Verein, ${firstName}` : 'Dein Verein'}
             </h3>
             <p className="text-[13px] text-[#3C3C43] dark:text-slate-300 leading-snug">
-              Für welchen <strong>Verein</strong> startest du? Tippen und aus den
+              {t('settings.forWhich')} <strong>Verein</strong> startest du? Tippen und aus den
               Vorschlägen wählen — oder frei eingeben.
             </p>
           </div>
