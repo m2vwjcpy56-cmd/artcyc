@@ -13219,8 +13219,8 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
                   <select value={statSort} onChange={e => setStatSort(e.target.value)}
                     className="text-[13px] font-semibold text-[#FF9500] bg-transparent outline-none">
                     <option value="abzug">{t('common.deduction')}</option>
-                    <option value="training">Training</option>
-                    <option value="name">Name</option>
+                    <option value="training">{t('sort.byTraining')}</option>
+                    <option value="name">{t('sort.byName')}</option>
                   </select>
                 </div>
                 <IOSList footer="Tippe auf eine Übung um Statistik (Training + Wettkampf) zu sehen.">

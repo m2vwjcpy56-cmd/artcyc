@@ -853,6 +853,9 @@ const dict = {
     'exercises.countHeading': 'Übungen ({n})',
     'training.runExplainer': 'Ein Programmdurchlauf, wie im Wettkampf mit Abzügen bewertet. Fließt getrennt in die Statistiken unter „Training" ein.',
     'training.sessionsTotal': '{n} Sessions insgesamt',
+    // Block 9: Sortierung, 06.10.2026
+    'sort.byTraining': 'Training',
+    'sort.byName': 'Name',
   },
 
   en: {
@@ -1651,6 +1654,9 @@ const dict = {
     'exercises.countHeading': 'Exercises ({n})',
     'training.runExplainer': 'A full run through your program, scored with deductions like a competition. It feeds into the statistics separately under “Training”.',
     'training.sessionsTotal': '{n} sessions in total',
+    // Block 9: Sortierung, 06.10.2026
+    'sort.byTraining': 'Training',
+    'sort.byName': 'Name',
     },
 
   fr: {
@@ -2444,6 +2450,9 @@ const dict = {
     'exercises.countHeading': 'Exercices ({n})',
     'training.runExplainer': 'Un passage complet du programme, noté avec déductions comme en compétition. Il alimente les statistiques séparément sous « Entraînement ».',
     'training.sessionsTotal': '{n} séances au total',
+    // Block 9: Sortierung, 06.10.2026
+    'sort.byTraining': 'Entraînement',
+    'sort.byName': 'Nom',
     },
 
   it: {
@@ -3237,6 +3246,9 @@ const dict = {
     'exercises.countHeading': 'Esercizi ({n})',
     'training.runExplainer': 'Una prova completa del programma, valutata con detrazioni come in gara. Entra separatamente nelle statistiche sotto «Allenamento».',
     'training.sessionsTotal': '{n} sessioni in totale',
+    // Block 9: Sortierung, 06.10.2026
+    'sort.byTraining': 'Allenamento',
+    'sort.byName': 'Nome',
     },
 
   es: {
@@ -4030,6 +4042,9 @@ const dict = {
     'exercises.countHeading': 'Ejercicios ({n})',
     'training.runExplainer': 'Una pasada completa del programa, puntuada con deducciones como en competición. Entra por separado en las estadísticas bajo «Entrenamiento».',
     'training.sessionsTotal': '{n} sesiones en total',
+    // Block 9: Sortierung, 06.10.2026
+    'sort.byTraining': 'Entrenamiento',
+    'sort.byName': 'Nombre',
     },
 
   cs: {
