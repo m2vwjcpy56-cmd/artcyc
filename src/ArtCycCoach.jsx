@@ -2910,7 +2910,7 @@ function CompMetricChart({ compList }) {
         ))}
       </div>
       {realMax === 0 ? (
-        <div className="h-[72px] flex items-center justify-center text-[13px] text-[#8E8E93]">Keine Daten in diesem Zeitraum.</div>
+        <div className="h-[72px] flex items-center justify-center text-[13px] text-[#8E8E93]">{t('common.noDataRange')}</div>
       ) : (
         <>
           <div className="text-[11px] h-4 leading-4 truncate">
@@ -7100,7 +7100,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
           {/* Quick-Action: im Dashboard mit Auswahl, was erfasst werden soll. */}
           <button onClick={() => setErfassenOpen(true)}
             className="shrink-0 mt-1 px-3 py-1.5 rounded-full bg-[#FF9500] text-white text-[13px] font-semibold flex items-center gap-1 active:scale-95 transition shadow-[0_2px_8px_rgba(255,149,0,0.25)]">
-            <Plus size={14} strokeWidth={2.6} /> Erfassen
+            <Plus size={14} strokeWidth={2.6} /> {t('nav.record')}
           </button>
         </header>
 
@@ -7121,7 +7121,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
         {/* OVERVIEW — Cockpit: mehrere starke Infos (Training + Wettkampf gemeinsam) */}
         <div className="grid grid-cols-2 gap-3">
           <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(trainStats.totalSessions)} sub={trainStats.distinctDays + ' Trainingstage'} />
-          <MetricCard accent="emerald" icon={Activity} label="Aktuelle Serie" value={streak > 0 ? streak + (streak === 1 ? ' Woche' : ' Wochen') : '—'} sub={streak > 0 ? 'in Folge' : 'keine aktive Serie'} />
+          <MetricCard accent="emerald" icon={Activity} label={t('training.currentStreak')} value={streak > 0 ? streak + (streak === 1 ? ' Woche' : ' Wochen') : '—'} sub={streak > 0 ? 'in Folge' : 'keine aktive Serie'} />
           {/* Wettkampf-Paar bewusst nebeneinander (gleiche Bedeutung) */}
           <MetricCard accent="violet" icon={Calendar} label="Letzter Wettkampf" value={compStats.last ? compStats.last.final.toFixed(2) : '—'} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : '–'} />
           <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub="Punkte" />
@@ -7222,7 +7222,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
                       <span className="block text-[12px] text-[#8E8E93] truncate">{formatDateShort(c.date)}{c.location ? ' · ' + c.location : ''}</span>
                     </span>
                     <span className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-right"><span className="block text-[14px] font-bold text-[#FF9500] tabular-nums leading-none">{final != null ? final.toFixed(2) : '—'}</span><span className="block text-[10px] text-[#8E8E93] uppercase tracking-wide mt-0.5">Pkt</span></span>
+                      <span className="text-right"><span className="block text-[14px] font-bold text-[#FF9500] tabular-nums leading-none">{final != null ? final.toFixed(2) : '—'}</span><span className="block text-[10px] text-[#8E8E93] uppercase tracking-wide mt-0.5">{t('common.pts')}</span></span>
                       <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC]" />
                     </span>
                   </button>
@@ -7304,7 +7304,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
         />
         <StatCard
           icon={TrendingUp}
-          label="Geringster Abzug"
+          label={t('competition.lowestDeduction')}
           value={compStats.minDed ? compStats.minDed.ded.toFixed(2) : '—'}
           sub={compStats.minDed ? compStats.minDed.competition.name.slice(0, 24) : '—'}
           color="violet"
@@ -8191,7 +8191,7 @@ function TrainingView({ data, setData, setView }) {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-[15px] truncate">{s.exerciseName || 'Übung'}</span>
             {s.withRope === true && (
-              <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">Seil</span>
+              <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">{t('exercise.rope')}</span>
             )}
             {/* Kein „ohne Seil"-Etikett: ohne Seil ist der Normalfall (Parität iOS). */}
             {(s.repCount || 0) > 0 && (
@@ -8525,7 +8525,7 @@ function TrainingView({ data, setData, setView }) {
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-[15px] truncate">{agg.name}</span>
                             {agg.rope && (
-                              <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">Seil</span>
+                              <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">{t('exercise.rope')}</span>
                             )}
                           </div>
                           <div className="text-[12px] text-[#8E8E93] mt-0.5 tabular-nums">
@@ -8677,38 +8677,38 @@ function TrainingView({ data, setData, setView }) {
       <div className="space-y-4 pb-2">
         <header className="flex items-center gap-1 pt-1">
           <button onClick={() => setRunsListOpen(false)} className="p-2 -ml-2 text-[#FF9500] active:opacity-50"><ChevronLeft size={26} strokeWidth={2.6} /></button>
-          <h1 className="text-[28px] font-bold tracking-tight leading-none flex-1 min-w-0">Trainings-Wertungen</h1>
+          <h1 className="text-[28px] font-bold tracking-tight leading-none flex-1 min-w-0">{t('training.runs')}</h1>
           {baseRuns.length > 0 && (
             /* Filter hinter einem Knopf (wie nativ) — sie sollen nicht dauerhaft
                die halbe Seite belegen. Gefüllt = Filter aktiv. */
             <button onClick={() => setRunFilterOpen(o => !o)}
               className={'p-2 rounded-full active:opacity-60 shrink-0 ' + (filtersActive ? 'bg-[#FF9500] text-white' : 'text-[#FF9500]')}
-              title="Filter">
+              title={t('common.filter')}>
               <SlidersHorizontal size={20} strokeWidth={2.4} />
             </button>
           )}
         </header>
         {baseRuns.length === 0 ? (
-          <EmptyState title="Keine Trainings-Wertungen" hint="Werte ein Trainingsprogramm wie einen Wertungsbogen." />
+          <EmptyState title={t('training.noRuns')} hint="Werte ein Trainingsprogramm wie einen Wertungsbogen." />
         ) : (<>
           {runFilterOpen && (
             <div className="space-y-2.5">
               <div className="flex flex-wrap items-center gap-2">
                 {runPrograms.length > 1 && (
                   <select value={runProgramFilter} onChange={e => setRunProgramFilter(e.target.value)} className={selCls}>
-                    <option value="">Alle Programme</option>
+                    <option value="">{t('programs.all')}</option>
                     {runPrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 )}
                 <select value={runRange} onChange={e => setRunRange(e.target.value)} className={selCls}>
-                  <option value="">Gesamt</option>
+                  <option value="">{t('scope.total')}</option>
                   <option value="28d">4 Wo.</option>
                   <option value="90d">3 Mon.</option>
                   <option value="180d">6 Mon.</option>
                   <option value="365d">12 Mon.</option>
-                  {runYears.length > 0 && <optgroup label="Jahr">{runYears.map(y => <option key={y} value={'y' + y}>{y}</option>)}</optgroup>}
+                  {runYears.length > 0 && <optgroup label={t('range.year')}>{runYears.map(y => <option key={y} value={'y' + y}>{y}</option>)}</optgroup>}
                 </select>
-                {filtersActive && <button onClick={resetRunFilters} className="text-[13px] font-medium text-[#FF3B30] px-2 active:opacity-60">Zurücksetzen</button>}
+                {filtersActive && <button onClick={resetRunFilters} className="text-[13px] font-medium text-[#FF3B30] px-2 active:opacity-60">{t('common.reset')}</button>}
               </div>
               <div className="space-y-2 max-w-[440px]">
                 {rangeRow('Ergebnis', ergB, runErg, setRunErg)}
@@ -8718,7 +8718,7 @@ function TrainingView({ data, setData, setView }) {
             </div>
           )}
           {runs.length === 0 ? (
-            <div className="card-surface rounded-[22px] px-4 py-8 text-center text-[14px] text-[#8E8E93]">Keine Treffer</div>
+            <div className="card-surface rounded-[22px] px-4 py-8 text-center text-[14px] text-[#8E8E93]">{t('common.noMatches')}</div>
           ) : (
             <div className="card-surface rounded-[22px] overflow-hidden">
               {runs.map((c, i) => {
@@ -8754,14 +8754,14 @@ function TrainingView({ data, setData, setView }) {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button onClick={() => setErfassenOpen(true)}
-              className="px-3.5 py-2 rounded-full bg-[#FF9500] text-white text-[14px] font-semibold flex items-center gap-1 active:scale-95 transition"><Plus size={15} strokeWidth={2.6} /> Erfassen</button>
+              className="px-3.5 py-2 rounded-full bg-[#FF9500] text-white text-[14px] font-semibold flex items-center gap-1 active:scale-95 transition"><Plus size={15} strokeWidth={2.6} /> {t('nav.record')}</button>
           </div>
         </header>
 
         {/* Trainingsplan */}
         <button onClick={() => setView('trainingsplan')} className="w-full card-surface rounded-[20px] px-4 py-3 flex items-center gap-3 active:bg-[#D1D1D6]/30 transition">
           <ListChecks size={18} className="text-[#FF9500] shrink-0" />
-          <span className="flex-1 text-left text-[15px] font-medium">Trainingsplan</span>
+          <span className="flex-1 text-left text-[15px] font-medium">{t('training.plan')}</span>
           <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
         </button>
 
@@ -8770,7 +8770,7 @@ function TrainingView({ data, setData, setView }) {
         <div className="card-surface rounded-[20px] overflow-hidden">
           <button onClick={() => setRunEditorOpen(true)} className="w-full px-4 py-3 flex items-center gap-3 active:bg-[#D1D1D6]/30 transition">
             <FileText size={18} className="text-[#FF9500] shrink-0" />
-            <span className="flex-1 text-left text-[15px] font-medium">Trainingsprogramm erfassen</span>
+            <span className="flex-1 text-left text-[15px] font-medium">{t('training.recordRun')}</span>
             <Plus size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
           </button>
           {(() => {
@@ -8825,9 +8825,9 @@ function TrainingView({ data, setData, setView }) {
             <div className="grid grid-cols-2 gap-3">
               <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(trainTopStats.sessionCount)} sub="insgesamt" />
               <MetricCard accent="amber" icon={Activity} label="Übungen" value={String(trainTopStats.exCount)} sub="trainiert" />
-              <MetricCard accent="violet" icon={TrendingUp} label="Ø 12 Monate" value={avg != null ? avg.toFixed(2) : '—'}
+              <MetricCard accent="violet" icon={TrendingUp} label={t('training.avg12Months')} value={avg != null ? avg.toFixed(2) : '—'}
                 sub={recent.length === 1 ? '1 Trainingsprogramm' : recent.length + ' Trainingsprogramme'} />
-              <MetricCard accent="emerald" icon={Calendar} label="Letzter" value={last ? last.v.toFixed(2) : '—'}
+              <MetricCard accent="emerald" icon={Calendar} label={t('common.last')} value={last ? last.v.toFixed(2) : '—'}
                 sub={last ? formatDateShort(last.date) : 'noch keine Wertung'} />
             </div>
           );
@@ -8971,7 +8971,7 @@ function TrainingView({ data, setData, setView }) {
             <div className="bg-white rounded-3xl sm:rounded-2xl w-full max-w-sm p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center"><Trash2 size={18} className="text-rose-600" /></div>
-                <div><h3 className="font-semibold">Session löschen?</h3><p className="text-xs text-slate-500">Kann nicht rückgängig gemacht werden.</p></div>
+                <div><h3 className="font-semibold">Session löschen?</h3><p className="text-xs text-slate-500">{t('common.cannotUndo')}</p></div>
               </div>
               <div className="flex gap-2 mt-4">
                 <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 font-medium text-sm">Abbrechen</button>
@@ -9008,7 +9008,7 @@ function TrainingView({ data, setData, setView }) {
       <button onClick={() => setView('trainingsplan')}
         className="w-full card-surface rounded-2xl px-4 py-3 flex items-center gap-3 active:bg-[#D1D1D6]/30 transition">
         <ListChecks size={18} className="text-[#FF9500] shrink-0" />
-        <span className="flex-1 text-left text-[15px] font-medium">Trainingsplan</span>
+        <span className="flex-1 text-left text-[15px] font-medium">{t('training.plan')}</span>
         <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
       </button>
 
@@ -9038,7 +9038,7 @@ function TrainingView({ data, setData, setView }) {
           />
           <StatCard
             icon={Activity}
-            label="Aktuelle Serie"
+            label={t('training.currentStreak')}
             value={trainTopStats.streak}
             sub={trainTopStats.streak === 1 ? 'Tag' : 'Tage'}
             color="orange"
@@ -9180,7 +9180,7 @@ function TrainingView({ data, setData, setView }) {
               <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center"><Trash2 size={18} className="text-rose-600" /></div>
               <div>
                 <h3 className="font-semibold">Session löschen?</h3>
-                <p className="text-xs text-slate-500">Kann nicht rückgängig gemacht werden.</p>
+                <p className="text-xs text-slate-500">{t('common.cannotUndo')}</p>
               </div>
             </div>
             <div className="flex gap-2 mt-4">
@@ -12002,7 +12002,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
         </header>
 
         {!hasAnyData ? (
-          <div className="card-surface rounded-[22px] p-8 text-center text-[15px] text-slate-400">Noch keine Trainingsdaten erfasst.</div>
+          <div className="card-surface rounded-[22px] p-8 text-center text-[15px] text-slate-400">{t('exercise.noTrainingData')}</div>
         ) : (<>
           {/* Zeitraum + Modus — steuern den GESAMTEN Screen */}
           <SegmentedControl value={period} onChange={changePeriod} options={periodTabs} />
@@ -12022,7 +12022,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
 
             {/* 03 — QUICK INSIGHTS (3 gleichrangig) */}
             <div className="grid grid-cols-3 gap-3">
-              <MetricCard label="Letzte Session" value={vm.lastSessionRate + ' %'} sub={vm.lastSessionFraction} />
+              <MetricCard label={t('exercise.lastSession')} value={vm.lastSessionRate + ' %'} sub={vm.lastSessionFraction} />
               <MetricCard label="4 Wochen" value={vm.successRateLast4Weeks == null ? '—' : vm.successRateLast4Weeks + ' %'} sub="Erfolg" />
               <MetricCard label="Sessions" value={String(vm.sessionsCount)} sub={vm.totalAttempts + ' Vers.'} />
             </div>
@@ -12037,7 +12037,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
             {/* 05 — TREND — Status-Semantik: Geklappt grün (primär), Getroffen amber, Gefährlich rot (sekundär, zuschaltbar) */}
             <div className="card-surface rounded-[22px] p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Trend</h2>
+                <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> {t('common.trend')}</h2>
                 <span className="text-[12px] text-slate-400 tabular-nums">{periodLabel}{modeLabel}</span>
               </div>
               {/* labelFor: beim Scrubben steht neben der Quote der Zeitpunkt des Punktes. */}
@@ -12075,7 +12075,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                   className={'w-full text-left px-4 py-3 flex items-center justify-between gap-3 ' + (canEditSessions ? 'active:bg-black/[0.03]' : '')}>
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-[15px] text-slate-700 tabular-nums">{formatDateShort(s.date)}</span>
-                    {exercise.has_rope_variant && s.session.withRope === true && <IOSTag color="orange">Seil</IOSTag>}
+                    {exercise.has_rope_variant && s.session.withRope === true && <IOSTag color="orange">{t('exercise.rope')}</IOSTag>}
                     {is3 && s.fail > 0 && <IOSTag color="red">{s.fail}× {statusLabel(exercise, 'fail').toLowerCase()}</IOSTag>}
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
@@ -12132,7 +12132,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                     <div className="bg-amber-50 border border-amber-100 rounded-2xl py-3 px-4 flex items-baseline justify-between">
                       <div>
                         <div className="text-[12px] text-amber-900 font-medium">Ø Abzug / Wertung</div>
-                        {dedSchw > 0 && <div className="text-[10px] text-amber-700/70">inkl. Schwierigkeits-Abwertung</div>}
+                        {dedSchw > 0 && <div className="text-[10px] text-amber-700/70">{t('exercise.inclDifficulty')}</div>}
                       </div>
                       <div className="font-bold text-[22px] text-amber-700 tabular-nums">−{avgDed.toFixed(2)}</div>
                     </div>
@@ -12141,7 +12141,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                 {/* Abzugs-Verlauf über die Wettkämpfe (Dieters Diagramme): wird die Übung stabiler? */}
                 {compList.length >= 1 && (
                   <div className="pt-2 border-t border-slate-100">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-2">Verlauf</div>
+                    <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-2">{t('common.history')}</div>
                     <CompMetricChart compList={compList} />
                   </div>
                 )}
@@ -12152,7 +12152,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                   if (levels.length === 0) return null;
                   return (
                     <div className="pt-2 border-t border-slate-100">
-                      <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-1.5">Schwierigkeits-Abwertungen</div>
+                      <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-1.5">{t('exercise.difficultyDevaluations')}</div>
                       <div className="flex gap-2">
                         {levels.map(k => (
                           <div key={k} className={'flex-1 rounded-xl py-2 text-center ' + (k === '100' ? 'bg-rose-50 border border-rose-100' : 'bg-amber-50 border border-amber-100')}>
@@ -12165,7 +12165,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                   );
                 })()}
                 <div className="pt-2 border-t border-slate-100 space-y-2">
-                  <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium">Pro Wettkampf</div>
+                  <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium">{t('exercise.perCompetition')}</div>
                   {compList.map((c, i) => {
                     const xSum = c.sumCross, wSum = c.sumWave, bSum = c.sumBar, cSum = c.sumCircle;
                     const totalSymbols = xSum + wSum + bSum + cSum;
@@ -12194,7 +12194,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                   })}
                 </div>
                 </>) : (
-                  <div className="text-[13px] text-slate-400 text-center py-4">Keine Wertungen in diesem Bereich.</div>
+                  <div className="text-[13px] text-slate-400 text-center py-4">{t('common.noScoresScope')}</div>
                 )}
               </div>
             )}
@@ -12208,24 +12208,24 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
         <div className="pt-2 space-y-2">
           <div className="text-[12px] uppercase tracking-wide text-slate-400 px-4 font-medium">Übung</div>
           <IOSList>
-            {exercise.uci_code && <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93] tabular-nums">{exercise.uci_code}</span>}>Übungsnummer</IOSListRow>}
-            {exercise.points != null && <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93] tabular-nums">{Number(exercise.points).toFixed(1).replace('.', ',')}</span>}>Punkte</IOSListRow>}
-            <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93]">{is3 ? '3 Kategorien' : 'Geklappt / Nicht'}</span>}>Status-Modus</IOSListRow>
-            <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93]">{exercise.has_rope_variant ? 'Ja' : 'Nein'}</span>}>Seil-Variante</IOSListRow>
-            <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93] tabular-nums">{exercise.default_series ?? 10}</span>}>Standard-Serie</IOSListRow>
-            <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93] tabular-nums">{(data.sessions || []).filter(s => s.exerciseId === exercise.id).length}</span>}>Trainings-Sessions</IOSListRow>
-            {exercise.active === false && <IOSListRow trailing={<span className="text-[15px] text-[#FF9500]">Archiviert</span>}>Status</IOSListRow>}
+            {exercise.uci_code && <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93] tabular-nums">{exercise.uci_code}</span>}>{t('exercises.number')}</IOSListRow>}
+            {exercise.points != null && <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93] tabular-nums">{Number(exercise.points).toFixed(1).replace('.', ',')}</span>}>{t('common.points')}</IOSListRow>}
+            <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93]">{is3 ? '3 Kategorien' : 'Geklappt / Nicht'}</span>}>{t('exercise.statusMode')}</IOSListRow>
+            <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93]">{exercise.has_rope_variant ? 'Ja' : 'Nein'}</span>}>{t('exercise.ropeVariant')}</IOSListRow>
+            <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93] tabular-nums">{exercise.default_series ?? 10}</span>}>{t('exercise.defaultSeries')}</IOSListRow>
+            <IOSListRow trailing={<span className="text-[15px] text-[#8E8E93] tabular-nums">{(data.sessions || []).filter(s => s.exerciseId === exercise.id).length}</span>}>{t('exercise.trainingSessions')}</IOSListRow>
+            {exercise.active === false && <IOSListRow trailing={<span className="text-[15px] text-[#FF9500]">{t('common.archived')}</span>}>{t('common.status')}</IOSListRow>}
           </IOSList>
         </div>
 
         {/* 08 — Verwalten (Footer, klar getrennt) */}
         <div className="pt-2 space-y-2">
-          <div className="text-[12px] uppercase tracking-wide text-slate-400 px-4 font-medium">Verwalten</div>
+          <div className="text-[12px] uppercase tracking-wide text-slate-400 px-4 font-medium">{t('common.manage')}</div>
 
           <IOSList>
             {onEdit && !data._isReadOnly && <IOSListRow onClick={onEdit} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Edit2 size={17} className="text-[#007AFF]" /> Bearbeiten</span></IOSListRow>}
             {onArchive && !data._isReadOnly && <IOSListRow onClick={onArchive} trailing={<ChevronRight size={18} className="text-[#C7C7CC]" />}><span className="flex items-center gap-3"><Lock size={17} className="text-[#FF9500]" /> {exercise.active ? 'Übung archivieren' : 'Übung reaktivieren'}</span></IOSListRow>}
-            {onDelete && !data._isReadOnly && <IOSListRow onClick={onDelete}><span className="flex items-center gap-3 text-[#FF3B30]"><Trash2 size={17} /> Übung löschen</span></IOSListRow>}
+            {onDelete && !data._isReadOnly && <IOSListRow onClick={onDelete}><span className="flex items-center gap-3 text-[#FF3B30]"><Trash2 size={17} /> {t('exercises.delete')}</span></IOSListRow>}
           </IOSList>
 
           {/* XLSX-Import — sekundär/utility (nur 3-Status), ganz unten */}
@@ -12234,8 +12234,8 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
               <div className="flex items-start gap-2">
                 <FileSpreadsheet size={18} className="text-violet-600 shrink-0 mt-0.5" />
                 <div className="text-[13px] text-slate-700">
-                  <strong>Statistik-Daten importieren</strong>
-                  <p className="text-[12px] mt-0.5 text-slate-500">Maute-XLSX (Spalten: Datum, Geklappt, Getroffen, Gefährlich).</p>
+                  <strong>{t('importStats.title')}</strong>
+                  <p className="text-[12px] mt-0.5 text-slate-500">{t('importStats.mauteHint')}</p>
                 </div>
               </div>
               {importStatus === 'parsing' && <div className="bg-slate-50 rounded-xl p-3 text-sm">⏳ {importMsg}</div>}
@@ -12371,7 +12371,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
     <div key={i} className="px-4 py-3 flex items-center justify-between gap-3">
       <div className="flex items-center gap-2 min-w-0">
         <span className="text-[15px] text-slate-700 tabular-nums">{formatDateShort(s.date)}</span>
-        {exercise.has_rope_variant && s.session.withRope === true && <IOSTag color="orange">Seil</IOSTag>}
+        {exercise.has_rope_variant && s.session.withRope === true && <IOSTag color="orange">{t('exercise.rope')}</IOSTag>}
         {exercise.has_rope_variant && s.session.withRope === false && <IOSTag color="blue">ohne</IOSTag>}
         {is3 && s.fail > 0 && <IOSTag color="red">{s.fail}× {statusLabel(exercise, 'fail').toLowerCase()}</IOSTag>}
       </div>
@@ -12420,7 +12420,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
         {!hasTraining ? (
           /* Leerer Zustand — keine Trainingsdaten */
           <div className="card-surface rounded-[22px] p-6 text-center">
-            <div className="text-[15px] text-slate-400">Noch keine Trainingsdaten erfasst.</div>
+            <div className="text-[15px] text-slate-400">{t('exercise.noTrainingData')}</div>
           </div>
         ) : (
           <>
@@ -12467,7 +12467,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
             <div className="grid grid-cols-3 gap-2">
               {[
                 { label: 'Letzte Session', value: vm.lastSessionRate + ' %', sub: vm.lastSessionFraction },
-                { label: '4 Wochen', value: (vm.successRateLast4Weeks == null ? '—' : vm.successRateLast4Weeks + ' %'), sub: 'Erfolgsquote' },
+                { label: t('range.4weeks'), value: (vm.successRateLast4Weeks == null ? '—' : vm.successRateLast4Weeks + ' %'), sub: 'Erfolgsquote' },
                 { label: 'Sessions', value: String(vm.sessionsCount), sub: vm.totalAttempts + ' Versuche' },
               ].map((c, i) => (
                 <div key={i} className="card-surface rounded-[22px] p-3 text-center">
@@ -12504,7 +12504,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
             {/* 05 — TREND-MODUL */}
             <div className="card-surface rounded-[22px] p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Trend</h2>
+                <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> {t('common.trend')}</h2>
                 {is3 && (
                   <button onClick={() => setShowDangerTrend(v => !v)}
                     className={'text-[12px] font-medium px-2.5 py-1 rounded-full transition active:opacity-60 ' +
@@ -12670,7 +12670,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                     <div className="bg-amber-50 border border-amber-100 rounded-2xl py-3 px-4 flex items-baseline justify-between">
                       <div>
                         <div className="text-[12px] text-amber-900 font-medium">Ø Abzug / Wertung</div>
-                        {dedSchw > 0 && <div className="text-[10px] text-amber-700/70">inkl. Schwierigkeits-Abwertung</div>}
+                        {dedSchw > 0 && <div className="text-[10px] text-amber-700/70">{t('exercise.inclDifficulty')}</div>}
                       </div>
                       <div className="font-bold text-[22px] text-amber-700 tabular-nums">−{avgDed.toFixed(2)}</div>
                     </div>
@@ -12679,7 +12679,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                 {/* Abzugs-Verlauf über die Wettkämpfe (Dieters Diagramme): wird die Übung stabiler? */}
                 {compList.length >= 1 && (
                   <div className="pt-2 border-t border-slate-100">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-2">Verlauf</div>
+                    <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-2">{t('common.history')}</div>
                     <CompMetricChart compList={compList} />
                   </div>
                 )}
@@ -12690,7 +12690,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                   if (levels.length === 0) return null;
                   return (
                     <div className="pt-2 border-t border-slate-100">
-                      <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-1.5">Schwierigkeits-Abwertungen</div>
+                      <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-1.5">{t('exercise.difficultyDevaluations')}</div>
                       <div className="flex gap-2">
                         {levels.map(k => (
                           <div key={k} className={'flex-1 rounded-xl py-2 text-center ' + (k === '100' ? 'bg-rose-50 border border-rose-100' : 'bg-amber-50 border border-amber-100')}>
@@ -12703,7 +12703,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                   );
                 })()}
                 <div className="pt-2 border-t border-slate-100 space-y-2">
-                  <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium">Pro Wettkampf</div>
+                  <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium">{t('exercise.perCompetition')}</div>
                   {compList.map((c, i) => {
                     const xSum = c.sumCross, wSum = c.sumWave, bSum = c.sumBar, cSum = c.sumCircle;
                     const totalSymbols = xSum + wSum + bSum + cSum;
@@ -12732,7 +12732,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                   })}
                 </div>
                 </>) : (
-                  <div className="text-[13px] text-slate-400 text-center py-4">Keine Wertungen in diesem Bereich.</div>
+                  <div className="text-[13px] text-slate-400 text-center py-4">{t('common.noScoresScope')}</div>
                 )}
               </div>
             )}
@@ -12741,7 +12741,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
 
         {/* 08 — ADMIN-ZONE (Footer, klar getrennt vom Analyse-Stream) */}
         <div className="pt-3 space-y-2">
-          <div className="text-[12px] uppercase tracking-wide text-slate-400 px-4 font-medium">Verwalten</div>
+          <div className="text-[12px] uppercase tracking-wide text-slate-400 px-4 font-medium">{t('common.manage')}</div>
 
           {/* XLSX-Import (nur 3-Status) */}
           {is3 && setData && (
@@ -12749,8 +12749,8 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
               <div className="flex items-start gap-2">
                 <FileSpreadsheet size={18} className="text-violet-600 shrink-0 mt-0.5" />
                 <div className="text-[13px] text-slate-700">
-                  <strong>Statistik-Daten importieren</strong>
-                  <p className="text-[12px] mt-0.5 text-slate-500">Maute-XLSX (Spalten: Datum, Geklappt, Getroffen, Gefährlich).</p>
+                  <strong>{t('importStats.title')}</strong>
+                  <p className="text-[12px] mt-0.5 text-slate-500">{t('importStats.mauteHint')}</p>
                 </div>
               </div>
               {importStatus === 'parsing' && <div className="bg-slate-50 rounded-xl p-3 text-sm">⏳ {importMsg}</div>}
@@ -13148,7 +13148,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
         {/* VERLAUF — Ergebnis oder Abzug über die Zeit (Parität zu iOS „Verlauf") */}
         {(statCompsWk.length >= 2) && (
           <section className="space-y-2 pt-1">
-            <div className="text-[12px] uppercase tracking-wide text-slate-400 font-medium px-1">Verlauf</div>
+            <div className="text-[12px] uppercase tracking-wide text-slate-400 font-medium px-1">{t('common.history')}</div>
             <SegmentedControl value={statVerlauf} onChange={setStatVerlauf}
               options={[['ergebnis', 'Ergebnis'], ['abzug', 'Abzug']]} />
             <div className="card-surface rounded-[22px] p-3">
@@ -13180,7 +13180,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
                 <IOSListRow onClick={() => onOpenView && onOpenView('training')}>
                   <div className="flex items-center gap-3">
                     <Dumbbell size={17} className="text-[#0A84FF] shrink-0" />
-                    <span className="text-[15px] font-medium flex-1">Trainings-Wertungen</span>
+                    <span className="text-[15px] font-medium flex-1">{t('training.runs')}</span>
                     <span className="text-[15px] font-semibold text-[#8E8E93] tabular-nums">{statEvents.tr}</span>
                   </div>
                 </IOSListRow>
@@ -14462,7 +14462,7 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
             style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
             onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 pt-4 pb-3 shrink-0">
-              <h2 className="text-[20px] font-bold tracking-tight">Alle Programme</h2>
+              <h2 className="text-[20px] font-bold tracking-tight">{t('programs.all')}</h2>
               <button
                 onClick={() => setShowAllProgramsSheet(false)}
                 aria-label="Schließen"
@@ -15367,7 +15367,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
       const athlete = athletes.find(a => a.id === c.athlete_id);
       return (
         <IOSListRow key={c.id} onClick={() => setViewId(c.id)}
-          trailing={<div className="flex items-center gap-2 shrink-0">{final !== null && <div className="text-right"><div className="text-[14px] font-bold text-[#FF9500] leading-none tabular-nums">{final.toFixed(2)}</div><div className="text-[10px] text-[#8E8E93] uppercase tracking-wide font-medium mt-0.5">Pkt</div></div>}<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" /></div>}>
+          trailing={<div className="flex items-center gap-2 shrink-0">{final !== null && <div className="text-right"><div className="text-[14px] font-bold text-[#FF9500] leading-none tabular-nums">{final.toFixed(2)}</div><div className="text-[10px] text-[#8E8E93] uppercase tracking-wide font-medium mt-0.5">{t('common.pts')}</div></div>}<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" /></div>}>
           <div className="font-medium text-[15px] truncate">{c.name}</div>
           <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">
             {formatDateShort(c.date)}{c.location ? ' · ' + c.location : ''}{athlete ? ' · ' + athlete.name : ''}
@@ -15382,7 +15382,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
         <header className="flex items-end justify-between gap-3 pt-1 px-1">
           <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('competition.title')}</h1>
           <div className="flex items-center gap-2 shrink-0">
-            <button onClick={() => setShowBulkImport(true)} title="Mehrere PDFs importieren"
+            <button onClick={() => setShowBulkImport(true)} title={t('pdfImport.bulkButton')}
               className="w-9 h-9 rounded-full card-surface text-slate-600 dark:text-slate-300 flex items-center justify-center active:scale-95 transition"><FileText size={16} strokeWidth={2.2} /></button>
             <button onClick={() => setChooser(true)}
               className="px-3.5 py-2 rounded-full bg-[#FF9500] text-white text-[14px] font-semibold flex items-center gap-1 active:scale-95 transition"><Plus size={15} strokeWidth={2.6} /> {t('common.new')}</button>
@@ -15401,10 +15401,10 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
         {chooser && (
           <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setChooser(false)}>
             <div className="bg-white rounded-3xl sm:rounded-2xl w-full max-w-sm p-4 shadow-2xl space-y-2" onClick={e => e.stopPropagation()}>
-              <h3 className="font-semibold text-[17px] px-1 pb-1">Wie möchtest du erfassen?</h3>
+              <h3 className="font-semibold text-[17px] px-1 pb-1">{t('competition.howToRecord')}</h3>
               <label className="w-full text-left px-4 py-3 rounded-xl bg-slate-50 active:bg-slate-100 flex items-center gap-3 cursor-pointer">
                 <Upload size={18} className="text-[#FF9500] shrink-0" />
-                <span><span className="block text-[15px] font-medium">PDF importieren</span><span className="block text-[12px] text-slate-500">Original-Wertungsbericht — Stammdaten und alle Übungen in Sekunden</span></span>
+                <span><span className="block text-[15px] font-medium">PDF importieren</span><span className="block text-[12px] text-slate-500">{t('pdfImport.originalHint')}</span></span>
                 <input type="file" accept="application/pdf" className="hidden"
                   onChange={e => {
                     const f = e.target.files && e.target.files[0];
@@ -15414,11 +15414,11 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
               </label>
               <button onClick={() => { setPendingPdf(null); setChooser(false); setShowNew(true); }} className="w-full text-left px-4 py-3 rounded-xl bg-slate-50 active:bg-slate-100 flex items-center gap-3">
                 <FileText size={18} className="text-[#FF9500] shrink-0" />
-                <span><span className="block text-[15px] font-medium">Wertungsbogen erfassen</span><span className="block text-[12px] text-slate-500">Abzüge Übung für Übung eintragen</span></span>
+                <span><span className="block text-[15px] font-medium">{t('competition.recordSheet')}</span><span className="block text-[12px] text-slate-500">{t('competition.perExercise')}</span></span>
               </button>
               <button onClick={() => { setPendingPdf(null); setChooser(false); setEndForm({ name: '', date: new Date().toISOString().slice(0, 10), location: '', endergebnis: '' }); }} className="w-full text-left px-4 py-3 rounded-xl bg-slate-50 active:bg-slate-100 flex items-center gap-3">
                 <Trophy size={18} className="text-[#FF9500] shrink-0" />
-                <span><span className="block text-[15px] font-medium">Nur Endergebnis</span><span className="block text-[12px] text-slate-500">Schnell ohne Einzelübungen erfassen</span></span>
+                <span><span className="block text-[15px] font-medium">{t('competition.scoreOnly')}</span><span className="block text-[12px] text-slate-500">{t('competition.scoreOnlyHint')}</span></span>
               </button>
               <button onClick={() => setChooser(false)} className="w-full py-2.5 rounded-xl text-[15px] font-medium text-slate-500 active:opacity-60">Abbrechen</button>
             </div>
@@ -15429,10 +15429,10 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
         {endForm && (
           <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setEndForm(null)}>
             <div className="bg-white rounded-3xl sm:rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-3" onClick={e => e.stopPropagation()}>
-              <h3 className="font-semibold text-[17px]">Nur Endergebnis</h3>
+              <h3 className="font-semibold text-[17px]">{t('competition.scoreOnly')}</h3>
               <div>
-                <label className="text-xs font-medium text-slate-500 block mb-1">Wettkampf-Name *</label>
-                <input value={endForm.name} onChange={e => setEndForm({ ...endForm, name: e.target.value })} placeholder="z. B. DM Elite 2025" className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+                <label className="text-xs font-medium text-slate-500 block mb-1">{t('field.competitionNameRequired')}</label>
+                <input value={endForm.name} onChange={e => setEndForm({ ...endForm, name: e.target.value })} placeholder={t('field.competitionPlaceholder2')} className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -15440,7 +15440,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
                   <input type="date" value={endForm.date} onChange={e => setEndForm({ ...endForm, date: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Endergebnis *</label>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">{t('field.finalScoreRequired')}</label>
                   <input inputMode="decimal" value={endForm.endergebnis} onChange={e => setEndForm({ ...endForm, endergebnis: e.target.value })} placeholder="181,55" className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
                 </div>
               </div>
@@ -15471,7 +15471,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
           {/* OVERVIEW — getönte Karten */}
           <div className="grid grid-cols-2 gap-3">
             <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={stats.best ? stats.best.final.toFixed(2) : '—'} sub={stats.best ? stats.best.c.name : '—'} subLines={2} />
-            <MetricCard accent="violet" icon={TrendingUp} label="Geringster Abzug" value={stats.minDed ? stats.minDed.ded.toFixed(2) : '—'} sub={stats.minDed ? stats.minDed.c.name : '—'} subLines={2} />
+            <MetricCard accent="violet" icon={TrendingUp} label={t('competition.lowestDeduction')} value={stats.minDed ? stats.minDed.ded.toFixed(2) : '—'} sub={stats.minDed ? stats.minDed.c.name : '—'} subLines={2} />
             <MetricCard accent="sky" icon={Target} label="Wettkämpfe" value={String(competitions.length)} sub={stats.last ? formatDateShort(stats.last.c.date) : '—'} />
             <MetricCard accent="emerald" icon={Calendar} label={String(currentYear)} value={String(thisYearCount)} sub={thisYearCount === 1 ? 'Wettkampf' : 'Wettkämpfe'} />
           </div>
@@ -15479,7 +15479,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
           {/* VERLAUF */}
           {withFinal.length >= 2 && (
             <div className="card-surface rounded-[22px] p-4 space-y-2">
-              <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> Verlauf</h2>
+              <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> {t('common.history')}</h2>
               <CompetitionTrendChart competitions={competitions} programs={programs} best={stats.best ? { competition: stats.best.c, final: stats.best.final } : null} onTapWettkampf={() => { }} bare />
             </div>
           )}
@@ -15496,7 +15496,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
             const shown = showAllDeductions ? ranking : ranking.slice(0, 5);
             return (
               <div className="card-surface rounded-[22px] p-4 space-y-1">
-                <h2 className="text-[15px] font-semibold flex items-center gap-2 mb-2"><TrendingDown size={16} className="text-[#FF3B30]" /> Höchste Abzüge</h2>
+                <h2 className="text-[15px] font-semibold flex items-center gap-2 mb-2"><TrendingDown size={16} className="text-[#FF3B30]" /> {t('competition.highestDeductions')}</h2>
                 <div className="bg-[#E5E5EA] dark:bg-white/10 rounded-lg p-0.5 flex gap-0.5 mb-2">
                   {[['gesamt', 'Gesamt'], ['training', 'Training'], ['wettkampf', 'Wettkampf']].map(([v, lbl]) => (
                     <button key={v} onClick={() => setDedScope(v)}
@@ -15640,10 +15640,10 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
         <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-8 text-center">
           <Trophy size={32} className="mx-auto text-slate-300 mb-3" />
           <h3 className="font-semibold mb-1">Noch keine Wettkämpfe</h3>
-          <p className="text-sm text-slate-500 mb-4">Erfasse deinen ersten Wertungsbogen.</p>
+          <p className="text-sm text-slate-500 mb-4">{t('competition.recordFirst')}</p>
           <button onClick={() => setShowNew(true)}
             className="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-medium">
-            Wertungsbogen erfassen
+            {t('competition.recordSheet')}
           </button>
         </div>
       ) : (
@@ -15673,7 +15673,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
             />
             <StatCard
               icon={TrendingUp}
-              label="Geringster Abzug"
+              label={t('competition.lowestDeduction')}
               value={stats.minDed ? stats.minDed.ded.toFixed(2) : '—'}
               sub={stats.minDed ? stats.minDed.c.name.slice(0, 24) : '—'}
               color="violet"
@@ -15694,7 +15694,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
                         {final !== null && (
                           <div className="text-right">
                             <div className="text-[14px] font-bold text-[#FF9500] leading-none">{final.toFixed(2)}</div>
-                            <div className="text-[10px] text-[#8E8E93] uppercase tracking-wide font-medium mt-0.5">Pkt</div>
+                            <div className="text-[10px] text-[#8E8E93] uppercase tracking-wide font-medium mt-0.5">{t('common.pts')}</div>
                           </div>
                         )}
                         <ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />
@@ -16762,8 +16762,8 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
       {replaceTargetId && (
         <div className="mx-3 mt-2 text-xs bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900/60 rounded-xl px-3 py-2 flex items-center gap-2 text-amber-900 dark:text-amber-200">
           <AlertTriangle size={14} className="shrink-0 text-amber-700 dark:text-amber-300" />
-          <span>Ersetzt beim Speichern den vorhandenen Eintrag.</span>
-          <button onClick={() => setReplaceTargetId(null)} className="ml-auto underline font-medium shrink-0">Rückgängig</button>
+          <span>{t('editor.replaceOnSave')}</span>
+          <button onClick={() => setReplaceTargetId(null)} className="ml-auto underline font-medium shrink-0">{t('common.undo')}</button>
         </div>
       )}
 
@@ -16772,14 +16772,14 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           <div className="bg-white dark:bg-slate-900 rounded-3xl sm:rounded-2xl w-full max-w-sm p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-2">
               <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0"><AlertTriangle size={18} className="text-amber-600 dark:text-amber-300" /></div>
-              <div><h3 className="font-semibold dark:text-white">Wettkampf existiert bereits</h3></div>
+              <div><h3 className="font-semibold dark:text-white">{t('editor.alreadyExists')}</h3></div>
             </div>
             <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
               „{dupModal.name}" am {formatDateShort(dupModal.date)} ist schon angelegt. Was möchtest du tun?
             </p>
             <div className="space-y-2">
-              <button onClick={applyAsReplacement} className="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-medium text-sm">Ersetzen</button>
-              <button onClick={applyAsAdditional} className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-white/10 dark:text-slate-100 font-medium text-sm">Zusätzlich anlegen</button>
+              <button onClick={applyAsReplacement} className="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-medium text-sm">{t('common.replace')}</button>
+              <button onClick={applyAsAdditional} className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-white/10 dark:text-slate-100 font-medium text-sm">{t('editor.addAnyway')}</button>
               <button onClick={() => setDupModal(null)} className="w-full py-2.5 rounded-xl text-slate-500 dark:text-slate-400 font-medium text-sm">Verwerfen</button>
             </div>
           </div>
@@ -16876,7 +16876,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                   className="hidden" />
               </label>
               <p className="text-[11px] text-violet-900/70 dark:text-violet-200/70 leading-snug px-0.5">
-                Wähle das <strong>Original-Wertungsbericht-PDF</strong> (digital, nicht abfotografiert/eingescannt) — Stammdaten, Endergebnis und alle Übungen (bis 3 Kampfgerichte) werden in Sekunden gesetzt.
+                Wähle das <strong>{t('pdfImport.originalPdf')}</strong> (digital, nicht abfotografiert/eingescannt) — Stammdaten, Endergebnis und alle Übungen (bis 3 Kampfgerichte) werden in Sekunden gesetzt.
               </p>
             </div>
           )}
@@ -16894,7 +16894,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                     ? <div className="h-full rounded-full bg-[#FF9500] transition-[width] duration-300 ease-out" style={{ width: Math.round(scanProgress * 100) + '%' }} />
                     : <div className="h-full w-1/3 rounded-full bg-[#FF9500] acc-indeterminate" />}
                 </div>
-                <div className="text-[11px] text-violet-900/60 dark:text-violet-200/60 mt-1">Nur einen Moment …</div>
+                <div className="text-[11px] text-violet-900/60 dark:text-violet-200/60 mt-1">{t('common.oneMoment')}</div>
               </div>
             </div>
           )}
@@ -16945,7 +16945,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
               )}
               {importPreview._exDebug && !(importPreview._scanRows && importPreview._scanRows.length > 0) && (
                 <details open className="text-[11px] text-violet-900/70 dark:text-violet-200/70 bg-white/50 dark:bg-white/5 border border-violet-200/60 dark:border-violet-800/40 rounded-lg p-2">
-                  <summary className="cursor-pointer font-medium select-none">Diagnose: KI-Antwort (bitte an den Entwickler schicken)</summary>
+                  <summary className="cursor-pointer font-medium select-none">{t('scan.aiDiagnosis')}</summary>
                   <pre className="mt-1.5 whitespace-pre-wrap break-words font-mono text-[10px] leading-snug max-h-56 overflow-auto opacity-90">{importPreview._exDebug}</pre>
                 </details>
               )}
@@ -16958,7 +16958,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 <div className="text-xs bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900/60 rounded-lg p-2 flex items-start gap-2">
                   <AlertTriangle size={14} className="text-amber-700 dark:text-amber-300 shrink-0 mt-0.5" />
                   <div className="text-amber-900 dark:text-amber-200">
-                    <strong>Wettkampf bereits importiert.</strong> „{duplicateCompetition.name}" am {formatDateShort(duplicateCompetition.date)} ist schon angelegt. Beim Übernehmen wird ein zweiter Eintrag erzeugt.
+                    <strong>{t('editor.alreadyImported')}</strong> „{duplicateCompetition.name}" am {formatDateShort(duplicateCompetition.date)} ist schon angelegt. Beim Übernehmen wird ein zweiter Eintrag erzeugt.
                   </div>
                 </div>
               )}
@@ -16983,13 +16983,13 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
         <h2 className="font-semibold mb-1">{((competition ? (competition.kind || 'wettkampf') : kind) === 'training') ? 'Trainingsdurchlauf' : 'Wettkampf'}</h2>
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-medium text-slate-500 block mb-1">Name *</label>
+            <label className="text-xs font-medium text-slate-500 block mb-1">{t('field.nameRequired')}</label>
             <input value={name} onChange={e => setName(e.target.value)}
-              placeholder="z.B. DM Elite 2025"
+              placeholder={t('field.competitionPlaceholder')}
               className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-500 block mb-1">Datum *</label>
+            <label className="text-xs font-medium text-slate-500 block mb-1">{t('field.dateRequired')}</label>
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
           </div>
@@ -17002,13 +17002,13 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           <div>
             <label className="text-xs font-medium text-slate-500 block mb-1">Ausrichter</label>
             <input value={host} onChange={e => setHost(e.target.value)}
-              placeholder="z.B. RKV Niedermehnen"
+              placeholder={t('field.hostPlaceholder')}
               className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
           </div>
           <div>
             <label className="text-xs font-medium text-slate-500 block mb-1">Startnummer</label>
             <input value={startNr} onChange={e => setStartNr(e.target.value)}
-              placeholder="z.B. 117"
+              placeholder={t('field.startNrPlaceholder')}
               className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
           </div>
           {(athletes || []).length > 0 && (defaultAthleteId ? (
@@ -17050,7 +17050,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                   setTable4(prev => initEntriesFor(nextProg, prev));
                 }}
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
-                {!program && <option value="">Programm wählen …</option>}
+                {!program && <option value="">{t('editor.chooseProgram')}</option>}
                 {snapshotProgram && (
                   <option value="__snapshot__">
                     {(snapshotProgram.name || 'Übungen vom Wertungsbogen') + ' · ' + (snapshotProgram.exercises || []).length + ' Übungen'}
@@ -17077,7 +17077,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
         <>
           <div className="card-surface rounded-[22px] p-4 space-y-3">
             <div>
-              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Kampfgerichte</div>
+              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">{t('editor.panels')}</div>
               <div className="flex gap-1.5">
                 {[1, 2, 3, 4].map(n => (
                   <button key={n} type="button"
@@ -17091,7 +17091,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
             </div>
             {N >= 2 && (
               <div>
-                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Erfassung</div>
+                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">{t('editor.capture')}</div>
                 <div className="flex gap-1.5">
                   <button type="button" onClick={() => setAbzugGesamt(false)}
                     className={'flex-1 py-2 rounded-xl text-sm font-semibold border ' + (!abzugGesamt ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
@@ -17352,6 +17352,7 @@ function PanelTapButtons({ options, hits, limit, onChange, fmt }) {
 }
 
 function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onUpdateTaktHits, gesamt = false, kampfgerichte = 2, result }) {
+  const { t } = useI18n();
   const SCHW_OPTIONS = [0, 10, 50, 100];
   const N = Math.max(1, Math.min(4, Number(kampfgerichte || 2)));
   return (
@@ -17547,7 +17548,7 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
             <tr className="border-b border-slate-200 text-slate-500">
               <th className="text-left py-2 px-1 font-medium w-7">#</th>
               <th className="text-left py-2 px-1 font-medium">Übung</th>
-              <th className="py-2 px-1 font-medium w-12">Pkt</th>
+              <th className="py-2 px-1 font-medium w-12">{t('common.pts')}</th>
               <th className="py-2 px-1 font-medium w-10" title="Kreuz (0,2)">x</th>
               <th className="py-2 px-1 font-medium w-10" title="Welle (0,5)">~</th>
               <th className="py-2 px-1 font-medium w-10" title="Strich (1,0)">|</th>
@@ -17655,7 +17656,7 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
             <div className="font-semibold text-slate-900">-{result.abzugSchwierigkeit.toFixed(2)}</div>
           </div>
           <div>
-            <div className="text-slate-500">Gesamt</div>
+            <div className="text-slate-500">{t('scope.total')}</div>
             <div className="font-semibold text-slate-900">-{result.abzugGesamt.toFixed(2)}</div>
           </div>
           <div>
@@ -17912,6 +17913,7 @@ function fmtDateTime(iso) {
 }
 
 function AdminUserPanel({ open, user, onClose, onMutated }) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [info, setInfo] = useState('');
@@ -18073,7 +18075,7 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
               </div>
             </div>
             <div className="px-4 py-3 flex items-center justify-between gap-3">
-              <span className="text-[15px] text-[#3C3C43]">Status</span>
+              <span className="text-[15px] text-[#3C3C43]">{t('common.status')}</span>
               <span className="text-[13px]">
                 {isConfirmed
                   ? <IOSTag color="green">bestätigt {fmtDateTime(user.email_confirmed_at)}</IOSTag>
@@ -20521,6 +20523,7 @@ function ExportTraining({ data }) {
 // gleiche Spalten, gleiche Reihenfolge, gleiche Summen.
 // =============================================================
 function WertungsbogenSheet({ competition: c, program, athleteName, scopeLabel, onClose }) {
+  const { t } = useI18n();
   const exercises = program.exercises || [];
   const gesamt = isEffectiveGesamt(c);
   const kgCount = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
@@ -20572,7 +20575,7 @@ function WertungsbogenSheet({ competition: c, program, athleteName, scopeLabel, 
             <tr className="border-b border-slate-400">
               <th className="text-left py-1 w-7 font-semibold text-slate-500">#</th>
               <th className="text-left py-1 font-semibold text-slate-500">Übung</th>
-              <th className="text-right py-1 w-12 font-semibold text-slate-500">Pkt</th>
+              <th className="text-right py-1 w-12 font-semibold text-slate-500">{t('common.pts')}</th>
               {Array.from({ length: columns }, (_, i) => (
                 <th key={i} colSpan={5} className="py-1 font-semibold text-slate-500 border-l border-slate-200">
                   {gesamt ? 'Gesamt' : 'Kampfgericht ' + (i + 1)}
