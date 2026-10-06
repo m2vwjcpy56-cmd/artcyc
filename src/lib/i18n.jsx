@@ -844,6 +844,15 @@ const dict = {
     'range.90days': '90 Tage',
     'common.week': ' Woche',
     'common.weeks': ' Wochen',
+    // Block 7, 06.10.2026
+    'settings.clubPromptTitle': 'Noch dein Verein, {name}',
+    'settings.clubPromptTitlePlain': 'Dein Verein',
+    'settings.clubPromptBody': 'Für welchen Verein startest du? Tippen und aus den Vorschlägen wählen — oder frei eingeben.',
+    // Block 8, 06.10.2026
+    'exercises.activeArchived': '{active} aktiv · {archived} archiviert',
+    'exercises.countHeading': 'Übungen ({n})',
+    'training.runExplainer': 'Ein Programmdurchlauf, wie im Wettkampf mit Abzügen bewertet. Fließt getrennt in die Statistiken unter „Training" ein.',
+    'training.sessionsTotal': '{n} Sessions insgesamt',
   },
 
   en: {
@@ -1633,6 +1642,15 @@ const dict = {
     'range.90days': '90 days',
     'common.week': ' week',
     'common.weeks': ' weeks',
+    // Block 7, 06.10.2026
+    'settings.clubPromptTitle': 'One more thing — your club, {name}',
+    'settings.clubPromptTitlePlain': 'Your club',
+    'settings.clubPromptBody': 'Which club do you ride for? Type and pick from the suggestions — or enter it freely.',
+    // Block 8, 06.10.2026
+    'exercises.activeArchived': '{active} active · {archived} archived',
+    'exercises.countHeading': 'Exercises ({n})',
+    'training.runExplainer': 'A full run through your program, scored with deductions like a competition. It feeds into the statistics separately under “Training”.',
+    'training.sessionsTotal': '{n} sessions in total',
     },
 
   fr: {
@@ -2417,6 +2435,15 @@ const dict = {
     'range.90days': '90 jours',
     'common.week': ' semaine',
     'common.weeks': ' semaines',
+    // Block 7, 06.10.2026
+    'settings.clubPromptTitle': 'Encore ton club, {name}',
+    'settings.clubPromptTitlePlain': 'Ton club',
+    'settings.clubPromptBody': 'Pour quel club cours-tu ? Saisis et choisis dans les suggestions — ou entre-le librement.',
+    // Block 8, 06.10.2026
+    'exercises.activeArchived': '{active} actifs · {archived} archivés',
+    'exercises.countHeading': 'Exercices ({n})',
+    'training.runExplainer': 'Un passage complet du programme, noté avec déductions comme en compétition. Il alimente les statistiques séparément sous « Entraînement ».',
+    'training.sessionsTotal': '{n} séances au total',
     },
 
   it: {
@@ -3201,6 +3228,15 @@ const dict = {
     'range.90days': '90 giorni',
     'common.week': ' settimana',
     'common.weeks': ' settimane',
+    // Block 7, 06.10.2026
+    'settings.clubPromptTitle': 'Manca la tua società, {name}',
+    'settings.clubPromptTitlePlain': 'La tua società',
+    'settings.clubPromptBody': 'Per quale società gareggi? Digita e scegli tra i suggerimenti — oppure inseriscila liberamente.',
+    // Block 8, 06.10.2026
+    'exercises.activeArchived': '{active} attivi · {archived} archiviati',
+    'exercises.countHeading': 'Esercizi ({n})',
+    'training.runExplainer': 'Una prova completa del programma, valutata con detrazioni come in gara. Entra separatamente nelle statistiche sotto «Allenamento».',
+    'training.sessionsTotal': '{n} sessioni in totale',
     },
 
   es: {
@@ -3985,6 +4021,15 @@ const dict = {
     'range.90days': '90 días',
     'common.week': ' semana',
     'common.weeks': ' semanas',
+    // Block 7, 06.10.2026
+    'settings.clubPromptTitle': 'Falta tu club, {name}',
+    'settings.clubPromptTitlePlain': 'Tu club',
+    'settings.clubPromptBody': '¿Por qué club compites? Escribe y elige entre las sugerencias — o introdúcelo libremente.',
+    // Block 8, 06.10.2026
+    'exercises.activeArchived': '{active} activos · {archived} archivados',
+    'exercises.countHeading': 'Ejercicios ({n})',
+    'training.runExplainer': 'Una pasada completa del programa, puntuada con deducciones como en competición. Entra por separado en las estadísticas bajo «Entrenamiento».',
+    'training.sessionsTotal': '{n} sesiones en total',
     },
 
   cs: {

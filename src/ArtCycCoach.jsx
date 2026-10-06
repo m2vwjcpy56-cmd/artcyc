@@ -8813,7 +8813,7 @@ function TrainingView({ data, setData, setView }) {
             </>);
           })()}
         </div>
-        <p className="px-1 text-[12px] leading-snug text-[#8E8E93]">Ein Programmdurchlauf, wie im Wettkampf mit Abzügen bewertet. Fließt getrennt in die Statistiken unter „Training“ ein.</p>
+        <p className="px-1 text-[12px] leading-snug text-[#8E8E93]">{t('training.runExplainer')}</p>
 
         {/* OVERVIEW — getönte Karten; Erfolgsquote NICHT als Warnung (violet, neutral-positiv) */}
         {/* Kacheln wie nativ (27.09.): Sessions · Übungen · Ø 12 Monate · Letzter. Eine
@@ -13110,7 +13110,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
         <header className="flex items-end justify-between gap-3 pt-2 mb-3 sm:mb-0">
           <div className="min-w-0">
             <h1 className="text-[34px] font-bold tracking-tight leading-none">{t('nav.statistiken')}</h1>
-            <p className="text-[13px] text-[#8E8E93] mt-1">{data.exercises.filter(e => e.active).length} aktiv · {data.exercises.filter(e => !e.active).length} {t('exercises.archived')}</p>
+            <p className="text-[13px] text-[#8E8E93] mt-1">{t('exercises.activeArchived', { active: data.exercises.filter(e => e.active).length, archived: data.exercises.filter(e => !e.active).length })}</p>
           </div>
           <button onClick={() => setShowNew(true)}
             className="bg-[#FF9500] text-white px-4 py-2 rounded-full font-semibold text-[14px] flex items-center gap-1.5 shadow-[0_2px_8px_rgba(255,149,0,0.25)] active:scale-95 transition">
@@ -13214,7 +13214,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
               <>
                 <div className="flex items-center justify-between px-1 pt-1">
                   <div className="text-[12px] uppercase tracking-wide text-slate-400 font-medium">
-                    Übungen ({activeExercises.length})
+                    {t('exercises.countHeading', { n: activeExercises.length })}
                   </div>
                   <select value={statSort} onChange={e => setStatSort(e.target.value)}
                     className="text-[13px] font-semibold text-[#FF9500] bg-transparent outline-none">
@@ -14788,7 +14788,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
         <div className="space-y-2">
           <div className="flex items-center justify-between px-4">
             <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
-              Übungen ({exercises.length})
+              {t('exercises.countHeading', { n: exercises.length })}
             </div>
             <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">
               Σ {total.toFixed(2)} Pkt.
@@ -15481,7 +15481,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
         )}
 
         {competitions.length === 0 ? (
-          <EmptyState title={t('competition.none')} hint="Erfasse deinen ersten Wertungsbogen über Neu." />
+          <EmptyState title={t('competition.none')} hint={t('competition.recordFirstNew')} />
         ) : (<>
           {/* OVERVIEW — getönte Karten */}
           <div className="grid grid-cols-2 gap-3">
@@ -21085,11 +21085,10 @@ function ClubModal({ firstName, onSaved, onLater }) {
               <Users size={22} className="text-[#FF9500]" />
             </div>
             <h3 className="font-semibold text-[17px] mb-1">
-              {firstName ? `Noch dein Verein, ${firstName}` : 'Dein Verein'}
+              {firstName ? t('settings.clubPromptTitle', { name: firstName }) : t('settings.clubPromptTitlePlain')}
             </h3>
             <p className="text-[13px] text-[#3C3C43] dark:text-slate-300 leading-snug">
-              {t('settings.forWhich')} <strong>Verein</strong> startest du? Tippen und aus den
-              Vorschlägen wählen — oder frei eingeben.
+              {t('settings.clubPromptBody')}
             </p>
           </div>
           <div className="px-5 pb-3">
