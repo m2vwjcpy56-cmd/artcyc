@@ -7123,7 +7123,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
           <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(trainStats.totalSessions)} sub={trainStats.distinctDays + ' Trainingstage'} />
           <MetricCard accent="emerald" icon={Activity} label={t('training.currentStreak')} value={streak > 0 ? streak + (streak === 1 ? ' Woche' : ' Wochen') : '—'} sub={streak > 0 ? 'in Folge' : 'keine aktive Serie'} />
           {/* Wettkampf-Paar bewusst nebeneinander (gleiche Bedeutung) */}
-          <MetricCard accent="violet" icon={Calendar} label="Letzter Wettkampf" value={compStats.last ? compStats.last.final.toFixed(2) : '—'} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : '–'} />
+          <MetricCard accent="violet" icon={Calendar} label={t('dashboard.lastCompetition')} value={compStats.last ? compStats.last.final.toFixed(2) : '—'} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : '–'} />
           <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub="Punkte" />
         </div>
 
@@ -7199,7 +7199,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
         {/* WETTKAMPF-VERLAUF (Parität zu iOS — „Übung im Fokus" entfernt) */}
         {compStats.count >= 2 && (
           <section className="space-y-3">
-            <div className="px-1 text-[12px] uppercase tracking-wide text-slate-400 font-medium">Trends</div>
+            <div className="px-1 text-[12px] uppercase tracking-wide text-slate-400 font-medium">{t('dashboard.trends')}</div>
             <div className="card-surface rounded-[22px] p-4 space-y-2">
               <CompetitionTrendChart competitions={(data.competitions || []).filter(c => (c.kind || 'wettkampf') !== 'training' && (season === 'all' ? true : inRange(c.date)))} programs={data.programs || []} best={compStats.best} onTapWettkampf={() => setView('wettkampf')} />
             </div>
@@ -7209,7 +7209,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
         {/* LETZTE WETTKÄMPFE — die letzten 3 (Parität zu iOS „dash.recentComps") */}
         {compStats.withResult.length > 0 && (
           <section className="space-y-2">
-            <div className="px-1 text-[12px] uppercase tracking-wide text-slate-400 font-medium">Letzte Wettkämpfe</div>
+            <div className="px-1 text-[12px] uppercase tracking-wide text-slate-400 font-medium">{t('dashboard.recentCompetitions')}</div>
             <div className="card-surface rounded-[22px] overflow-hidden">
               {[...compStats.withResult]
                 .sort((a, b) => (b.competition.date || '').localeCompare(a.competition.date || ''))
@@ -7345,7 +7345,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
       {/* Lange nicht trainiert — Erinnerung (Idee: Theresa) */}
       {neglected.length > 0 && (
         <section className="space-y-2">
-          <div className="px-4 text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">Lange nicht trainiert</div>
+          <div className="px-4 text-[12px] uppercase tracking-wide text-[#8E8E93] font-medium">{t('dashboard.staleTitle')}</div>
           <div className="bg-white dark:bg-white/5 rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
             {neglected.slice(0, 5).map(({ ex, days }) => (
               <button key={ex.id} onClick={() => setView('erfassen')}
@@ -7355,7 +7355,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
               </button>
             ))}
           </div>
-          <div className="px-4 text-[12px] text-[#8E8E93]">Diese Übungen waren länger nicht dran — Zeit, sie wieder einzubauen. 💪</div>
+          <div className="px-4 text-[12px] text-[#8E8E93]">{t('dashboard.staleHint')}</div>
         </section>
       )}
 
@@ -10012,7 +10012,7 @@ function TrainingsplanView({ data, setData, onBack }) {
             </button>
             {allPlansLog.length > 0 && (
               <div className="space-y-1.5 pt-3">
-                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-4 font-medium">Alle Protokolle</div>
+                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-4 font-medium">{t('plan.allLogs')}</div>
                 {renderProtocolList(allPlansLog)}
               </div>
             )}
@@ -10020,7 +10020,7 @@ function TrainingsplanView({ data, setData, onBack }) {
         ) : (editing && draft) ? (
           <>
             <input value={draft.name} onChange={e => patchDraft({ name: e.target.value })}
-              placeholder="Plan-Name"
+              placeholder={t('plan.name')}
               className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-[15px] font-medium bg-white outline-none focus:ring-2 focus:ring-amber-500" />
             <div className="space-y-2">
               {(draft.items || []).map((it, i) => (
@@ -10034,7 +10034,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                   </div>
                   <div className="pl-8 space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[13px] text-slate-500">Anzahl</span>
+                      <span className="text-[13px] text-slate-500">{t('common.count')}</span>
                       <input type="number" inputMode="numeric" value={it.reps ?? ''}
                         onChange={e => patchItem(it.id, { reps: e.target.value === '' ? null : Number(e.target.value) })}
                         placeholder="—"
@@ -10042,7 +10042,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                     </div>
                     {/* Protokoll-Modus: wie wird dieser Eintrag erfasst? */}
                     <div className="space-y-2">
-                      <span className="text-[13px] text-slate-500">Protokoll-Modus</span>
+                      <span className="text-[13px] text-slate-500">{t('plan.logMode')}</span>
                       <div className="grid grid-cols-3 gap-1.5">
                         {(() => {
                           const cur = it.logMode || (it.loggable ? '2' : 'check');
@@ -10057,17 +10057,17 @@ function TrainingsplanView({ data, setData, onBack }) {
                       </div>
                       {it.logMode === '3' && (
                         <div className="space-y-1">
-                          <span className="text-[12px] text-slate-500">Name der 3. Kategorie</span>
+                          <span className="text-[12px] text-slate-500">{t('exercises.thirdCategoryName')}</span>
                           <input value={it.thirdLabel ?? 'Gefährlich'} onChange={e => patchItem(it.id, { thirdLabel: e.target.value })}
                             placeholder={t('exercises.thirdLabelExample')}
                             className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-[14px] bg-white outline-none" />
-                          <span className="text-[11px] text-slate-400">Dritte Bewertungsstufe neben „Geklappt" und „Nicht" — z. B. für riskante Versuche.</span>
+                          <span className="text-[11px] text-slate-400">{t('exercises.thirdCategoryHint')}</span>
                         </div>
                       )}
                       {(it.logMode === '2' || it.logMode === '3') && (
                         <>
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-[13px] text-slate-500">Mit-Seil-Variante</span>
+                            <span className="text-[13px] text-slate-500">{t('exercises.ropeVariantLabel')}</span>
                             <IOSToggle checked={!!it.hasRope} onChange={() => patchItem(it.id, { hasRope: !it.hasRope })} />
                           </div>
                           {(() => {
@@ -10106,7 +10106,7 @@ function TrainingsplanView({ data, setData, onBack }) {
               <button onClick={startEdit} className="text-[15px] text-[#007AFF] font-medium active:opacity-60 flex items-center gap-1"><Edit2 size={15} /> Bearbeiten</button>
             </div>
             {(plan.items || []).length === 0 ? (
-              <div className="card-surface rounded-[22px] p-6 text-center text-[15px] text-slate-400">Noch keine Einträge. Tippe „Bearbeiten".</div>
+              <div className="card-surface rounded-[22px] p-6 text-center text-[15px] text-slate-400">{t('plan.noEntries')}</div>
             ) : (
               <div className="space-y-2">
                 {plan.items.map((it, i) => {
@@ -10177,7 +10177,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                           {/* Erreichte Anzahl (z. B. Lenkerdrehungen) – zusätzlich zu Geklappt/Nicht. */}
                           {isRotation(it, ex) && (
                             <div className="mt-3 flex items-center justify-between gap-2 bg-amber-50/70 border border-amber-100 rounded-xl px-3 py-2">
-                              <span className="text-[13px] text-slate-600">Erreichte Drehungen</span>
+                              <span className="text-[13px] text-slate-600">{t('plan.turnsAchieved')}</span>
                               <div className="flex items-center gap-2">
                                 <button onClick={() => setPlanRepCount(ex, planRepCount(ex) - 1)}
                                   className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-700 text-lg leading-none active:scale-90">−</button>
@@ -10209,7 +10209,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                         </div>
                       )}
                       {it.loggable && !ex && (
-                        <div className="text-[12px] text-amber-600 mt-1.5">Keine Übung verknüpft — unter „Bearbeiten" zuordnen.</div>
+                        <div className="text-[12px] text-amber-600 mt-1.5">{t('plan.noExerciseLinked')}</div>
                       )}
                       {!it.loggable && (() => {
                         const cnt = Math.max(0, getDone(it) - runBase(runKeyCheck(it.id)));
@@ -10254,7 +10254,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                       {r.checks > 0 && (
                         <div>
                           <div className="text-[17px] font-bold tabular-nums text-slate-800 dark:text-slate-100">{r.checks}</div>
-                          <div className="text-[11px] text-slate-400">abgehakt</div>
+                          <div className="text-[11px] text-slate-400">{t('plan.checkedOff')}</div>
                         </div>
                       )}
                       <div className="flex-1" />
@@ -10283,7 +10283,7 @@ function TrainingsplanView({ data, setData, onBack }) {
             {/* Heute schon abgeschlossene Durchgänge */}
             {runsToday.length > 0 && (
               <div className="space-y-1.5 pt-1">
-                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-4 font-medium">Heute abgeschlossen</div>
+                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-4 font-medium">{t('plan.doneToday')}</div>
                 <div className="card-surface rounded-[22px] divide-y divide-black/5 dark:divide-white/10">
                   {runsToday.map((r, i) => (
                     <div key={r.id} className="flex items-center gap-2 px-4 py-3">
@@ -10296,21 +10296,21 @@ function TrainingsplanView({ data, setData, onBack }) {
                           <span className="text-[12px] text-slate-400 tabular-nums">{r.succ}/{r.total}</span>
                         </>
                       )}
-                      <button onClick={() => undoRun(r.id)} aria-label="Durchgang aufheben" title="Durchgang aufheben"
+                      <button onClick={() => undoRun(r.id)} aria-label={t('plan.undoRun')} title={t('plan.undoRun')}
                         className="ml-2 text-slate-400 hover:text-slate-600 active:opacity-60">
                         <RotateCcw size={16} />
                       </button>
                     </div>
                   ))}
                 </div>
-                <p className="text-[12px] text-slate-400 px-4 leading-snug">Aufheben macht den Durchgang rückgängig. Die Versuche bleiben erhalten.</p>
+                <p className="text-[12px] text-slate-400 px-4 leading-snug">{t('plan.undoRunHint')}</p>
               </div>
             )}
 
             {/* Protokoll — vergangene Trainingstage automatisch aus den Sessions */}
             {planLog.length > 0 && (
               <div className="space-y-1.5 pt-2">
-                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-4 font-medium">Protokoll</div>
+                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-4 font-medium">{t('plan.log')}</div>
                 {renderProtocolList(planLog)}
               </div>
             )}
@@ -12937,7 +12937,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
           {ex.uci_code && <IOSTag color="blue">{ex.uci_code}</IOSTag>}
           {ex.category_mode === 3 && <IOSTag color="orange">3-Status</IOSTag>}
           {!ex.active && <IOSTag color="gray">archiviert</IOSTag>}
-          {ex._feedbackOnly && <IOSTag color="purple">nur Feedback</IOSTag>}
+          {ex._feedbackOnly && <IOSTag color="purple">{t('exercises.feedbackOnly')}</IOSTag>}
           {(() => { const n = fbByBase.get(exerciseBaseKey(ex.name))?.count || 0; return n > 0 ? <IOSTag color="green">{n}× Feedback</IOSTag> : null; })()}
         </div>
         <div className="text-[13px] text-[#8E8E93] mt-0.5 flex items-center gap-1.5 flex-wrap">
@@ -13111,7 +13111,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
         {statHasData ? (
           <section className="space-y-2">
             <div className="flex items-center justify-between px-1">
-              <div className="text-[12px] uppercase tracking-wide text-slate-400 font-medium">Überblick</div>
+              <div className="text-[12px] uppercase tracking-wide text-slate-400 font-medium">{t('stats.overview')}</div>
               <select value={statRange} onChange={e => setStatRange(e.target.value)}
                 className="text-[13px] font-semibold text-[#FF9500] bg-transparent outline-none">
                 <option value="m6">6 Monate</option>
@@ -13121,12 +13121,12 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
               </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <MetricCard accent="amber" icon={Trophy} label="Ø Wettkampf" value={statFmt(statAvg(statWk))} sub={statWk.length + ' Wettkämpfe'} />
-              <MetricCard accent="sky" icon={Dumbbell} label="Ø Training" value={statFmt(statAvg(statTr))} sub={statTr.length + ' Trainings'} />
-              <MetricCard accent="violet" icon={TrendingUp} label="Ø Abzug" value={statFmt(statAvg(statDeds))} sub="pro Wettkampf" />
+              <MetricCard accent="amber" icon={Trophy} label={t('stats.avgCompetition')} value={statFmt(statAvg(statWk))} sub={statWk.length + ' Wettkämpfe'} />
+              <MetricCard accent="sky" icon={Dumbbell} label={t('stats.avgTraining')} value={statFmt(statAvg(statTr))} sub={statTr.length + ' Trainings'} />
+              <MetricCard accent="violet" icon={TrendingUp} label={t('stats.avgDeduction')} value={statFmt(statAvg(statDeds))} sub={t('common.perCompetition')} />
               <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={statWk.length ? Math.max(...statWk).toFixed(2) : '—'} sub="Punkte" />
-              <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(statSessions.length)} sub="im Zeitraum" />
-              <MetricCard accent="emerald" icon={Activity} label="Serie" value={statStreak > 0 ? String(statStreak) : '—'} sub={statStreak === 1 ? 'Woche' : 'Wochen'} />
+              <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(statSessions.length)} sub={t('common.inPeriod')} />
+              <MetricCard accent="emerald" icon={Activity} label={t('common.series')} value={statStreak > 0 ? String(statStreak) : '—'} sub={statStreak === 1 ? 'Woche' : 'Wochen'} />
             </div>
             {/* Wettkampf vs. Training — die Zeile, die nativ unter den Kacheln steht. */}
             {statWk.length > 0 && statTr.length > 0 && (() => {
@@ -13137,7 +13137,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
               return (
                 <div className="card-surface rounded-[22px] px-4 py-3 flex items-center gap-3">
                   <Activity size={17} className="text-[#FF9500] shrink-0" />
-                  <span className="text-[15px] flex-1">Im Wettkampf</span>
+                  <span className="text-[15px] flex-1">{t('scope.inCompetition')}</span>
                   <span className="text-[15px] font-semibold tabular-nums">{txt}</span>
                 </div>
               );
@@ -13165,7 +13165,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
         {/* WETTKÄMPFE & TRAININGS — Einstieg in die Einzel-Einträge (wie nativ) */}
         {(statEvents.wk > 0 || statEvents.tr > 0) && (
           <section className="space-y-1.5 pt-1">
-            <div className="text-[12px] uppercase tracking-wide text-slate-400 font-medium px-1">Wettkämpfe & Trainings</div>
+            <div className="text-[12px] uppercase tracking-wide text-slate-400 font-medium px-1">{t('scope.compAndTraining')}</div>
             <IOSList>
               {statEvents.wk > 0 && (
                 <IOSListRow onClick={() => onOpenView && onOpenView('wettkampf')}>
@@ -13196,7 +13196,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
             Trainings-Rate wird als farbige Badge rechts gezeigt, damit
             man auf einen Blick sieht welche Übung sicher sitzt. */}
         {activeExercises.length === 0 && archivedExercises.length === 0 ? (
-          <EmptyState title={t('exercises.none')} hint="Lege über Neu deine erste Übung an." />
+          <EmptyState title={t('exercises.none')} hint={t('exercises.createFirst')} />
         ) : (
           <div className="space-y-5">
             {activeExercises.length > 0 && (
@@ -13207,7 +13207,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
                   </div>
                   <select value={statSort} onChange={e => setStatSort(e.target.value)}
                     className="text-[13px] font-semibold text-[#FF9500] bg-transparent outline-none">
-                    <option value="abzug">Abzug</option>
+                    <option value="abzug">{t('common.deduction')}</option>
                     <option value="training">Training</option>
                     <option value="name">Name</option>
                   </select>
@@ -13453,7 +13453,7 @@ function ExerciseEditor({ exercise, onSave, onCancel, existingCodes = null }) {
         {/* Mit-Seil-Variante — iOS Toggle */}
         <IOSList footer="Beim Protokollieren kannst du dann pro Serie wählen ob mit oder ohne Seil trainiert wurde — z. B. für den Maute-Sprung. Statistiken werden getrennt ausgewertet.">
           <div className="px-4 py-3 flex items-center gap-3">
-            <span className="flex-1 text-[15px]">Mit-Seil-Variante</span>
+            <span className="flex-1 text-[15px]">{t('exercises.ropeVariantLabel')}</span>
             <IOSToggle checked={hasRopeVariant} onChange={setHasRopeVariant} />
           </div>
         </IOSList>
@@ -13862,7 +13862,7 @@ function Erfassen({ data, setData, dbAthletes, onDone, selectedAthleteId = null 
             <p className="text-sm text-slate-500 mb-4">Füge eine Übung aus dem Reglement hinzu.</p>
             <button onClick={() => setAddOpen(true)}
               className="bg-[#FF9500] text-white px-5 py-2.5 rounded-xl font-medium inline-flex items-center gap-1.5 active:opacity-60">
-              <Plus size={16} strokeWidth={2.6} /> Übung hinzufügen
+              <Plus size={16} strokeWidth={2.6} /> {t('programs.addExercise')}
             </button>
           </div>
         </div>
@@ -13932,7 +13932,7 @@ function Erfassen({ data, setData, dbAthletes, onDone, selectedAthleteId = null 
             </select>
             <button type="button" onClick={() => setAddOpen(true)}
               className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-slate-300 text-[#007AFF] text-[15px] font-medium active:opacity-60">
-              <Plus size={16} strokeWidth={2.6} /> Übung hinzufügen
+              <Plus size={16} strokeWidth={2.6} /> {t('programs.addExercise')}
             </button>
             <ReglementSearchModal open={addOpen} onClose={() => setAddOpen(false)} onPick={handleAddExercise} existingByCode={existingByCode} t={t} />
           </div>
@@ -14691,7 +14691,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
             <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">Sportler</label>
             <select value={athleteId || ''} onChange={e => setAthleteId(e.target.value || null)}
               className={'flex-1 bg-transparent text-[15px] outline-none appearance-none text-right ' + (athleteId ? '' : 'text-[#FF3B30]')}>
-              <option value="">Bitte wählen …</option>
+              <option value="">{t('common.pleaseChoose')}</option>
               {(athletes || []).map(a => (
                 <option key={a.id} value={a.id}>{[a.name, a.last_name].filter(Boolean).join(' ')}</option>
               ))}
@@ -14699,12 +14699,12 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
             <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
           </div>
           <div className="px-4 py-3 flex items-center gap-3">
-            <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">Klasse</label>
+            <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">{t('class.label')}</label>
             <select value={ageClass} onChange={e => setAgeClass(e.target.value)}
               className="flex-1 bg-transparent text-[15px] outline-none appearance-none text-right">
-              <option value="elite">Elite</option>
-              <option value="junioren">Junioren</option>
-              <option value="schueler">Schüler</option>
+              <option value="elite">{t('class.elite')}</option>
+              <option value="junioren">{t('class.juniors')}</option>
+              <option value="schueler">{t('class.pupils')}</option>
             </select>
             <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
           </div>
@@ -14760,7 +14760,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
           <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
             <div className="flex items-center gap-2 mb-1.5">
               <Info size={16} className="text-amber-700 shrink-0" />
-              <div className="font-semibold text-[14px] text-amber-900">Hinweis</div>
+              <div className="font-semibold text-[14px] text-amber-900">{t('common.note')}</div>
             </div>
             <ul className="text-[13px] text-amber-800 space-y-0.5 leading-snug pl-1">
               {validation.warnings.map((w, i) => (
@@ -14814,7 +14814,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
             <IOSListRow
               onClick={addEmptyRow}
               trailing={<Plus size={20} strokeWidth={2.4} className="text-[#FF9500]" />}>
-              <span className="text-[15px] text-[#FF9500] font-medium">Übung hinzufügen</span>
+              <span className="text-[15px] text-[#FF9500] font-medium">{t('programs.addExercise')}</span>
             </IOSListRow>
           </div>
 
@@ -16008,7 +16008,7 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
                 // Großzügige Klickfläche (vorher nur der 32-px-Kreis): ein knapper
                 // Fehlgriff landete auf der Karte und ERHÖHTE den Zähler. Die Fläche
                 // wächst nur nach innen, sichtbar bleibt der Kreis oben rechts.
-                <span role="button" aria-label="Zeichen entfernen"
+                <span role="button" aria-label={t('editor.removeMark')}
                   onClick={(ev) => { ev.stopPropagation(); onUpdate(tapKg, row, m.k, Math.max(0, cnt - 1)); }}
                   className="absolute top-0 right-0 w-[68px] h-[68px] flex items-start justify-end p-2.5">
                   <span className="w-8 h-8 rounded-full bg-[#FF9500] text-white flex items-center justify-center text-xl font-bold shadow">−</span>
@@ -17422,7 +17422,7 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
                         <div className="text-[9px] text-slate-500 mt-0.5">−{c.w}</div>
                       </button>
                       {count > 0 && (
-                        <button type="button" aria-label="Zeichen entfernen"
+                        <button type="button" aria-label={t('editor.removeMark')}
                           onClick={() => onUpdate(idx, c.k, count - 1)}
                           className="absolute -top-1.5 -right-1.5 w-9 h-9 flex items-start justify-end">
                           <span className="w-5 h-5 rounded-full bg-[#FF9500] text-white text-[12px] font-bold leading-none flex items-center justify-center shadow">−</span>
@@ -17494,7 +17494,7 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
                 );
                 return (
                   <div className={'mt-2 rounded-lg p-2 ' + (isTaktisch ? 'bg-amber-100/60 ring-1 ring-amber-300' : '')}>
-                    <div className="text-[10px] text-slate-500 mb-1">Taktische Aufwertung:</div>
+                    <div className="text-[10px] text-slate-500 mb-1">{t('editor.tacticalUpgrade')}</div>
                     {scale.length > 0 && std > 0 ? (
                       gesamt ? (
                         <>
@@ -17553,8 +17553,8 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
               <th className="py-2 px-1 font-medium w-10" title="Welle (0,5)">~</th>
               <th className="py-2 px-1 font-medium w-10" title="Strich (1,0)">|</th>
               <th className="py-2 px-1 font-medium w-10" title="Kreis/Sturz (2,0)">○</th>
-              <th className="py-2 px-1 font-medium w-16" title="Schwierigkeit %">Schw</th>
-              <th className="py-2 px-1 font-medium w-16" title={t('editor.tacticalHint')}>Takt.</th>
+              <th className="py-2 px-1 font-medium w-16" title={t('editor.difficultyPct')}>{t('common.diffShort')}</th>
+              <th className="py-2 px-1 font-medium w-16" title={t('editor.tacticalHint')}>{t('editor.tacticalShort')}</th>
               <th className="py-2 px-1 font-medium w-12 text-right">Σ</th>
             </tr>
           </thead>
@@ -17648,7 +17648,7 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
       {result && (
         <div className="mt-4 pt-4 border-t border-slate-200 bg-slate-50 -mx-4 -mb-4 px-4 py-3 rounded-b-2xl grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
           <div>
-            <div className="text-slate-500">Ausführung</div>
+            <div className="text-slate-500">{t('editor.execution')}</div>
             <div className="font-semibold text-slate-900">-{result.abzugAusfuehrung.toFixed(2)}</div>
           </div>
           <div>
@@ -17660,7 +17660,7 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
             <div className="font-semibold text-slate-900">-{result.abzugGesamt.toFixed(2)}</div>
           </div>
           <div>
-            <div className="text-amber-700">Ergebnis</div>
+            <div className="text-amber-700">{t('common.result')}</div>
             <div className="font-bold text-amber-700">{result.ergebnis.toFixed(2)}</div>
           </div>
         </div>
@@ -18749,7 +18749,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
               {isOwner && (linkedToUser || a.email) && (
                 <button onClick={() => openAdminFor(a)}
                   className="p-2 text-[#FF9500] active:bg-[#D1D1D6]/40 rounded-full"
-                  title="Admin: Account verwalten">
+                  title={t('admin.manageAccount')}>
                   <Crown size={16} />
                 </button>
               )}
@@ -18802,7 +18802,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
           {canEdit && (
             <button onClick={() => { setMoveSource(a); setMoveSessions(true); setMoveComps(true); }} disabled={busy}
               className="text-[13px] bg-slate-100 text-slate-800 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
-              <Send size={13} /> Daten verschieben
+              <Send size={13} /> {t('athletes.moveData')}
             </button>
           )}
           {/* Eigener Sportler-Eintrag: „Trainer verwalten" springt in
@@ -19040,7 +19040,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
                   ✗ {err}
                   {/^Code ung/i.test(err) && (
                     <div className="text-[12px] text-rose-700/90 mt-1.5 leading-snug">
-                      Tipp: Bitte die Person, dir einen <strong>frisch generierten</strong> Code zu schicken und
+                      Tipp: Bitte die Person, dir einen <strong>{t('athletes.freshlyGenerated')}</strong> Code zu schicken und
                       löse ihn gleich ein. Ein neu erstellter Code ersetzt den alten, und Einladungs-Codes
                       können nach längerer Zeit automatisch erneuert werden.
                     </div>
@@ -19079,7 +19079,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
           <div className="bg-[#F2F2F7] dark:bg-[#1c1c1e] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="px-4 py-3 border-b border-[#C6C6C8]/40">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-[17px]">Zusammenführen</h3>
+                <h3 className="font-semibold text-[17px]">{t('athletes.merge')}</h3>
                 <button onClick={() => setMergeSource(null)} className="p-1 text-[#8E8E93] active:opacity-60"><X size={20} /></button>
               </div>
               <p className="text-[13px] text-[#8E8E93] mt-1 leading-snug">
@@ -19088,10 +19088,10 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
               </p>
             </div>
             <div className="flex-1 overflow-y-auto p-3">
-              <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">Echtes Konto wählen</div>
+              <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">{t('athletes.chooseRealAccount')}</div>
               <div className="bg-white dark:bg-white/5 rounded-2xl overflow-hidden">
                 {mergeTargets.length === 0 ? (
-                  <div className="px-4 py-3 text-[13px] text-[#8E8E93]">Kein Konto mit Login gefunden. Der Sportler muss sich erst registrieren.</div>
+                  <div className="px-4 py-3 text-[13px] text-[#8E8E93]">{t('athletes.noAccountFound')}</div>
                 ) : mergeTargets.map((tg, i) => (
                   <button key={tg.id} onClick={() => onMerge(tg.id)} disabled={busy}
                     className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/40 disabled:opacity-50 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
@@ -19120,7 +19120,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
           <div className="bg-[#F2F2F7] dark:bg-[#1c1c1e] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="px-4 py-3 border-b border-[#C6C6C8]/40">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-[17px]">Daten verschieben</h3>
+                <h3 className="font-semibold text-[17px]">{t('athletes.moveData')}</h3>
                 <button onClick={() => setMoveSource(null)} className="p-1 text-[#8E8E93] active:opacity-60"><X size={20} /></button>
               </div>
               <p className="text-[13px] text-[#8E8E93] mt-1 leading-snug">
@@ -19134,7 +19134,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
               <div className="bg-white dark:bg-white/5 rounded-2xl px-4 py-3 flex items-center gap-3">
                 <Users size={20} className="text-[#FF9500] shrink-0" />
                 <div className="min-w-0">
-                  <div className="text-[12px] uppercase tracking-wide text-[#8E8E93]">Von</div>
+                  <div className="text-[12px] uppercase tracking-wide text-[#8E8E93]">{t('athletes.from')}</div>
                   <div className="text-[17px] font-semibold truncate">{moveSource.name}</div>
                   <div className="text-[12px] text-[#8E8E93] tabular-nums">
                     {moveCounts && moveCounts.sessions != null ? moveCounts.sessions : '…'} Sessions
@@ -19144,10 +19144,10 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
                 </div>
               </div>
               <div>
-                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">Was verschieben?</div>
+                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">{t('athletes.whatToMove')}</div>
                 <div className="bg-white dark:bg-white/5 rounded-2xl overflow-hidden">
                   <label className="flex items-center justify-between px-4 py-3 cursor-pointer">
-                    <span className="text-[15px]">Trainings</span>
+                    <span className="text-[15px]">{t('nav.trainings')}</span>
                     <input type="checkbox" checked={moveSessions} onChange={e => setMoveSessions(e.target.checked)} className="w-5 h-5 accent-[#FF9500]" />
                   </label>
                   <label className="flex items-center justify-between px-4 py-3 border-t border-[#C6C6C8]/40 cursor-pointer">
@@ -19160,10 +19160,10 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
                 <p className="text-[12px] text-[#8E8E93] px-3 mt-1.5">Übungen werden automatisch mitübernommen — sie hängen an den Trainings und Wettkämpfen und erscheinen dann beim Ziel.</p>
               </div>
               <div>
-                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">Ziel wählen</div>
+                <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">{t('athletes.chooseTarget')}</div>
                 <div className="bg-white dark:bg-white/5 rounded-2xl overflow-hidden">
                   {moveTargets.length === 0 ? (
-                    <div className="px-4 py-3 text-[13px] text-[#8E8E93]">Kein anderer Sportler / kein Team vorhanden.</div>
+                    <div className="px-4 py-3 text-[13px] text-[#8E8E93]">{t('athletes.noOtherAthlete')}</div>
                   ) : moveTargets.map((tg, i) => (
                     <button key={tg.id} onClick={() => onMove(tg.id)} disabled={busy || (!moveSessions && !moveComps)}
                       className={'w-full text-left px-4 py-3 flex items-center justify-between gap-2 active:bg-[#D1D1D6]/40 disabled:opacity-50 ' + (i > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
@@ -20271,8 +20271,8 @@ function ExportWettkampf({ data, defaultName = '' }) {
   if (competitions.length === 0) {
     return (
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-amber-900 text-sm">
-        <strong>Keine Wettkämpfe vorhanden.</strong>
-        <p className="mt-1">Erfasse zuerst mindestens einen Wettkampf, bevor du exportieren kannst.</p>
+        <strong>{t('export.noCompetitions')}</strong>
+        <p className="mt-1">{t('export.needCompetition')}</p>
       </div>
     );
   }
@@ -20285,7 +20285,7 @@ function ExportWettkampf({ data, defaultName = '' }) {
             <label className="text-xs font-medium text-slate-500 block mb-1.5">Sportler/Team</label>
             <select value={athleteFilter} onChange={e => setAthleteFilter(e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500">
-              <option value="">Alle Sportler</option>
+              <option value="">{t('export.allAthletes')}</option>
               {athletes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </div>
@@ -20293,7 +20293,7 @@ function ExportWettkampf({ data, defaultName = '' }) {
 
         {/* Format — eine Auswahl statt drei Knöpfe */}
         <div>
-          <label className="text-xs font-medium text-slate-500 block mb-1.5">Format</label>
+          <label className="text-xs font-medium text-slate-500 block mb-1.5">{t('export.format')}</label>
           <div className="bg-[#E5E5EA] rounded-xl p-1 flex gap-1">
             {EXPORT_FORMATS.map(f => (
               <button key={f.id} onClick={() => setExportFormat(f.id)}
@@ -20315,9 +20315,9 @@ function ExportWettkampf({ data, defaultName = '' }) {
         <div>
           <label className="text-xs font-medium text-slate-500 block mb-1.5">Name (für den Dateinamen)</label>
           <input value={fileLabel} onChange={e => setFileLabel(e.target.value)}
-            placeholder="z. B. Ruben Geyer"
+            placeholder={t('export.namePlaceholder')}
             className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-500 text-[15px]" />
-          <div className="text-[12px] text-slate-500 mt-1 truncate">Datei: <span className="font-medium text-slate-700">{baseFilename()}{fmt.ext}</span></div>
+          <div className="text-[12px] text-slate-500 mt-1 truncate">{t('export.file')} <span className="font-medium text-slate-700">{baseFilename()}{fmt.ext}</span></div>
         </div>
       </div>
 
@@ -20328,7 +20328,7 @@ function ExportWettkampf({ data, defaultName = '' }) {
             <div className="flex gap-2 text-[13px] font-medium">
               <button onClick={() => setChosen(new Set(filtered.map(c => c.id)))} className="text-[#007AFF] active:opacity-60">Alle</button>
               <span className="text-slate-300">·</span>
-              <button onClick={() => setChosen(new Set())} className="text-[#007AFF] active:opacity-60">Keine</button>
+              <button onClick={() => setChosen(new Set())} className="text-[#007AFF] active:opacity-60">{t('common.none')}</button>
             </div>
           )}
         </div>
@@ -20357,7 +20357,7 @@ function ExportWettkampf({ data, defaultName = '' }) {
 
       <div className="bg-slate-50 rounded-xl p-4 text-xs text-slate-600 space-y-1.5">
         <div>Abwertungen werden als Gesamtsumme beider Kampfgerichte eingetragen (wie in der Maute-Anleitung).</div>
-        <div className="text-slate-500">Max. 15 Wettkämpfe · 30 Übungen pro Datei.</div>
+        <div className="text-slate-500">{t('export.limits')}</div>
       </div>
 
       {/* Aktionsleiste — klebt über der Tab-Bar, bleibt beim Scrollen sichtbar,
@@ -20413,7 +20413,7 @@ function ExportWettkampf({ data, defaultName = '' }) {
           </button>
           {vorlageErr && <p className="text-[13px] text-rose-600 mt-2 text-center">{vorlageErr}</p>}
           {selected.length === 0 && (
-            <p className="text-[13px] text-slate-500 mt-2 text-center">Wähle mindestens einen Wettkampf aus.</p>
+            <p className="text-[13px] text-slate-500 mt-2 text-center">{t('export.pickAtLeastOne')}</p>
           )}
         </div>
       </div>
@@ -20435,7 +20435,7 @@ function ExportTraining({ data }) {
   }, [data.sessions, athleteFilter]);
 
   const exportTrainingCSV = () => {
-    const rows = [['Datum', 'Sportler/Team', 'Übung', 'Serie', 'Status', 'Notizen']];
+    const rows = [['Datum', 'Sportler/Team', 'Übung', t('common.series'), 'Status', 'Notizen']];
     const labels = { success: 'Geklappt', fail: 'Nicht geklappt', third: 'Dritte Kategorie' };
 
     sessions.forEach(sess => {
@@ -20712,7 +20712,7 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
         </div>
         {effProgram && (
           <button onClick={() => setSheetOpen(true)}
-            className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg" title="Als PDF ansehen">
+            className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg" title={t('detail.viewAsPdf')}>
             <FileText size={18} />
           </button>
         )}
@@ -20814,7 +20814,7 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <StatCard icon={Trophy} label={t('detail.finalScore')} value={finalScore.toFixed(2)}
-                sub="aus PDF-Import gesichert" color="orange" size="large" />
+                sub={t('detail.fromPdfImport')} color="orange" size="large" />
               {ref.kg1_ausgefahren != null && (
                 <StatCard icon={BarChart3} label={t('detail.kg1Score')} value={Number(ref.kg1_ausgefahren).toFixed(2)}
                   sub={ref.kg1_gesamt != null ? 'Abzug -' + Number(ref.kg1_gesamt).toFixed(2) : ''} color="sky" />
@@ -20825,7 +20825,7 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
               )}
             </div>
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-900 text-sm">
-              ⚠️ Programm-Details zu diesem Wettkampf fehlen — dein <strong>Endergebnis bleibt gesichert</strong> und wird oben angezeigt. Die Übungs-Einzelwerte erscheinen wieder, sobald das Programm vorhanden ist (z. B. PDF erneut importieren).
+              ⚠️ Programm-Details zu diesem Wettkampf fehlen — dein <strong>{t('detail.scoreKept')}</strong> und wird oben angezeigt. Die Übungs-Einzelwerte erscheinen wieder, sobald das Programm vorhanden ist (z. B. PDF erneut importieren).
             </div>
           </div>
         ) : (
@@ -20842,7 +20842,7 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
           {/* Umschalter nur, wenn es wirklich mehrere Bögen gibt. */}
           {!gesamt && kgN > 1 && (
             <div className="space-y-2">
-              <div className="text-[12px] uppercase tracking-wide text-slate-400 px-1 font-medium">Einzelübungen je Kampfgericht</div>
+              <div className="text-[12px] uppercase tracking-wide text-slate-400 px-1 font-medium">{t('detail.perPanel')}</div>
               <SegmentedControl value={Math.min(activeTable, kgN)} onChange={setActiveTable}
                 options={Array.from({ length: kgN }, (_, i) => [i + 1, kgN > 2 ? 'KG ' + (i + 1) : t('detail.kg1Score').replace('1', String(i + 1))])} />
             </div>
@@ -20894,7 +20894,7 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
                             {e.wave > 0 && <span className="text-slate-700"><strong>~</strong>×{e.wave}</span>}
                             {e.bar > 0 && <span className="text-slate-700"><strong>|</strong>×{e.bar}</span>}
                             {e.circle > 0 && <span className="text-rose-700"><strong>○</strong>×{e.circle}</span>}
-                            {e.schwPct > 0 && <span className="text-amber-700"><strong>Schw</strong> {e.schwPct}%</span>}
+                            {e.schwPct > 0 && <span className="text-amber-700"><strong>{t('common.diffShort')}</strong> {e.schwPct}%</span>}
                           </div>
                         )}
                       </div>
@@ -20934,19 +20934,19 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
             {result && (
               <div className="mt-3 pt-3 border-t border-slate-200 grid grid-cols-2 gap-2 text-xs">
                 <div className="bg-slate-50 rounded-lg p-2">
-                  <div className="text-slate-500">Abzug Ausführung</div>
+                  <div className="text-slate-500">{t('detail.deductionExecution')}</div>
                   <div className="font-bold">-{result.abzugAusfuehrung.toFixed(2)}</div>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-2">
-                  <div className="text-slate-500">Abzug Schwierigkeit</div>
+                  <div className="text-slate-500">{t('detail.deductionDifficulty')}</div>
                   <div className="font-bold">-{result.abzugSchwierigkeit.toFixed(2)}</div>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-2">
-                  <div className="text-slate-500">Gesamtabzug</div>
+                  <div className="text-slate-500">{t('detail.totalDeduction')}</div>
                   <div className="font-bold">-{result.abzugGesamt.toFixed(2)}</div>
                 </div>
                 <div className="bg-amber-50 rounded-lg p-2">
-                  <div className="text-amber-700">Ergebnis</div>
+                  <div className="text-amber-700">{t('common.result')}</div>
                   <div className="font-bold text-amber-700">{result.ergebnis.toFixed(2)}</div>
                 </div>
               </div>
