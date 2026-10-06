@@ -10659,22 +10659,22 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
       {session && (
         <IOSList header={t('settings.account')}>
           <div className="px-4 py-3.5 flex items-center gap-3">
-            <span className="text-[15px] text-[#3C3C43] w-24 shrink-0">Vorname</span>
+            <span className="text-[15px] text-[#3C3C43] w-24 shrink-0">{t('athletes.editorFirstName')}</span>
             <input value={firstName} onChange={e => setFirstName(e.target.value)} onBlur={saveFirstName}
-              placeholder="Vorname"
+              placeholder={t('athletes.editorFirstNamePlaceholder')}
               className="flex-1 bg-transparent text-[15px] text-right outline-none placeholder:text-[#C7C7CC]" />
             {savedField === 'first' && <Check size={16} className="text-[#34C759] shrink-0" />}
           </div>
           <div className="px-4 py-3.5 flex items-center gap-3">
-            <span className="text-[15px] text-[#3C3C43] w-24 shrink-0">Nachname</span>
+            <span className="text-[15px] text-[#3C3C43] w-24 shrink-0">{t('athletes.editorLastName')}</span>
             <input value={lastNameS} onChange={e => setLastNameS(e.target.value)} onBlur={saveLastNameSelf}
-              placeholder="Nachname"
+              placeholder={t('athletes.editorLastNamePlaceholder')}
               className="flex-1 bg-transparent text-[15px] text-right outline-none placeholder:text-[#C7C7CC]" />
             {savedField === 'last' && <Check size={16} className="text-[#34C759] shrink-0" />}
           </div>
           {myAthleteSelf && (
             <div className="px-4 py-3.5 flex items-center gap-3">
-              <span className="text-[15px] text-[#3C3C43] w-24 shrink-0">Verein</span>
+              <span className="text-[15px] text-[#3C3C43] w-24 shrink-0">{t('athletes.club')}</span>
               <div className="flex-1 min-w-0">
                 <ClubCombobox value={clubS} onChange={setClubS} onBlur={saveClubSelf} align="right"
                   placeholder={t('athletes.clubPlaceholder')} suggestions={clubSugg} />
