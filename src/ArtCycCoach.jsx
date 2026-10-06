@@ -2841,6 +2841,7 @@ function compAvgDeductionPerExercise(program, c) {
 // Abzugs-Verlauf-Balken: keine Datums-Labels unter jedem Balken (unlesbar) —
 // stattdessen Jahres-Marken + Klick auf einen Balken zeigt Wettkampf, Datum, Abzug.
 function DeductionBars({ series }) {
+  const { t } = useI18n();
   const [sel, setSel] = useState(null);
   const max = Math.max(...series.map(s => s.ded), 0.5);
   return (
@@ -2876,6 +2877,7 @@ function DeductionBars({ series }) {
 // Chips Abzug/Kreuz/Welle/Strich/Sturz/Schwierigkeit → Balken-Verlauf über die Wertungen.
 // Werte werden über die Kampfgerichte GEMITTELT (wie die Statistik). „Keine Daten" im Chart.
 function CompMetricChart({ compList }) {
+  const { t } = useI18n();
   const [metric, setMetric] = useState('abzug');
   const [sel, setSel] = useState(null);
   const METRICS = [
@@ -3695,6 +3697,7 @@ function computeLastTrainingRecap(data, maxDaysAgo = 3) {
 }
 
 function TrainingRecapCard({ data, onOpenExercise }) {
+  const { t } = useI18n();
   const recap = useMemo(() => computeLastTrainingRecap(data), [data.sessions, data.exercises]);
   if (!recap) return null;
   const rel = recap.daysAgo === 0 ? 'heute' : recap.daysAgo === 1 ? 'gestern' : `vor ${recap.daysAgo} Tagen`;
@@ -3708,7 +3711,7 @@ function TrainingRecapCard({ data, onOpenExercise }) {
         <span className="text-[13px] text-[#8E8E93]">{formatDateShort(recap.lastDate)} · {rel}</span>
       </div>
       <div className="flex items-baseline gap-7">
-        <div><div className="text-xl font-bold">{recap.sessionCount}</div><div className="text-[11px] text-[#8E8E93]">Serien</div></div>
+        <div><div className="text-xl font-bold">{recap.sessionCount}</div><div className="text-[11px] text-[#8E8E93]">{t('common.seriesPlural')}</div></div>
         <div><div className="text-xl font-bold">{recap.exercises.length}</div><div className="text-[11px] text-[#8E8E93]">Übungen</div></div>
         <div><div className="text-xl font-bold">{recap.totalReps}</div><div className="text-[11px] text-[#8E8E93]">Versuche</div></div>
       </div>
@@ -3732,8 +3735,8 @@ function TrainingRecapCard({ data, onOpenExercise }) {
             </div>
             {(r.ropeTotal > 0 && r.noRopeTotal > 0) && (
               <div className="mt-1 pl-3 space-y-0.5 text-[12px]">
-                <div className="flex justify-between"><span className="text-[#8E8E93]">mit Seil</span><span className="tabular-nums"><span className={rc(ropePct(r.ropeSuccess, r.ropeTotal))}>{ropePct(r.ropeSuccess, r.ropeTotal)}%</span> <span className="text-[#C7C7CC]">{r.ropeSuccess}/{r.ropeTotal}</span></span></div>
-                <div className="flex justify-between"><span className="text-[#8E8E93]">ohne Seil</span><span className="tabular-nums"><span className={rc(ropePct(r.noRopeSuccess, r.noRopeTotal))}>{ropePct(r.noRopeSuccess, r.noRopeTotal)}%</span> <span className="text-[#C7C7CC]">{r.noRopeSuccess}/{r.noRopeTotal}</span></span></div>
+                <div className="flex justify-between"><span className="text-[#8E8E93]">{t('exercise.withRope')}</span><span className="tabular-nums"><span className={rc(ropePct(r.ropeSuccess, r.ropeTotal))}>{ropePct(r.ropeSuccess, r.ropeTotal)}%</span> <span className="text-[#C7C7CC]">{r.ropeSuccess}/{r.ropeTotal}</span></span></div>
+                <div className="flex justify-between"><span className="text-[#8E8E93]">{t('exercise.withoutRope')}</span><span className="tabular-nums"><span className={rc(ropePct(r.noRopeSuccess, r.noRopeTotal))}>{ropePct(r.noRopeSuccess, r.noRopeTotal)}%</span> <span className="text-[#C7C7CC]">{r.noRopeSuccess}/{r.noRopeTotal}</span></span></div>
               </div>
             )}
           </div>
@@ -4636,7 +4639,7 @@ function FloatingChat({ data, setData, profile, refreshers, open, onClose }) {
               )}
               {busy && streamingText && phase === 'tool' && (
                 <div className="flex items-center gap-2 text-[#8E8E93] text-[13px] pl-1">
-                  <Loader2 size={12} className="animate-spin" /> bereitet Aktion vor…
+                  <Loader2 size={12} className="animate-spin" /> {t('common.preparing')}
                 </div>
               )}
               {err && (
@@ -6115,7 +6118,7 @@ export default function App() {
               className={'flex items-center justify-between px-3 py-2.5 rounded-2xl text-left transition ' +
                 (active ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100')}>
               <span className="flex items-center gap-3"><Icon size={18} strokeWidth={active ? 2.4 : 1.8} /><span className="font-medium">{n.label}</span></span>
-              {n.soon && <span className="bg-amber-100 text-amber-800 text-[10px] font-semibold px-2 py-0.5 rounded-full">bald</span>}
+              {n.soon && <span className="bg-amber-100 text-amber-800 text-[10px] font-semibold px-2 py-0.5 rounded-full">{t('common.soon')}</span>}
             </button>
           );
         })}
@@ -6142,7 +6145,7 @@ export default function App() {
             onClick={() => setShowAthletePicker(false)}>
             <div className="bg-white dark:bg-[#1c1c1e] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="sticky top-0 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl px-4 py-3 flex items-center justify-between border-b border-slate-200/60 dark:border-white/10">
-                <h3 className="font-semibold text-[17px]">Sportler auswählen</h3>
+                <h3 className="font-semibold text-[17px]">{t('athletes.choose')}</h3>
                 <button onClick={() => setShowAthletePicker(false)} className="p-1 text-[#8E8E93] active:opacity-60"><X size={20} /></button>
               </div>
               <div className="p-2">
@@ -6317,7 +6320,7 @@ function IOSList({ children, header, footer }) {
 
 // iOS Listenelement mit Pfeil rechts
 function IOSListRow({ onClick, children, trailing, className = '' }) {
-  // <div role="button"> statt <button>: manche Zeilen tragen eigene Knöpfe
+  // <div role="button"> {t('common.insteadOf')} <button>: manche Zeilen tragen eigene Knöpfe
   // (Kopieren/Löschen) — Knopf-in-Knopf ist ungültiges HTML.
   return (
     <div
@@ -6732,7 +6735,7 @@ function SetNewPasswordScreen({ onDone }) {
             <KeyRound className="text-amber-400" size={26} />
           </div>
           <h1 className="text-[24px] font-bold tracking-tight">{t('auth.setNewPassword')}</h1>
-          <p className="text-[#8E8E93] text-[14px] mt-1">Wähle ein neues Passwort für dein Konto.</p>
+          <p className="text-[#8E8E93] text-[14px] mt-1">{t('auth.chooseNewPassword')}</p>
         </div>
 
         {done ? (
@@ -6794,6 +6797,7 @@ function SetNewPasswordScreen({ onDone }) {
 // SETUP
 // =============================================================
 function SetupScreen({ onStart }) {
+  const { t } = useI18n();
   return (
     <div className="min-h-screen bg-[#F2F2F7] flex items-center justify-center p-4"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif' }}>
@@ -6805,7 +6809,7 @@ function SetupScreen({ onStart }) {
         <p className="text-[#8E8E93] text-[15px] mb-7">Trainings- und Wettkampf-Tool für Kunstradsport</p>
         <button onClick={onStart}
           className="bg-slate-900 text-white px-5 py-3.5 rounded-2xl font-semibold w-full active:scale-[0.98] transition shadow-sm">
-          Starten
+          {t('common.start')}
         </button>
       </div>
     </div>
@@ -7063,7 +7067,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
   const previewV2 = true;
   const seasonPills = (
     <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1" data-no-swipe="true">
-      {[{ id: 'all', label: 'Alle' }, { id: '30d', label: '30 Tage' }, { id: '90d', label: '90 Tage' }, ...availableYears.map(y => ({ id: y, label: y }))].map(s => (
+      {[{ id: 'all', label: t('range.all') }, { id: '30d', label: t('range.30days') }, { id: '90d', label: t('range.90days') }, ...availableYears.map(y => ({ id: y, label: y }))].map(s => (
         <button key={s.id} onClick={() => setSeason(s.id)}
           className={'px-3.5 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition active:scale-95 ' +
             (season === s.id ? 'bg-[#FF9500] text-white shadow-[0_1px_3px_rgba(255,149,0,0.35)]' : 'bg-white text-[#3C3C43] shadow-[0_1px_2px_rgba(0,0,0,0.04)]')}>
@@ -7120,11 +7124,11 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
 
         {/* OVERVIEW — Cockpit: mehrere starke Infos (Training + Wettkampf gemeinsam) */}
         <div className="grid grid-cols-2 gap-3">
-          <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(trainStats.totalSessions)} sub={trainStats.distinctDays + ' Trainingstage'} />
-          <MetricCard accent="emerald" icon={Activity} label={t('training.currentStreak')} value={streak > 0 ? streak + (streak === 1 ? ' Woche' : ' Wochen') : '—'} sub={streak > 0 ? 'in Folge' : 'keine aktive Serie'} />
+          <MetricCard accent="sky" icon={Dumbbell} label={t('dashboard.sessions')} value={String(trainStats.totalSessions)} sub={trainStats.distinctDays + ' ' + t('dashboard.trainingDays')} />
+          <MetricCard accent="emerald" icon={Activity} label={t('training.currentStreak')} value={streak > 0 ? streak + (streak === 1 ? t('common.week') : t('common.weeks')) : '—'} sub={streak > 0 ? t('dashboard.inARow') : t('dashboard.noStreak')} />
           {/* Wettkampf-Paar bewusst nebeneinander (gleiche Bedeutung) */}
           <MetricCard accent="violet" icon={Calendar} label={t('dashboard.lastCompetition')} value={compStats.last ? compStats.last.final.toFixed(2) : '—'} sub={compStats.last ? formatDateShort(compStats.last.competition.date) : '–'} />
-          <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub="Punkte" />
+          <MetricCard accent="amber" icon={Trophy} label={t('dashboard.bestScore')} value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub={t('common.points')} />
         </div>
 
         {/* TRAININGS-ERFOLGSQUOTE — Quote je Monat als Linie, Versuche als gedämpfte Balken
@@ -7422,8 +7426,9 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
 // Abzug je Wettkampf über die Zeit — Gegenstück zum Ergebnis-Verlauf. Bewusst
 // schlicht (keine Scrub-Interaktion): der Ergebnis-Chart trägt die Detailarbeit.
 function DeductionTrendChart({ series }) {
+  const { t } = useI18n();
   if (!series || series.length < 2) {
-    return <div className="text-[13px] text-slate-400 py-6 text-center">Zu wenig Daten für diesen Zeitraum.</div>;
+    return <div className="text-[13px] text-slate-400 py-6 text-center">{t('stats.tooLittleData')}</div>;
   }
   const W = 600, H = 180, PL = 26, PR = 10, PT = 12, PB = 18;
   const vals = series.map(p => p.ded);
@@ -7743,11 +7748,11 @@ function TrainingHeatmap({ sessions }) {
         </svg>
         {/* Legende */}
         <div className="flex items-center gap-2 mt-3 text-[10px] text-slate-500">
-          <span>weniger</span>
+          <span>{t('common.less')}</span>
           {[0, 5, 15, 25, 35].map((n, i) => (
             <span key={i} style={{ width: 12, height: 12, borderRadius: 3, background: colorFor(n), display: 'inline-block', border: n === 0 ? '1px solid #E5E5EA' : 'none' }} />
           ))}
-          <span>mehr</span>
+          <span>{t('common.more')}</span>
         </div>
       </div>
     </section>
@@ -7788,6 +7793,7 @@ function StatCard({ icon: Icon, label, value, sub, color = 'sky', size = 'normal
 }
 
 function ExerciseStatsCard({ ex, total, success, fail, third, rate, riskRate, sessions, trend }) {
+  const { t } = useI18n();
   const cardClass = 'bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5';
   return (
     <div className={cardClass}>
@@ -7812,7 +7818,7 @@ function ExerciseStatsCard({ ex, total, success, fail, third, rate, riskRate, se
         </div>
         <div className="text-right shrink-0">
           <div className="text-3xl font-bold text-slate-900">{rate}%</div>
-          <div className="text-xs text-slate-500">Quote</div>
+          <div className="text-xs text-slate-500">{t('stats.rate')}</div>
         </div>
       </div>
 
@@ -7836,7 +7842,7 @@ function ExerciseStatsCard({ ex, total, success, fail, third, rate, riskRate, se
 
       {ex.category_mode === 3 && (fail + third) > 0 && (
         <div className="text-xs text-slate-400 mt-2">
-          Davon {ex.third_label.toLowerCase()}: <strong className="text-amber-700">{riskRate}%</strong> der nicht geklappten Versuche
+          Davon {ex.third_label.toLowerCase()}: <strong className="text-amber-700">{riskRate}%</strong> {t('stats.ofFailedAttempts')}
         </div>
       )}
     </div>
@@ -7844,6 +7850,7 @@ function ExerciseStatsCard({ ex, total, success, fail, third, rate, riskRate, se
 }
 
 function TrendSparkline({ trend }) {
+  const { t } = useI18n();
   // SVG-Sparkline zeichnen
   const width = 280;
   const height = 50;
@@ -7854,7 +7861,7 @@ function TrendSparkline({ trend }) {
   if (validPoints.length === 0) {
     return (
       <div className="text-xs text-slate-400 text-center py-3 bg-slate-50 rounded-lg">
-        Trend braucht mehrere Wochen Daten
+        {t('stats.trendNeedsData')}
       </div>
     );
   }
@@ -7896,10 +7903,10 @@ function TrendSparkline({ trend }) {
         })}
       </svg>
       <div className="flex justify-between text-[10px] text-slate-400 mt-0.5 px-1">
-        <span>vor 4 Wo.</span>
-        <span>vor 3 Wo.</span>
-        <span>vor 2 Wo.</span>
-        <span>diese Wo.</span>
+        <span>{t('range.weeksAgo4')}</span>
+        <span>{t('range.weeksAgo3')}</span>
+        <span>{t('range.weeksAgo2')}</span>
+        <span>{t('range.thisWeek')}</span>
       </div>
     </div>
   );
@@ -8824,8 +8831,8 @@ function TrainingView({ data, setData, setView }) {
           const last = runs.length ? runs[runs.length - 1] : null;
           return (
             <div className="grid grid-cols-2 gap-3">
-              <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(trainTopStats.sessionCount)} sub="insgesamt" />
-              <MetricCard accent="amber" icon={Activity} label="Übungen" value={String(trainTopStats.exCount)} sub="trainiert" />
+              <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(trainTopStats.sessionCount)} sub={t('common.total')} />
+              <MetricCard accent="amber" icon={Activity} label="Übungen" value={String(trainTopStats.exCount)} sub={t('stats.trained')} />
               <MetricCard accent="violet" icon={TrendingUp} label={t('training.avg12Months')} value={avg != null ? avg.toFixed(2) : '—'}
                 sub={recent.length === 1 ? '1 Trainingsprogramm' : recent.length + ' Trainingsprogramme'} />
               <MetricCard accent="emerald" icon={Calendar} label={t('common.last')} value={last ? last.v.toFixed(2) : '—'}
@@ -9230,7 +9237,7 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
         {/* Header */}
         <div className="sticky top-0 bg-white/90 backdrop-blur-xl border-b border-slate-200/60 px-5 py-3 flex items-center justify-between">
           <button onClick={onClose} className="text-amber-500 font-medium text-[15px]">Abbrechen</button>
-          <h3 className="font-semibold text-[15px]">Session bearbeiten</h3>
+          <h3 className="font-semibold text-[15px]">{t('log.editSession')}</h3>
           <button onClick={handleSave} className="text-amber-500 font-semibold text-[15px]">Speichern</button>
         </div>
 
@@ -9318,16 +9325,16 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
 
           {/* Notiz */}
           <div>
-            <label className="text-sm font-medium block mb-1.5">Notiz</label>
+            <label className="text-sm font-medium block mb-1.5">{t('common.note2')}</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)}
-              rows={2} placeholder="Optional…"
+              rows={2} placeholder={t('common.optional')}
               className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 text-sm resize-y" />
           </div>
 
           {/* Löschen */}
           <button onClick={onDelete}
             className="w-full py-2.5 rounded-xl text-rose-600 font-medium text-sm border border-rose-200 bg-rose-50 active:bg-rose-100 flex items-center justify-center gap-2">
-            <Trash2 size={14} /> Session löschen
+            <Trash2 size={14} /> {t('log.deleteSession')}
           </button>
         </div>
       </div>
@@ -10270,7 +10277,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                     }}
                     disabled={!r.any}
                     className="w-full bg-[#FF9500] text-white disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-700 dark:disabled:text-slate-500 px-4 py-3 rounded-2xl text-[15px] font-semibold flex items-center justify-center gap-2 active:scale-[0.99] transition shadow-sm">
-                    <Check size={18} strokeWidth={2.6} /> Trainingsplan abschließen
+                    <Check size={18} strokeWidth={2.6} /> {t('plan.finish')}
                   </button>
                   <p className="text-[12px] text-slate-400 leading-snug">
                     {r.any
@@ -10521,7 +10528,7 @@ function TrashSettings() {
         trailing={<ChevronRight size={18} strokeWidth={2.4} className={'text-[#C7C7CC] transition-transform ' + (open ? 'rotate-90' : '')} />}>
         <span className="flex items-center gap-3">
           <Trash2 size={18} className="text-[#FF9500]" />
-          <span className="text-[15px] font-medium">Zuletzt gelöscht</span>
+          <span className="text-[15px] font-medium">{t('trash.title')}</span>
           {items && items.length > 0 && (
             <span className="text-[12px] font-semibold text-white bg-[#FF9500] rounded-full px-2 py-0.5">{items.length}</span>
           )}
@@ -10533,7 +10540,7 @@ function TrashSettings() {
             <Loader2 size={16} className="animate-spin" /> {t('common.loading')}
           </div>
         ) : (items && items.length === 0 ? (
-          <div className="px-4 py-4 text-[14px] text-[#8E8E93] border-t border-[#E5E5EA]/60">Papierkorb ist leer.</div>
+          <div className="px-4 py-4 text-[14px] text-[#8E8E93] border-t border-[#E5E5EA]/60">{t('trash.empty')}</div>
         ) : (items || []).map(it => {
           const busy = busyId === (it.table + it.id);
           return (
@@ -10719,7 +10726,7 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
             trailing={<ChevronRight size={16} className="text-[#C7C7CC]" />}>
             <div className="flex items-center gap-3">
               <Crown size={18} className="text-[#FF9500]" />
-              <span className="text-[15px]">Nutzerverwaltung</span>
+              <span className="text-[15px]">{t('admin.userManagement')}</span>
             </div>
           </IOSListRow>
         </IOSList>
@@ -10885,7 +10892,7 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
           trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
           <span className="flex items-center gap-3">
             <Upload size={17} className="text-[#FF9500] shrink-0" />
-            <span className="text-[15px]">Wettkampfstatistik importieren</span>
+            <span className="text-[15px]">{t('settings.importStats')}</span>
           </span>
         </IOSListRow>
       </IOSList>
@@ -10940,7 +10947,7 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
           trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
           <span className="flex items-center gap-3">
             <Sparkles size={18} className="text-[#FF9500]" />
-            <span className="text-[15px] font-medium">Übungsnamen herleiten</span>
+            <span className="text-[15px] font-medium">{t('settings.deriveNames')}</span>
           </span>
         </IOSListRow>
         <div className="px-4 py-3 text-[11px] font-mono text-[#8E8E93] leading-relaxed space-y-0.5 break-all">
@@ -11308,6 +11315,7 @@ function FeedbackModal({ onClose }) {
 // BACKUP-EINSTELLUNGEN (komplettes App-Backup)
 // =============================================================
 function BackupSettings({ data, setData }) {
+  const { t } = useI18n();
   const exportAll = () => {
     const json = JSON.stringify(data, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
@@ -11645,6 +11653,7 @@ function RatingPicker({ value, onChange }) {
 }
 
 function FeedbackEditor({ open, athleteId, exercise, entry, onClose, onSaved }) {
+  const { t } = useI18n();
   const [fehlerbild, setFehlerbild] = useState('');
   const [handlung, setHandlung] = useState('');
   const [context, setContext] = useState('');
@@ -11849,7 +11858,7 @@ function FeedbackSection({ athleteId, exercise, defaultOpen = false }) {
 
       {!athleteId ? (
         <div className="bg-white rounded-2xl px-4 py-4 text-[13px] text-[#8E8E93] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-          Wähle oben einen Sportler/ein Team, um Feedback zu erfassen.
+          {t('feedback.chooseAthleteFirst')}
         </div>
       ) : loading ? (
         <div className="bg-white rounded-2xl px-4 py-4 text-[13px] text-[#8E8E93] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">{t('common.loadingShort')}</div>
@@ -12101,7 +12110,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
           <div className="card-surface rounded-[22px] p-4 space-y-3">
             <button onClick={() => setCompOpen(v => !v)} className="w-full flex items-center justify-between gap-2">
               <h2 className="text-[15px] font-semibold flex items-center gap-2">
-                <Trophy size={16} className="text-[#FF9500]" /> Wertungen
+                <Trophy size={16} className="text-[#FF9500]" /> {t('common.scores')}
                 <span className="text-[13px] font-normal text-slate-400 tabular-nums">{compStats.wettkaempfe}×</span>
               </h2>
               <ChevronRight size={18} strokeWidth={2.4} className={'text-[#C7C7CC] transition-transform ' + (compOpen ? 'rotate-90' : '')} />
@@ -12263,7 +12272,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
               )}
               {!importStatus && (
                 <label className="bg-slate-50 border border-slate-200 active:opacity-60 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
-                  <FileSpreadsheet size={14} /> XLSX-Datei auswählen
+                  <FileSpreadsheet size={14} /> {t('importStats.chooseXlsx')}
                   <input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     onChange={async (e) => {
                       const file = e.target.files && e.target.files[0];
@@ -12374,7 +12383,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
       <div className="flex items-center gap-2 min-w-0">
         <span className="text-[15px] text-slate-700 tabular-nums">{formatDateShort(s.date)}</span>
         {exercise.has_rope_variant && s.session.withRope === true && <IOSTag color="orange">{t('exercise.rope')}</IOSTag>}
-        {exercise.has_rope_variant && s.session.withRope === false && <IOSTag color="blue">ohne</IOSTag>}
+        {exercise.has_rope_variant && s.session.withRope === false && <IOSTag color="blue">{t('common.without')}</IOSTag>}
         {is3 && s.fail > 0 && <IOSTag color="red">{s.fail}× {statusLabel(exercise, 'fail').toLowerCase()}</IOSTag>}
       </div>
       <div className="flex items-center gap-3 shrink-0">
@@ -12440,7 +12449,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
             {!vm.periodHasData ? (
               <div className="card-surface rounded-[22px] p-6 text-center">
                 <div className="text-[15px] text-slate-400">Keine Trainingsdaten in den letzten {periodLabel}.</div>
-                <div className="text-[13px] text-slate-400 mt-1">Wähle oben einen größeren Zeitraum.</div>
+                <div className="text-[13px] text-slate-400 mt-1">{t('stats.chooseLargerRange')}</div>
               </div>
             ) : (
             <>
@@ -12552,7 +12561,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                   })}
                 </div>
               ) : (
-                <div className="text-[13px] text-slate-400 py-4 text-center">Zu wenig Daten für diesen Zeitraum.</div>
+                <div className="text-[13px] text-slate-400 py-4 text-center">{t('stats.tooLittleData')}</div>
               )}
 
               {/* Stacked-Verteilung — standardmäßig eingeklappt */}
@@ -12595,7 +12604,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
 
             {/* 06 — NÄCHSTER FOKUS (KI-Coach eingeklappt) */}
             <div className="card-surface rounded-[22px] p-4 space-y-3">
-                <h2 className="text-[15px] font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[#FF9500]" /> Nächster Fokus</h2>
+                <h2 className="text-[15px] font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[#FF9500]" /> {t('dashboard.nextFocus')}</h2>
                 {vm.nextFocusInsight.length > 0 && (
                   <ul className="text-[14px] leading-snug space-y-1.5 list-disc pl-4 marker:text-[#FF9500]">
                     {vm.nextFocusInsight.map((line, i) => <li key={i}>{line}</li>)}
@@ -12639,7 +12648,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
           <div className="space-y-2">
             <button onClick={() => setCompOpen(v => !v)}
               className="w-full card-surface rounded-[22px] px-4 py-3.5 flex items-center justify-between active:bg-[#D1D1D6]/30 transition">
-              <span className="text-[15px] font-semibold flex items-center gap-2"><Trophy size={16} className="text-[#FF9500]" /> Wertungen
+              <span className="text-[15px] font-semibold flex items-center gap-2"><Trophy size={16} className="text-[#FF9500]" /> {t('common.scores')}
                 <span className="text-[13px] font-normal text-slate-400 tabular-nums">{compStats.wettkaempfe}×</span>
               </span>
               <ChevronRight size={18} strokeWidth={2.4} className={'text-[#C7C7CC] transition-transform ' + (compOpen ? 'rotate-90' : '')} />
@@ -12778,7 +12787,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
               )}
               {!importStatus && (
                 <label className="bg-slate-50 border border-slate-200 active:opacity-60 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 justify-center cursor-pointer">
-                  <FileSpreadsheet size={14} /> XLSX-Datei auswählen
+                  <FileSpreadsheet size={14} /> {t('importStats.chooseXlsx')}
                   <input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     onChange={async (e) => {
                       const file = e.target.files && e.target.files[0];
@@ -13126,7 +13135,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
               <MetricCard accent="amber" icon={Trophy} label={t('stats.avgCompetition')} value={statFmt(statAvg(statWk))} sub={statWk.length + ' Wettkämpfe'} />
               <MetricCard accent="sky" icon={Dumbbell} label={t('stats.avgTraining')} value={statFmt(statAvg(statTr))} sub={statTr.length + ' Trainings'} />
               <MetricCard accent="violet" icon={TrendingUp} label={t('stats.avgDeduction')} value={statFmt(statAvg(statDeds))} sub={t('common.perCompetition')} />
-              <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={statWk.length ? Math.max(...statWk).toFixed(2) : '—'} sub="Punkte" />
+              <MetricCard accent="amber" icon={Trophy} label={t('dashboard.bestScore')} value={statWk.length ? Math.max(...statWk).toFixed(2) : '—'} sub={t('common.points')} />
               <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(statSessions.length)} sub={t('common.inPeriod')} />
               <MetricCard accent="emerald" icon={Activity} label={t('common.series')} value={statStreak > 0 ? String(statStreak) : '—'} sub={statStreak === 1 ? 'Woche' : 'Wochen'} />
             </div>
@@ -13248,6 +13257,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
 // ÜBUNGS-EDITOR
 // =============================================================
 function ExerciseEditor({ exercise, onSave, onCancel, existingCodes = null }) {
+  const { t } = useI18n();
   // Neue Übung = aus dem Reglement wählen (Parität zu iOS `ReglementPickerView`). Der
   // freie Name ist nur der Nebenweg — vorher startete der Editor bei „Eigene Übung",
   // daher „Mautesprung"/„Maute Sprung " in mehreren Konten für dieselbe Nummer.
@@ -13389,7 +13399,7 @@ function ExerciseEditor({ exercise, onSave, onCancel, existingCodes = null }) {
             {uciCode ? (
               <div className="px-4 py-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[15px]">Zugeordnet: <span className="font-medium">Nr. {uciCode}</span></div>
+                  <div className="text-[15px]">{t('common.assigned')} <span className="font-medium">Nr. {uciCode}</span></div>
                   <div className="text-[13px] text-[#8E8E93] truncate">
                     {(() => { const u = getUciDb().find(e => e.c === uciCode); return u ? u.n : (uciDisc || ''); })()}
                   </div>
@@ -13549,7 +13559,7 @@ function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung
             </div>
           </div>
           {q.length < 2 ? (
-            <div className="text-[12px] text-[#8E8E93] px-3">Tippe mind. 2 Zeichen, um im UCI-Reglement zu suchen.</div>
+            <div className="text-[12px] text-[#8E8E93] px-3">{t('reglement.typeTwoChars')}</div>
           ) : uci.length > 0 && (
             <div>
               <div className="text-[12px] uppercase tracking-wide text-[#8E8E93] px-3 font-medium mb-1">{t('exercises.fromReglement')}</div>
@@ -13574,6 +13584,7 @@ function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung
 }
 
 function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null }) {
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const haveIt = (code) => !!(existingCodes && existingCodes.has(String(code || '').trim().toLowerCase()));
 
@@ -13704,7 +13715,7 @@ function ReglementSearchModal({ open, onClose, onPick, existingByCode, t }) {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 3rem)' }}>
         {groups.length === 0 ? (
-          <div className="text-center text-slate-400 text-[15px] pt-10">Keine Übung gefunden.</div>
+          <div className="text-center text-slate-400 text-[15px] pt-10">{t('exercises.notFoundDot')}</div>
         ) : groups.map(g => (
           <IOSList key={g.d} header={'Disziplin ' + g.d + ' · ' + g.items.length}>
             {g.items.map(e => {
@@ -13991,7 +14002,7 @@ function Erfassen({ data, setData, dbAthletes, onDone, selectedAthleteId = null 
               (wie im Wertungs-Tool); ohne hinterlegte Skala Fallback auf Zähler. */}
           {isTacticalErf && (
             <div>
-              <label className="text-sm font-medium block mb-1.5">Taktische Aufwertung <span className="font-normal text-slate-400">(optional)</span></label>
+              <label className="text-sm font-medium block mb-1.5">{t('editor.tacticalUpgradeTitle')} <span className="font-normal text-slate-400">(optional)</span></label>
               {taktScaleErf.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-1.5">
                   <button type="button" onClick={() => setRepCount(0)}
@@ -14444,7 +14455,7 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
                 <div className="flex items-center gap-2">
                   <div className="font-medium text-[15px] text-[#000] truncate">{ex.name}</div>
                   {inCurrent && (
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-[#FF9500] shrink-0">aktuell</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-[#FF9500] shrink-0">{t('common.current')}</span>
                   )}
                 </div>
                 <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">
@@ -14787,7 +14798,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
           {exercises.length === 0 ? (
             <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-6 text-center">
               <p className="text-[14px] text-[#8E8E93]">
-                Noch keine Übungen. Lade die Maute-Vorlage oder füge einzelne hinzu.
+                {t('programs.noExercisesYet')}
               </p>
             </div>
           ) : (
@@ -14840,7 +14851,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
             <button
               onClick={() => setConfirmDel(true)}
               className="w-full mt-2 py-3 rounded-2xl text-[15px] font-medium text-[#FF3B30] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:bg-[#D1D1D6]/30 flex items-center justify-center gap-2">
-              <Trash2 size={16} /> Programm löschen
+              <Trash2 size={16} /> {t('programs.deleteAction')}
             </button>
           )}
         </div>
@@ -14859,6 +14870,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
 }
 
 function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onToggleMark, onRemove }) {
+  const { t } = useI18n();
   const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
@@ -14875,7 +14887,7 @@ function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onToggleMark, on
               </div>
             </>
           ) : (
-            <div className="text-[15px] text-[#C7C7CC] italic">Noch nicht ausgewählt</div>
+            <div className="text-[15px] text-[#C7C7CC] italic">{t('common.notSelected')}</div>
           )}
         </div>
         <button onClick={() => setPickerOpen(!pickerOpen)}
@@ -14901,14 +14913,14 @@ function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onToggleMark, on
             onSelect={(u) => { onUci(u); setPickerOpen(false); }}
             selectedCode={ex.code} />
           <div className="text-[12px] text-[#8E8E93] mt-3 mb-1.5">
-            Oder Name + Punkte selbst eintippen:
+            {t('reglement.typeManually')}
           </div>
           <div className="grid grid-cols-3 gap-2">
             <input value={ex.name || ''} onChange={e => onUpdate('name', e.target.value)}
               placeholder="Name"
               className="col-span-2 px-3 py-2 text-[14px] bg-white rounded-xl outline-none border border-slate-200/60" />
             <input type="number" step="0.1" value={ex.points || 0} onChange={e => onUpdate('points', e.target.value)}
-              placeholder="Pkt."
+              placeholder={t('common.ptsShort')}
               className="px-3 py-2 text-[14px] bg-white rounded-xl outline-none text-right border border-slate-200/60" />
           </div>
         </div>
@@ -15473,7 +15485,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
         ) : (<>
           {/* OVERVIEW — getönte Karten */}
           <div className="grid grid-cols-2 gap-3">
-            <MetricCard accent="amber" icon={Trophy} label="Bestleistung" value={stats.best ? stats.best.final.toFixed(2) : '—'} sub={stats.best ? stats.best.c.name : '—'} subLines={2} />
+            <MetricCard accent="amber" icon={Trophy} label={t('dashboard.bestScore')} value={stats.best ? stats.best.final.toFixed(2) : '—'} sub={stats.best ? stats.best.c.name : '—'} subLines={2} />
             <MetricCard accent="violet" icon={TrendingUp} label={t('competition.lowestDeduction')} value={stats.minDed ? stats.minDed.ded.toFixed(2) : '—'} sub={stats.minDed ? stats.minDed.c.name : '—'} subLines={2} />
             <MetricCard accent="sky" icon={Target} label="Wettkämpfe" value={String(competitions.length)} sub={stats.last ? formatDateShort(stats.last.c.date) : '—'} />
             <MetricCard accent="emerald" icon={Calendar} label={String(currentYear)} value={String(thisYearCount)} sub={thisYearCount === 1 ? 'Wettkampf' : 'Wettkämpfe'} />
@@ -15824,6 +15836,7 @@ async function parsePdfFully(file) {
 // VALIDIERUNG gegen PDF-Soll
 // =============================================================
 function ValidationCheck({ pdfRef, t1, t2 }) {
+  const { t } = useI18n();
   const TOL = 0.01; // Toleranz wegen Rundungen
   const has = (v) => typeof v === 'number' && !isNaN(v);
   const f = (n) => Number(n).toFixed(2);
@@ -15866,7 +15879,7 @@ function ValidationCheck({ pdfRef, t1, t2 }) {
   const comparison = resultRows.length > 0 && (
     <div className="rounded-lg overflow-hidden border border-black/5 mb-2">
       <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1.5 text-[10px] uppercase tracking-wide text-slate-500 bg-black/[0.03]">
-        <span></span><span className="text-right">laut Bogen</span><span className="text-right">aktuell</span><span className="text-right">Δ</span>
+        <span></span><span className="text-right">{t('editor.perSheet')}</span><span className="text-right">{t('common.current')}</span><span className="text-right">Δ</span>
       </div>
       {resultRows.map((r, i) => {
         const d = r.ist - r.soll;
@@ -15891,7 +15904,7 @@ function ValidationCheck({ pdfRef, t1, t2 }) {
         {comparison}
         <div className="flex items-start gap-2 text-emerald-900">
           <Check size={16} className="text-emerald-600 shrink-0 mt-0.5" />
-          <span><strong>Passt:</strong> {t('editor.matchesSheet')}</span>
+          <span><strong>{t('editor.matches')}</strong> {t('editor.matchesSheet')}</span>
         </div>
       </div>
     );
@@ -15919,6 +15932,7 @@ function ValidationCheck({ pdfRef, t1, t2 }) {
 // für die Fehlerzeichen (Tipp = +1, kleines Minus zum Korrigieren), Schwierigkeit +
 // taktische Aufwertung darunter, Weiter/Zurück. Deckt pro-KG und Gesamt ab.
 function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0, onUpdate, onUpdateSchwHits, onUpdateTaktHits, onClose }) {
+  const { t } = useI18n();
   const N = Math.max(1, Math.min(4, Number(kampfgerichte || 2)));
   const exs = program.exercises || [];
   // Durchlaufen wird in Fahrt-Reihenfolge: Anfahren, Übungen, Abfahren. In der Tabelle
@@ -16045,12 +16059,12 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
         </div>
         {tactical && scale.length > 0 && std > 0 && (
           <div className="bg-white dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 rounded-2xl p-3">
-            <div className="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wide mb-2">Taktische Aufwertung</div>
+            <div className="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wide mb-2">{t('editor.tacticalUpgradeTitle')}</div>
             {gesamt ? (
               <div className="flex flex-wrap items-center gap-1.5">
                 <button onClick={() => onUpdateTaktHits(row, [], std)}
                   className={'text-xs px-3 py-2 rounded-full font-medium border ' + ((e.taktHits || []).filter(h => h > 0).length === 0 ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white/5 text-slate-300 border-white/10')}>
-                  Standard
+                  {t('common.standard')}
                 </button>
                 <PanelTapButtons options={scale.filter(v => v > std + 0.001)} hits={e.taktHits || []} limit={N} onChange={(h) => onUpdateTaktHits(row, h, std)} fmt={(v) => v.toFixed(1).replace('.', ',')} />
               </div>
@@ -16879,7 +16893,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                   className="hidden" />
               </label>
               <p className="text-[11px] text-violet-900/70 dark:text-violet-200/70 leading-snug px-0.5">
-                Wähle das <strong>{t('pdfImport.originalPdf')}</strong> (digital, nicht abfotografiert/eingescannt) — Stammdaten, Endergebnis und alle Übungen (bis 3 Kampfgerichte) werden in Sekunden gesetzt.
+                {t('pdfImport.chooseThe')} <strong>{t('pdfImport.originalPdf')}</strong> (digital, nicht abfotografiert/eingescannt) — Stammdaten, Endergebnis und alle Übungen (bis 3 Kampfgerichte) werden in Sekunden gesetzt.
               </p>
             </div>
           )}
@@ -17098,7 +17112,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 <div className="flex gap-1.5">
                   <button type="button" onClick={() => setAbzugGesamt(false)}
                     className={'flex-1 py-2 rounded-xl text-sm font-semibold border ' + (!abzugGesamt ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
-                    Pro Kampfgericht
+                    {t('editor.perPanel')}
                   </button>
                   <button type="button" onClick={() => setAbzugGesamt(true)}
                     className={'flex-1 py-2 rounded-xl text-sm font-semibold border ' + (abzugGesamt ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200')}>
@@ -17268,6 +17282,7 @@ function MarkLine({ groups }) {
 // Zeichen-Übersicht: Gesamtzahl der getippten Fehlerzeichen je Kampfgericht —
 // zum schnellen Abgleich mit dem Papier-Bogen, damit Vertipper sofort auffallen.
 function MarkSummary({ tables, program, kampfgerichte, gesamt }) {
+  const { t } = useI18n();
   const totals = (tables || []).map(t => {
     const s = { cross: 0, wave: 0, bar: 0, circle: 0, schw10: 0, schw50: 0, schw100: 0, takt: 0 };
     (t || []).forEach((e, i) => {
@@ -17506,7 +17521,7 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
                             <button type="button" onClick={() => onUpdateTaktHits(idx, [], std)}
                               className={'text-xs px-3 py-2 rounded-full font-medium border ' +
                                 ((e.taktHits || []).filter(h => h > 0).length === 0 ? 'bg-[#FF9500] text-white border-[#FF9500]' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100')}>
-                              Standard
+                              {t('common.standard')}
                             </button>
                             <PanelTapButtons options={scale.filter(v => v > std + 0.001)} hits={e.taktHits || []} limit={N}
                               onChange={(h) => onUpdateTaktHits(idx, h, std)} fmt={(v) => v.toFixed(1).replace('.', ',')} />
@@ -17785,7 +17800,7 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
               {athlete?.auth_user_id ? 'Sportler-Account' : 'Vom Trainer verwaltet'}
             </span>
             <span className="bg-purple-100 text-purple-800 text-xs font-medium px-2 py-0.5 rounded-full">
-              Read-only-Ansicht
+              {t('common.readOnlyView')}
             </span>
           </div>
         </div>
@@ -18082,11 +18097,11 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
               <span className="text-[13px]">
                 {isConfirmed
                   ? <IOSTag color="green">bestätigt {fmtDateTime(user.email_confirmed_at)}</IOSTag>
-                  : <IOSTag color="orange">noch nicht bestätigt</IOSTag>}
+                  : <IOSTag color="orange">{t('admin.notConfirmed')}</IOSTag>}
               </span>
             </div>
             <div className="px-4 py-3 flex items-center justify-between gap-3">
-              <span className="text-[15px] text-[#3C3C43]">Registriert</span>
+              <span className="text-[15px] text-[#3C3C43]">{t('admin.registered')}</span>
               <span className="text-[13px] text-[#8E8E93]">{fmtDateTime(user.created_at)}</span>
             </div>
             <div className="px-4 py-3 flex items-center justify-between gap-3">
@@ -18094,7 +18109,7 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
               <span className="text-[13px] text-[#8E8E93]">{fmtDateTime(user.last_sign_in_at)}</span>
             </div>
             <div className="px-4 py-3 flex items-center justify-between gap-3">
-              <span className="text-[15px] text-[#3C3C43]">User-ID</span>
+              <span className="text-[15px] text-[#3C3C43]">{t('admin.userId')}</span>
               <button onClick={() => { navigator.clipboard.writeText(user.id); setInfo('User-ID kopiert'); }}
                 className="text-[11px] font-mono text-[#8E8E93] truncate ml-3 active:opacity-60 max-w-[180px]">
                 {user.id}
@@ -18130,7 +18145,7 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
               disabled={busy}
               className="w-full px-4 py-3 flex items-center gap-3 text-left active:bg-[#D1D1D6]/40 disabled:opacity-50">
               <RefreshCw size={18} className="text-[#007AFF]" />
-              <span className="text-[15px]">Passwort-Reset-Link senden</span>
+              <span className="text-[15px]">{t('admin.sendResetLink')}</span>
             </button>
           </IOSList>
 
@@ -18145,7 +18160,7 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
                 </button>
                 <a href={actionLink} target="_blank" rel="noopener noreferrer"
                   className="flex-1 bg-amber-600 text-white px-3 py-1.5 rounded-full text-[12px] font-medium flex items-center justify-center gap-1.5 active:opacity-60">
-                  <ExternalLink size={12} /> Öffnen
+                  <ExternalLink size={12} /> {t('common.open')}
                 </a>
               </div>
             </div>
@@ -18315,7 +18330,7 @@ function AdminAccountsView({ open, onClose, initialFilter = '', autoOpenUserId =
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[15px] font-medium truncate">{u.profile?.display_name || u.email || u.id.slice(0, 8)}</span>
-                      {!isConfirmed && <IOSTag color="orange">unbestätigt</IOSTag>}
+                      {!isConfirmed && <IOSTag color="orange">{t('admin.unconfirmed')}</IOSTag>}
                       {role === 'admin' && <IOSTag color="orange">admin</IOSTag>}
                       {role === 'coach' && <IOSTag color="purple">coach</IOSTag>}
                       {u.athletes && u.athletes.length > 0 && (
@@ -18821,7 +18836,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
               }));
             }}
               className="text-[13px] bg-amber-100 text-amber-900 px-3 py-1.5 rounded-full font-medium active:opacity-70 flex items-center gap-1.5">
-              <UserCog size={13} /> Trainer verwalten
+              <UserCog size={13} /> {t('athletes.manageCoaches')}
             </button>
           )}
         </div>
@@ -19043,7 +19058,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
                   ✗ {err}
                   {/^Code ung/i.test(err) && (
                     <div className="text-[12px] text-rose-700/90 mt-1.5 leading-snug">
-                      Tipp: Bitte die Person, dir einen <strong>{t('athletes.freshlyGenerated')}</strong> Code zu schicken und
+                      {t('athletes.askPersonFor')} <strong>{t('athletes.freshlyGenerated')}</strong> Code zu schicken und
                       löse ihn gleich ein. Ein neu erstellter Code ersetzt den alten, und Einladungs-Codes
                       können nach längerer Zeit automatisch erneuert werden.
                     </div>
@@ -19127,7 +19142,7 @@ function SportlerView({ profile, session, athletes, profiles, athleteCoaches = [
                 <button onClick={() => setMoveSource(null)} className="p-1 text-[#8E8E93] active:opacity-60"><X size={20} /></button>
               </div>
               <p className="text-[13px] text-[#8E8E93] mt-1 leading-snug">
-                Verschiebt Trainings/Wettkämpfe von <strong className="text-[#000] dark:text-white">{moveSource.name}</strong> auf
+                {t('athletes.movesFrom')} <strong className="text-[#000] dark:text-white">{moveSource.name}</strong> auf
                 einen anderen Sportler oder ein Team. Der Eintrag selbst bleibt bestehen.
               </p>
             </div>
@@ -19630,7 +19645,7 @@ function TeamInviteModal({ team, onClose }) {
       {code && (
         <button onClick={() => share(shareText(code), key)}
           className="text-[13px] bg-[#FF9500]/15 text-[#C2410C] dark:text-[#FF9500] px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5 shrink-0">
-          {copied === key ? <><Check size={13} /> {t('common.copied')}</> : <><Send size={13} /> Teilen</>}
+          {copied === key ? <><Check size={13} /> {t('common.copied')}</> : <><Send size={13} /> {t('common.share')}</>}
         </button>
       )}
     </div>
@@ -19641,7 +19656,7 @@ function TeamInviteModal({ team, onClose }) {
       <div className="bg-[#F2F2F7] dark:bg-[#1c1c1e] rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[85vh] flex flex-col">
         <div className="px-4 py-3 border-b border-[#C6C6C8]/40 flex items-center justify-between">
           <span className="w-12" />
-          <h3 className="font-semibold text-[17px]">Team einladen</h3>
+          <h3 className="font-semibold text-[17px]">{t('teams.inviteTitle')}</h3>
           <button onClick={onClose} className="text-[#FF9500] font-semibold text-[15px] w-12 text-right">Fertig</button>
         </div>
         <div className="flex-1 overflow-y-auto p-3 space-y-4">
@@ -19717,7 +19732,7 @@ function InviteModal({ open, athlete, onClose, onInvite }) {
         <div className="p-5">
           {hasInvite ? (
             <div className="space-y-4">
-              <p className="text-sm text-slate-600">Teile diese Zugangsdaten:</p>
+              <p className="text-sm text-slate-600">{t('admin.shareCredentials')}</p>
               <div className="bg-slate-900 text-white rounded-xl p-4 font-mono text-sm space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-slate-400 text-xs">E-Mail:</span>
@@ -19746,7 +19761,7 @@ function InviteModal({ open, athlete, onClose, onInvite }) {
           ) : (
             <div className="space-y-4">
               <p className="text-sm text-slate-600">
-                E-Mail eingeben, mit der <strong>{athlete.name}</strong> sich einloggen soll.
+                E-Mail eingeben, mit der <strong>{athlete.name}</strong> {t('athletes.shouldSignIn')}
               </p>
               <div>
                 <label className="text-sm font-medium block mb-1.5">E-Mail</label>
@@ -19782,6 +19797,7 @@ function InviteModal({ open, athlete, onClose, onInvite }) {
 // Parität zur nativen `MauteImportView`. .xlsm/.xlsx liest der Browser selbst,
 // .xls und Numbers gehen an die Edge Function `parse-maute`.
 function MauteImportView({ data, setData, setView, athleteId }) {
+  const { t } = useI18n();
   const [comps, setComps] = useState([]);
   const [chosen, setChosen] = useState(() => new Set());
   const [dates, setDates] = useState({});          // Blockschlüssel → ISO-Datum
@@ -19874,7 +19890,7 @@ function MauteImportView({ data, setData, setView, athleteId }) {
         <button onClick={() => setView('einstellungen')} className="text-[#007AFF] flex items-center -ml-1">
           <ChevronLeft size={22} strokeWidth={2.6} className="text-[#FF9500]" /> Zurück
         </button>
-        <h1 className="font-semibold text-[17px]">Wettkampfstatistik importieren</h1>
+        <h1 className="font-semibold text-[17px]">{t('settings.importStats')}</h1>
       </div>
 
       {imported > 0 ? (
@@ -19890,7 +19906,7 @@ function MauteImportView({ data, setData, setView, athleteId }) {
             </button>
             <button onClick={() => setImported(0)}
               className="px-5 py-2.5 rounded-xl text-[15px] font-medium bg-slate-100 dark:bg-white/10">
-              Weitere Datei
+              {t('pdfImport.anotherFile')}
             </button>
           </div>
         </div>
@@ -19949,7 +19965,7 @@ function MauteImportView({ data, setData, setView, athleteId }) {
                         <input type="date" value={dates[c.id] || ''}
                           onChange={e => setDates({ ...dates, [c.id]: e.target.value })}
                           className="text-[13px] bg-transparent outline-none border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1" />
-                        {!c.dateISO && <span className="text-[12px] text-amber-600">kein Datum in der Datei</span>}
+                        {!c.dateISO && <span className="text-[12px] text-amber-600">{t('importStats.noDate')}</span>}
                       </div>
                     </div>
                   );
@@ -20104,6 +20120,7 @@ const EXPORT_FORMATS = [
   { id: 'csv', label: 'CSV', ext: '.csv', hint: 'Reine Textdatei — öffnet in Numbers, Excel und Google Sheets.' },
 ];
 function ExportWettkampf({ data, defaultName = '' }) {
+  const { t } = useI18n();
   const programs = data.programs || [];
   const competitions = data.competitions || [];
   const athletes = data.athletes || [];
@@ -20163,7 +20180,7 @@ function ExportWettkampf({ data, defaultName = '' }) {
     const rows = [];
     const r0 = ['Name', '', 'Kampfg.'];
     const r1 = ['', '', 'Anz.'];
-    const r2 = ['ArtCyc Coach' + (ath ? ' · ' + ath.name : ''), 'Pkt.', 'i.P.'];
+    const r2 = ['ArtCyc Coach' + (ath ? ' · ' + ath.name : ''), t('common.ptsShort'), 'i.P.'];
     selected.forEach(c => {
       [1, 2].forEach(tn => {
         r0.push('', c.name + ' (KG' + tn + ')', '', '', '', '', '', '', '');
@@ -20429,6 +20446,7 @@ function ExportWettkampf({ data, defaultName = '' }) {
 // EXPORT TRAINING
 // =============================================================
 function ExportTraining({ data }) {
+  const { t } = useI18n();
   const [athleteFilter, setAthleteFilter] = useState('');
   const athletes = data.athletes || [];
 
@@ -20485,7 +20503,7 @@ function ExportTraining({ data }) {
             <FileSpreadsheet size={20} className="text-slate-700" />
           </div>
           <div className="flex-1">
-            <div className="font-semibold">Trainings-Daten CSV</div>
+            <div className="font-semibold">{t('export.trainingCsv')}</div>
             <div className="text-xs text-slate-500">
               {sessions.length} Sessions · {totalSeries} Serien
               {ath ? ' · ' + ath.name : ''}
@@ -20507,7 +20525,7 @@ function ExportTraining({ data }) {
       </div>
 
       <div className="bg-slate-50 rounded-xl p-4 text-xs text-slate-600 space-y-1">
-        <div><strong>Spalten:</strong> {t('export.csvColumns')}</div>
+        <div><strong>{t('export.columns')}</strong> {t('export.csvColumns')}</div>
         <div><strong>{t('export.oneRowPerSeries')}</strong> (für Pivot-Auswertungen in Excel/Numbers)</div>
       </div>
     </div>
@@ -21030,7 +21048,7 @@ function LastNameModal({ firstName, onSaved, onLater }) {
         <div className="bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-xl rounded-2xl overflow-hidden mt-2">
           <button onClick={onLater}
             className="w-full py-3.5 text-[17px] text-[#8E8E93] font-medium active:bg-[#D1D1D6]/40 transition">
-            Später
+            {t('common.later')}
           </button>
         </div>
       </div>
@@ -21089,7 +21107,7 @@ function ClubModal({ firstName, onSaved, onLater }) {
         <div className="bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-xl rounded-2xl overflow-hidden mt-2">
           <button onClick={onLater}
             className="w-full py-3.5 text-[17px] text-[#8E8E93] font-medium active:bg-[#D1D1D6]/40 transition">
-            Später
+            {t('common.later')}
           </button>
         </div>
       </div>
