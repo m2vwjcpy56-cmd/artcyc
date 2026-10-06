@@ -4485,7 +4485,7 @@ function FloatingChat({ data, setData, profile, refreshers, open, onClose }) {
   };
 
   const clearChat = () => {
-    if (!confirm('Chatverlauf löschen?')) return;
+    if (!confirm(t('chat.clearHistory'))) return;
     setMessages([]);
     setPendingAction(null);
     setErr('');
@@ -7151,7 +7151,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
                 <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500] shrink-0" /> Erfolgsquote</h2>
                 {trainEx && (trainExOptions.length > 1 ? (
                   <select value={trainEx.id} onChange={e => { setChartExId(e.target.value); setBarSel(null); }}
-                    aria-label="Übung wählen"
+                    aria-label={t('common.chooseExercise')}
                     className="max-w-full truncate text-[13px] font-semibold text-[#FF9500] bg-transparent border-0 p-0 pr-4 focus:outline-none appearance-none"
                     style={{ backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'10\' viewBox=\'0 0 10 10\'><path d=\'M2 4l3 3 3-3\' fill=\'none\' stroke=\'%23FF9500\' stroke-width=\'1.6\' stroke-linecap=\'round\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right center' }}>
                     {trainExOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
@@ -8481,7 +8481,7 @@ function TrainingView({ data, setData, setView }) {
         />
         {pendingDeleteExercise && (
           <DeleteConfirmModal
-            title="Übung löschen?"
+            title={t('exercises.deleteTitle')}
             message={'„' + pendingDeleteExercise.name + '" wird in den Papierkorb verschoben und ist dort 30 Tage wiederherstellbar. Erfasste Sessions bleiben erhalten.'}
             onConfirm={() => removeExercise(pendingDeleteExercise.id)}
             onCancel={() => setPendingDeleteExercise(null)}
@@ -8909,7 +8909,7 @@ function TrainingView({ data, setData, setView }) {
               <div className="space-y-3">
                 <div className="relative">
                   <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
-                  {query && <button onClick={() => setQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#8E8E93]/60 text-white flex items-center justify-center active:opacity-70" aria-label="Suche löschen"><X size={12} strokeWidth={3} /></button>}
+                  {query && <button onClick={() => setQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#8E8E93]/60 text-white flex items-center justify-center active:opacity-70" aria-label={t('common.clearSearch')}><X size={12} strokeWidth={3} /></button>}
                   <input value={query} onChange={e => setQuery(e.target.value)} placeholder={t('training.searchPlaceholder')} className="w-full pl-9 pr-9 py-2.5 bg-slate-100 rounded-xl outline-none text-[15px]" />
                 </div>
                 <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1" data-no-swipe="true">
@@ -8956,7 +8956,7 @@ function TrainingView({ data, setData, setView }) {
         {/* Übungs-Picker für „Feedback zu Übung" — suchbar (eigene + Reglement) */}
         <ExercisePickerSheet
           open={fbPickerOpen}
-          title="Feedback — für welche Übung?"
+          title={t('feedback.forWhichExercise')}
           exercises={data.exercises || []}
           onClose={() => setFbPickerOpen(false)}
           onPick={(ex, isNew) => {
@@ -9080,7 +9080,7 @@ function TrainingView({ data, setData, setView }) {
           {query && (
             <button onClick={() => setQuery('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#8E8E93]/60 text-white flex items-center justify-center active:opacity-70"
-              aria-label="Suche löschen">
+              aria-label={t('common.clearSearch')}>
               <X size={12} strokeWidth={3} />
             </button>
           )}
@@ -9338,6 +9338,7 @@ function SessionEditModal({ session, exercises, onSave, onDelete, onClose }) {
 // EINSTELLUNGEN (Skeleton — wird in Stufe 8 ausgebaut)
 // =============================================================
 function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
+  const { t } = useI18n();
   const [coaches, setCoaches] = useState([]);
   const [invites, setInvites] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -9458,7 +9459,7 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
           <button onClick={() => onCopyCode(inv.claim_code)} className="p-2 text-[#007AFF] active:opacity-60" aria-label="Code kopieren">
             <Copy size={14} />
           </button>
-          <button onClick={() => onDeleteInvite(inv.id)} disabled={busy} className="p-2 text-[#FF3B30] active:opacity-60" aria-label="Code löschen">
+          <button onClick={() => onDeleteInvite(inv.id)} disabled={busy} className="p-2 text-[#FF3B30] active:opacity-60" aria-label={t('common.deleteCode')}>
             <Trash2 size={14} />
           </button>
         </div>
@@ -9564,7 +9565,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                 <span className={'text-[15px] font-semibold tabular-nums ' + rc}>{d.total > 0 ? rate + '%' : ''}</span>
                 <span className="text-[12px] text-slate-400 tabular-nums">{d.succ}/{d.total}</span>
                 <button onClick={() => setDeleteProtocol(d)}
-                  className="p-1.5 -mr-1 text-[#FF3B30] active:bg-[#D1D1D6]/40 rounded-full" aria-label="Protokoll löschen">
+                  className="p-1.5 -mr-1 text-[#FF3B30] active:bg-[#D1D1D6]/40 rounded-full" aria-label={t('common.deleteLog')}>
                   <Trash2 size={15} />
                 </button>
               </div>
@@ -10027,7 +10028,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                   <div className="flex items-center gap-2">
                     <span className="w-6 h-6 shrink-0 rounded-full bg-[#FF9500] text-white text-[12px] font-bold flex items-center justify-center tabular-nums">{i + 1}</span>
                     <input value={it.label} onChange={e => patchItem(it.id, { label: e.target.value })}
-                      placeholder="z. B. Aufwärmen / Maute Sprung / Teil 3-4"
+                      placeholder={t('plan.itemPlaceholder')}
                       className="flex-1 min-w-0 px-2 py-1.5 border border-slate-300 rounded-lg text-[15px] bg-white outline-none" />
                     <button onClick={() => removeItem(it.id)} className="p-1.5 text-rose-500 active:opacity-60 shrink-0"><Trash2 size={16} /></button>
                   </div>
@@ -10058,7 +10059,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                         <div className="space-y-1">
                           <span className="text-[12px] text-slate-500">Name der 3. Kategorie</span>
                           <input value={it.thirdLabel ?? 'Gefährlich'} onChange={e => patchItem(it.id, { thirdLabel: e.target.value })}
-                            placeholder="z. B. Gefährlich, Unsicher, Sturz"
+                            placeholder={t('exercises.thirdLabelExample')}
                             className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-[14px] bg-white outline-none" />
                           <span className="text-[11px] text-slate-400">Dritte Bewertungsstufe neben „Geklappt" und „Nicht" — z. B. für riskante Versuche.</span>
                         </div>
@@ -10343,7 +10344,7 @@ function TrainingsplanView({ data, setData, onBack }) {
       {/* Such-Picker zum Verknüpfen einer Übung (eigene + Reglement) */}
       <ExercisePickerSheet
         open={pickerItemId !== null}
-        title="Übung verknüpfen"
+        title={t('feedback.linkExercise')}
         exercises={data.exercises || []}
         onClose={() => setPickerItemId(null)}
         onPick={(ex, isNew) => {
@@ -10550,7 +10551,7 @@ function TrashSettings() {
               </button>
               <button
                 onClick={() => purge(it)} disabled={busy}
-                title="Endgültig löschen"
+                title={t('common.deleteForever')}
                 className="text-[#FF3B30] p-1 rounded hover:bg-[#FF3B30]/10 disabled:opacity-40 shrink-0">
                 <Trash2 size={15} />
               </button>
@@ -10974,7 +10975,7 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
             if (!confirm('Wirklich löschen? Das kann NICHT rückgängig gemacht werden.')) return;
             const { error } = await deleteMyAccount();
             if (error) { alert('Löschen fehlgeschlagen: ' + error.message); return; }
-            alert('Dein Konto wurde gelöscht.');
+            alert(t('settings.accountDeleted'));
             window.location.assign('/web');
           }}
           trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
@@ -11252,7 +11253,7 @@ function FeedbackModal({ onClose }) {
                     <span className="flex items-center gap-1.5 text-[11px] text-[#8E8E93]">
                       {e.synced
                         ? <span className="text-[#34C759]" title="An Entwickler gesendet">✓</span>
-                        : <span className="text-[#FF9500]" title="Noch nicht gesendet">⏳</span>}
+                        : <span className="text-[#FF9500]" title={t('feedback.notSentYet')}>⏳</span>}
                       {new Date(e.created_at).toLocaleDateString()}
                     </span>
                   </div>
@@ -11764,6 +11765,7 @@ function FeedbackEditor({ open, athleteId, exercise, entry, onClose, onSaved }) 
 }
 
 function FeedbackSection({ athleteId, exercise, defaultOpen = false }) {
+  const { t } = useI18n();
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -11812,7 +11814,7 @@ function FeedbackSection({ athleteId, exercise, defaultOpen = false }) {
   }, [entries, athleteId, exercise.name]);
 
   const del = async (id) => {
-    if (!confirm('Dieses Feedback wirklich löschen?')) return;
+    if (!confirm(t('feedback.deleteConfirm'))) return;
     await deleteFeedback(id);
     load();
   };
@@ -12291,7 +12293,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
       )}
       {confirmDeleteSession && (
         <DeleteConfirmModal
-          title="Session löschen?"
+          title={t('log.deleteSessionTitle')}
           message="Diese Trainings-Session wird gelöscht. Das kann nicht rückgängig gemacht werden."
           onConfirm={() => deleteSession(confirmDeleteSession)}
           onCancel={() => setConfirmDeleteSession(null)}
@@ -13014,7 +13016,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
         />
         {pendingDelete && (
           <DeleteConfirmModal
-            title="Übung löschen?"
+            title={t('exercises.deleteTitle')}
             message={'„' + pendingDelete.name + '" wird in den Papierkorb verschoben und ist dort 30 Tage wiederherstellbar. Erfasste Sessions bleiben erhalten.'}
             onConfirm={() => remove(pendingDelete.id)}
             onCancel={() => setPendingDelete(null)}
@@ -13194,7 +13196,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
             Trainings-Rate wird als farbige Badge rechts gezeigt, damit
             man auf einen Blick sieht welche Übung sicher sitzt. */}
         {activeExercises.length === 0 && archivedExercises.length === 0 ? (
-          <EmptyState title="Noch keine Übungen" hint="Lege über Neu deine erste Übung an." />
+          <EmptyState title={t('exercises.none')} hint="Lege über Neu deine erste Übung an." />
         ) : (
           <div className="space-y-5">
             {activeExercises.length > 0 && (
@@ -13369,7 +13371,7 @@ function ExerciseEditor({ exercise, onSave, onCancel, existingCodes = null }) {
           <IOSList header="Name">
             <div className="px-4 py-3">
               <input value={name} onChange={e => setName(e.target.value)}
-                placeholder="z. B. Aufwärmen, Kraft, Balance"
+                placeholder={t('plan.blockPlaceholder')}
                 className="w-full bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
             </div>
           </IOSList>
@@ -13398,7 +13400,7 @@ function ExerciseEditor({ exercise, onSave, onCancel, existingCodes = null }) {
                 <div className="relative">
                   <Search size={16} className="absolute left-2 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
                   <input value={assignQ} onChange={e => setAssignQ(e.target.value)}
-                    placeholder="UCI-Übung suchen (Name oder Nummer)…"
+                    placeholder={t('reglement.searchPlaceholderLong')}
                     className="w-full pl-8 pr-2 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
                 </div>
                 {assignQ.trim().length >= 2 && (
@@ -13442,7 +13444,7 @@ function ExerciseEditor({ exercise, onSave, onCancel, existingCodes = null }) {
             <div className="px-4 py-3 flex items-center gap-3">
               <label className="text-[15px] text-[#3C3C43] w-36 shrink-0">3. Kategorie</label>
               <input value={thirdLabel} onChange={e => setThirdLabel(e.target.value)}
-                placeholder="Gefährlich, Unsicher, …"
+                placeholder={t('exercises.thirdLabelPlaceholder')}
                 className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC] text-right" />
             </div>
           )}
@@ -13524,7 +13526,7 @@ function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
             <input value={query} onChange={e => setQuery(e.target.value)} autoFocus
-              placeholder="Übung suchen (Name oder Übungsnummer)…"
+              placeholder={t('exercises.searchPlaceholder')}
               className="w-full pl-9 pr-3 py-2.5 bg-white dark:bg-white/5 rounded-xl outline-none text-[15px] shadow-[0_1px_2px_rgba(0,0,0,0.04)]" />
           </div>
         </div>
@@ -13587,7 +13589,7 @@ function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null })
       <div className="relative">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input value={query} onChange={e => setQuery(e.target.value)}
-          placeholder="z.B. 'Lenkerhandstand' oder '1124c'"
+          placeholder={t('reglement.searchShort')}
           className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
       </div>
 
@@ -14235,7 +14237,7 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
         />
         {pendingDeleteExercise && (
           <DeleteConfirmModal
-            title="Übung löschen?"
+            title={t('exercises.deleteTitle')}
             message={'„' + pendingDeleteExercise.name + '" wird in den Papierkorb verschoben und ist dort 30 Tage wiederherstellbar. Erfasste Sessions bleiben erhalten.'}
             onConfirm={() => removeExercise(pendingDeleteExercise.id)}
             onCancel={() => setPendingDeleteExercise(null)}
@@ -14377,7 +14379,7 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
       </header>
 
       {programs.length === 0 ? (
-        <EmptyState title="Noch keine Programme" hint="Lege über Neu dein erstes Wettkampf-Programm an." />
+        <EmptyState title={t('programs.none')} hint="Lege über Neu dein erstes Wettkampf-Programm an." />
       ) : (
         <>
           {currentProgram ? (
@@ -14510,7 +14512,7 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
         const linked = (data.competitions || []).filter(c => c.program_id === p.id).length;
         return (
           <DeleteConfirmModal
-            title="Programm löschen?"
+            title={t('programs.deleteTitle')}
             message={'„' + p.name + '" wird in den Papierkorb verschoben und ist dort 30 Tage wiederherstellbar.'
               + (linked > 0
                 ? ' ' + linked + (linked === 1 ? ' Wettkampf nutzt' : ' Wettkämpfe nutzen') + ' dieses Programm. Die Endergebnisse bleiben gespeichert; die Übungs-Einzelwerte werden über den im Wettkampf gesicherten Programm-Schnappschuss weiter angezeigt.'
@@ -14527,7 +14529,7 @@ function ProgrammeView({ data, setData, myUserId = null, dbAthletes = [] }) {
 
       {confirmCleanup && (
         <DeleteConfirmModal
-          title="Doppelte zusammenführen?"
+          title={t('exercises.mergeDuplicates')}
           message={`${dupInfo.programsBefore} → ${dupInfo.programsAfter} Programme und ${dupInfo.exercisesBefore} → ${dupInfo.exercisesAfter} Übungen. Programme mit identischer Übungsfolge und Übungen mit gleicher Übungsnummer werden zu jeweils einer zusammengeführt. Wettkämpfe, Ergebnisse und Trainings-Sessions bleiben erhalten und werden korrekt verknüpft.`}
           confirmLabel="Zusammenführen"
           onConfirm={() => { setConfirmCleanup(false); setTimeout(() => setData(mergeDuplicates(data, myUserId)), 0); }}
@@ -14672,7 +14674,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
           <div className="px-4 py-3 flex items-center gap-3">
             <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">Name</label>
             <input value={name} onChange={e => setName(e.target.value)}
-              placeholder="z. B. 1er Elite Männer"
+              placeholder={t('programs.namePlaceholder')}
               className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC] text-right" />
           </div>
           <div className="px-4 py-3 flex items-center gap-3">
@@ -14843,7 +14845,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
 
       {confirmDel && (
         <DeleteConfirmModal
-          title="Programm löschen?"
+          title={t('programs.deleteTitle')}
           message="Das Programm wird gelöscht. Zugehörige Wettkämpfe behalten ihre Ergebnisse über den gespeicherten Schnappschuss."
           onConfirm={() => { setConfirmDel(false); onDelete(); }}
           onCancel={() => setConfirmDel(false)}
@@ -15259,7 +15261,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
         />
         {confirmDeleteId && (
           <DeleteConfirmModal
-            title="Wettkampf löschen?"
+            title={t('competition.deleteTitle')}
             message={'„' + c.name + '" wird in den Papierkorb verschoben und ist dort 30 Tage wiederherstellbar.'}
             onConfirm={() => {
               const id = confirmDeleteId;
@@ -15444,7 +15446,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 block mb-1">Ort</label>
-                <input value={endForm.location} onChange={e => setEndForm({ ...endForm, location: e.target.value })} placeholder="z. B. Lübbecke" className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
+                <input value={endForm.location} onChange={e => setEndForm({ ...endForm, location: e.target.value })} placeholder={t('competition.locationPlaceholder')} className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
               </div>
               <div className="flex gap-2 pt-1">
                 <button onClick={() => setEndForm(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 font-medium text-sm">Abbrechen</button>
@@ -15464,7 +15466,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
         )}
 
         {competitions.length === 0 ? (
-          <EmptyState title="Noch keine Wettkämpfe" hint="Erfasse deinen ersten Wertungsbogen über Neu." />
+          <EmptyState title={t('competition.none')} hint="Erfasse deinen ersten Wertungsbogen über Neu." />
         ) : (<>
           {/* OVERVIEW — getönte Karten */}
           <div className="grid grid-cols-2 gap-3">
@@ -15605,7 +15607,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
         <div className="flex items-center gap-2">
           <button onClick={() => setShowBulkImport(true)}
             className="bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200 px-3 py-2 rounded-full font-medium text-[13px] flex items-center gap-1.5 active:scale-95 transition"
-            title="Mehrere PDFs auf einmal importieren">
+            title={t('pdfImport.bulkTitle')}>
             <FileText size={14} strokeWidth={2.4} /> Bulk
           </button>
           <button onClick={() => setShowNew(true)}
@@ -16994,7 +16996,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
           <div>
             <label className="text-xs font-medium text-slate-500 block mb-1">Ort</label>
             <input value={location} onChange={e => setLocation(e.target.value)}
-              placeholder="z.B. Lübbecke"
+              placeholder={t('competition.locationPlaceholder')}
               className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500" />
           </div>
           <div>
@@ -17551,7 +17553,7 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
               <th className="py-2 px-1 font-medium w-10" title="Strich (1,0)">|</th>
               <th className="py-2 px-1 font-medium w-10" title="Kreis/Sturz (2,0)">○</th>
               <th className="py-2 px-1 font-medium w-16" title="Schwierigkeit %">Schw</th>
-              <th className="py-2 px-1 font-medium w-16" title="Taktische Aufwertung — zählt statt der Standard-Punkte">Takt.</th>
+              <th className="py-2 px-1 font-medium w-16" title={t('editor.tacticalHint')}>Takt.</th>
               <th className="py-2 px-1 font-medium w-12 text-right">Σ</th>
             </tr>
           </thead>
@@ -18209,6 +18211,7 @@ function AdminUserPanel({ open, user, onClose, onMutated }) {
 }
 
 function AdminAccountsView({ open, onClose, initialFilter = '', autoOpenUserId = null }) {
+  const { t } = useI18n();
   const [users, setUsers] = useState(null);
   const [err, setErr] = useState('');
   const [filter, setFilter] = useState('');
@@ -18270,7 +18273,7 @@ function AdminAccountsView({ open, onClose, initialFilter = '', autoOpenUserId =
         <div className="bg-white rounded-2xl px-3 py-2 flex items-center gap-2">
           <Search size={16} className="text-[#8E8E93]" />
           <input value={filter} onChange={e => setFilter(e.target.value)}
-            placeholder="E-Mail, Name oder ID suchen…"
+            placeholder={t('admin.searchPlaceholder')}
             className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC]" />
         </div>
         <div className="bg-[#E5E5EA] rounded-2xl p-1 flex gap-1 text-[13px]">
