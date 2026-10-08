@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Trophy, Dumbbell, Plus, ChevronLeft, ChevronRight, Save, Check, X, Edit2, Trash2,
@@ -6025,11 +6025,11 @@ export default function App() {
   // View dispatcher
   let viewEl;
   if (view === 'dashboard') viewEl = <Dashboard data={effectiveData} setView={setView} onOpenFeedback={hasCoachingFeedback ? openFeedback : null} onOpenExercise={(id) => { setFocusExerciseId(id); setView('uebungen'); }} />;
-  else if (view === 'training') viewEl = <TrainingView data={effectiveData} setData={save} setView={setView} />;
+  else if (view === 'training') viewEl = <TrainingView data={effectiveData} setData={save} setView={setView} profile={profile} myUserId={session?.user?.id || null} />;
   else if (view === 'erfassen') viewEl = <Erfassen data={effectiveData} setData={save} dbAthletes={dbAthletes} selectedAthleteId={selectedAthleteId} onDone={() => setView('training')} />;
   else if (view === 'trainingsplan') viewEl = <TrainingsplanView data={effectiveData} setData={save} onBack={() => setView('training')} />;
   else if (view === 'uebungen') viewEl = <UebungenView data={effectiveData} setData={save} onBack={() => setView('dashboard')} onOpenView={setView} focusExerciseId={focusExerciseId} onFocusConsumed={() => setFocusExerciseId(null)} />;
-  else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} myUserId={session?.user?.id || null} />;
+  else if (view === 'wettkampf') viewEl = <WettkampfView data={effectiveData} setData={save} dbAthletes={dbAthletes} myUserId={session?.user?.id || null} profile={profile} />;
   else if (view === 'einstellungen') viewEl = <SettingsView data={effectiveData} setData={save} onResetAll={resetAll} profile={profile} session={session} onLogout={logout} cloudStatus={cloudStatus} dbAthletes={dbAthletes} dbProfiles={dbProfiles} dbAthleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} theme={theme} setTheme={setTheme} langPref={langPref} setLangPref={setLangPref} rulesLangPref={rulesLangPref} setRulesLangPref={setRulesLangPref} setView={setView} onOpenFeedback={hasCoachingFeedback ? openFeedback : null} />;
   else if (view === 'sportler') viewEl = <SportlerView profile={profile} session={session} athletes={dbAthletes} profiles={dbProfiles} athleteCoaches={dbAthleteCoaches} refreshAthletes={refreshAthletes} ownData={effectiveData} onPickAthlete={(id) => { chooseAthlete(id); setView('dashboard'); }} myAthleteId={myAthleteId} setView={setView} />;
   else if (view === 'mauteimport') viewEl = <MauteImportView data={effectiveData} setData={save} setView={setView} athleteId={selectedAthleteId || myAthleteId || null} />;
@@ -8024,7 +8024,7 @@ function groupSessionsByExercise(sessions) {
   return Array.from(byEx.values()).sort((a, b) => b.lastDate.localeCompare(a.lastDate));
 }
 
-function TrainingView({ data, setData, setView }) {
+function TrainingView({ data, setData, setView, profile = null, myUserId = null }) {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState(null); // { session, origIdx }
@@ -8604,7 +8604,11 @@ function TrainingView({ data, setData, setView }) {
       return <WettkampfDetail
         competition={c}
         program={(data.programs || []).find(p => p.id === c.program_id)}
-        athlete={null}
+        athlete={(data.athletes || []).find(a => a.id === c.athlete_id) || null}
+        competitions={data.competitions || []}
+        programs={data.programs || []}
+        profile={profile}
+        myUserId={myUserId}
         onBack={() => setViewRunId(null)}
         onEdit={data._isReadOnly ? undefined : () => setEditRunId(c.id)}
         onDelete={data._isReadOnly ? undefined : () => {
@@ -15183,7 +15187,7 @@ function BulkImportModal({ data, athletes, onApply, onClose }) {
   );
 }
 
-function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
+function WettkampfView({ data, setData, dbAthletes, myUserId = null, profile = null }) {
   const { t } = useI18n();
   const [tab, setTab] = useState('wettkaempfe'); // 'wettkaempfe' | 'programme'
   const [showAllDeductions, setShowAllDeductions] = useState(false); // „Höchste Abzüge" ausgeklappt?
@@ -15270,6 +15274,10 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null }) {
           competition={c}
           program={programs.find(p => p.id === c.program_id)}
           athlete={athletes.find(a => a.id === c.athlete_id)}
+          competitions={competitions}
+          programs={programs}
+          profile={profile}
+          myUserId={myUserId}
           onBack={() => setViewId(null)}
           onEdit={data._isReadOnly ? undefined : () => { setEditId(viewId); setViewId(null); }}
           onDelete={data._isReadOnly ? undefined : () => setConfirmDeleteId(viewId)}
@@ -20544,149 +20552,241 @@ function ExportTraining({ data }) {
 // auf iOS über Teilen → Drucken). Nativ erzeugt die App eine echte PDF-Datei —
 // gleiche Spalten, gleiche Reihenfolge, gleiche Summen.
 // =============================================================
-function WertungsbogenSheet({ competition: c, program, athleteName, scopeLabel, onClose }) {
-  const { t } = useI18n();
+// Nachbau des offiziellen Bogens „WERTUNGSBOGEN für Kunstradsport-Wettbewerbe" (A4 hoch),
+// Linie für Linie — je Kampfgericht eine Seite, wie am Wettkampftisch, wo jedes
+// Kampfgericht seinen eigenen Bogen hat. Gleicher Aufbau wie WertungsbogenPDF.swift (iOS).
+// Maße/Stile liegen in index.css (.wb-*): mm-genau für den Druck, am Bildschirm wird die
+// Seite nur verkleinert.
+function WertungsbogenSheet({ competition: c, program, athlete, uciId = '', competitions = [], programs = [], scopeLabel, onClose }) {
+  const { t, lang } = useI18n();
+  const dec = lang === 'en' ? '.' : ',';
+  const num = (v, d = 2) => (v == null || Number.isNaN(Number(v)) ? '' : Number(v).toFixed(d).replace('.', dec));
   const exercises = program.exercises || [];
   const gesamt = isEffectiveGesamt(c);
   const kgCount = Math.max(1, Math.min(4, Number(c.kampfgerichte || 2)));
-  const columns = gesamt ? 1 : kgCount;
+  const pages = gesamt ? 1 : kgCount;
   const tables = [c.table1 || [], c.table2 || [], c.table3 || [], c.table4 || []];
-  const marks = ['cross', 'wave', 'bar', 'circle'];
-  const markLabels = ['x', '~', '|', '○'];
-  const num = (v) => (Number(v || 0) > 0 ? String(Number(v)) : '');
+  const schw = [c.t1_schwierigkeit, c.t2_schwierigkeit, 0, 0];
+  // Gesamt-Modus: die Eingaben liegen in table1 (oder dem einen befüllten KG).
+  const gesamtTbl = tableHasContent(c.table1) ? tables[0] : (tableHasContent(c.table2) ? tables[1] : tables[0]);
+  const entriesOf = (i) => (gesamt ? gesamtTbl : tables[i]);
+  const results = Array.from({ length: pages }, (_, i) => calcTableResult(program, entriesOf(i), schw[i]));
+  const final = compFinalScore(program, c);
+  const rowCount = Math.max(30, exercises.length);
+  const fullDate = (iso) => { const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}.${m[2]}.${m[1]}` : (iso || ''); };
+  const today = fullDate(new Date().toISOString().slice(0, 10));
 
-  const rowFor = (ex, idx) => {
-    const entries = tables.slice(0, columns).map(t => t[idx]);
-    let sum = 0;
-    for (const e of entries) sum += calcExerciseDeduction(e) + calcExerciseSchwierigkeit(e, ex);
-    const takt = Number((entries[0] && entries[0].taktischePunkte) || 0);
-    const pts = takt > 0 && Math.abs(takt - Number(ex.points || 0)) > 0.001
-      ? takt.toFixed(1) + ' T' : Number(ex.points || 0).toFixed(1);
-    return { entries, sum, pts };
+  // Persönliche Bestleistung VOR diesem Wettkampf — wie auf dem Papierbogen, wo sie als
+  // Vergleichswert eingetragen wird. Nur echte Wettkämpfe desselben Sportlers.
+  const progMap = new Map((programs || []).filter(Boolean).map(p => [p.id, p]));
+  let best = null;
+  for (const x of competitions || []) {
+    if (!x || x.id === c.id || x.athlete_id !== c.athlete_id) continue;
+    if ((x.kind || 'wettkampf') === 'training' || !x.date || !c.date || x.date >= c.date) continue;
+    const prog = programForCompetition(x, progMap);
+    const s = prog ? compFinalScore(prog, x) : (x.pdf_ref && x.pdf_ref.endergebnis != null ? Number(x.pdf_ref.endergebnis) : null);
+    if (s != null && (!best || s > best.score)) best = { score: s, date: x.date };
+  }
+
+  const header = {
+    uciId: uciId || '',
+    competitor: athlete ? [athlete.name, athlete.last_name].filter(Boolean).join(' ') : '',
+    discipline: (athlete && athlete.discipline) || program.discipline || '',
+    club: (athlete && athlete.notes) || '',
+    competition: c.name || '',
+    dateLocation: [fullDate(c.date), c.location].filter(Boolean).join(', '),
+    host: c.host || '',
+    startNr: c.start_nr || '',
+  };
+  const rightRows = [
+    [t('pdf.form.discipline'), header.discipline],
+    [t('pdf.form.personalBest'), best ? `${num(best.score)} ${t('pdf.form.ptsOn')} ${fullDate(best.date)}` : ''],
+    [t('pdf.form.federation'), ''],
+    [t('pdf.form.club'), header.club],
+    [t('pdf.form.competition'), header.competition],
+    [t('pdf.form.dateLocation'), header.dateLocation],
+    [t('pdf.form.host'), header.host],
+  ];
+  const twoLine = (s) => String(s).split('|').map((p, i) => <span key={i}>{p}</span>);
+  const marks = (e) => (!e || e.included === false
+    ? ['', '', '', '']
+    : ['cross', 'wave', 'bar', 'circle'].map(k => (Number(e[k] || 0) > 0 ? num(e[k], 0) : '')));
+
+  // Am Bildschirm auf die Fensterbreite verkleinern (A4 = 198 mm ≈ 748 px); im Druck 1:1.
+  const PAGE_W = 748.3, PAGE_H = 1077.2, GAP = 22.7;
+  const [scale, setScale] = useState(() => Math.min(1, (window.innerWidth - 32) / PAGE_W));
+  useEffect(() => {
+    const f = () => setScale(Math.min(1, (window.innerWidth - 32) / PAGE_W));
+    window.addEventListener('resize', f);
+    return () => window.removeEventListener('resize', f);
+  }, []);
+
+  const renderPage = (pi) => {
+    const entries = entriesOf(pi);
+    const r = results[pi];
+    const pre = edgeRowOf(entries, 'pre');
+    const post = edgeRowOf(entries, 'post');
+    const counts = { x: 0, w: 0, b: 0, o: 0 };
+    for (const e of entries) {
+      if (!e || e.included === false) continue;
+      counts.x += Number(e.cross || 0); counts.w += Number(e.wave || 0);
+      counts.b += Number(e.bar || 0); counts.o += Number(e.circle || 0);
+    }
+    // Mitte: Punkte. Gesamt-Modus: die Abzüge aller Kampfgerichte liegen als Summe vor —
+    // hier steht der Anteil je Kampfgericht, damit Gesamtpunkte − Abzug = Ergebnis stimmt.
+    const mid = [
+      [t('pdf.form.diffPoints'), num(r.aufgestellt), true],
+      [t('pdf.form.tacticalPoints'), num(r.taktBonus), false],
+      [t('pdf.form.totalPoints'), num(r.anerkannt), true],
+      [t('pdf.form.minusTotalDed'), num(gesamt ? r.abzugGesamt / kgCount : r.abzugGesamt), false],
+      [t('pdf.form.result'), num(gesamt ? final : r.ergebnis), true],
+    ];
+    if (!gesamt) for (let k = 0; k < kgCount; k++) if (k !== pi) mid.push([t('pdf.form.resultJury', { n: k + 1 }), num(results[k].ergebnis), false]);
+    const footRows = Math.max(8, mid.length + 1);
+    while (mid.length < footRows - 1) mid.push(['', '', false]);
+    const juryList = Array.from({ length: gesamt ? 1 : kgCount }, (_, i) => i + 1).join(' + ');
+    const sumAll = gesamt ? null : results.reduce((a, x) => a + x.ergebnis, 0);
+    mid.push([t('pdf.form.jurySum', { list: juryList }), gesamt ? '' : num(sumAll), true]);
+    // Rechts: Abzüge mit Strichliste
+    const tally = [['X', counts.x, 0.2], ['~', counts.w, 0.5], ['|', counts.b, 1.0], ['O', counts.o, 2.0]];
+    const right = [['', t('pdf.form.dedDifficulty'), num(r.abzugSchwierigkeit), false]];
+    for (const [sym, cnt, f] of tally) right.push([cnt > 0 ? num(cnt, 0) : '', `${sym} x ${num(f, 1)} =`, cnt > 0 ? num(cnt * f) : '', false]);
+    right.push(['', t('pdf.form.dedExecution'), num(r.abzugAusfuehrung), false]);
+    right.push(['', t('pdf.form.dedTotal'), num(r.abzugGesamt), true]);
+    while (right.length < footRows - 1) right.push(['', '', '', false]);
+    right.push(['', t('pdf.form.juryDiv', { n: kgCount }), final != null ? num(final) : '', true]);
+    const mark = [scopeLabel, gesamt ? '' : t('pdf.form.jury', { n: pi + 1 })].filter(Boolean).join(' · ');
+
+    const rowCells = (i) => {
+      const ex = exercises[i];
+      const e = ex ? entries[i] : null;
+      const base = ex ? Number(ex.points || 0) : 0;
+      const takt = e ? Number(e.taktischePunkte || 0) : 0;
+      const pct = e && e.included !== false ? Number(e.schwPct || 0) : 0;
+      const m = marks(e);
+      return (
+        <>
+          <div className="wb-c ctr">{i + 1}</div>
+          <div className="wb-c ctr">{ex ? (ex.code || '') : ''}</div>
+          <div className="wb-c">{ex ? localizedExerciseName(ex) : ''}</div>
+          <div className="wb-c ctr">{takt > base + 0.0001 ? num(takt - base) : ''}</div>
+          <div className="wb-c ctr">{base > 0 ? num(base, 1) : ''}</div>
+          <div className="wb-c ctr">{pct > 0 ? num(pct, 0) : ''}</div>
+          <div className="wb-c ctr">{pct > 0 ? num(calcExerciseSchwierigkeit(e, ex)) : ''}</div>
+          {m.map((v, k) => <div key={k} className={'wb-c ctr' + (k === 3 ? ' nr' : '')}>{v}</div>)}
+        </>
+      );
+    };
+    const edgeCells = (e, label) => {
+      const show = e && calcExerciseDeduction(e) > 0.0001;
+      const m = show ? marks(e) : ['', '', '', ''];
+      return (
+        <>
+          <div className="wb-c ctr" /><div className="wb-c ctr" />
+          <div className="wb-c">{show ? label : ''}</div>
+          <div className="wb-c ctr" /><div className="wb-c ctr" /><div className="wb-c ctr" /><div className="wb-c ctr" />
+          {m.map((v, k) => <div key={k} className={'wb-c ctr' + (k === 3 ? ' nr' : '')}>{v}</div>)}
+        </>
+      );
+    };
+
+    return (
+      <div key={pi} className="wb-page">
+        <div className="wb-frame">
+          <div className="wb-title">
+            <span className="wb-t1">{t('pdf.form.title')}</span>
+            <span className="wb-t2">{t('pdf.form.subtitle')}</span>
+            {mark && <span className="wb-mark">{mark}</span>}
+          </div>
+          <div className="wb-head">
+            <div className="wb-c ctr wb-lbl">{t('pdf.form.uciId')}</div>
+            <div className="wb-c ctr wb-lbl">{t('pdf.form.competitor')}</div>
+            <div className="wb-c ctr wb-lbl">{t('pdf.form.birthYear')}</div>
+            <div className="wb-right">
+              {rightRows.map(([l, v], i) => <div key={i}><span className="wb-lbl">{l}</span><span className="wb-val">{v}</span></div>)}
+            </div>
+            <div className="wb-c nr wb-lbl ctr wb-start">{t('pdf.form.startNr')}</div>
+            <div className="wb-c ctr wb-val">{header.uciId}</div>
+            <div className="wb-c wb-val">{header.competitor}</div>
+            <div className="wb-c ctr wb-val" />
+            <div className="wb-c nr ctr" style={{ fontSize: '10.5pt', fontWeight: 600 }}>{header.startNr}</div>
+            {[2, 3, 4, 5, 6].map(rI => (
+              <Fragment key={rI}>
+                <div className={'wb-c' + (rI === 6 ? ' nb' : '')} />
+                <div className={'wb-c' + (rI === 6 ? ' nb' : '')} />
+                <div className={'wb-c' + (rI === 6 ? ' nb' : '')} />
+                {rI === 2 && <div className="wb-c nr nb" style={{ gridColumn: 5, gridRow: '3 / span 5' }} />}
+              </Fragment>
+            ))}
+          </div>
+          <div className="wb-cols wb-thead">
+            <div className="wb-c">{twoLine(t('pdf.form.seqNo'))}</div>
+            <div className="wb-c">{twoLine(t('pdf.form.exNo'))}</div>
+            <div className="wb-c" style={{ fontSize: '7.5pt' }}>{t('pdf.form.exText')}</div>
+            <div className="wb-c">{twoLine(t('pdf.form.tactPts'))}</div>
+            <div className="wb-c">{twoLine(t('pdf.form.ptValue'))}</div>
+            <div className="wb-c wb-grp" style={{ gridColumn: '6 / span 2' }}>
+              <div className="wb-g1">{t('pdf.form.difficulty')}</div>
+              <div className="wb-g2" style={{ gridTemplateColumns: '7.4mm 9.5mm' }}><span>%</span><span>{t('pdf.form.pts')}</span></div>
+            </div>
+            <div className="wb-c nr wb-grp" style={{ gridColumn: '8 / span 4' }}>
+              <div className="wb-g1">{t('pdf.form.execution')}</div>
+              <div className="wb-g2" style={{ gridTemplateColumns: 'repeat(4, 6mm)' }}><span>X</span><span>~</span><span>|</span><span>O</span></div>
+            </div>
+            <span className="wb-src">ArtCyc</span>
+          </div>
+          <div className="wb-body" style={{ gridTemplateRows: `5mm repeat(${rowCount}, 1fr) 5mm` }}>
+            <div className="wb-cols wb-r blank">{edgeCells(pre, edgeLabel('pre', exercises.length))}</div>
+            {Array.from({ length: rowCount }, (_, i) => <div key={i} className="wb-cols wb-r">{rowCells(i)}</div>)}
+            <div className="wb-cols wb-r blank">{edgeCells(post, edgeLabel('post', exercises.length))}</div>
+          </div>
+          <div className="wb-foot" style={{ gridTemplateRows: `${footRows * 6.7}mm` }}>
+            <div className="wb-sig">
+              {['checkedBy', 'announcer', 'writer', 'chief'].map(k => <div key={k}>{t('pdf.form.' + k)}</div>)}
+            </div>
+            <div className="wb-mid" style={{ gridTemplateRows: `repeat(${footRows}, 1fr)` }}>
+              {mid.map(([l, v, b], i) => <div key={i} className={b ? 'b' : ''}><span className="wb-l">{l}</span><span className="wb-v">{v}</span></div>)}
+            </div>
+            <div className="wb-rgt" style={{ gridTemplateRows: `repeat(${footRows}, 1fr)` }}>
+              {right.map(([cnt, l, v, b], i) => (
+                <div key={i} className={b ? 'b' : ''}>
+                  {cnt !== '' && <span className="wb-cnt">{cnt}</span>}
+                  <span className="wb-l" style={cnt !== '' ? { paddingLeft: '2mm' } : undefined}>{l}</span>
+                  <span className="wb-v">{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="wb-dateline"><span>ArtCyc</span><span>{today}</span></div>
+      </div>
+    );
   };
 
-  const totals = Array.from({ length: columns }, (_, i) =>
-    calcTableResult(program, tables[i], i === 0 ? c.t1_schwierigkeit : (i === 1 ? c.t2_schwierigkeit : 0)));
-  const final = compFinalScore(program, c);
-
   return (
-    <div className="fixed inset-0 z-[80] bg-black/40 overflow-auto print:bg-white print:static print:overflow-visible"
+    <div className="fixed inset-0 z-[80] bg-black/50 overflow-auto print:bg-white print:static print:overflow-visible"
       onClick={onClose}>
-      <div className="print-sheet bg-white mx-auto my-6 p-8 max-w-[820px] shadow-2xl print:shadow-none print:my-0 print:max-w-none"
-        onClick={e => e.stopPropagation()}>
+      <div className="mx-auto my-4 px-4 w-fit" onClick={e => e.stopPropagation()}>
         {/* Bedienleiste — im Druck ausgeblendet */}
-        <div className="flex items-center justify-end gap-2 mb-4 print:hidden">
+        <div className="flex items-center justify-end gap-2 mb-3 print:hidden">
           <button onClick={() => window.print()}
             className="px-4 py-2 rounded-full bg-[#FF9500] text-white text-[14px] font-semibold active:scale-95 transition">
             {t('common.printOrPdf')}
           </button>
           <button onClick={onClose}
-            className="px-4 py-2 rounded-full border border-slate-300 text-[14px] font-medium">Schließen</button>
+            className="px-4 py-2 rounded-full bg-white border border-slate-300 text-slate-800 text-[14px] font-medium">{t('common.close')}</button>
         </div>
-
-        <h1 className="text-[22px] font-bold leading-tight">{c.name || 'Wertungsbogen'}</h1>
-        <p className="text-[13px] text-slate-500 mt-0.5">
-          {[scopeLabel, formatDateShort(c.date), c.location, c.host].filter(Boolean).join(' · ')}
-        </p>
-        <p className="text-[13px] text-slate-700 mt-1">
-          Sportler: {athleteName || '—'}{program.name ? '   Programm: ' + program.name : ''}
-        </p>
-
-        <table className="w-full mt-4 text-[12px] border-collapse">
-          <thead>
-            <tr className="border-b border-slate-400">
-              <th className="text-left py-1 w-7 font-semibold text-slate-500">#</th>
-              <th className="text-left py-1 font-semibold text-slate-500">Übung</th>
-              <th className="text-right py-1 w-12 font-semibold text-slate-500">{t('common.pts')}</th>
-              {Array.from({ length: columns }, (_, i) => (
-                <th key={i} colSpan={5} className="py-1 font-semibold text-slate-500 border-l border-slate-200">
-                  {gesamt ? 'Gesamt' : 'Kampfgericht ' + (i + 1)}
-                </th>
-              ))}
-              <th className="text-right py-1 w-14 font-semibold text-slate-500">Σ</th>
-            </tr>
-            <tr className="border-b border-slate-300 text-[10px] text-slate-400">
-              <th colSpan={3} />
-              {Array.from({ length: columns }, (_, i) => (
-                [...markLabels, '%'].map((l, k) => (
-                  <th key={i + '-' + k} className={'py-0.5 w-6 font-medium' + (k === 0 ? ' border-l border-slate-200' : '')}>{l}</th>
-                ))
-              ))}
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {exercises.map((ex, idx) => {
-              const r = rowFor(ex, idx);
-              return (
-                <tr key={idx} className="border-b border-slate-100">
-                  <td className="py-1 text-slate-400 tabular-nums">{idx + 1}</td>
-                  <td className="py-1 pr-2">{localizedExerciseName(ex)}</td>
-                  <td className="py-1 text-right tabular-nums">{r.pts}</td>
-                  {r.entries.map((e, i) => (
-                    [...marks.map(k => num(e && e[k])), (e && Number(e.schwPct || 0) > 0) ? String(Number(e.schwPct)) : '']
-                      .map((v, k) => (
-                        <td key={i + '-' + k}
-                          className={'py-1 text-center tabular-nums' + (k === 0 ? ' border-l border-slate-200' : '')}>{v}</td>
-                      ))
-                  ))}
-                  <td className="py-1 text-right tabular-nums font-medium">
-                    {r.sum > 0.0001 ? '−' + r.sum.toFixed(2) : ''}
-                  </td>
-                </tr>
-              );
-            })}
-            {/* Randabzüge (vor der ersten / nach der letzten Übung), nur wenn belegt */}
-            {EDGE_SLOTS.map(sl => {
-              const row = edgeIndex(program, sl.kind);
-              const entries = tables.slice(0, columns).map(t => t[row]);
-              const sum = entries.reduce((n, e) => n + calcExerciseDeduction(e), 0);
-              if (!(sum > 0.0001)) return null;
-              return (
-                <tr key={sl.kind} className="border-b border-slate-100">
-                  <td />
-                  <td className="py-1 pr-2">{edgeLabel(sl.kind, exercises.length)}</td>
-                  <td />
-                  {entries.map((e, i) => (
-                    [...marks.map(k => num(e && e[k])), '']
-                      .map((v, k) => (
-                        <td key={i + '-' + k}
-                          className={'py-1 text-center tabular-nums' + (k === 0 ? ' border-l border-slate-200' : '')}>{v}</td>
-                      ))
-                  ))}
-                  <td className="py-1 text-right tabular-nums font-medium">−{sum.toFixed(2)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        <div className="mt-5 pt-3 border-t border-slate-400 text-[12px] space-y-1">
-          {totals.map((r, i) => (
-            <div key={i} className="space-y-1">
-              {[['Aufgestellt', r.aufgestellt.toFixed(2)],
-                ['Abzug Ausführung', '−' + r.abzugAusfuehrung.toFixed(2)],
-                ['Abzug Schwierigkeit', '−' + r.abzugSchwierigkeit.toFixed(2)],
-                ['Abzug gesamt', '−' + r.abzugGesamt.toFixed(2)]].map(([label, value]) => (
-                  <div key={label} className="flex justify-between">
-                    <span className="text-slate-500">{(gesamt ? 'Gesamt' : 'Kampfgericht ' + (i + 1)) + ' — ' + label}</span>
-                    <span className="font-medium tabular-nums">{value}</span>
-                  </div>
-                ))}
-            </div>
-          ))}
-          {final != null && (
-            <div className="flex justify-between pt-2 text-[15px] font-bold">
-              <span>Endergebnis</span><span className="tabular-nums">{final.toFixed(2)}</span>
-            </div>
-          )}
+        <div style={{ width: PAGE_W * scale, height: (PAGE_H * pages + GAP * (pages - 1)) * scale }}>
+          <div className="print-sheet shadow-2xl" style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: PAGE_W }}>
+            {Array.from({ length: pages }, (_, i) => renderPage(i))}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDelete }) {
+function WettkampfDetail({ competition, program, athlete, competitions = [], programs = [], profile = null, myUserId = null, onBack, onEdit, onDelete }) {
   const { t } = useI18n();
   useEdgeSwipeBack(onBack);
   const [activeTable, setActiveTable] = useState(1);
@@ -20754,8 +20854,12 @@ function WettkampfDetail({ competition, program, athlete, onBack, onEdit, onDele
 
       {sheetOpen && effProgram && (
         <WertungsbogenSheet competition={competition} program={effProgram}
-          athleteName={(athlete && athlete.name) || ''}
-          scopeLabel={(competition.kind || 'wettkampf') === 'training' ? 'Trainings-Wertung' : 'Wettkampf'}
+          athlete={athlete || null}
+          competitions={competitions} programs={programs}
+          // UCI-ID nur für den eigenen Sportler: die Lizenznummer hängt am Profil des
+          // angemeldeten Nutzers, nicht am Sportler-Datensatz.
+          uciId={athlete && myUserId && athlete.auth_user_id === myUserId ? (profile?.license_no || '') : ''}
+          scopeLabel={(competition.kind || 'wettkampf') === 'training' ? t('nav.training') : ''}
           onClose={() => setSheetOpen(false)} />
       )}
 
