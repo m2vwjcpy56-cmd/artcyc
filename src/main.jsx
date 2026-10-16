@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './ArtCycCoach.jsx';
 import Landing from './Landing.jsx';
+import Ski from './Ski.jsx';
 import { I18nProvider } from './lib/i18n.jsx';
 import { initErrorReporter } from './lib/errorReporter.js';
 import { ErrorBoundary } from './lib/ErrorBoundary.jsx';
@@ -128,8 +129,11 @@ if (_standalone && !_appPath && !_authCb) {
   window.location.replace('/web');
 }
 
+// Ski-Planung: eigenständige, loginfreie Unterseite unter /ski (siehe src/Ski.jsx).
+const _skiPath = /^\/ski(\/|$)/.test(_p);
+
 const _isApp = _appPath || _authCb;
-const Root = _isApp ? App : Landing;
+const Root = _isApp ? App : (_skiPath ? Ski : Landing);
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
