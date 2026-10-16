@@ -916,6 +916,15 @@ const dict = {
     'coaches.copyCode': 'Code kopieren',
     // Trainer-Rueckfrage (14.10.2026)
     'common.remove': 'Entfernen',
+    // Apple-Login im Web (16.10.2026)
+    'login.or': 'oder',
+    'login.withApple': 'Mit Apple anmelden',
+    // Anmeldefenster: neue Gestaltung + fehlende Uebersetzungen (16.10.2026)
+    'auth.notConfirmedYet': 'E-Mail bestätigen',
+    'auth.understood': 'Verstanden',
+    'auth.privacyNote': 'Mit der Registrierung akzeptierst du, dass deine Trainings-Daten in unserer Datenbank in Frankfurt gespeichert werden. Du kannst deinen Account jederzeit löschen.',
+    'auth.notConfirmedHint': 'Deine E-Mail ist noch nicht bestätigt. Gib den Code aus der Mail ein oder lass sie dir neu schicken.',
+    'auth.linkErrorHint': 'Gib oben deine E-Mail ein und fordere einen frischen Link an (72 h gültig):',
   },
 
   en: {
@@ -1777,6 +1786,15 @@ const dict = {
     'coaches.copyCode': 'Copy code',
     // Trainer-Rueckfrage (14.10.2026)
     'common.remove': 'Remove',
+    // Apple-Login im Web (16.10.2026)
+    'login.or': 'or',
+    'login.withApple': 'Sign in with Apple',
+    // Anmeldefenster: neue Gestaltung + fehlende Uebersetzungen (16.10.2026)
+    'auth.notConfirmedYet': 'Confirm e-mail',
+    'auth.understood': 'Got it',
+    'auth.privacyNote': 'By registering you accept that your training data is stored in our database in Frankfurt. You can delete your account at any time.',
+    'auth.notConfirmedHint': 'Your e-mail is not confirmed yet. Enter the code from the mail or have it sent again.',
+    'auth.linkErrorHint': 'Enter your e-mail above and request a fresh link (valid 72 h):',
     },
 
   fr: {
@@ -2633,6 +2651,15 @@ const dict = {
     'coaches.copyCode': 'Copier le code',
     // Trainer-Rueckfrage (14.10.2026)
     'common.remove': 'Retirer',
+    // Apple-Login im Web (16.10.2026)
+    'login.or': 'ou',
+    'login.withApple': 'Se connecter avec Apple',
+    // Anmeldefenster: neue Gestaltung + fehlende Uebersetzungen (16.10.2026)
+    'auth.notConfirmedYet': 'Confirmer l\'e-mail',
+    'auth.understood': 'Compris',
+    'auth.privacyNote': 'En t\'inscrivant, tu acceptes que tes données d\'entraînement soient enregistrées dans notre base de données à Francfort. Tu peux supprimer ton compte à tout moment.',
+    'auth.notConfirmedHint': 'Ton e-mail n\'est pas encore confirmé. Saisis le code reçu par mail ou fais-le renvoyer.',
+    'auth.linkErrorHint': 'Saisis ton e-mail ci-dessus et demande un nouveau lien (valable 72 h) :',
     },
 
   it: {
@@ -3489,6 +3516,15 @@ const dict = {
     'coaches.copyCode': 'Copia codice',
     // Trainer-Rueckfrage (14.10.2026)
     'common.remove': 'Rimuovi',
+    // Apple-Login im Web (16.10.2026)
+    'login.or': 'o',
+    'login.withApple': 'Accedi con Apple',
+    // Anmeldefenster: neue Gestaltung + fehlende Uebersetzungen (16.10.2026)
+    'auth.notConfirmedYet': 'Conferma e-mail',
+    'auth.understood': 'Capito',
+    'auth.privacyNote': 'Registrandoti accetti che i tuoi dati di allenamento siano conservati nel nostro database a Francoforte. Puoi eliminare il tuo account in qualsiasi momento.',
+    'auth.notConfirmedHint': 'La tua e-mail non è ancora confermata. Inserisci il codice dalla mail o fattela rimandare.',
+    'auth.linkErrorHint': 'Inserisci sopra la tua e-mail e richiedi un nuovo link (valido 72 h):',
     },
 
   es: {
@@ -4345,6 +4381,15 @@ const dict = {
     'coaches.copyCode': 'Copiar código',
     // Trainer-Rueckfrage (14.10.2026)
     'common.remove': 'Quitar',
+    // Apple-Login im Web (16.10.2026)
+    'login.or': 'o',
+    'login.withApple': 'Iniciar sesión con Apple',
+    // Anmeldefenster: neue Gestaltung + fehlende Uebersetzungen (16.10.2026)
+    'auth.notConfirmedYet': 'Confirmar correo',
+    'auth.understood': 'Entendido',
+    'auth.privacyNote': 'Al registrarte aceptas que tus datos de entrenamiento se guarden en nuestra base de datos en Fráncfort. Puedes borrar tu cuenta en cualquier momento.',
+    'auth.notConfirmedHint': 'Tu correo aún no está confirmado. Introduce el código del mensaje o pide que te lo reenvíen.',
+    'auth.linkErrorHint': 'Introduce arriba tu correo y pide un enlace nuevo (válido 72 h):',
     },
 
   cs: {

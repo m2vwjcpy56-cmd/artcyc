@@ -365,3 +365,84 @@ html[data-theme="dark"] select.border-slate-300 {
 .wb-cnt { width: 5mm; text-align: right; font-size: 7.5pt; flex: none; font-variant-numeric: tabular-nums; }
 .wb-dateline { height: 3.9mm; flex: none; display: flex; justify-content: space-between; align-items: flex-end; font-size: 6.5pt; color: #444; }
 .wb-page + .wb-page { margin-top: 6mm; }
+
+/* ---------------------------------------------------------------
+   ANMELDEFENSTER
+   Eigenes Gesicht statt neutraler Box: warm getönter Grund mit einem
+   leisen Lichtschein, dahinter das Rad — das Objekt des Sports. Farben
+   stehen hier ausdrücklich für beide Modi, statt sich auf die globale
+   Dunkel-Übermalung von .bg-white zu verlassen; die traf die Karte
+   zwar, ließ sie aber ohne Rand und Tiefe („wirkt billig").
+   --------------------------------------------------------------- */
+.auth-bg {
+  background:
+    radial-gradient(55rem 34rem at 50% -8%, rgba(255, 149, 0, 0.13), transparent 62%),
+    #F2F2F7;
+}
+html[data-theme="dark"] .auth-bg {
+  background:
+    radial-gradient(55rem 34rem at 50% -8%, rgba(255, 159, 10, 0.16), transparent 62%),
+    #0C0B0A;
+}
+
+.auth-card {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.10), 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+html[data-theme="dark"] .auth-card {
+  background: #19181A;
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.60);
+}
+
+/* Das Rad dreht sich so langsam, dass man es eher ahnt als sieht.
+   Es liegt in einem EIGENEN, absolut gesetzten Rahmen: als direktes Kind des
+   Flex-Containers schob es die Anmeldekarte auf dem Handy 38 px nach links
+   aus dem Bild (gemessen 16.10.2026). Der Rahmen ist aus dem Fluss, das Rad
+   darin ein normales Rasterkind — so bleibt die Drehung frei. */
+.auth-wheel-wrap {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+.auth-wheel {
+  width: min(120vmin, 820px);
+  aspect-ratio: 1;
+  color: #1C1C1E;
+  opacity: 0.05;
+  animation: auth-wheel-spin 120s linear infinite;
+}
+html[data-theme="dark"] .auth-wheel { color: #FF9F0A; opacity: 0.10; }
+@keyframes auth-wheel-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .auth-wheel { animation: none; } }
+
+/* Feldbeschriftungen: kleine Versalien mit Sperrung — gibt dem Formular
+   eine Ordnung, ohne eine weitere Farbe einzuführen. */
+.auth-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8E8E93;
+}
+
+.auth-field {
+  background: #F2F2F7;
+  border: 1px solid transparent;
+}
+html[data-theme="dark"] .auth-field {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+.auth-field:focus-within {
+  border-color: rgba(255, 149, 0, 0.55);
+  background: #fff;
+}
+html[data-theme="dark"] .auth-field:focus-within {
+  border-color: rgba(255, 159, 10, 0.6);
+  background: rgba(255, 255, 255, 0.08);
+}

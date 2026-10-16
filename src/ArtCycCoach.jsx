@@ -6355,6 +6355,29 @@ function IOSTag({ color = 'gray', children }) {
 // =============================================================
 // AUTH-SCREEN — Login / Signup mit Rollen-Wahl
 // =============================================================
+/// Rad-Motiv hinter der Anmeldekarte — Felge, Nabe und Speichen. Kein Schmuck um
+/// seiner selbst willen: es ist das Gerät, um das sich die ganze App dreht, und
+/// gibt dem Fenster ein Gesicht, ohne eine Farbe oder einen Text hinzuzufügen.
+function AuthWheel() {
+  const spokes = Array.from({ length: 24 }, (_, i) => (i * 360) / 24);
+  return (
+    <div className="auth-wheel-wrap" aria-hidden="true">
+    <svg className="auth-wheel" viewBox="0 0 400 400" focusable="false">
+      <g fill="none" stroke="currentColor" strokeWidth="1.6">
+        <circle cx="200" cy="200" r="190" strokeWidth="5" />
+        <circle cx="200" cy="200" r="178" />
+        <circle cx="200" cy="200" r="30" strokeWidth="3" />
+        <circle cx="200" cy="200" r="12" />
+        {spokes.map(a => (
+          <line key={a} x1="200" y1="200" x2="200" y2="22"
+            transform={`rotate(${a} 200 200)`} />
+        ))}
+      </g>
+    </svg>
+    </div>
+  );
+}
+
 function AuthScreen({ linkError = null, onClearLinkError } = {}) {
   const { t, langPref, setLangPref } = useI18n();
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
@@ -6415,7 +6438,7 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
       const msg = String(e.message || '');
       if (/not confirmed|nicht bestätigt/i.test(msg) || e.code === 'email_not_confirmed') {
         setConfirmOpen(true);
-        setErr('Deine E-Mail ist noch nicht bestätigt. Gib den Code aus der Mail ein oder lass sie dir neu schicken.');
+        setErr(t('auth.notConfirmedHint'));
       } else {
         setErr(msg || t('validation.genericError'));
       }
@@ -6458,6 +6481,25 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
     } finally { setBusy(false); }
   };
 
+  // Mit Apple anmelden (Parität zu iOS). Im Web läuft das über die Weiterleitung zu
+  // Apple und zurück auf `redirectTo` — anders als nativ, wo das Gerät den Token
+  // direkt liefert. Supabase braucht dafür eine eigene Services-ID samt Geheimnis;
+  // steht die nicht, antwortet der Anbieter mit einem Fehler statt stillem Nichts.
+  const signInWithApple = async () => {
+    setBusy(true); setErr(''); setInfo('');
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'apple',
+        options: { redirectTo: window.location.origin },
+      });
+      if (error) throw error;
+      // Bei Erfolg verlässt die Seite den Browser Richtung Apple — kein weiterer Code.
+    } catch (e) {
+      setErr(e.message || t('validation.genericError'));
+      setBusy(false);
+    }
+  };
+
   const forgot = async () => {
     if (!validEmail) { setErr(t('validation.invalidEmail')); return; }
     setBusy(true); setErr(''); setInfo('');
@@ -6476,16 +6518,18 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
   const currentLang = LANGUAGES.find(l => l.code === langPref);
 
   return (
-    <div className="min-h-screen bg-[#F2F2F7] flex items-center justify-center p-4"
+    <div className="auth-bg min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif' }}>
-      <div className="bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.08)] p-8 max-w-md w-full relative">
+      <AuthWheel />
+      <div className="auth-card rounded-[28px] p-8 max-w-md w-full relative z-10">
         {/* Sprach-Picker oben rechts */}
         <div className="absolute top-4 right-4">
           <button onClick={() => setLangPickerOpen(o => !o)}
             className="flex items-center gap-1 text-[#8E8E93] text-[13px] active:opacity-60 px-2 py-1 rounded-full"
             aria-label={t('auth.language')}>
             <Globe size={14} />
-            <span>{currentLang ? currentLang.flag + ' ' + currentLang.native : '🌐 Auto'}</span>
+            {/* Ohne Sprachwahl nur das Wort — das Globus-Zeichen steht schon davor. */}
+            <span>{currentLang ? currentLang.flag + ' ' + currentLang.native : t('settings.languageAuto')}</span>
           </button>
           {langPickerOpen && (
             <>
@@ -6511,12 +6555,16 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
           )}
         </div>
 
-        <div className="text-center mb-6">
-          <div className="w-14 h-14 bg-gradient-to-br from-slate-900 to-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm">
-            <Trophy className="text-amber-400" size={26} />
+        {/* Das Zeichen trägt jetzt das Orange der App — der schiefergraue Kasten mit
+            bernsteinfarbenem Pokal war die dritte Farbwelt neben Akzent und Grund. */}
+        <div className="text-center mb-7">
+          <div className="w-16 h-16 rounded-[20px] flex items-center justify-center mx-auto mb-4
+                          bg-gradient-to-br from-[#FFB340] to-[#FF8A00]
+                          shadow-[0_10px_28px_rgba(255,149,0,0.35)]">
+            <Trophy className="text-white" size={30} strokeWidth={2.1} />
           </div>
-          <h1 className="text-[28px] font-bold tracking-tight">ArtCyc Coach</h1>
-          <p className="text-[#8E8E93] text-[14px]">{t('auth.appTagline')}</p>
+          <h1 className="text-[30px] font-bold tracking-[-0.02em] leading-none">ArtCyc Coach</h1>
+          <p className="text-[#8E8E93] text-[14px] mt-2">{t('auth.appTagline')}</p>
         </div>
 
         {/* Mode-Tabs — iOS Segmented Control */}
@@ -6538,7 +6586,7 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
             <span className="mt-0.5">⚠️</span>
             <div className="flex-1">
               {linkError}
-              <div className="mt-1 text-[12px] opacity-80">Gib oben deine E-Mail ein und fordere einen frischen Link an (72 h gültig):</div>
+              <div className="mt-1 text-[12px] opacity-80">{t('auth.linkErrorHint')}</div>
               <button type="button" onClick={forgot} disabled={busy}
                 className="mt-2 bg-[#007AFF] text-white text-[13px] font-semibold px-3.5 py-2 rounded-full active:opacity-70 disabled:opacity-50">
                 {t('auth.sendNewLink')}
@@ -6546,7 +6594,7 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
               {onClearLinkError && (
                 <button type="button" onClick={onClearLinkError}
                   className="block mt-2 text-[#007AFF] font-medium active:opacity-60">
-                  Verstanden
+                  {t('auth.understood')}
                 </button>
               )}
             </div>
@@ -6557,21 +6605,21 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
           {mode === 'signup' && (
             <>
               <div>
-                <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">{t('auth.firstName')}</label>
+                <label className="auth-label block mb-2 px-1">{t('auth.firstName')}</label>
                 <input value={displayName} onChange={e => setDisplayName(e.target.value)}
                   placeholder={t('auth.firstName')}
                   autoComplete="given-name"
-                  className="w-full px-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
+                  className="auth-field w-full px-4 py-3 rounded-2xl text-[15px] outline-none transition placeholder:text-[#C7C7CC]" />
               </div>
               <div>
-                <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">{t('auth.lastName')}</label>
+                <label className="auth-label block mb-2 px-1">{t('auth.lastName')}</label>
                 <input value={lastName} onChange={e => setLastName(e.target.value)}
                   placeholder={t('auth.lastName')}
                   autoComplete="family-name"
-                  className="w-full px-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
+                  className="auth-field w-full px-4 py-3 rounded-2xl text-[15px] outline-none transition placeholder:text-[#C7C7CC]" />
               </div>
               <div>
-                <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">{t('auth.role')}</label>
+                <label className="auth-label block mb-2 px-1">{t('auth.role')}</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => setRole('athlete')}
                     className={'py-3 px-3 rounded-2xl text-[14px] font-medium flex items-center justify-center gap-1.5 transition ' +
@@ -6593,19 +6641,19 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
           )}
 
           <div>
-            <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">{t('auth.email')}</label>
+            <label className="auth-label block mb-2 px-1">{t('auth.email')}</label>
             <div className="relative">
               <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
               <input type="email" value={email} onChange={e => setEmail(e.target.value)}
                 placeholder="name@beispiel.de"
                 autoComplete="email"
                 inputMode="email"
-                className="w-full pl-11 pr-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
+                className="auth-field w-full pl-11 pr-4 py-3 rounded-2xl text-[15px] outline-none transition placeholder:text-[#C7C7CC]" />
             </div>
           </div>
 
           <div>
-            <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">
+            <label className="auth-label block mb-2 px-1">
               {t('auth.password')} {mode === 'signup' && <span className="text-[#C7C7CC]">(min. 10)</span>}
             </label>
             <div className="relative">
@@ -6613,7 +6661,7 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
               <input type="password" value={password} onChange={e => setPassword(e.target.value)}
                 placeholder={t('auth.password')}
                 autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                className="w-full pl-11 pr-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
+                className="auth-field w-full pl-11 pr-4 py-3 rounded-2xl text-[15px] outline-none transition placeholder:text-[#C7C7CC]" />
             </div>
           </div>
 
@@ -6651,30 +6699,48 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
           )}
 
           <button type="submit" disabled={!canSubmit || busy}
-            className="bg-[#FF9500] text-white px-5 py-3.5 rounded-full font-semibold w-full text-[15px] active:scale-[0.98] transition shadow-[0_4px_14px_rgba(255,149,0,0.35)] disabled:opacity-40 disabled:shadow-none">
+            className="bg-[#FF9500] text-white px-5 py-3.5 rounded-2xl font-semibold w-full text-[15px] mt-1 active:scale-[0.98] transition shadow-[0_6px_18px_rgba(255,149,0,0.32)] disabled:opacity-40 disabled:shadow-none">
             {busy ? '…' : (mode === 'login' ? t('auth.signIn') : t('auth.signUp'))}
           </button>
 
+          {/* Mit Apple anmelden — Apples Vorgabe: eigene Fläche, schwarz auf hell
+              bzw. weiß auf dunkel, Apfel vor dem Text. */}
+          <div className="flex items-center gap-3 my-3">
+            <span className="h-px flex-1 bg-slate-200 dark:bg-[#3A3A3C]" />
+            <span className="text-[12px] text-[#8E8E93]">{t('login.or')}</span>
+            <span className="h-px flex-1 bg-slate-200 dark:bg-[#3A3A3C]" />
+          </div>
+          <button type="button" onClick={signInWithApple} disabled={busy}
+            className="w-full px-5 py-3.5 rounded-2xl font-semibold text-[15px] flex items-center justify-center gap-2
+                       bg-black text-white dark:bg-white dark:text-black active:scale-[0.98] transition disabled:opacity-40">
+            <svg viewBox="0 0 16 16" width="17" height="17" fill="currentColor" aria-hidden="true">
+              <path d="M11.18 8.5c.02 2.2 1.93 2.93 1.95 2.94-.02.05-.31 1.05-1.02 2.08-.61.89-1.25 1.78-2.26 1.8-.99.02-1.31-.59-2.44-.59s-1.48.57-2.42.6c-.97.04-1.71-.96-2.33-1.85-1.27-1.83-2.24-5.17-.94-7.43.65-1.12 1.8-1.83 3.06-1.85.95-.02 1.85.64 2.44.64.58 0 1.68-.79 2.83-.68.48.02 1.84.19 2.71 1.46-.07.04-1.62.94-1.6 2.8M9.4 3.04c.52-.63.87-1.5.78-2.37-.75.03-1.65.5-2.19 1.12-.48.56-.9 1.45-.79 2.3.83.07 1.68-.42 2.2-1.05" />
+            </svg>
+            {t('login.withApple')}
+          </button>
+
           {mode === 'login' && (
-            <>
+            <div className="flex items-center justify-center gap-2 pt-1 text-[13px]">
               <button type="button" onClick={forgot} disabled={busy}
-                className="text-[14px] text-[#007AFF] block mx-auto mt-2 active:opacity-60 disabled:opacity-50 font-medium">
+                className="text-[#007AFF] active:opacity-60 disabled:opacity-50 font-medium">
                 {t('auth.forgotPassword')}
               </button>
               {!confirmOpen && (
-                <button type="button" onClick={() => setConfirmOpen(true)} disabled={busy}
-                  className="text-[13px] text-[#8E8E93] block mx-auto mt-1 active:opacity-60 font-medium">
-                  E-Mail noch nicht bestätigt?
-                </button>
+                <>
+                  <span className="text-[#C7C7CC] dark:text-[#48484A]">·</span>
+                  <button type="button" onClick={() => setConfirmOpen(true)} disabled={busy}
+                    className="text-[#8E8E93] active:opacity-60 font-medium">
+                    {t('auth.notConfirmedYet')}
+                  </button>
+                </>
               )}
-            </>
+            </div>
           )}
         </form>
 
         {mode === 'signup' && (
-          <p className="text-[11px] text-slate-500 text-center mt-4">
-            Mit der Registrierung akzeptierst du, dass deine Trainings-Daten in unserer
-            Datenbank in Frankfurt gespeichert werden. Du kannst deinen Account jederzeit löschen.
+          <p className="text-[11px] text-[#8E8E93] text-center mt-5 leading-relaxed px-2">
+            {t('auth.privacyNote')}
           </p>
         )}
       </div>
@@ -6745,7 +6811,7 @@ function SetNewPasswordScreen({ onDone }) {
         ) : (
           <form onSubmit={submit} className="space-y-3">
             <div>
-              <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">
+              <label className="auth-label block mb-2 px-1">
                 {t('auth.newPassword')} <span className="text-[#C7C7CC]">(min. 10)</span>
               </label>
               <div className="relative">
@@ -6753,18 +6819,18 @@ function SetNewPasswordScreen({ onDone }) {
                 <input type="password" value={password} onChange={e => setPassword(e.target.value)}
                   placeholder="Neues Passwort"
                   autoComplete="new-password"
-                  className="w-full pl-11 pr-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
+                  className="auth-field w-full pl-11 pr-4 py-3 rounded-2xl text-[15px] outline-none transition placeholder:text-[#C7C7CC]" />
               </div>
             </div>
 
             <div>
-              <label className="text-[12px] font-medium text-[#8E8E93] block mb-1.5 px-1">Passwort wiederholen</label>
+              <label className="auth-label block mb-2 px-1">Passwort wiederholen</label>
               <div className="relative">
                 <KeyRound size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
                 <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
                   placeholder="Passwort wiederholen"
                   autoComplete="new-password"
-                  className="w-full pl-11 pr-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
+                  className="auth-field w-full pl-11 pr-4 py-3 rounded-2xl text-[15px] outline-none transition placeholder:text-[#C7C7CC]" />
               </div>
               {confirm.length > 0 && !matches && (
                 <p className="text-[12px] text-rose-500 mt-1 px-1">{t('auth.passwordMismatch')}</p>
@@ -21151,7 +21217,7 @@ function LastNameModal({ firstName, onSaved, onLater }) {
               placeholder={t('auth.lastName')}
               autoComplete="family-name"
               onKeyDown={e => { if (e.key === 'Enter') save(); }}
-              className="w-full px-4 py-3 bg-[#F2F2F7] dark:bg-white/5 rounded-2xl text-[15px] outline-none focus:ring-2 focus:ring-[#FF9500]/40 transition placeholder:text-[#C7C7CC]" />
+              className="auth-field w-full px-4 py-3 rounded-2xl text-[15px] outline-none transition placeholder:text-[#C7C7CC]" />
             {err && <div className="text-[13px] text-[#FF3B30] mt-2 px-1">✗ {err}</div>}
           </div>
           <div className="border-t border-[#C6C6C8]/40 mt-1" />
