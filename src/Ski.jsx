@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { ArrowLeft, ArrowRight, Check, ThumbsUp, Share2, RefreshCw, Pencil, Trophy } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ThumbsUp, Share2, RefreshCw, Pencil, Trophy, Plus, X } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { SKI_TRIP } from './ski/config.js';
 
@@ -64,6 +64,12 @@ const CSS = `
 .ski-opt .e{font-size:24px;width:32px;text-align:center;flex-shrink:0}
 .ski-opt .s{display:block;font-size:14px;font-weight:400;opacity:.7;margin-top:2px}
 .ski-opt .k{margin-left:auto;width:26px;height:26px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:#0B1F3A;color:#fff;flex-shrink:0}
+.ski-plus{flex-shrink:0;width:52px;border-radius:16px;border:0;background:#fff;color:#0B1F3A;display:flex;align-items:center;justify-content:center;transition:transform .12s,opacity .15s}
+.ski-plus:active{transform:scale(.95)}.ski-plus:disabled{opacity:.3}
+.ski-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.ski-chip{display:inline-flex;align-items:center;gap:6px;padding:8px 8px 8px 14px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);font-size:15px;font-weight:600}
+.ski-chip button{width:22px;height:22px;border-radius:999px;border:0;background:rgba(255,255,255,.2);color:#fff;display:flex;align-items:center;justify-content:center}
+.ski-del{background:none;border:0;color:rgba(255,255,255,.45);padding:4px;display:flex}
 .ski-names-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:22px}
 .ski-name{position:relative;text-align:left;padding:12px 14px;border-radius:16px;border:1.5px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;transition:transform .12s,background .15s;-webkit-tap-highlight-color:transparent}
 .ski-name:active{transform:scale(.97)}
@@ -179,22 +185,43 @@ function ChoiceStep({ q, value, onPick }) {
   );
 }
 
-function TextStep({ q, value, onChange, onNext }) {
+// Eingabe für mehrere Vorschläge: Text eintippen → „+" (oder Enter) → Chip.
+function SuggestionInput({ placeholder, onAdd, autoFocus }) {
+  const [v, setV] = useState('');
+  const add = () => { const t = v.trim(); if (t) { onAdd(t); setV(''); } };
   return (
-    <form className="ski-step" onSubmit={e => { e.preventDefault(); onNext(); }}>
-      <h2 className="ski-h2">{q.title}</h2>
-      {q.sub && <p className="ski-sub">{q.sub}</p>}
-      <input className="ski-input" value={value} onChange={e => onChange(e.target.value)} placeholder={q.placeholder} maxLength={120} enterKeyHint="done" />
-      <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <button type="submit" className="ski-btn" style={{ width: '100%' }}>
-          {value.trim() ? 'Abschicken' : 'Ohne Vorschlag abschicken'} <Check size={18} strokeWidth={2.6} />
-        </button>
-      </div>
-    </form>
+    <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+      <input className="ski-input" style={{ marginTop: 0, fontSize: 18, padding: '13px 16px' }} value={v} autoFocus={autoFocus}
+        onChange={e => setV(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+        placeholder={placeholder} maxLength={120} enterKeyHint="enter" />
+      <button type="button" className="ski-plus" onClick={add} disabled={!v.trim()} aria-label="Vorschlag hinzufügen"><Plus size={22} strokeWidth={2.8} /></button>
+    </div>
   );
 }
 
-function Results({ trip, short, name, votes, suggestions, myKey, dev, onLike, onEdit, onShare, copied, status, onReload }) {
+function TextStep({ q, items, onAddItem, onRemoveItem, onNext }) {
+  return (
+    <div className="ski-step">
+      <h2 className="ski-h2">{q.title}</h2>
+      {q.sub && <p className="ski-sub">{q.sub}</p>}
+      <SuggestionInput placeholder={items.length ? 'Noch ein Vorschlag …' : q.placeholder} onAdd={onAddItem} />
+      {items.length > 0 && (
+        <div className="ski-chips">
+          {items.map((t, i) => (
+            <span key={i} className="ski-chip">{t}<button type="button" onClick={() => onRemoveItem(i)} aria-label="Entfernen"><X size={14} strokeWidth={2.8} /></button></span>
+          ))}
+        </div>
+      )}
+      <div style={{ marginTop: 22 }}>
+        <button type="button" className="ski-btn" style={{ width: '100%' }} onClick={onNext}>
+          {items.length ? `Abschicken (${items.length} ${items.length === 1 ? 'Vorschlag' : 'Vorschläge'})` : 'Ohne Vorschlag abschicken'} <Check size={18} strokeWidth={2.6} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Results({ trip, short, name, votes, suggestions, myKey, dev, onLike, onAddSuggestion, onDeleteSuggestion, onEdit, onShare, copied, status, onReload }) {
   const qs = trip.questions;
   const r = trip.results;
   const byQ = (qid) => votes.filter(v => v.poll_id === qid);
@@ -318,12 +345,16 @@ function Results({ trip, short, name, votes, suggestions, myKey, dev, onLike, on
                 <div style={{ fontSize: 16, fontWeight: 600 }}>{s.text}</div>
                 <div className="ski-names">von {short(s.name)}{l.length > 0 && <> · 👍 {l.map(x => x.name).join(', ')}</>}</div>
               </div>
+              {s.device === dev && l.length === 0 && (
+                <button type="button" className="ski-del" onClick={() => onDeleteSuggestion(s.id)} aria-label="Eigenen Vorschlag löschen"><X size={16} strokeWidth={2.6} /></button>
+              )}
               <button type="button" className={cx('ski-like', on && 'on')} onClick={() => onLike(s.id)} aria-label="Daumen hoch">
                 <ThumbsUp size={15} strokeWidth={2.4} /> {l.length}
               </button>
             </div>
           );
         })}
+        {name.trim() && <SuggestionInput placeholder="Weiterer Vorschlag …" onAdd={onAddSuggestion} />}
       </div>
 
       {/* Übersicht */}
@@ -377,7 +408,7 @@ export default function Ski() {
   const dev = useMemo(deviceId, []);
   const [name, setName] = useState(() => lsGet(NAME_KEY) || '');
   const [answers, setAnswers] = useState({});          // { [qid]: value }
-  const [text, setText] = useState('');
+  const [pendingSugs, setPendingSugs] = useState([]);
   const [screen, setScreen] = useState(() => (lsGet(DONE_KEY) === '1' && lsGet(NAME_KEY)) ? 'results' : 'welcome'); // welcome | q | results
   const [step, setStep] = useState(0);
   const [votes, setVotes] = useState([]);
@@ -457,13 +488,26 @@ export default function Ski() {
   const finish = async () => {
     lsSet(NAME_KEY, name.trim());
     lsSet(DONE_KEY, '1');
-    const t = text.trim();
-    if (t) {
-      const { error } = await supabase.from('ski_suggestions').insert({ trip: trip.slug, name: name.trim(), text: t, device: dev });
+    if (pendingSugs.length) {
+      const rows = pendingSugs.map(t => ({ trip: trip.slug, name: name.trim(), text: t, device: dev }));
+      const { error } = await supabase.from('ski_suggestions').insert(rows);
       if (error) { setStatus('error'); setErrMsg(error.message); }
-      setText('');
+      setPendingSugs([]);
     }
     setScreen('results');
+    load();
+  };
+
+  const addSuggestion = async (t) => {
+    if (!name.trim()) return;
+    const { error } = await supabase.from('ski_suggestions').insert({ trip: trip.slug, name: name.trim(), text: t, device: dev });
+    if (error) { setStatus('error'); setErrMsg(error.message); }
+    load();
+  };
+  const deleteSuggestion = async (id) => {
+    setSuggestions(prev => prev.filter(x => x.id !== id));
+    const { error } = await supabase.from('ski_suggestions').delete().eq('id', id).eq('device', dev);
+    if (error) { setStatus('error'); setErrMsg(error.message); }
     load();
   };
 
@@ -510,11 +554,11 @@ export default function Ski() {
 
         {screen === 'q' && q.type === 'name' && <NameStep key={q.id} q={q} members={members} voted={voted} value={name} onPick={(n) => { setAnswers({}); setName(n); lsSet(NAME_KEY, n); next(); }} />}
         {screen === 'q' && q.type === 'choice' && <ChoiceStep key={q.id} q={q} value={answers[q.id]} onPick={(id) => pick(q, id)} />}
-        {screen === 'q' && q.type === 'text' && <TextStep key={q.id} q={q} value={text} onChange={setText} onNext={finish} />}
+        {screen === 'q' && q.type === 'text' && <TextStep key={q.id} q={q} items={pendingSugs} onAddItem={(t) => setPendingSugs(a => [...a, t])} onRemoveItem={(i) => setPendingSugs(a => a.filter((_, j) => j !== i))} onNext={finish} />}
 
         {screen === 'results' && (
           <Results trip={trip} short={short} name={name} votes={votes} suggestions={suggestions} myKey={myKey} dev={dev}
-            onLike={like} onEdit={() => start(false)} onShare={share} copied={copied} status={status} onReload={load} />
+            onLike={like} onAddSuggestion={addSuggestion} onDeleteSuggestion={deleteSuggestion} onEdit={() => start(false)} onShare={share} copied={copied} status={status} onReload={load} />
         )}
       </div>
     </div>
