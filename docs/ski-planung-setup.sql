@@ -79,6 +79,53 @@ create policy "ski_suggestions_delete" on public.ski_suggestions
 grant select, insert, update, delete on public.ski_votes       to anon, authenticated;
 grant select, insert, delete         on public.ski_suggestions to anon, authenticated;
 
+-- =============================================================
+-- E-Mail-Adressen (privat). Kein Lesezugriff für anon/authenticated —
+-- einsehbar nur im Supabase-Dashboard. Schreiben ausschließlich über die
+-- Funktion ski_save_contact (security definer), damit niemand fremde
+-- Adressen auslesen kann.
+-- =============================================================
+create table if not exists public.ski_contacts (
+  id          uuid primary key default gen_random_uuid(),
+  trip        text not null,
+  name        text not null,
+  name_key    text generated always as (lower(btrim(name))) stored,
+  email       text not null,
+  updated_at  timestamptz not null default now(),
+  created_at  timestamptz not null default now(),
+  constraint ski_contacts_unique unique (trip, name_key)
+);
+
+alter table public.ski_contacts enable row level security;
+revoke all on public.ski_contacts from anon, authenticated;
+
+create or replace function public.ski_save_contact(p_trip text, p_name text, p_email text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_trip is null or char_length(btrim(p_trip)) not between 1 and 40 then
+    raise exception 'ungueltiger Trip';
+  end if;
+  if p_name is null or char_length(btrim(p_name)) not between 1 and 40 then
+    raise exception 'ungueltiger Name';
+  end if;
+  if p_email is null or char_length(btrim(p_email)) > 200
+     or btrim(p_email) !~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]{2,}$' then
+    raise exception 'ungueltige E-Mail-Adresse';
+  end if;
+  insert into public.ski_contacts (trip, name, email)
+  values (btrim(p_trip), btrim(p_name), lower(btrim(p_email)))
+  on conflict (trip, name_key)
+  do update set email = excluded.email, name = excluded.name, updated_at = now();
+end;
+$$;
+
+revoke all on function public.ski_save_contact(text, text, text) from public;
+grant execute on function public.ski_save_contact(text, text, text) to anon, authenticated;
+
 -- PostgREST (die REST-Schnittstelle) soll die neuen Tabellen sofort kennen —
 -- sonst meldet die Seite „Could not find the table … in the schema cache".
 notify pgrst, 'reload schema';
