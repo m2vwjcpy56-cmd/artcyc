@@ -17,7 +17,7 @@ export const SKI_TRIP = {
   // Startbildschirm — kurz und knackig, Rest kommt in den Fragen.
   welcome: {
     headline: 'Nächstes Jahr wieder auf die Piste?',
-    text: 'Zwei Termine stehen zur Auswahl. Wir fahren wieder Samstag + Sonntag, plus Freitag oder Montag. Dauert eine Minute.',
+    text: 'Zwei Termine stehen zur Auswahl. Wir fahren wieder Samstag + Sonntag, plus Freitag oder Montag. Die Unterkunft buchen wir für 3 Tage, später anreisen oder früher abreisen geht immer. Dauert eine Minute.',
     button: 'Los geht’s',
   },
 
@@ -76,12 +76,11 @@ export const SKI_TRIP = {
       type: 'choice',
       title: 'Zusätzlich zu Sa + So?',
       short: 'Zusatztag',
-      sub: 'Wir hängen einen Tag dran — Freitag oder Montag.',
+      sub: 'Wir hängen einen Tag dran — Freitag oder Montag. Die Unterkunft ist für 3 Tage gebucht, später anreisen oder früher abreisen geht immer.',
       options: [
         { id: 'fr-mo', label: 'Freitag und Montag', sub: 'Beides möglich', short: 'Fr + Mo' },
         { id: 'fr', label: 'Nur Freitag', short: 'Fr' },
         { id: 'mo', label: 'Nur Montag', short: 'Mo' },
-        { id: 'keiner', label: 'Nur Sa + So', sub: 'Kein Zusatztag', short: '–' },
       ],
     },
     {
