@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { ArrowLeft, ArrowRight, Check, ThumbsUp, Share2, RefreshCw, Pencil } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ThumbsUp, Share2, RefreshCw, Pencil, Trophy } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { SKI_TRIP } from './ski/config.js';
 
@@ -56,6 +56,10 @@ const CSS = `
 .ski-btn:active{transform:scale(.97)}
 .ski-btn:disabled{opacity:.35}
 .ski-btn.ghost{background:transparent;color:rgba(255,255,255,.8);border:1.5px solid rgba(255,255,255,.3)}
+.ski-promo{display:block;text-decoration:none;color:#fff;margin-top:28px;border-radius:22px;padding:20px;background:linear-gradient(135deg,rgba(255,149,0,.22),rgba(255,149,0,.06));border:1px solid rgba(255,149,0,.45);transition:transform .12s;-webkit-tap-highlight-color:transparent}
+.ski-promo:active{transform:scale(.98)}
+.ski-promo .ic{width:44px;height:44px;border-radius:13px;background:#0F172A;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ski-promo .cta{display:inline-flex;align-items:center;gap:6px;margin-top:14px;padding:11px 18px;border-radius:999px;background:#FF9500;color:#fff;font-size:15px;font-weight:700}
 .ski-link{background:none;border:0;color:rgba(255,255,255,.7);font-size:15px;padding:10px 0;display:inline-flex;align-items:center;gap:6px}
 .ski-card{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:20px;padding:16px 18px;margin-top:14px}
 .ski-card h3{margin:0 0 10px;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.6)}
@@ -306,7 +310,22 @@ function Results({ trip, name, votes, suggestions, myKey, dev, onLike, onEdit, o
         <button className="ski-btn ghost" onClick={onEdit}><Pencil size={16} /> Meine Antworten ändern</button>
         <button className="ski-btn ghost" onClick={onShare}>{copied ? <Check size={16} /> : <Share2 size={16} />} {copied ? 'Link kopiert' : 'Link teilen'}</button>
       </div>
-      <div style={{ textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,.35)', marginTop: 24 }}>Aktualisiert sich automatisch · <a href="/" style={{ color: 'inherit' }}>ArtCyc</a></div>
+      {/* Hinweis auf ArtCyc — Zusammenfassung bleibt oben stehen, Link führt zur Homepage */}
+      <a className="ski-promo" href="/">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span className="ic"><Trophy size={22} color="#FF9500" /></span>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: '#FFB340' }}>Gebaut mit ArtCyc</div>
+            <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: '-.01em', marginTop: 2 }}>Entdecke die ArtCyc App</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 15, lineHeight: 1.4, color: 'rgba(255,255,255,.78)', marginTop: 10 }}>
+          Das Coaching-Tool für Kunstradsport: Training protokollieren, Wertungsbögen scannen, Fortschritt sehen. Für iOS und im Browser.
+        </div>
+        <span className="cta">Zur ArtCyc-Website <ArrowRight size={16} strokeWidth={2.6} /></span>
+      </a>
+
+      <div style={{ textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,.35)', marginTop: 24 }}>Aktualisiert sich automatisch</div>
     </div>
   );
 }
