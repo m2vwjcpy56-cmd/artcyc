@@ -156,7 +156,11 @@ function seed() {
       { id: uuid(), team_id: T1, athlete_id: A1, role: 'captain', added_by: ME, created_at: now },
       { id: uuid(), team_id: T1, athlete_id: A2, role: 'member', added_by: ME, created_at: now },
     ],
-    athlete_coaches: [],
+    // Ein Mit-Trainer, damit der Trainer-Bereich im Demo-Modus überhaupt Zeilen hat
+    // (sonst bleibt die Rückfrage beim Entfernen ungeprüft).
+    athlete_coaches: [
+      { athlete_id: A1, coach_id: OTHER_COACH, is_admin: false, added_at: '2024-02-01T10:00:00Z' },
+    ],
     coach_invites: [],
     exercises, sessions, programs, competitions,
     feedback_entries: [],

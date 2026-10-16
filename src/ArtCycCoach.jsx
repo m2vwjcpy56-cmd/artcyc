@@ -9356,6 +9356,9 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [info, setInfo] = useState('');
+  // Trainer, der entfernt werden soll — erst nach Rückfrage. Vorher lief das über
+  // das Browser-`confirm`; der Rest der App fragt über das eigene Blatt.
+  const [pendingRemove, setPendingRemove] = useState(null);
 
   const reload = useCallback(async () => {
     const [c, i] = await Promise.all([
@@ -9381,34 +9384,34 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
     // profiles.display_name des Trainers, sobald er den Code einlöst.
     const { error } = await generateCoachInvite(athlete.id, null);
     if (error) setErr(error.message);
-    else setInfo('Code generiert. Gib ihn deinem Trainer.');
+    else setInfo(t('coaches.codeGenerated'));
     await reload();
     setBusy(false);
   };
 
-  const onRemoveCoach = async (coachId, coachName) => {
-    if (!confirm('Trainer „' + coachName + '" entfernen? Er verliert dann Zugriff auf deine Daten.')) return;
+  const onRemoveCoach = async (coachId) => {
+    setPendingRemove(null);
     setBusy(true); setErr(''); setInfo('');
     const { error } = await removeAthleteCoach(athlete.id, coachId);
     if (error) setErr(error.message);
-    else setInfo('Trainer entfernt.');
+    else setInfo(t('coaches.removed'));
     await reload();
     if (onRefresh) await onRefresh();
     setBusy(false);
   };
 
   const onToggleAdmin = async (coachId, next, name) => {
-    if (next && !confirm('„' + name + '" volle Rechte geben? Der Trainer darf dann ALLE Daten dieses Sportlers ändern und löschen — nicht nur eigene Einträge.')) return;
+    if (next && !confirm(t('coaches.adminConfirm', { name }))) return;
     setBusy(true); setErr(''); setInfo('');
     const { error } = await setCoachAdmin(athlete.id, coachId, next);
     if (error) setErr(error.message);
-    else setInfo(next ? 'Volle Rechte erteilt.' : 'Volle Rechte entzogen.');
+    else setInfo(t(next ? 'coaches.adminGranted' : 'coaches.adminRevoked'));
     await reload();
     setBusy(false);
   };
 
   const onDeleteInvite = async (id) => {
-    if (!confirm('Code zurückziehen? Wer ihn hat, kann sich dann nicht mehr verknüpfen.')) return;
+    if (!confirm(t('coaches.inviteRevokeConfirm'))) return;
     setBusy(true); setErr(''); setInfo('');
     await deleteCoachInvite(id);
     await reload();
@@ -9416,15 +9419,15 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
   };
 
   const onCopyCode = async (code) => {
-    try { await navigator.clipboard.writeText(code); setInfo('Code kopiert.'); }
-    catch { setErr('Kopieren fehlgeschlagen.'); }
+    try { await navigator.clipboard.writeText(code); setInfo(t('coaches.codeCopied')); }
+    catch { setErr(t('coaches.copyFailed')); }
   };
 
   return (
     <div id={anchorId} style={{ scrollMarginTop: 'calc(env(safe-area-inset-top) + 64px)' }}>
     <IOSList
-      header={'Meine Trainer · ' + athlete.name}
-      footer="Codes erneuern sich automatisch alle 24 Stunden, solange sie nicht eingelöst sind.">
+      header={t('coaches.myCoaches', { name: athlete.name })}
+      footer={t('coaches.codeFooter')}>
       {coaches.length === 0 && invites.length === 0 && (
         <div className="px-4 py-3.5 flex items-center gap-3">
           <Shield size={18} className="text-[#8E8E93]" />
@@ -9441,19 +9444,19 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
                 <div className="font-medium text-[15px] truncate">{name}</div>
                 <div className="text-[11px] text-[#8E8E93]">verknüpft seit {fmtDateTime(c.added_at)}</div>
               </div>
-              <button onClick={() => onRemoveCoach(c.coach_id, name)} disabled={busy}
+              <button onClick={() => setPendingRemove({ id: c.coach_id, name })} disabled={busy}
                 className="text-[14px] text-[#FF3B30] px-3 py-1.5 rounded-full font-medium active:opacity-50 disabled:opacity-40 shrink-0">
-                Entfernen
+                {t('common.remove')}
               </button>
             </div>
             <div className="mt-2.5 flex items-center justify-between gap-3">
               <span className="text-[13px] text-[#8E8E93]">
-                {c.is_admin ? 'Volle Rechte — darf alles ändern/löschen' : 'Darf nur neu erfassen + Eigenes (24 h)'}
+                {t(c.is_admin ? 'coaches.rightsFull' : 'coaches.rightsLimited')}
               </span>
               <button onClick={() => onToggleAdmin(c.coach_id, !c.is_admin, name)} disabled={busy}
                 className={'text-[13px] px-3 py-1.5 rounded-full font-medium active:opacity-60 disabled:opacity-40 shrink-0 ' +
                   (c.is_admin ? 'bg-[#FF9500] text-white' : 'bg-[#E5E5EA] dark:bg-[#3A3A3C] text-[#3A3A3C] dark:text-white')}>
-                {c.is_admin ? '✓ Volle Rechte' : 'Volle Rechte geben'}
+                {t(c.is_admin ? 'coaches.rightsFullBadge' : 'coaches.giveFullRights')}
               </button>
             </div>
           </div>
@@ -9465,10 +9468,10 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
           <div className="min-w-0 flex-1">
             <div className="font-mono text-[15px] font-semibold tracking-wider">{inv.claim_code}</div>
             <div className="text-[11px] text-[#8E8E93] truncate">
-              Wartet auf Einlösung · aktualisiert {fmtDateTime(inv.claim_code_rotated_at)}
+              {t('coaches.awaitingRedeem', { time: fmtDateTime(inv.claim_code_rotated_at) })}
             </div>
           </div>
-          <button onClick={() => onCopyCode(inv.claim_code)} className="p-2 text-[#007AFF] active:opacity-60" aria-label="Code kopieren">
+          <button onClick={() => onCopyCode(inv.claim_code)} className="p-2 text-[#007AFF] active:opacity-60" aria-label={t('coaches.copyCode')}>
             <Copy size={14} />
           </button>
           <button onClick={() => onDeleteInvite(inv.id)} disabled={busy} className="p-2 text-[#FF3B30] active:opacity-60" aria-label={t('common.deleteCode')}>
@@ -9484,6 +9487,14 @@ function MyCoachesSection({ athlete, profilesById, onRefresh, anchorId }) {
       {err && <div className="px-4 py-2 text-[12px] text-[#FF3B30]">✗ {err}</div>}
       {info && !err && <div className="px-4 py-2 text-[12px] text-[#34C759]">✓ {info}</div>}
     </IOSList>
+    {pendingRemove && (
+      <DeleteConfirmModal
+        title={t('coaches.removeTitle', { name: pendingRemove.name })}
+        message={t('coaches.removeMessage', { athlete: athlete.name })}
+        confirmLabel={t('common.remove')}
+        onConfirm={() => onRemoveCoach(pendingRemove.id)}
+        onCancel={() => setPendingRemove(null)} />
+    )}
     </div>
   );
 }
