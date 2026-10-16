@@ -24,6 +24,7 @@ export const SKI_TRIP = {
   // Fragen in Reihenfolge. type:
   //   'name'   → Namens-Eingabe
   //   'choice' → genau eine Antwort (große Kacheln, geht automatisch weiter)
+  //   'email'  → E-Mail-Adresse, optional (privat in ski_contacts, nicht öffentlich)
   //   'text'   → freie Eingabe, optional (wird als Vorschlag gespeichert)
   // short = Spaltentitel in der Ergebnis-Tabelle.
   // Antworten: { id, label, sub?, short? (Kurzform für Ergebnis-Seite), emoji? }
@@ -82,6 +83,13 @@ export const SKI_TRIP = {
         { id: 'fr', label: 'Nur Freitag', short: 'Fr' },
         { id: 'mo', label: 'Nur Montag', short: 'Mo' },
       ],
+    },
+    {
+      id: 'email',
+      type: 'email',
+      title: 'Deine E-Mail-Adresse?',
+      sub: 'Optional. Nur für Infos zu Unterkunft und Ablauf — wird nirgends öffentlich angezeigt.',
+      optional: true,
     },
     {
       id: 'vorschlag',

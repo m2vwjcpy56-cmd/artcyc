@@ -12,6 +12,7 @@ import { SKI_TRIP } from './ski/config.js';
 // =============================================================
 
 const NAME_KEY = 'artcyc:ski:name';
+const EMAIL_KEY = 'artcyc:ski:email';
 const DEVICE_KEY = 'artcyc:ski:device';
 const DONE_KEY = 'artcyc:ski:done';
 const LIKES_POLL = 'likes';
@@ -136,6 +137,26 @@ function ChoiceStep({ q, value, onPick }) {
         ))}
       </div>
     </div>
+  );
+}
+
+function EmailStep({ q, value, onChange, onNext }) {
+  const v = value.trim();
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
+  const bad = v.length > 0 && !valid;
+  return (
+    <form className="ski-step" onSubmit={e => { e.preventDefault(); if (!bad) onNext(valid ? v : ''); }}>
+      <h2 className="ski-h2">{q.title}</h2>
+      {q.sub && <p className="ski-sub">{q.sub}</p>}
+      <input className="ski-input" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+        value={value} onChange={e => onChange(e.target.value)} placeholder="name@beispiel.de" maxLength={200} enterKeyHint="next" />
+      {bad && <div style={{ marginTop: 8, fontSize: 14, color: '#FBBF24' }}>Das sieht noch nicht nach einer E-Mail-Adresse aus.</div>}
+      <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <button type="submit" className="ski-btn" disabled={bad} style={{ width: '100%' }}>
+          {valid ? 'Weiter' : 'Überspringen'} <ArrowRight size={18} strokeWidth={2.6} />
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -338,6 +359,7 @@ export default function Ski() {
   const [name, setName] = useState(() => lsGet(NAME_KEY) || '');
   const [answers, setAnswers] = useState({});          // { [qid]: value }
   const [text, setText] = useState('');
+  const [email, setEmail] = useState(() => lsGet(EMAIL_KEY) || '');
   const [screen, setScreen] = useState(() => (lsGet(DONE_KEY) === '1' && lsGet(NAME_KEY)) ? 'results' : 'welcome'); // welcome | q | results
   const [step, setStep] = useState(0);
   const [votes, setVotes] = useState([]);
@@ -411,6 +433,16 @@ export default function Ski() {
     next();
   };
 
+  // E-Mail privat speichern: eigene Tabelle ohne Lesezugriff, nur über die
+  // Datenbank-Funktion ski_save_contact beschreibbar (siehe ski-planung-setup.sql).
+  const saveEmail = async (value) => {
+    lsSet(EMAIL_KEY, value);
+    next();
+    if (!value || !name.trim()) return;
+    const { error } = await supabase.rpc('ski_save_contact', { p_trip: trip.slug, p_name: name.trim(), p_email: value });
+    if (error) { setStatus('error'); setErrMsg(error.message); }
+  };
+
   const finish = async () => {
     lsSet(NAME_KEY, name.trim());
     lsSet(DONE_KEY, '1');
@@ -467,6 +499,7 @@ export default function Ski() {
 
         {screen === 'q' && q.type === 'name' && <NameStep key={q.id} q={q} value={name} onChange={setName} onNext={() => { lsSet(NAME_KEY, name.trim()); next(); }} />}
         {screen === 'q' && q.type === 'choice' && <ChoiceStep key={q.id} q={q} value={answers[q.id]} onPick={(id) => pick(q, id)} />}
+        {screen === 'q' && q.type === 'email' && <EmailStep key={q.id} q={q} value={email} onChange={setEmail} onNext={saveEmail} />}
         {screen === 'q' && q.type === 'text' && <TextStep key={q.id} q={q} value={text} onChange={setText} onNext={finish} />}
 
         {screen === 'results' && (
