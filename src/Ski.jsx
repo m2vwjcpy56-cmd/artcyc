@@ -12,7 +12,6 @@ import { SKI_TRIP } from './ski/config.js';
 // =============================================================
 
 const NAME_KEY = 'artcyc:ski:name';
-const EMAIL_KEY = 'artcyc:ski:email';
 const DEVICE_KEY = 'artcyc:ski:device';
 const DONE_KEY = 'artcyc:ski:done';
 const LIKES_POLL = 'likes';
@@ -30,6 +29,21 @@ function deviceId() {
 }
 function nameKey(n) { return (n || '').trim().toLowerCase(); }
 function cx(...a) { return a.filter(Boolean).join(' '); }
+
+// Anzeigename: Vorname, bei gleichen Vornamen in der Gruppe plus Initiale
+// („Jonas B.", „Jonas M."). Namen außerhalb der Liste bleiben wie eingegeben.
+function makeShort(members) {
+  const first = (n) => n.trim().split(/\s+/)[0];
+  const count = {};
+  for (const m of members) count[first(m).toLowerCase()] = (count[first(m).toLowerCase()] || 0) + 1;
+  const known = new Map(members.map(m => [nameKey(m), m]));
+  return (name) => {
+    const full = known.get(nameKey(name));
+    if (!full) return name;
+    const parts = full.trim().split(/\s+/);
+    return count[parts[0].toLowerCase()] > 1 && parts[1] ? `${parts[0]} ${parts[1][0]}.` : parts[0];
+  };
+}
 
 // Eigene Styles — bewusst unabhängig von index.css/Dark-Mode-Overrides der App.
 const CSS = `
@@ -50,6 +64,13 @@ const CSS = `
 .ski-opt .e{font-size:24px;width:32px;text-align:center;flex-shrink:0}
 .ski-opt .s{display:block;font-size:14px;font-weight:400;opacity:.7;margin-top:2px}
 .ski-opt .k{margin-left:auto;width:26px;height:26px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:#0B1F3A;color:#fff;flex-shrink:0}
+.ski-names-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:22px}
+.ski-name{position:relative;text-align:left;padding:12px 14px;border-radius:16px;border:1.5px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;transition:transform .12s,background .15s;-webkit-tap-highlight-color:transparent}
+.ski-name:active{transform:scale(.97)}
+.ski-name.on{background:#fff;color:#0B1F3A;border-color:#fff}
+.ski-name .f{display:block;font-size:17px;font-weight:700;line-height:1.15}
+.ski-name .l{display:block;font-size:13px;opacity:.65;margin-top:1px}
+.ski-name .v{position:absolute;top:8px;right:8px;width:18px;height:18px;border-radius:999px;background:#4ADE80;color:#0B1F3A;display:flex;align-items:center;justify-content:center}
 .ski-input{width:100%;margin-top:28px;padding:16px 18px;border-radius:18px;border:1.5px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;font-size:22px;font-weight:600;outline:none}
 .ski-input::placeholder{color:rgba(255,255,255,.4);font-weight:500}
 .ski-input:focus{border-color:#fff;background:rgba(255,255,255,.14)}
@@ -99,20 +120,38 @@ function Welcome({ trip, onStart, known }) {
   );
 }
 
-function NameStep({ q, value, onChange, onNext }) {
-  const ref = useRef(null);
-  useEffect(() => { const t = setTimeout(() => ref.current?.focus(), 350); return () => clearTimeout(t); }, []);
-  const ok = value.trim().length > 0;
+function NameStep({ q, members, voted, value, onPick }) {
+  const [other, setOther] = useState(false);
+  const [custom, setCustom] = useState('');
+  const [flash, setFlash] = useState(null);
+  const pick = (n) => { setFlash(n); setTimeout(() => onPick(n), 220); };
+  const cur = nameKey(flash || value);
   return (
-    <form className="ski-step" onSubmit={e => { e.preventDefault(); if (ok) onNext(); }}>
+    <div className="ski-step" style={{ justifyContent: 'flex-start', paddingTop: 28 }}>
       <h2 className="ski-h2">{q.title}</h2>
       {q.sub && <p className="ski-sub">{q.sub}</p>}
-      <input ref={ref} className="ski-input" value={value} onChange={e => onChange(e.target.value)}
-        placeholder="Dein Vorname" autoComplete="given-name" autoCapitalize="words" enterKeyHint="next" maxLength={40} />
-      <div style={{ marginTop: 20 }}>
-        <button type="submit" className="ski-btn" disabled={!ok} style={{ width: '100%' }}>Weiter <ArrowRight size={18} strokeWidth={2.6} /></button>
+      <div className="ski-names-grid">
+        {[...members].sort((a, b) => a.localeCompare(b, 'de')).map(n => {
+          const [f, ...rest] = n.split(' ');
+          return (
+            <button key={n} type="button" className={cx('ski-name', cur === nameKey(n) && 'on')} onClick={() => pick(n)}>
+              <span className="f">{f}</span>
+              <span className="l">{rest.join(' ')}</span>
+              {voted.has(nameKey(n)) && <span className="v"><Check size={11} strokeWidth={3.2} /></span>}
+            </button>
+          );
+        })}
       </div>
-    </form>
+      {voted.size > 0 && <div className="ski-names" style={{ marginTop: 10 }}>✓ = hat schon abgestimmt. Antippen, um die Antworten zu ändern.</div>}
+      {!other ? (
+        <button type="button" className="ski-link" style={{ marginTop: 14, justifyContent: 'center' }} onClick={() => setOther(true)}>Mein Name fehlt</button>
+      ) : (
+        <form onSubmit={e => { e.preventDefault(); if (custom.trim()) onPick(custom.trim()); }} style={{ marginTop: 6 }}>
+          <input className="ski-input" autoFocus value={custom} onChange={e => setCustom(e.target.value)} placeholder="Vor- und Nachname" autoCapitalize="words" maxLength={40} enterKeyHint="next" />
+          <button type="submit" className="ski-btn" disabled={!custom.trim()} style={{ width: '100%', marginTop: 12 }}>Weiter <ArrowRight size={18} strokeWidth={2.6} /></button>
+        </form>
+      )}
+    </div>
   );
 }
 
@@ -140,26 +179,6 @@ function ChoiceStep({ q, value, onPick }) {
   );
 }
 
-function EmailStep({ q, value, onChange, onNext }) {
-  const v = value.trim();
-  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
-  const bad = v.length > 0 && !valid;
-  return (
-    <form className="ski-step" onSubmit={e => { e.preventDefault(); if (!bad) onNext(valid ? v : ''); }}>
-      <h2 className="ski-h2">{q.title}</h2>
-      {q.sub && <p className="ski-sub">{q.sub}</p>}
-      <input className="ski-input" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" spellCheck={false}
-        value={value} onChange={e => onChange(e.target.value)} placeholder="name@beispiel.de" maxLength={200} enterKeyHint="next" />
-      {bad && <div style={{ marginTop: 8, fontSize: 14, color: '#FBBF24' }}>Das sieht noch nicht nach einer E-Mail-Adresse aus.</div>}
-      <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <button type="submit" className="ski-btn" disabled={bad} style={{ width: '100%' }}>
-          {valid ? 'Weiter' : 'Überspringen'} <ArrowRight size={18} strokeWidth={2.6} />
-        </button>
-      </div>
-    </form>
-  );
-}
-
 function TextStep({ q, value, onChange, onNext }) {
   return (
     <form className="ski-step" onSubmit={e => { e.preventDefault(); onNext(); }}>
@@ -175,11 +194,11 @@ function TextStep({ q, value, onChange, onNext }) {
   );
 }
 
-function Results({ trip, name, votes, suggestions, myKey, dev, onLike, onEdit, onShare, copied, status, onReload }) {
+function Results({ trip, short, name, votes, suggestions, myKey, dev, onLike, onEdit, onShare, copied, status, onReload }) {
   const qs = trip.questions;
   const r = trip.results;
   const byQ = (qid) => votes.filter(v => v.poll_id === qid);
-  const nameOf = (v) => v.name;
+  const nameOf = (v) => short(v.name);
   const people = useMemo(() => {
     const m = new Map();
     for (const v of votes) if (v.poll_id !== LIKES_POLL && !m.has(v.name_key)) m.set(v.name_key, v.name);
@@ -202,7 +221,7 @@ function Results({ trip, name, votes, suggestions, myKey, dev, onLike, onEdit, o
   const choices = qs.filter(q => q.type === 'choice' && q.kind !== 'availability');
   const likes = useMemo(() => {
     const m = {};
-    for (const v of votes) if (v.poll_id === LIKES_POLL) for (const id of (v.answers?.selected || [])) (m[id] ||= []).push({ name: v.name, mine: v.name_key === myKey });
+    for (const v of votes) if (v.poll_id === LIKES_POLL) for (const id of (v.answers?.selected || [])) (m[id] ||= []).push({ name: short(v.name), mine: v.name_key === myKey });
     return m;
   }, [votes, myKey]);
   const sortedSug = [...suggestions].sort((a, b) => (likes[b.id]?.length || 0) - (likes[a.id]?.length || 0) || a.created_at.localeCompare(b.created_at));
@@ -214,7 +233,7 @@ function Results({ trip, name, votes, suggestions, myKey, dev, onLike, onEdit, o
 
   return (
     <div className="ski-step" style={{ justifyContent: 'flex-start' }}>
-      <h2 className="ski-h2">{name.trim() ? (r.thanks || 'Danke, {name}!').replace('{name}', name.trim()) + ' 🙌' : 'Zwischenstand'}</h2>
+      <h2 className="ski-h2">{name.trim() ? (r.thanks || 'Danke, {name}!').replace('{name}', name.trim().split(/\s+/)[0]) + ' 🙌' : 'Zwischenstand'}</h2>
       <p className="ski-sub">{r.text}</p>
 
       {status === 'error' && (
@@ -297,7 +316,7 @@ function Results({ trip, name, votes, suggestions, myKey, dev, onLike, onEdit, o
             <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: i ? 12 : 0 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 16, fontWeight: 600 }}>{s.text}</div>
-                <div className="ski-names">von {s.name}{l.length > 0 && <> · 👍 {l.map(x => x.name).join(', ')}</>}</div>
+                <div className="ski-names">von {short(s.name)}{l.length > 0 && <> · 👍 {l.map(x => x.name).join(', ')}</>}</div>
               </div>
               <button type="button" className={cx('ski-like', on && 'on')} onClick={() => onLike(s.id)} aria-label="Daumen hoch">
                 <ThumbsUp size={15} strokeWidth={2.4} /> {l.length}
@@ -317,7 +336,7 @@ function Results({ trip, name, votes, suggestions, myKey, dev, onLike, onEdit, o
               <tbody>
                 {people.map(p => (
                   <tr key={p.k}>
-                    <td style={{ fontWeight: 600 }}>{p.n}</td>
+                    <td style={{ fontWeight: 600 }}>{short(p.n)}</td>
                     {overviewCols.map(q => { const v = answerOf(p.k, q.id); return <td key={q.id} style={{ color: tone(q, v), fontWeight: 700 }}>{shortOf(q, v)}</td>; })}
                   </tr>
                 ))}
@@ -359,7 +378,6 @@ export default function Ski() {
   const [name, setName] = useState(() => lsGet(NAME_KEY) || '');
   const [answers, setAnswers] = useState({});          // { [qid]: value }
   const [text, setText] = useState('');
-  const [email, setEmail] = useState(() => lsGet(EMAIL_KEY) || '');
   const [screen, setScreen] = useState(() => (lsGet(DONE_KEY) === '1' && lsGet(NAME_KEY)) ? 'results' : 'welcome'); // welcome | q | results
   const [step, setStep] = useState(0);
   const [votes, setVotes] = useState([]);
@@ -368,6 +386,9 @@ export default function Ski() {
   const [errMsg, setErrMsg] = useState('');
   const [copied, setCopied] = useState(false);
   const myKey = nameKey(name);
+  const members = trip.members || [];
+  const short = useMemo(() => makeShort(members), [members]);
+  const voted = useMemo(() => new Set(votes.filter(v => v.poll_id !== LIKES_POLL).map(v => v.name_key)), [votes]);
 
   useEffect(() => {
     document.title = `${trip.title} · Abstimmung`;
@@ -433,16 +454,6 @@ export default function Ski() {
     next();
   };
 
-  // E-Mail privat speichern: eigene Tabelle ohne Lesezugriff, nur über die
-  // Datenbank-Funktion ski_save_contact beschreibbar (siehe ski-planung-setup.sql).
-  const saveEmail = async (value) => {
-    lsSet(EMAIL_KEY, value);
-    next();
-    if (!value || !name.trim()) return;
-    const { error } = await supabase.rpc('ski_save_contact', { p_trip: trip.slug, p_name: name.trim(), p_email: value });
-    if (error) { setStatus('error'); setErrMsg(error.message); }
-  };
-
   const finish = async () => {
     lsSet(NAME_KEY, name.trim());
     lsSet(DONE_KEY, '1');
@@ -497,13 +508,12 @@ export default function Ski() {
 
         {screen === 'welcome' && <Welcome trip={trip} onStart={start} known={!!lsGet(NAME_KEY)} />}
 
-        {screen === 'q' && q.type === 'name' && <NameStep key={q.id} q={q} value={name} onChange={setName} onNext={() => { lsSet(NAME_KEY, name.trim()); next(); }} />}
+        {screen === 'q' && q.type === 'name' && <NameStep key={q.id} q={q} members={members} voted={voted} value={name} onPick={(n) => { setAnswers({}); setName(n); lsSet(NAME_KEY, n); next(); }} />}
         {screen === 'q' && q.type === 'choice' && <ChoiceStep key={q.id} q={q} value={answers[q.id]} onPick={(id) => pick(q, id)} />}
-        {screen === 'q' && q.type === 'email' && <EmailStep key={q.id} q={q} value={email} onChange={setEmail} onNext={saveEmail} />}
         {screen === 'q' && q.type === 'text' && <TextStep key={q.id} q={q} value={text} onChange={setText} onNext={finish} />}
 
         {screen === 'results' && (
-          <Results trip={trip} name={name} votes={votes} suggestions={suggestions} myKey={myKey} dev={dev}
+          <Results trip={trip} short={short} name={name} votes={votes} suggestions={suggestions} myKey={myKey} dev={dev}
             onLike={like} onEdit={() => start(false)} onShare={share} copied={copied} status={status} onReload={load} />
         )}
       </div>

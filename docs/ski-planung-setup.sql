@@ -80,7 +80,9 @@ grant select, insert, update, delete on public.ski_votes       to anon, authenti
 grant select, insert, delete         on public.ski_suggestions to anon, authenticated;
 
 -- =============================================================
--- E-Mail-Adressen (privat). Kein Lesezugriff für anon/authenticated —
+-- E-Mail-Adressen (privat) — aktuell ungenutzt, die Frage wurde wieder
+-- aus dem Fragebogen genommen. Tabelle/Funktion bleiben bestehen.
+-- Kein Lesezugriff für anon/authenticated —
 -- einsehbar nur im Supabase-Dashboard. Schreiben ausschließlich über die
 -- Funktion ski_save_contact (security definer), damit niemand fremde
 -- Adressen auslesen kann.
