@@ -2,8 +2,9 @@
 // Ski-Planung — Inhalte der Unterseite /ski
 //
 // Alles, was auf der Seite steht (Titel, Infos, Abstimmungen), wird HIER
-// gepflegt. Die Stimmen und Kommentare selbst liegen in Supabase
-// (Tabellen ski_votes / ski_comments, siehe docs/migration-ski-planung.sql).
+// gepflegt. Die Stimmen, Vorschläge und Kommentare selbst liegen in Supabase
+// (Tabellen ski_votes / ski_suggestions / ski_comments,
+// siehe docs/migration-ski-planung.sql).
 //
 // Ändert sich der Trip grundlegend (neues Jahr), einfach `slug` hochzählen —
 // dann starten Abstimmung und Kommentare leer, die alten Daten bleiben erhalten.
@@ -14,17 +15,20 @@ export const SKI_TRIP = {
   slug: 'ski-2027',
 
   title: 'Skifahren 2027',
-  subtitle: 'Gemeinsame Planung — Termin, Ziel, wer ist dabei',
+  subtitle: 'Planung Saison 26/27 — Termin, Zusatztag, wer ist dabei',
 
-  // Kurze Einleitung oben auf der Seite. Zeilen = Absätze.
+  // Einleitung oben auf der Seite. Zeilen = Absätze.
   intro: [
-    'Hier stimmen wir ab, wann und wohin es geht. Trag deinen Namen ein, klick dich durch die Fragen — fertig.',
-    'Du kannst deine Antworten jederzeit ändern, einfach die Seite wieder öffnen.',
+    'Hallo zusammen, die Planung für nächstes Jahr soll langsam Fahrt aufnehmen. Es stehen zwei Termine zur Auswahl. Wir planen wieder Samstag + Sonntag zu gehen, plus Montag oder Freitag.',
+    'Bitte stimmt schnellstmöglich ab, ob ihr dieses Jahr dabei seid und an welchen Tagen ihr könnt.',
+    'Anschließend schaue ich nach einer Unterkunft und abhängig davon auch, in welches Skigebiet wir dieses Jahr gehen. Vorschläge gerne erwünscht — einfach unten eintragen.',
   ],
 
-  // Info-Block (Fakten, die schon feststehen). Leer lassen, wenn noch nichts fix ist.
+  // Info-Block (Fakten, die schon feststehen).
   infos: [
-    { label: 'Stand', value: 'Infos folgen in Kürze' },
+    { label: 'Wann', value: 'Januar 2027 — Sa + So, plus Fr oder Mo' },
+    { label: 'Unterkunft', value: 'Wird nach der Abstimmung gesucht' },
+    { label: 'Skigebiet', value: 'Offen — Vorschläge erwünscht' },
   ],
 
   // Abstimmungen. type:
@@ -32,42 +36,54 @@ export const SKI_TRIP = {
   //   'single'       → genau eine Option wählen
   //   'multi'        → mehrere Optionen möglich
   // Optionen: { id, label, short? (Kurzform für die Übersichtstabelle), sub? }
+  // overview: true → Frage erscheint als Spalte in der Teilnehmer-Übersicht
+  //                  (short = Spaltentitel).
   polls: [
+    {
+      id: 'dabei',
+      type: 'single',
+      title: 'Bist du 2027 dabei?',
+      short: 'Dabei?',
+      overview: true,
+      options: [
+        { id: 'ja', label: 'Ja, ich bin dabei', short: 'Ja' },
+        { id: 'vielleicht', label: 'Vielleicht — weiß ich noch nicht', short: '?' },
+        { id: 'nein', label: 'Nein, dieses Jahr nicht', short: 'Nein' },
+      ],
+    },
     {
       id: 'termin',
       type: 'availability',
-      title: 'Wann passt es dir?',
-      hint: 'Pro Termin: Ja, Vielleicht oder Nein.',
+      title: 'Welches Wochenende passt dir?',
+      hint: 'Pro Wochenende: Ja, Vielleicht oder Nein. Gerne beide, wenn beides geht.',
+      overview: true,
       options: [
-        { id: 'jan-15', label: 'Fr 15. – So 17. Jan 2027', short: '15.–17.1.', sub: 'Wochenende' },
-        { id: 'jan-22', label: 'Fr 22. – So 24. Jan 2027', short: '22.–24.1.', sub: 'Wochenende' },
-        { id: 'feb-05', label: 'Fr 05. – So 07. Feb 2027', short: '5.–7.2.', sub: 'Wochenende' },
-        { id: 'mar-05', label: 'Fr 05. – So 07. Mär 2027', short: '5.–7.3.', sub: 'Wochenende' },
+        { id: 'jan-23', label: 'Sa 23. – So 24. Jan 2027', short: '23./24.1.', sub: 'Zusatztag: Fr 22. oder Mo 25.' },
+        { id: 'jan-30', label: 'Sa 30. – So 31. Jan 2027', short: '30./31.1.', sub: 'Zusatztag: Fr 29. oder Mo 1.2.' },
       ],
     },
     {
-      id: 'dauer',
+      id: 'zusatztag',
       type: 'single',
-      title: 'Wie lange?',
+      title: 'Zusätzlich zu Sa + So kann ich …',
+      short: 'Zusatztag',
+      hint: 'Falls das je nach Wochenende unterschiedlich ist: kurz in die Kommentare schreiben.',
+      overview: true,
       options: [
-        { id: 'we', label: 'Wochenende (2 Nächte)' },
-        { id: 'we-lang', label: 'Verlängertes Wochenende (3–4 Nächte)' },
-        { id: 'woche', label: 'Eine Woche' },
-      ],
-    },
-    {
-      id: 'ziel',
-      type: 'multi',
-      title: 'Wohin?',
-      hint: 'Alles ankreuzen, was für dich in Frage kommt.',
-      options: [
-        { id: 'allgaeu', label: 'Allgäu / Oberstdorf' },
-        { id: 'tirol', label: 'Tirol' },
-        { id: 'suedtirol', label: 'Südtirol' },
-        { id: 'egal', label: 'Mir egal — Hauptsache Schnee' },
+        { id: 'fr-mo', label: 'Freitag UND Montag', short: 'Fr + Mo' },
+        { id: 'fr', label: 'Nur Freitag', short: 'Fr' },
+        { id: 'mo', label: 'Nur Montag', short: 'Mo' },
+        { id: 'keiner', label: 'Keinen Zusatztag — nur Sa + So', short: '–' },
       ],
     },
   ],
+
+  // Vorschlagsliste: jeder kann Vorschläge eintragen, andere geben Daumen hoch.
+  suggestions: {
+    title: 'Vorschläge Skigebiet & Unterkunft',
+    hint: 'Eigene Vorschläge eintragen, gute Ideen mit Daumen hoch unterstützen.',
+    placeholder: 'z. B. Zillertal Arena, Heustadl …',
+  },
 
   // Kommentare/Notizen unter den Abstimmungen erlauben.
   comments: true,

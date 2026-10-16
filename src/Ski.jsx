@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Snowflake, Check, HelpCircle, X, Users, MessageCircle, Send, Info,
-  RefreshCw, Trash2, Share2,
+  RefreshCw, Trash2, Share2, ThumbsUp, Lightbulb, Plus,
 } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { SKI_TRIP } from './ski/config.js';
@@ -186,49 +186,111 @@ function ChoicePoll({ poll, answers, onChange, votes, disabled }) {
   );
 }
 
-// ---- Teilnehmer-Übersicht (Matrix für die Terminfrage) -------------------
+// ---- Teilnehmer-Übersicht (Matrix: alle Fragen mit overview: true) --------
 function Overview({ trip, votes }) {
-  const avail = trip.polls.find(p => p.type === 'availability');
+  const cols = useMemo(() => {
+    const c = [];
+    for (const p of trip.polls) {
+      if (!p.overview) continue;
+      if (p.type === 'availability') for (const o of p.options) c.push({ key: p.id + ':' + o.id, label: o.short || o.label, poll: p, option: o });
+      else c.push({ key: p.id, label: p.short || p.title, poll: p });
+    }
+    return c;
+  }, [trip]);
   const names = useMemo(() => {
     const set = new Map();
     for (const v of votes) if (!set.has(v.name_key)) set.set(v.name_key, v.name);
     return Array.from(set.values()).sort((a, b) => a.localeCompare(b, 'de'));
   }, [votes]);
-  if (names.length === 0) return null;
-  const byName = (name, pollId) => votes.find(v => v.name === name && v.poll_id === pollId)?.answers || {};
-  const mark = (a) => a === 'yes' ? <Check size={14} strokeWidth={3} className="text-[#34C759]" />
+  if (names.length === 0 || cols.length === 0) return null;
+  const answersOf = (name, pollId) => votes.find(v => v.name === name && v.poll_id === pollId)?.answers || {};
+  const availMark = (a) => a === 'yes' ? <Check size={14} strokeWidth={3} className="text-[#34C759]" />
     : a === 'maybe' ? <HelpCircle size={14} strokeWidth={2.6} className="text-[#FF9500]" />
     : a === 'no' ? <X size={14} strokeWidth={3} className="text-[#FF3B30]" />
     : <span className="text-[#C7C7CC]">–</span>;
+  const cell = (name, col) => {
+    const a = answersOf(name, col.poll.id);
+    if (col.option) return availMark(a[col.option.id]);
+    const sel = Array.isArray(a.selected) ? a.selected : [];
+    if (sel.length === 0) return <span className="text-[#C7C7CC]">–</span>;
+    const txt = sel.map(id => { const o = col.poll.options.find(x => x.id === id); return o ? (o.short || o.label) : id; }).join(', ');
+    const tone = col.poll.id === 'dabei' ? (sel[0] === 'ja' ? 'text-[#34C759] font-semibold' : sel[0] === 'nein' ? 'text-[#FF3B30]' : 'text-[#FF9500]') : 'text-slate-900';
+    return <span className={tone}>{txt}</span>;
+  };
   return (
-    <Card header={`Wer ist dabei (${names.length})`}>
-      {avail ? (
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-[13px]">
-            <thead>
-              <tr className="text-[#8E8E93]">
-                <th className="text-left font-medium px-4 py-2 sticky left-0 bg-white">Name</th>
-                {avail.options.map(o => (
-                  <th key={o.id} className="font-medium px-2 py-2 whitespace-nowrap text-center">{o.short || o.label.replace(/\s*\d{4}$/, '')}</th>
-                ))}
+    <Card header={`Wer ist dabei (${names.length})`} footer="Übersicht aller Antworten — zum Scrollen nach rechts wischen.">
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-[13px]">
+          <thead>
+            <tr className="text-[#8E8E93]">
+              <th className="text-left font-medium px-4 py-2 sticky left-0 bg-white">Name</th>
+              {cols.map(c => <th key={c.key} className="font-medium px-2 py-2 whitespace-nowrap text-center">{c.label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {names.map(n => (
+              <tr key={n} className="border-t" style={{ borderColor: 'rgba(198,198,200,0.4)' }}>
+                <td className="px-4 py-2 font-medium text-slate-900 whitespace-nowrap sticky left-0 bg-white">{n}</td>
+                {cols.map(c => <td key={c.key} className="px-2 py-2 text-center whitespace-nowrap"><span className="inline-flex justify-center">{cell(n, c)}</span></td>)}
               </tr>
-            </thead>
-            <tbody>
-              {names.map(n => {
-                const a = byName(n, avail.id);
-                return (
-                  <tr key={n} className="border-t" style={{ borderColor: 'rgba(198,198,200,0.4)' }}>
-                    <td className="px-4 py-2 font-medium text-slate-900 whitespace-nowrap sticky left-0 bg-white">{n}</td>
-                    {avail.options.map(o => <td key={o.id} className="px-2 py-2 text-center"><span className="inline-flex justify-center">{mark(a[o.id])}</span></td>)}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <Row><div className="text-[15px] text-slate-900">{names.join(', ')}</div></Row>
-      )}
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+// ---- Vorschläge (Skigebiet / Unterkunft) mit Daumen hoch -------------------
+function Suggestions({ cfg, name, suggestions, likes, onAdd, onToggleLike, onDelete, dev, disabled }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const hasName = name.trim().length > 0;
+  const submit = async (e) => {
+    e.preventDefault();
+    const t = text.trim();
+    if (!t || !hasName) return;
+    setBusy(true);
+    try { await onAdd(t); setText(''); } finally { setBusy(false); }
+  };
+  const sorted = useMemo(() => [...suggestions].sort((a, b) => (likes[b.id]?.length || 0) - (likes[a.id]?.length || 0) || a.created_at.localeCompare(b.created_at)), [suggestions, likes]);
+  const mine = (id) => (likes[id] || []).some(l => l.mine);
+  return (
+    <Card header={<span className="inline-flex items-center gap-1.5"><Lightbulb size={13} /> {cfg.title}</span>} footer={cfg.hint}>
+      {sorted.length === 0 && <Row><div className="text-[14px] text-[#8E8E93]">Noch keine Vorschläge — mach den Anfang.</div></Row>}
+      {sorted.map(sg => {
+        const l = likes[sg.id] || [];
+        const on = mine(sg.id);
+        return (
+          <Row key={sg.id}>
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-[15px] text-slate-900">{sg.text}</div>
+                <div className="text-[12px] text-[#8E8E93] mt-0.5">
+                  von {sg.name}{l.length > 0 && <> · 👍 {l.map(x => x.name).join(', ')}</>}
+                </div>
+              </div>
+              {sg.device === dev && l.length === 0 && (
+                <button type="button" onClick={() => onDelete(sg.id)} aria-label="Vorschlag löschen" className="text-[#FF3B30] active:opacity-50 p-1"><Trash2 size={15} /></button>
+              )}
+              <button type="button" disabled={disabled} onClick={() => onToggleLike(sg.id)} aria-label="Daumen hoch"
+                className={cx('shrink-0 h-9 px-3 rounded-full flex items-center gap-1.5 text-[13px] font-semibold transition active:scale-95 disabled:opacity-40',
+                  on ? 'text-white' : 'bg-[#F2F2F7] text-slate-700')} style={on ? { background: TINT } : undefined}>
+                <ThumbsUp size={15} strokeWidth={2.4} /><span className="tabular-nums">{l.length}</span>
+              </button>
+            </div>
+          </Row>
+        );
+      })}
+      <form onSubmit={submit} className="px-3 py-2.5 flex items-center gap-2" style={{ borderTop: sorted.length ? '1px solid rgba(198,198,200,0.4)' : 'none' }}>
+        <input value={text} onChange={e => setText(e.target.value)} maxLength={120}
+          placeholder={hasName ? cfg.placeholder || 'Vorschlag eintragen…' : 'Erst oben deinen Namen eintragen'}
+          disabled={!hasName || disabled}
+          className="flex-1 bg-[#F2F2F7] rounded-[14px] px-3 py-2 text-[15px] outline-none disabled:opacity-50" />
+        <button type="submit" disabled={busy || !text.trim() || !hasName || disabled} aria-label="Vorschlag hinzufügen"
+          className="w-9 h-9 rounded-full flex items-center justify-center text-white disabled:opacity-40 active:scale-95"
+          style={{ background: TINT }}><Plus size={18} strokeWidth={2.6} /></button>
+      </form>
     </Card>
   );
 }
@@ -281,6 +343,7 @@ export default function Ski() {
   const [name, setName] = useState(() => lsGet(NAME_KEY) || '');
   const [votes, setVotes] = useState([]);
   const [comments, setComments] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
   const [status, setStatus] = useState('loading'); // loading | ok | error | missing
   const [errMsg, setErrMsg] = useState('');
   const [saving, setSaving] = useState(false);
@@ -303,11 +366,12 @@ export default function Ski() {
   }, [trip.title]);
 
   const load = useCallback(async () => {
-    const [v, c] = await Promise.all([
+    const [v, c, sg] = await Promise.all([
       supabase.from('ski_votes').select('*').eq('trip', trip.slug),
       supabase.from('ski_comments').select('*').eq('trip', trip.slug).order('created_at', { ascending: true }),
+      supabase.from('ski_suggestions').select('*').eq('trip', trip.slug).order('created_at', { ascending: true }),
     ]);
-    const err = v.error || c.error;
+    const err = v.error || c.error || sg.error;
     if (err) {
       // 42P01 = Tabelle fehlt → Migration noch nicht eingespielt.
       setStatus(err.code === '42P01' || /does not exist|schema cache/i.test(err.message || '') ? 'missing' : 'error');
@@ -316,6 +380,7 @@ export default function Ski() {
     }
     setVotes(v.data || []);
     setComments(c.data || []);
+    setSuggestions(sg.data || []);
     setStatus('ok');
   }, [trip.slug]);
 
@@ -364,6 +429,33 @@ export default function Ski() {
   };
   const deleteComment = async (id) => {
     await supabase.from('ski_comments').delete().eq('id', id).eq('device', dev);
+    load();
+  };
+
+  // Vorschläge: Daumen hoch läuft als normale Abstimmung (poll_id 'vorschlaege',
+  // answers.selected = IDs der unterstützten Vorschläge).
+  const SUG_POLL = 'vorschlaege';
+  const likes = useMemo(() => {
+    const m = {};
+    for (const v of votes) {
+      if (v.poll_id !== SUG_POLL) continue;
+      for (const id of (Array.isArray(v.answers?.selected) ? v.answers.selected : [])) {
+        (m[id] ||= []).push({ name: v.name, mine: v.name_key === myKey });
+      }
+    }
+    return m;
+  }, [votes, myKey]);
+  const toggleLike = (id) => {
+    const cur = new Set(Array.isArray(myAnswers(SUG_POLL).selected) ? myAnswers(SUG_POLL).selected : []);
+    cur.has(id) ? cur.delete(id) : cur.add(id);
+    setAnswers(SUG_POLL, { selected: Array.from(cur) });
+  };
+  const addSuggestion = async (text) => {
+    const { error } = await supabase.from('ski_suggestions').insert({ trip: trip.slug, name: name.trim(), text, device: dev });
+    if (error) { setStatus('error'); setErrMsg(error.message); } else load();
+  };
+  const deleteSuggestion = async (id) => {
+    await supabase.from('ski_suggestions').delete().eq('id', id).eq('device', dev);
     load();
   };
 
@@ -448,6 +540,12 @@ export default function Ski() {
           const common = { poll: p, answers: myAnswers(p.id), onChange: (a) => setAnswers(p.id, a), votes: pv, disabled: !hasName || status !== 'ok' };
           return p.type === 'availability' ? <AvailabilityPoll key={p.id} {...common} /> : <ChoicePoll key={p.id} {...common} />;
         })}
+
+        {trip.suggestions && (
+          <Suggestions cfg={trip.suggestions} name={name} suggestions={suggestions} likes={likes}
+            onAdd={addSuggestion} onToggleLike={toggleLike} onDelete={deleteSuggestion} dev={dev}
+            disabled={!hasName || status !== 'ok'} />
+        )}
 
         <Overview trip={trip} votes={votes} />
 
