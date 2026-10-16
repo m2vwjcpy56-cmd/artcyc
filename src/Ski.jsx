@@ -1,28 +1,23 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import {
-  Snowflake, Check, HelpCircle, X, Users, MessageCircle, Send, Info,
-  RefreshCw, Trash2, Share2, ThumbsUp, Lightbulb, Plus,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ThumbsUp, Share2, RefreshCw, Pencil } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { SKI_TRIP } from './ski/config.js';
 
 // =============================================================
-// Ski-Planung — eigenständige Unterseite unter /ski (ohne Login).
-// Inhalte: src/ski/config.js · Daten: Supabase ski_votes / ski_comments.
-// Alle Teilnehmer sehen dieselbe Abstimmung; Zuordnung läuft über den
-// eingetragenen Namen (wie bei Doodle). Ein Geräte-Token merkt sich,
-// welche Einträge von diesem Handy stammen.
+// Ski-Planung — Fragebogen-Website unter /ski (kein Login, kein App-Look).
+// Eine Frage pro Bildschirm, große Antwort-Kacheln, automatisch weiter,
+// am Ende die Ergebnis-Seite. Inhalte: src/ski/config.js.
+// Daten: Supabase ski_votes (eine Zeile pro Person + Frage) und
+// ski_suggestions (Vorschläge, Daumen hoch läuft über ski_votes 'likes').
 // =============================================================
 
 const NAME_KEY = 'artcyc:ski:name';
 const DEVICE_KEY = 'artcyc:ski:device';
-const TINT = '#007AFF';
-
-function cx(...a) { return a.filter(Boolean).join(' '); }
+const DONE_KEY = 'artcyc:ski:done';
+const LIKES_POLL = 'likes';
 
 function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* privater Modus */ } }
-
 function deviceId() {
   let d = lsGet(DEVICE_KEY);
   if (!d) {
@@ -32,354 +27,327 @@ function deviceId() {
   }
   return d;
 }
-
 function nameKey(n) { return (n || '').trim().toLowerCase(); }
+function cx(...a) { return a.filter(Boolean).join(' '); }
 
-function fmtTime(iso) {
-  try {
-    return new Date(iso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  } catch { return ''; }
-}
+// Eigene Styles — bewusst unabhängig von index.css/Dark-Mode-Overrides der App.
+const CSS = `
+.ski-root{min-height:100dvh;background:#0B1F3A;background-image:radial-gradient(1200px 600px at 10% -10%,#2C6BD1 0%,rgba(44,107,209,0) 60%),radial-gradient(900px 500px at 110% 110%,#1FA2A8 0%,rgba(31,162,168,0) 55%);color:#fff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.ski-wrap{max-width:560px;margin:0 auto;padding:0 20px calc(28px + env(safe-area-inset-bottom));min-height:100dvh;display:flex;flex-direction:column}
+.ski-top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(16px + env(safe-area-inset-top)) 0 10px;font-size:13px;color:rgba(255,255,255,.65)}
+.ski-prog{height:4px;border-radius:999px;background:rgba(255,255,255,.15);overflow:hidden}
+.ski-prog>i{display:block;height:100%;border-radius:999px;background:#fff;transition:width .35s cubic-bezier(.2,.8,.2,1)}
+.ski-step{flex:1;display:flex;flex-direction:column;justify-content:center;padding:24px 0;animation:ski-in .32s cubic-bezier(.2,.8,.2,1) both}
+@keyframes ski-in{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.ski-h1{font-size:34px;line-height:1.08;font-weight:800;letter-spacing:-.02em;margin:0}
+.ski-h2{font-size:28px;line-height:1.12;font-weight:800;letter-spacing:-.02em;margin:0}
+.ski-sub{font-size:17px;line-height:1.4;color:rgba(255,255,255,.75);margin:10px 0 0}
+.ski-opts{display:flex;flex-direction:column;gap:10px;margin-top:28px}
+.ski-opt{display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:16px 18px;border-radius:18px;border:1.5px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;font-size:18px;font-weight:600;line-height:1.2;transition:transform .12s,background .15s,border-color .15s;-webkit-tap-highlight-color:transparent}
+.ski-opt:active{transform:scale(.98)}
+.ski-opt.on{background:#fff;color:#0B1F3A;border-color:#fff}
+.ski-opt .e{font-size:24px;width:32px;text-align:center;flex-shrink:0}
+.ski-opt .s{display:block;font-size:14px;font-weight:400;opacity:.7;margin-top:2px}
+.ski-opt .k{margin-left:auto;width:26px;height:26px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:#0B1F3A;color:#fff;flex-shrink:0}
+.ski-input{width:100%;margin-top:28px;padding:16px 18px;border-radius:18px;border:1.5px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;font-size:22px;font-weight:600;outline:none}
+.ski-input::placeholder{color:rgba(255,255,255,.4);font-weight:500}
+.ski-input:focus{border-color:#fff;background:rgba(255,255,255,.14)}
+.ski-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:16px 24px;border-radius:999px;background:#fff;color:#0B1F3A;font-size:17px;font-weight:700;border:0;transition:transform .12s,opacity .15s;-webkit-tap-highlight-color:transparent}
+.ski-btn:active{transform:scale(.97)}
+.ski-btn:disabled{opacity:.35}
+.ski-btn.ghost{background:transparent;color:rgba(255,255,255,.8);border:1.5px solid rgba(255,255,255,.3)}
+.ski-link{background:none;border:0;color:rgba(255,255,255,.7);font-size:15px;padding:10px 0;display:inline-flex;align-items:center;gap:6px}
+.ski-card{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:20px;padding:16px 18px;margin-top:14px}
+.ski-card h3{margin:0 0 10px;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.6)}
+.ski-bar{height:10px;border-radius:999px;background:rgba(255,255,255,.12);overflow:hidden;margin-top:6px}
+.ski-bar>i{display:block;height:100%;border-radius:999px;background:#fff;transition:width .4s}
+.ski-bar.g>i{background:#4ADE80}.ski-bar.y>i{background:#FBBF24}.ski-bar.r>i{background:#F87171}
+.ski-names{font-size:13px;color:rgba(255,255,255,.6);margin-top:4px;line-height:1.35}
+.ski-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:16px;font-weight:600}
+.ski-row small{font-size:14px;font-weight:500;color:rgba(255,255,255,.7)}
+.ski-fav{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:#4ADE80;color:#0B1F3A;margin-left:8px;vertical-align:middle}
+.ski-like{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:999px;border:1.5px solid rgba(255,255,255,.25);background:transparent;color:#fff;font-size:14px;font-weight:700;flex-shrink:0}
+.ski-like.on{background:#fff;color:#0B1F3A;border-color:#fff}
+.ski-note{background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);border-radius:16px;padding:12px 14px;font-size:14px;line-height:1.4;margin-top:16px}
+.ski-note code{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.ski-table{width:100%;border-collapse:collapse;font-size:14px;margin-top:4px}
+.ski-table th{text-align:left;font-weight:500;color:rgba(255,255,255,.55);padding:6px 6px 8px 0;white-space:nowrap}
+.ski-table td{padding:8px 6px 8px 0;border-top:1px solid rgba(255,255,255,.1);white-space:nowrap}
+.ski-table th:not(:first-child),.ski-table td:not(:first-child){text-align:center;padding-left:6px}
+.ski-scroll{overflow-x:auto;margin:0 -18px;padding:0 18px}
+`;
 
-// ---- UI-Bausteine (iOS-Look, bewusst unabhängig von der großen App-Datei) ----
-function Card({ header, footer, children }) {
+// ---- Bildschirme -----------------------------------------------------------
+function Welcome({ trip, onStart, known }) {
+  const w = trip.welcome;
   return (
-    <section className="mb-5">
-      {header && <div className="px-4 pb-1.5 text-[13px] uppercase tracking-wide text-[#8E8E93]">{header}</div>}
-      <div className="bg-white rounded-[16px] overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">{children}</div>
-      {footer && <div className="px-4 pt-1.5 text-[13px] text-[#8E8E93]">{footer}</div>}
-    </section>
-  );
-}
-
-function Row({ children, className }) {
-  return (
-    <div className={cx('px-4 py-3 border-b last:border-b-0', className)} style={{ borderColor: 'rgba(198,198,200,0.4)' }}>
-      {children}
+    <div className="ski-step">
+      <div style={{ fontSize: 56, lineHeight: 1 }}>⛷️</div>
+      <div style={{ fontSize: 13, letterSpacing: '.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.6)', marginTop: 24, fontWeight: 600 }}>{trip.title} · {trip.tagline}</div>
+      <h1 className="ski-h1" style={{ marginTop: 8 }}>{w.headline}</h1>
+      <p className="ski-sub">{w.text}</p>
+      <div style={{ marginTop: 32, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <button className="ski-btn" onClick={() => onStart(false)}>{w.button} <ArrowRight size={18} strokeWidth={2.6} /></button>
+        {known && <button className="ski-link" style={{ justifyContent: 'center' }} onClick={() => onStart(true)}>Direkt zu den Ergebnissen</button>}
+      </div>
     </div>
   );
 }
 
-const AVAIL = [
-  { v: 'yes',   label: 'Ja',          Icon: Check,      on: 'bg-[#34C759] text-white', off: 'text-[#34C759]' },
-  { v: 'maybe', label: 'Vielleicht',  Icon: HelpCircle, on: 'bg-[#FF9500] text-white', off: 'text-[#FF9500]' },
-  { v: 'no',    label: 'Nein',        Icon: X,          on: 'bg-[#FF3B30] text-white', off: 'text-[#FF3B30]' },
-];
-
-// ---- Abstimmung: Verfügbarkeit (Ja/Vielleicht/Nein je Option) ------------
-function AvailabilityPoll({ poll, answers, onChange, votes, disabled }) {
-  const tally = useMemo(() => {
-    const t = {};
-    for (const o of poll.options) t[o.id] = { yes: [], maybe: [], no: [] };
-    for (const v of votes) {
-      for (const o of poll.options) {
-        const a = v.answers?.[o.id];
-        if (a && t[o.id][a]) t[o.id][a].push(v.name);
-      }
-    }
-    return t;
-  }, [poll, votes]);
-  const best = useMemo(() => {
-    let max = 0;
-    for (const o of poll.options) max = Math.max(max, tally[o.id].yes.length);
-    return max > 0 ? poll.options.filter(o => tally[o.id].yes.length === max).map(o => o.id) : [];
-  }, [poll, tally]);
-
+function NameStep({ q, value, onChange, onNext }) {
+  const ref = useRef(null);
+  useEffect(() => { const t = setTimeout(() => ref.current?.focus(), 350); return () => clearTimeout(t); }, []);
+  const ok = value.trim().length > 0;
   return (
-    <Card header={poll.title} footer={poll.hint}>
-      {poll.options.map(o => {
-        const cur = answers?.[o.id];
-        const t = tally[o.id];
-        return (
-          <Row key={o.id}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-[15px] font-medium text-slate-900 flex items-center gap-2">
-                  {o.label}
-                  {best.includes(o.id) && <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-[#34C759]/15 text-[#34C759]">Favorit</span>}
-                </div>
-                {o.sub && <div className="text-[13px] text-[#8E8E93]">{o.sub}</div>}
-                <div className="text-[12px] text-[#8E8E93] mt-1 tabular-nums">
-                  <span className="text-[#34C759] font-semibold">{t.yes.length}</span> ja ·{' '}
-                  <span className="text-[#FF9500] font-semibold">{t.maybe.length}</span> vielleicht ·{' '}
-                  <span className="text-[#FF3B30] font-semibold">{t.no.length}</span> nein
-                </div>
-              </div>
-              <div className="flex gap-1.5 shrink-0">
-                {AVAIL.map(({ v, label, Icon, on, off }) => (
-                  <button key={v} type="button" disabled={disabled} aria-label={label} title={label}
-                    onClick={() => onChange({ ...(answers || {}), [o.id]: cur === v ? undefined : v })}
-                    className={cx('w-10 h-10 rounded-full flex items-center justify-center transition active:scale-95 disabled:opacity-40',
-                      cur === v ? on : cx('bg-[#F2F2F7]', off))}>
-                    <Icon size={18} strokeWidth={2.6} />
-                  </button>
-                ))}
-              </div>
-            </div>
-            {(t.yes.length + t.maybe.length) > 0 && (
-              <div className="mt-1.5 text-[12px] text-slate-500 leading-snug">
-                {t.yes.length > 0 && <span>✓ {t.yes.join(', ')}</span>}
-                {t.yes.length > 0 && t.maybe.length > 0 && <span> · </span>}
-                {t.maybe.length > 0 && <span>? {t.maybe.join(', ')}</span>}
-              </div>
-            )}
-          </Row>
-        );
-      })}
-    </Card>
-  );
-}
-
-// ---- Abstimmung: Auswahl (eine / mehrere Optionen) -----------------------
-function ChoicePoll({ poll, answers, onChange, votes, disabled }) {
-  const multi = poll.type === 'multi';
-  const selected = new Set(Array.isArray(answers?.selected) ? answers.selected : []);
-  const tally = useMemo(() => {
-    const t = {};
-    for (const o of poll.options) t[o.id] = [];
-    for (const v of votes) {
-      const sel = Array.isArray(v.answers?.selected) ? v.answers.selected : [];
-      for (const id of sel) if (t[id]) t[id].push(v.name);
-    }
-    return t;
-  }, [poll, votes]);
-  const total = votes.filter(v => (v.answers?.selected || []).length > 0).length;
-
-  const toggle = (id) => {
-    let next;
-    if (multi) { next = new Set(selected); next.has(id) ? next.delete(id) : next.add(id); }
-    else next = selected.has(id) ? new Set() : new Set([id]);
-    onChange({ selected: Array.from(next) });
-  };
-
-  return (
-    <Card header={poll.title} footer={poll.hint || (multi ? 'Mehrfachauswahl möglich.' : 'Eine Option wählen.')}>
-      {poll.options.map(o => {
-        const on = selected.has(o.id);
-        const n = tally[o.id].length;
-        const pct = total > 0 ? Math.round((n / total) * 100) : 0;
-        return (
-          <button key={o.id} type="button" disabled={disabled} onClick={() => toggle(o.id)}
-            className="w-full text-left block active:bg-[rgba(209,209,214,0.4)] disabled:opacity-40">
-            <Row>
-              <div className="flex items-center gap-3">
-                <span className={cx('w-6 h-6 shrink-0 flex items-center justify-center border-2 transition',
-                  multi ? 'rounded-[7px]' : 'rounded-full',
-                  on ? 'border-[#007AFF] bg-[#007AFF] text-white' : 'border-[#C7C7CC]')}>
-                  {on && <Check size={14} strokeWidth={3} />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[15px] text-slate-900">{o.label}</div>
-                  {o.sub && <div className="text-[13px] text-[#8E8E93]">{o.sub}</div>}
-                  <div className="mt-1.5 h-1.5 rounded-full bg-[#F2F2F7] overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: pct + '%', background: TINT }} />
-                  </div>
-                  {n > 0 && <div className="text-[12px] text-slate-500 mt-1">{tally[o.id].join(', ')}</div>}
-                </div>
-                <div className="text-[13px] text-[#8E8E93] tabular-nums shrink-0">{n}</div>
-              </div>
-            </Row>
-          </button>
-        );
-      })}
-    </Card>
-  );
-}
-
-// ---- Teilnehmer-Übersicht (Matrix: alle Fragen mit overview: true) --------
-function Overview({ trip, votes }) {
-  const cols = useMemo(() => {
-    const c = [];
-    for (const p of trip.polls) {
-      if (!p.overview) continue;
-      if (p.type === 'availability') for (const o of p.options) c.push({ key: p.id + ':' + o.id, label: o.short || o.label, poll: p, option: o });
-      else c.push({ key: p.id, label: p.short || p.title, poll: p });
-    }
-    return c;
-  }, [trip]);
-  const names = useMemo(() => {
-    const set = new Map();
-    for (const v of votes) if (!set.has(v.name_key)) set.set(v.name_key, v.name);
-    return Array.from(set.values()).sort((a, b) => a.localeCompare(b, 'de'));
-  }, [votes]);
-  if (names.length === 0 || cols.length === 0) return null;
-  const answersOf = (name, pollId) => votes.find(v => v.name === name && v.poll_id === pollId)?.answers || {};
-  const availMark = (a) => a === 'yes' ? <Check size={14} strokeWidth={3} className="text-[#34C759]" />
-    : a === 'maybe' ? <HelpCircle size={14} strokeWidth={2.6} className="text-[#FF9500]" />
-    : a === 'no' ? <X size={14} strokeWidth={3} className="text-[#FF3B30]" />
-    : <span className="text-[#C7C7CC]">–</span>;
-  const cell = (name, col) => {
-    const a = answersOf(name, col.poll.id);
-    if (col.option) return availMark(a[col.option.id]);
-    const sel = Array.isArray(a.selected) ? a.selected : [];
-    if (sel.length === 0) return <span className="text-[#C7C7CC]">–</span>;
-    const txt = sel.map(id => { const o = col.poll.options.find(x => x.id === id); return o ? (o.short || o.label) : id; }).join(', ');
-    const tone = col.poll.id === 'dabei' ? (sel[0] === 'ja' ? 'text-[#34C759] font-semibold' : sel[0] === 'nein' ? 'text-[#FF3B30]' : 'text-[#FF9500]') : 'text-slate-900';
-    return <span className={tone}>{txt}</span>;
-  };
-  return (
-    <Card header={`Wer ist dabei (${names.length})`} footer="Übersicht aller Antworten — zum Scrollen nach rechts wischen.">
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-[13px]">
-          <thead>
-            <tr className="text-[#8E8E93]">
-              <th className="text-left font-medium px-4 py-2 sticky left-0 bg-white">Name</th>
-              {cols.map(c => <th key={c.key} className="font-medium px-2 py-2 whitespace-nowrap text-center">{c.label}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {names.map(n => (
-              <tr key={n} className="border-t" style={{ borderColor: 'rgba(198,198,200,0.4)' }}>
-                <td className="px-4 py-2 font-medium text-slate-900 whitespace-nowrap sticky left-0 bg-white">{n}</td>
-                {cols.map(c => <td key={c.key} className="px-2 py-2 text-center whitespace-nowrap"><span className="inline-flex justify-center">{cell(n, c)}</span></td>)}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <form className="ski-step" onSubmit={e => { e.preventDefault(); if (ok) onNext(); }}>
+      <h2 className="ski-h2">{q.title}</h2>
+      {q.sub && <p className="ski-sub">{q.sub}</p>}
+      <input ref={ref} className="ski-input" value={value} onChange={e => onChange(e.target.value)}
+        placeholder="Dein Vorname" autoComplete="given-name" autoCapitalize="words" enterKeyHint="next" maxLength={40} />
+      <div style={{ marginTop: 20 }}>
+        <button type="submit" className="ski-btn" disabled={!ok} style={{ width: '100%' }}>Weiter <ArrowRight size={18} strokeWidth={2.6} /></button>
       </div>
-    </Card>
+    </form>
   );
 }
 
-// ---- Vorschläge (Skigebiet / Unterkunft) mit Daumen hoch -------------------
-function Suggestions({ cfg, name, suggestions, likes, onAdd, onToggleLike, onDelete, dev, disabled }) {
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const hasName = name.trim().length > 0;
-  const submit = async (e) => {
-    e.preventDefault();
-    const t = text.trim();
-    if (!t || !hasName) return;
-    setBusy(true);
-    try { await onAdd(t); setText(''); } finally { setBusy(false); }
+function ChoiceStep({ q, value, onPick }) {
+  const [flash, setFlash] = useState(null);
+  const pick = (id) => {
+    setFlash(id);
+    setTimeout(() => onPick(id), 260);   // kurze Bestätigung, dann automatisch weiter
   };
-  const sorted = useMemo(() => [...suggestions].sort((a, b) => (likes[b.id]?.length || 0) - (likes[a.id]?.length || 0) || a.created_at.localeCompare(b.created_at)), [suggestions, likes]);
-  const mine = (id) => (likes[id] || []).some(l => l.mine);
+  const cur = flash || value;
   return (
-    <Card header={<span className="inline-flex items-center gap-1.5"><Lightbulb size={13} /> {cfg.title}</span>} footer={cfg.hint}>
-      {sorted.length === 0 && <Row><div className="text-[14px] text-[#8E8E93]">Noch keine Vorschläge — mach den Anfang.</div></Row>}
-      {sorted.map(sg => {
-        const l = likes[sg.id] || [];
-        const on = mine(sg.id);
+    <div className="ski-step">
+      <h2 className="ski-h2">{q.title}</h2>
+      {q.sub && <p className="ski-sub">{q.sub}</p>}
+      <div className="ski-opts">
+        {q.options.map(o => (
+          <button key={o.id} type="button" className={cx('ski-opt', cur === o.id && 'on')} onClick={() => pick(o.id)}>
+            {o.emoji && <span className="e">{o.emoji}</span>}
+            <span>{o.label}{o.sub && <span className="s">{o.sub}</span>}</span>
+            {cur === o.id && <span className="k"><Check size={15} strokeWidth={3} /></span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TextStep({ q, value, onChange, onNext }) {
+  return (
+    <form className="ski-step" onSubmit={e => { e.preventDefault(); onNext(); }}>
+      <h2 className="ski-h2">{q.title}</h2>
+      {q.sub && <p className="ski-sub">{q.sub}</p>}
+      <input className="ski-input" value={value} onChange={e => onChange(e.target.value)} placeholder={q.placeholder} maxLength={120} enterKeyHint="done" />
+      <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <button type="submit" className="ski-btn" style={{ width: '100%' }}>
+          {value.trim() ? 'Abschicken' : 'Ohne Vorschlag abschicken'} <Check size={18} strokeWidth={2.6} />
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function Results({ trip, name, votes, suggestions, myKey, dev, onLike, onEdit, onShare, copied, status, onReload }) {
+  const qs = trip.questions;
+  const r = trip.results;
+  const byQ = (qid) => votes.filter(v => v.poll_id === qid);
+  const nameOf = (v) => v.name;
+  const people = useMemo(() => {
+    const m = new Map();
+    for (const v of votes) if (v.poll_id !== LIKES_POLL && !m.has(v.name_key)) m.set(v.name_key, v.name);
+    return Array.from(m.entries()).map(([k, n]) => ({ k, n })).sort((a, b) => a.n.localeCompare(b.n, 'de'));
+  }, [votes]);
+  const answerOf = (k, qid) => votes.find(v => v.name_key === k && v.poll_id === qid)?.answers?.value;
+
+  // Terminvergleich
+  const weekends = (r.weekends || []).map(qid => {
+    const q = qs.find(x => x.id === qid);
+    const vs = byQ(qid);
+    const yes = vs.filter(v => v.answers?.value === 'yes').map(nameOf);
+    const maybe = vs.filter(v => v.answers?.value === 'maybe').map(nameOf);
+    const no = vs.filter(v => v.answers?.value === 'no').map(nameOf);
+    return { qid, label: r.weekendLabels?.[qid] || q?.title || qid, yes, maybe, no, total: vs.length };
+  });
+  const maxYes = Math.max(0, ...weekends.map(w => w.yes.length));
+
+  // Einfache Auswahlfragen (ohne Termin, ohne Name/Text)
+  const choices = qs.filter(q => q.type === 'choice' && q.kind !== 'availability');
+  const likes = useMemo(() => {
+    const m = {};
+    for (const v of votes) if (v.poll_id === LIKES_POLL) for (const id of (v.answers?.selected || [])) (m[id] ||= []).push({ name: v.name, mine: v.name_key === myKey });
+    return m;
+  }, [votes, myKey]);
+  const sortedSug = [...suggestions].sort((a, b) => (likes[b.id]?.length || 0) - (likes[a.id]?.length || 0) || a.created_at.localeCompare(b.created_at));
+  const overviewCols = [...choices.filter(q => q.id === 'dabei'), ...qs.filter(q => q.kind === 'availability'), ...choices.filter(q => q.id !== 'dabei')];
+  const shortOf = (q, val) => q.options.find(o => o.id === val)?.short ?? (val ? '•' : '–');
+  const tone = (q, val) => q.kind === 'availability' || q.id === 'dabei'
+    ? (val === 'yes' || val === 'ja' ? '#4ADE80' : val === 'maybe' || val === 'vielleicht' ? '#FBBF24' : val === 'no' || val === 'nein' ? '#F87171' : 'rgba(255,255,255,.35)')
+    : (val ? '#fff' : 'rgba(255,255,255,.35)');
+
+  return (
+    <div className="ski-step" style={{ justifyContent: 'flex-start' }}>
+      <h2 className="ski-h2">{name.trim() ? (r.thanks || 'Danke, {name}!').replace('{name}', name.trim()) + ' 🙌' : 'Zwischenstand'}</h2>
+      <p className="ski-sub">{r.text}</p>
+
+      {status === 'error' && (
+        <div className="ski-note">Verbindung fehlgeschlagen. <button className="ski-link" style={{ padding: 0 }} onClick={onReload}><RefreshCw size={14} /> Neu laden</button></div>
+      )}
+
+      {/* Dabei */}
+      {choices.filter(q => q.id === 'dabei').map(q => {
+        const vs = byQ(q.id);
         return (
-          <Row key={sg.id}>
-            <div className="flex items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-[15px] text-slate-900">{sg.text}</div>
-                <div className="text-[12px] text-[#8E8E93] mt-0.5">
-                  von {sg.name}{l.length > 0 && <> · 👍 {l.map(x => x.name).join(', ')}</>}
+          <div className="ski-card" key={q.id}>
+            <h3>Wer ist dabei · {vs.length} {vs.length === 1 ? 'Antwort' : 'Antworten'}</h3>
+            {q.options.map((o, i) => {
+              const ns = vs.filter(v => v.answers?.value === o.id).map(nameOf);
+              const pct = vs.length ? Math.round(ns.length / vs.length * 100) : 0;
+              return (
+                <div key={o.id} style={{ marginTop: i ? 12 : 0 }}>
+                  <div className="ski-row"><span>{o.emoji} {o.label}</span><small>{ns.length}</small></div>
+                  <div className={cx('ski-bar', i === 0 ? 'g' : i === 1 ? 'y' : 'r')}><i style={{ width: pct + '%' }} /></div>
+                  {ns.length > 0 && <div className="ski-names">{ns.join(', ')}</div>}
                 </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      {/* Termine */}
+      {weekends.length > 0 && (
+        <div className="ski-card">
+          <h3>Welches Wochenende</h3>
+          {weekends.map((w, i) => {
+            const pct = w.total ? Math.round(w.yes.length / w.total * 100) : 0;
+            const fav = maxYes > 0 && w.yes.length === maxYes;
+            return (
+              <div key={w.qid} style={{ marginTop: i ? 14 : 0 }}>
+                <div className="ski-row">
+                  <span>{w.label}{fav && <span className="ski-fav">Favorit</span>}</span>
+                  <small><b style={{ color: '#4ADE80' }}>{w.yes.length}</b> passt · <b style={{ color: '#FBBF24' }}>{w.maybe.length}</b> vielleicht · <b style={{ color: '#F87171' }}>{w.no.length}</b> nicht</small>
+                </div>
+                <div className="ski-bar g"><i style={{ width: pct + '%' }} /></div>
+                {(w.yes.length + w.maybe.length) > 0 && (
+                  <div className="ski-names">{w.yes.length > 0 && <>✓ {w.yes.join(', ')}</>}{w.yes.length > 0 && w.maybe.length > 0 && ' · '}{w.maybe.length > 0 && <>? {w.maybe.join(', ')}</>}</div>
+                )}
               </div>
-              {sg.device === dev && l.length === 0 && (
-                <button type="button" onClick={() => onDelete(sg.id)} aria-label="Vorschlag löschen" className="text-[#FF3B30] active:opacity-50 p-1"><Trash2 size={15} /></button>
-              )}
-              <button type="button" disabled={disabled} onClick={() => onToggleLike(sg.id)} aria-label="Daumen hoch"
-                className={cx('shrink-0 h-9 px-3 rounded-full flex items-center gap-1.5 text-[13px] font-semibold transition active:scale-95 disabled:opacity-40',
-                  on ? 'text-white' : 'bg-[#F2F2F7] text-slate-700')} style={on ? { background: TINT } : undefined}>
-                <ThumbsUp size={15} strokeWidth={2.4} /><span className="tabular-nums">{l.length}</span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Weitere Auswahlfragen */}
+      {choices.filter(q => q.id !== 'dabei').map(q => {
+        const vs = byQ(q.id);
+        return (
+          <div className="ski-card" key={q.id}>
+            <h3>{q.title}</h3>
+            {q.options.map((o, i) => {
+              const ns = vs.filter(v => v.answers?.value === o.id).map(nameOf);
+              const pct = vs.length ? Math.round(ns.length / vs.length * 100) : 0;
+              return (
+                <div key={o.id} style={{ marginTop: i ? 12 : 0 }}>
+                  <div className="ski-row"><span>{o.label}</span><small>{ns.length}</small></div>
+                  <div className="ski-bar"><i style={{ width: pct + '%' }} /></div>
+                  {ns.length > 0 && <div className="ski-names">{ns.join(', ')}</div>}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      {/* Vorschläge */}
+      <div className="ski-card">
+        <h3>Vorschläge Skigebiet & Unterkunft</h3>
+        {sortedSug.length === 0 && <div style={{ fontSize: 15, color: 'rgba(255,255,255,.6)' }}>Noch keine Vorschläge.</div>}
+        {sortedSug.map((s, i) => {
+          const l = likes[s.id] || [];
+          const on = l.some(x => x.mine);
+          return (
+            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: i ? 12 : 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>{s.text}</div>
+                <div className="ski-names">von {s.name}{l.length > 0 && <> · 👍 {l.map(x => x.name).join(', ')}</>}</div>
+              </div>
+              <button type="button" className={cx('ski-like', on && 'on')} onClick={() => onLike(s.id)} aria-label="Daumen hoch">
+                <ThumbsUp size={15} strokeWidth={2.4} /> {l.length}
               </button>
             </div>
-          </Row>
-        );
-      })}
-      <form onSubmit={submit} className="px-3 py-2.5 flex items-center gap-2" style={{ borderTop: sorted.length ? '1px solid rgba(198,198,200,0.4)' : 'none' }}>
-        <input value={text} onChange={e => setText(e.target.value)} maxLength={120}
-          placeholder={hasName ? cfg.placeholder || 'Vorschlag eintragen…' : 'Erst oben deinen Namen eintragen'}
-          disabled={!hasName || disabled}
-          className="flex-1 bg-[#F2F2F7] rounded-[14px] px-3 py-2 text-[15px] outline-none disabled:opacity-50" />
-        <button type="submit" disabled={busy || !text.trim() || !hasName || disabled} aria-label="Vorschlag hinzufügen"
-          className="w-9 h-9 rounded-full flex items-center justify-center text-white disabled:opacity-40 active:scale-95"
-          style={{ background: TINT }}><Plus size={18} strokeWidth={2.6} /></button>
-      </form>
-    </Card>
-  );
-}
+          );
+        })}
+      </div>
 
-// ---- Kommentare ----------------------------------------------------------
-function Comments({ trip, name, comments, onPost, onDelete, dev }) {
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const submit = async (e) => {
-    e.preventDefault();
-    const t = text.trim();
-    if (!t || !name.trim()) return;
-    setBusy(true);
-    try { await onPost(t); setText(''); } finally { setBusy(false); }
-  };
-  return (
-    <Card header={<span className="inline-flex items-center gap-1.5"><MessageCircle size={13} /> Kommentare</span>}>
-      {comments.length === 0 && <Row><div className="text-[14px] text-[#8E8E93]">Noch keine Kommentare.</div></Row>}
-      {comments.map(c => (
-        <Row key={c.id}>
-          <div className="flex items-baseline justify-between gap-2">
-            <div className="text-[13px] font-semibold text-slate-900">{c.name}</div>
-            <div className="text-[11px] text-[#8E8E93] tabular-nums flex items-center gap-2">
-              {fmtTime(c.created_at)}
-              {c.device === dev && (
-                <button type="button" onClick={() => onDelete(c.id)} aria-label="Löschen" className="text-[#FF3B30] active:opacity-50"><Trash2 size={13} /></button>
-              )}
-            </div>
+      {/* Übersicht */}
+      {people.length > 0 && (
+        <div className="ski-card">
+          <h3>Alle Antworten</h3>
+          <div className="ski-scroll">
+            <table className="ski-table">
+              <thead><tr><th>Name</th>{overviewCols.map(q => <th key={q.id}>{q.short || q.title}</th>)}</tr></thead>
+              <tbody>
+                {people.map(p => (
+                  <tr key={p.k}>
+                    <td style={{ fontWeight: 600 }}>{p.n}</td>
+                    {overviewCols.map(q => { const v = answerOf(p.k, q.id); return <td key={q.id} style={{ color: tone(q, v), fontWeight: 700 }}>{shortOf(q, v)}</td>; })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div className="text-[15px] text-slate-900 whitespace-pre-wrap mt-0.5">{c.text}</div>
-        </Row>
-      ))}
-      <form onSubmit={submit} className="px-3 py-2.5 flex items-end gap-2" style={{ borderTop: comments.length ? '1px solid rgba(198,198,200,0.4)' : 'none' }}>
-        <textarea value={text} onChange={e => setText(e.target.value)} rows={1}
-          placeholder={name.trim() ? 'Kommentar schreiben…' : 'Erst oben deinen Namen eintragen'}
-          disabled={!name.trim()}
-          className="flex-1 resize-none bg-[#F2F2F7] rounded-[14px] px-3 py-2 text-[15px] outline-none disabled:opacity-50" />
-        <button type="submit" disabled={busy || !text.trim() || !name.trim()} aria-label="Senden"
-          className="w-9 h-9 rounded-full flex items-center justify-center text-white disabled:opacity-40 active:scale-95"
-          style={{ background: TINT }}><Send size={16} /></button>
-      </form>
-    </Card>
+        </div>
+      )}
+
+      <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <button className="ski-btn ghost" onClick={onEdit}><Pencil size={16} /> Meine Antworten ändern</button>
+        <button className="ski-btn ghost" onClick={onShare}>{copied ? <Check size={16} /> : <Share2 size={16} />} {copied ? 'Link kopiert' : 'Link teilen'}</button>
+      </div>
+      <div style={{ textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,.35)', marginTop: 24 }}>Aktualisiert sich automatisch · <a href="/" style={{ color: 'inherit' }}>ArtCyc</a></div>
+    </div>
   );
 }
 
-// ---- Seite ---------------------------------------------------------------
+// ---- Seite ----------------------------------------------------------------
 export default function Ski() {
   const trip = SKI_TRIP;
+  const qs = trip.questions;
   const dev = useMemo(deviceId, []);
   const [name, setName] = useState(() => lsGet(NAME_KEY) || '');
+  const [answers, setAnswers] = useState({});          // { [qid]: value }
+  const [text, setText] = useState('');
+  const [screen, setScreen] = useState(() => (lsGet(DONE_KEY) === '1' && lsGet(NAME_KEY)) ? 'results' : 'welcome'); // welcome | q | results
+  const [step, setStep] = useState(0);
   const [votes, setVotes] = useState([]);
-  const [comments, setComments] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
-  const [status, setStatus] = useState('loading'); // loading | ok | error | missing
+  const [status, setStatus] = useState('loading');     // loading | ok | error | missing
   const [errMsg, setErrMsg] = useState('');
-  const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
-  const saveTimers = useRef({});
+  const myKey = nameKey(name);
 
-  // Dark Mode wie auf der Landingpage: folgt System oder App-Einstellung.
   useEffect(() => {
-    const apply = () => {
-      let pref = 'system';
-      const v = lsGet('artcyc:theme'); if (v === 'light' || v === 'dark') pref = v;
-      const dark = pref === 'dark' || (pref === 'system' && typeof window.matchMedia === 'function'
-        && window.matchMedia('(prefers-color-scheme: dark)').matches);
-      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-    };
-    apply();
-    document.title = `${trip.title} · Planung`;
-    const mq = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-    if (mq?.addEventListener) { mq.addEventListener('change', apply); return () => mq.removeEventListener('change', apply); }
+    document.title = `${trip.title} · Abstimmung`;
+    // Dark-Mode-Overrides der App (html[data-theme=dark]) sollen hier nicht greifen.
+    document.documentElement.setAttribute('data-theme', 'light');
+    const meta = document.querySelector('meta[name="theme-color"]:not([media])') || document.createElement('meta');
+    meta.setAttribute('name', 'theme-color'); meta.setAttribute('content', '#0B1F3A'); document.head.appendChild(meta);
   }, [trip.title]);
 
   const load = useCallback(async () => {
-    const [v, c, sg] = await Promise.all([
+    const [v, sg] = await Promise.all([
       supabase.from('ski_votes').select('*').eq('trip', trip.slug),
-      supabase.from('ski_comments').select('*').eq('trip', trip.slug).order('created_at', { ascending: true }),
       supabase.from('ski_suggestions').select('*').eq('trip', trip.slug).order('created_at', { ascending: true }),
     ]);
-    const err = v.error || c.error || sg.error;
+    const err = v.error || sg.error;
     if (err) {
-      // 42P01 = Tabelle fehlt → Migration noch nicht eingespielt.
       setStatus(err.code === '42P01' || /does not exist|schema cache/i.test(err.message || '') ? 'missing' : 'error');
       setErrMsg(err.message || String(err));
       return;
     }
     setVotes(v.data || []);
-    setComments(c.data || []);
     setSuggestions(sg.data || []);
     setStatus('ok');
   }, [trip.slug]);
@@ -392,177 +360,100 @@ export default function Ski() {
     return () => { clearInterval(iv); document.removeEventListener('visibilitychange', vis); };
   }, [load]);
 
-  const myKey = nameKey(name);
-  const hasName = myKey.length > 0;
-  const myAnswers = (pollId) => votes.find(v => v.poll_id === pollId && v.name_key === myKey)?.answers || {};
-
-  const setAnswers = (pollId, answers) => {
-    if (!hasName) return;
-    const clean = Object.fromEntries(Object.entries(answers).filter(([, v]) => v !== undefined && v !== null));
-    const display = name.trim();
-    // Sofort lokal anzeigen, dann (gebündelt) speichern.
-    setVotes(prev => {
-      const rest = prev.filter(v => !(v.poll_id === pollId && v.name_key === myKey));
-      return [...rest, { id: 'local-' + pollId, trip: trip.slug, poll_id: pollId, name: display, name_key: myKey, answers: clean, device: dev }];
-    });
-    clearTimeout(saveTimers.current[pollId]);
-    saveTimers.current[pollId] = setTimeout(async () => {
-      setSaving(true);
-      const { error } = await supabase.from('ski_votes')
-        .upsert({ trip: trip.slug, poll_id: pollId, name: display, answers: clean, device: dev, updated_at: new Date().toISOString() },
-          { onConflict: 'trip,poll_id,name_key' });
-      setSaving(false);
-      if (error) { setStatus('error'); setErrMsg(error.message); } else load();
-    }, 500);
-  };
-
-  const removeMe = async () => {
-    if (!hasName) return;
-    if (!window.confirm(`Alle Antworten von „${name.trim()}" löschen?`)) return;
-    await supabase.from('ski_votes').delete().eq('trip', trip.slug).eq('name_key', myKey);
-    load();
-  };
-
-  const postComment = async (text) => {
-    const { error } = await supabase.from('ski_comments').insert({ trip: trip.slug, name: name.trim(), text, device: dev });
-    if (error) { setStatus('error'); setErrMsg(error.message); } else load();
-  };
-  const deleteComment = async (id) => {
-    await supabase.from('ski_comments').delete().eq('id', id).eq('device', dev);
-    load();
-  };
-
-  // Vorschläge: Daumen hoch läuft als normale Abstimmung (poll_id 'vorschlaege',
-  // answers.selected = IDs der unterstützten Vorschläge).
-  const SUG_POLL = 'vorschlaege';
-  const likes = useMemo(() => {
-    const m = {};
-    for (const v of votes) {
-      if (v.poll_id !== SUG_POLL) continue;
-      for (const id of (Array.isArray(v.answers?.selected) ? v.answers.selected : [])) {
-        (m[id] ||= []).push({ name: v.name, mine: v.name_key === myKey });
-      }
-    }
-    return m;
+  // Eigene bisherige Antworten (gleicher Name) in den Fragebogen übernehmen.
+  useEffect(() => {
+    if (!myKey) return;
+    const mine = {};
+    for (const v of votes) if (v.name_key === myKey && v.poll_id !== LIKES_POLL && v.answers?.value) mine[v.poll_id] = v.answers.value;
+    setAnswers(a => ({ ...mine, ...a }));
   }, [votes, myKey]);
-  const toggleLike = (id) => {
-    const cur = new Set(Array.isArray(myAnswers(SUG_POLL).selected) ? myAnswers(SUG_POLL).selected : []);
-    cur.has(id) ? cur.delete(id) : cur.add(id);
-    setAnswers(SUG_POLL, { selected: Array.from(cur) });
+
+  const saveVote = async (qid, value) => {
+    const display = name.trim();
+    if (!display) return;
+    setVotes(prev => [...prev.filter(v => !(v.poll_id === qid && v.name_key === myKey)),
+      { id: 'local-' + qid, trip: trip.slug, poll_id: qid, name: display, name_key: myKey, answers: value, device: dev }]);
+    const { error } = await supabase.from('ski_votes')
+      .upsert({ trip: trip.slug, poll_id: qid, name: display, answers: value, device: dev, updated_at: new Date().toISOString() },
+        { onConflict: 'trip,poll_id,name_key' });
+    if (error) { setStatus('error'); setErrMsg(error.message); }
   };
-  const addSuggestion = async (text) => {
-    const { error } = await supabase.from('ski_suggestions').insert({ trip: trip.slug, name: name.trim(), text, device: dev });
-    if (error) { setStatus('error'); setErrMsg(error.message); } else load();
+
+  const start = (toResults) => { setStep(0); setScreen(toResults ? 'results' : 'q'); };
+  const next = () => {
+    if (step + 1 < qs.length) setStep(step + 1);
+    else finish();
   };
-  const deleteSuggestion = async (id) => {
-    await supabase.from('ski_suggestions').delete().eq('id', id).eq('device', dev);
+  const back = () => { if (step === 0) setScreen('welcome'); else setStep(step - 1); };
+
+  const pick = (q, id) => {
+    setAnswers(a => ({ ...a, [q.id]: id }));
+    saveVote(q.id, { value: id });
+    next();
+  };
+
+  const finish = async () => {
+    lsSet(NAME_KEY, name.trim());
+    lsSet(DONE_KEY, '1');
+    const t = text.trim();
+    if (t) {
+      const { error } = await supabase.from('ski_suggestions').insert({ trip: trip.slug, name: name.trim(), text: t, device: dev });
+      if (error) { setStatus('error'); setErrMsg(error.message); }
+      setText('');
+    }
+    setScreen('results');
     load();
+  };
+
+  const like = (id) => {
+    const cur = new Set(votes.find(v => v.poll_id === LIKES_POLL && v.name_key === myKey)?.answers?.selected || []);
+    cur.has(id) ? cur.delete(id) : cur.add(id);
+    saveVote(LIKES_POLL, { selected: Array.from(cur) });
   };
 
   const share = async () => {
     const url = window.location.origin + '/ski';
     try {
-      if (navigator.share) { await navigator.share({ title: trip.title, url }); return; }
+      if (navigator.share) { await navigator.share({ title: trip.title, text: 'Kurz abstimmen: Termin fürs Skifahren 2027', url }); return; }
       await navigator.clipboard.writeText(url);
       setCopied(true); setTimeout(() => setCopied(false), 1500);
     } catch { /* abgebrochen */ }
   };
 
+  const q = qs[step];
+  const progress = screen === 'q' ? ((step + 1) / qs.length) * 100 : screen === 'results' ? 100 : 0;
+
   return (
-    <div className="min-h-screen bg-[#F2F2F7] text-slate-900"
-      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif', paddingTop: 'env(safe-area-inset-top)' }}>
-      <div className="max-w-xl mx-auto px-4 pt-6 pb-16">
-        {/* Kopf */}
-        <header className="mb-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="w-11 h-11 rounded-[14px] flex items-center justify-center text-white shrink-0" style={{ background: TINT }}>
-                <Snowflake size={24} />
-              </span>
-              <div>
-                <h1 className="text-[28px] font-bold tracking-tight leading-none">{trip.title}</h1>
-                {trip.subtitle && <div className="text-[13px] text-[#8E8E93] mt-1">{trip.subtitle}</div>}
-              </div>
+    <div className="ski-root">
+      <style>{CSS}</style>
+      <div className="ski-wrap">
+        {screen !== 'welcome' && (
+          <>
+            <div className="ski-top">
+              <button className="ski-link" onClick={screen === 'q' ? back : () => setScreen('welcome')} style={{ padding: 0 }}><ArrowLeft size={16} /> {screen === 'q' && step > 0 ? 'Zurück' : 'Start'}</button>
+              <span>{screen === 'q' ? `Frage ${step + 1} von ${qs.length}` : trip.title}</span>
             </div>
-            <button type="button" onClick={share} aria-label="Link teilen"
-              className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:scale-95" style={{ color: TINT }}>
-              {copied ? <Check size={18} /> : <Share2 size={18} />}
-            </button>
-          </div>
-          {trip.intro?.length > 0 && (
-            <div className="mt-4 space-y-1.5 text-[15px] text-slate-700">
-              {trip.intro.map((p, i) => <p key={i}>{p}</p>)}
-            </div>
-          )}
-        </header>
+            <div className="ski-prog"><i style={{ width: progress + '%' }} /></div>
+          </>
+        )}
 
-        {/* Status-Hinweise */}
         {status === 'missing' && (
-          <div className="mb-5 rounded-[16px] bg-[#FF9500]/10 border border-[#FF9500]/30 px-4 py-3 text-[13px] text-slate-800">
-            <div className="font-semibold mb-1">Datenbank noch nicht eingerichtet</div>
-            Die Tabellen für die Abstimmung fehlen. Einmalig <code>docs/migration-ski-planung.sql</code> im Supabase-SQL-Editor ausführen, dann Seite neu laden.
-          </div>
+          <div className="ski-note"><b>Datenbank noch nicht eingerichtet.</b> Einmalig <code>docs/migration-ski-planung.sql</code> im Supabase-SQL-Editor ausführen, dann Seite neu laden.</div>
         )}
-        {status === 'error' && (
-          <div className="mb-5 rounded-[16px] bg-[#FF3B30]/10 border border-[#FF3B30]/30 px-4 py-3 text-[13px] text-slate-800 flex items-start gap-2">
-            <div className="flex-1"><div className="font-semibold">Verbindung fehlgeschlagen</div><div className="text-[#8E8E93] break-all">{errMsg}</div></div>
-            <button type="button" onClick={load} className="shrink-0 p-1" style={{ color: TINT }} aria-label="Neu laden"><RefreshCw size={16} /></button>
-          </div>
+        {status === 'error' && screen !== 'results' && (
+          <div className="ski-note"><b>Verbindung fehlgeschlagen.</b> {errMsg} <button className="ski-link" style={{ padding: 0 }} onClick={load}><RefreshCw size={14} /> Neu laden</button></div>
         )}
 
-        {/* Infos */}
-        {trip.infos?.length > 0 && (
-          <Card header={<span className="inline-flex items-center gap-1.5"><Info size={13} /> Infos</span>}>
-            {trip.infos.map((i, idx) => (
-              <Row key={idx}>
-                <div className="flex justify-between gap-3 text-[15px]">
-                  <span className="text-[#8E8E93]">{i.label}</span>
-                  <span className="text-right text-slate-900">{i.value}</span>
-                </div>
-              </Row>
-            ))}
-          </Card>
+        {screen === 'welcome' && <Welcome trip={trip} onStart={start} known={!!lsGet(NAME_KEY)} />}
+
+        {screen === 'q' && q.type === 'name' && <NameStep key={q.id} q={q} value={name} onChange={setName} onNext={() => { lsSet(NAME_KEY, name.trim()); next(); }} />}
+        {screen === 'q' && q.type === 'choice' && <ChoiceStep key={q.id} q={q} value={answers[q.id]} onPick={(id) => pick(q, id)} />}
+        {screen === 'q' && q.type === 'text' && <TextStep key={q.id} q={q} value={text} onChange={setText} onNext={finish} />}
+
+        {screen === 'results' && (
+          <Results trip={trip} name={name} votes={votes} suggestions={suggestions} myKey={myKey} dev={dev}
+            onLike={like} onEdit={() => start(false)} onShare={share} copied={copied} status={status} onReload={load} />
         )}
-
-        {/* Name */}
-        <Card header={<span className="inline-flex items-center gap-1.5"><Users size={13} /> Dein Name</span>}
-          footer={hasName ? 'Deine Antworten werden automatisch gespeichert.' : 'Ohne Namen kann nicht abgestimmt werden.'}>
-          <Row>
-            <input value={name} onChange={e => { setName(e.target.value); lsSet(NAME_KEY, e.target.value); }}
-              placeholder="Vorname" autoComplete="given-name" autoCapitalize="words"
-              className="w-full bg-transparent text-[17px] outline-none placeholder:text-[#C7C7CC]" />
-          </Row>
-        </Card>
-
-        {/* Abstimmungen */}
-        {trip.polls.map(p => {
-          const pv = votes.filter(v => v.poll_id === p.id);
-          const common = { poll: p, answers: myAnswers(p.id), onChange: (a) => setAnswers(p.id, a), votes: pv, disabled: !hasName || status !== 'ok' };
-          return p.type === 'availability' ? <AvailabilityPoll key={p.id} {...common} /> : <ChoicePoll key={p.id} {...common} />;
-        })}
-
-        {trip.suggestions && (
-          <Suggestions cfg={trip.suggestions} name={name} suggestions={suggestions} likes={likes}
-            onAdd={addSuggestion} onToggleLike={toggleLike} onDelete={deleteSuggestion} dev={dev}
-            disabled={!hasName || status !== 'ok'} />
-        )}
-
-        <Overview trip={trip} votes={votes} />
-
-        {trip.comments && (
-          <Comments trip={trip} name={name} comments={comments} onPost={postComment} onDelete={deleteComment} dev={dev} />
-        )}
-
-        {hasName && votes.some(v => v.name_key === myKey) && (
-          <button type="button" onClick={removeMe} className="w-full text-center text-[13px] text-[#FF3B30] py-2 active:opacity-50">
-            Meine Antworten löschen
-          </button>
-        )}
-
-        <footer className="mt-8 text-center text-[12px] text-[#C7C7CC]">
-          {saving ? 'Speichert…' : status === 'ok' ? 'Live · aktualisiert sich automatisch' : ''}
-          <div className="mt-1"><a href="/" className="text-[#C7C7CC]">ArtCyc</a></div>
-        </footer>
       </div>
     </div>
   );

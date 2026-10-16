@@ -1,5 +1,5 @@
 -- =============================================================
--- Ski-Planung (Unterseite /ski) — Tabellen für Abstimmung, Vorschläge + Kommentare
+-- Ski-Planung (Unterseite /ski) — Tabellen für Abstimmung + Vorschläge
 -- =============================================================
 --
 -- Einmalig im Supabase SQL-Editor ausführen:
@@ -27,19 +27,6 @@ create table if not exists public.ski_votes (
 
 create index if not exists ski_votes_trip_idx on public.ski_votes(trip);
 
-create table if not exists public.ski_comments (
-  id          uuid primary key default gen_random_uuid(),
-  trip        text not null,
-  name        text not null,
-  text        text not null,
-  device      text,
-  created_at  timestamptz not null default now(),
-  constraint ski_comments_name_len check (char_length(btrim(name)) between 1 and 40),
-  constraint ski_comments_text_len check (char_length(text) between 1 and 2000)
-);
-
-create index if not exists ski_comments_trip_idx on public.ski_comments(trip, created_at);
-
 -- Vorschläge (Skigebiet / Unterkunft). Daumen hoch liegt in ski_votes
 -- (poll_id 'vorschlaege', answers.selected = Vorschlags-IDs).
 create table if not exists public.ski_suggestions (
@@ -59,7 +46,6 @@ create index if not exists ski_suggestions_trip_idx on public.ski_suggestions(tr
 -- Row Level Security — offen für Link-Besitzer (anon + eingeloggt)
 -- =============================================================
 alter table public.ski_votes    enable row level security;
-alter table public.ski_comments enable row level security;
 alter table public.ski_suggestions enable row level security;
 
 drop policy if exists "ski_votes_select" on public.ski_votes;
@@ -78,19 +64,6 @@ drop policy if exists "ski_votes_delete" on public.ski_votes;
 create policy "ski_votes_delete" on public.ski_votes
   for delete to anon, authenticated using (true);
 
-drop policy if exists "ski_comments_select" on public.ski_comments;
-create policy "ski_comments_select" on public.ski_comments
-  for select to anon, authenticated using (true);
-
-drop policy if exists "ski_comments_insert" on public.ski_comments;
-create policy "ski_comments_insert" on public.ski_comments
-  for insert to anon, authenticated with check (true);
-
--- Löschen: nur Kommentare vom eigenen Gerät (die App filtert zusätzlich).
-drop policy if exists "ski_comments_delete" on public.ski_comments;
-create policy "ski_comments_delete" on public.ski_comments
-  for delete to anon, authenticated using (true);
-
 drop policy if exists "ski_suggestions_select" on public.ski_suggestions;
 create policy "ski_suggestions_select" on public.ski_suggestions
   for select to anon, authenticated using (true);
@@ -105,4 +78,3 @@ create policy "ski_suggestions_delete" on public.ski_suggestions
 
 grant select, insert, update, delete on public.ski_votes       to anon, authenticated;
 grant select, insert, delete         on public.ski_suggestions to anon, authenticated;
-grant select, insert, delete         on public.ski_comments to anon, authenticated;
