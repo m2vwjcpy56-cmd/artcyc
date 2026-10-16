@@ -14,6 +14,28 @@ export const SKI_TRIP = {
   title: 'Skifahren 2027',
   tagline: 'Planung Saison 26/27',
 
+  // Mitglieder der WhatsApp-Gruppe „Skifahren 26/27" — werden zum Antippen
+  // angezeigt. Neue Leute einfach hier ergänzen.
+  members: [
+    'Emilio Arellano',
+    'Benedikt Bugner',
+    'Jonas Beiter',
+    'Lukas Beiter',
+    'Ruben Geyer',
+    'Simon Halter',
+    'Max Hanselmann',
+    'Simeon Hufen',
+    'Simon Köcher',
+    'Niklas Kreuzmann',
+    'Jonas Mächtig',
+    'Max Maute',
+    'Philipp Rapp',
+    'Sea Schefold',
+    'Patrick Tisch',
+    'Simon Vogel',
+    'Markus Wechtner',
+  ],
+
   // Startbildschirm — kurz und knackig, Rest kommt in den Fragen.
   welcome: {
     headline: 'Nächstes Jahr wieder auf die Piste?',
@@ -22,9 +44,8 @@ export const SKI_TRIP = {
   },
 
   // Fragen in Reihenfolge. type:
-  //   'name'   → Namens-Eingabe
+  //   'name'   → Namensauswahl aus `members` (antippen)
   //   'choice' → genau eine Antwort (große Kacheln, geht automatisch weiter)
-  //   'email'  → E-Mail-Adresse, optional (privat in ski_contacts, nicht öffentlich)
   //   'text'   → freie Eingabe, optional (wird als Vorschlag gespeichert)
   // short = Spaltentitel in der Ergebnis-Tabelle.
   // Antworten: { id, label, sub?, short? (Kurzform für Ergebnis-Seite), emoji? }
@@ -32,8 +53,8 @@ export const SKI_TRIP = {
     {
       id: 'name',
       type: 'name',
-      title: 'Wie heißt du?',
-      sub: 'Vorname reicht — damit wir wissen, wer abgestimmt hat.',
+      title: 'Wer bist du?',
+      sub: 'Tipp auf deinen Namen.',
     },
     {
       id: 'dabei',
@@ -83,13 +104,6 @@ export const SKI_TRIP = {
         { id: 'fr', label: 'Nur Freitag', short: 'Fr' },
         { id: 'mo', label: 'Nur Montag', short: 'Mo' },
       ],
-    },
-    {
-      id: 'email',
-      type: 'email',
-      title: 'Deine E-Mail-Adresse?',
-      sub: 'Optional. Nur für Infos zu Unterkunft und Ablauf — wird nirgends öffentlich angezeigt.',
-      optional: true,
     },
     {
       id: 'vorschlag',
