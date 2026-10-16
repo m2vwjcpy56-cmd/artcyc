@@ -78,3 +78,7 @@ create policy "ski_suggestions_delete" on public.ski_suggestions
 
 grant select, insert, update, delete on public.ski_votes       to anon, authenticated;
 grant select, insert, delete         on public.ski_suggestions to anon, authenticated;
+
+-- PostgREST (die REST-Schnittstelle) soll die neuen Tabellen sofort kennen —
+-- sonst meldet die Seite „Could not find the table … in the schema cache".
+notify pgrst, 'reload schema';
