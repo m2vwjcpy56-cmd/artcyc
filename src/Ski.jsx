@@ -438,7 +438,7 @@ export default function Ski() {
         )}
 
         {status === 'missing' && (
-          <div className="ski-note"><b>Datenbank noch nicht eingerichtet.</b> Einmalig <code>docs/migration-ski-planung.sql</code> im Supabase-SQL-Editor ausführen, dann Seite neu laden.</div>
+          <div className="ski-note"><b>Datenbank noch nicht eingerichtet.</b> Einmalig <code>docs/ski-planung-setup.sql</code> im Supabase-SQL-Editor ausführen, dann Seite neu laden.</div>
         )}
         {status === 'error' && screen !== 'results' && (
           <div className="ski-note"><b>Verbindung fehlgeschlagen.</b> {errMsg} <button className="ski-link" style={{ padding: 0 }} onClick={load}><RefreshCw size={14} /> Neu laden</button></div>

@@ -31,7 +31,7 @@ User: Beginner-Programmierer, iPhone-only Nutzer, deutsch sprechend, Sportler/Tr
 ## Wo läuft was?
 
 - **Frontend:** React + Vite + Tailwind. Eine einzige große Komponente in `src/ArtCycCoach.jsx` (~6450 Zeilen).
-- **Ski-Planung `/ski`:** loginfreie Fragebogen-Website (`src/Ski.jsx`, eigene Styles, kein App-Look), Fragen/Texte in `src/ski/config.js`, Daten in Supabase `ski_votes`/`ski_suggestions` (`docs/migration-ski-planung.sql`). Unabhängig von der Coach-App.
+- **Ski-Planung `/ski`:** loginfreie Fragebogen-Website (`src/Ski.jsx`, eigene Styles, kein App-Look), Fragen/Texte in `src/ski/config.js`, Daten in Supabase `ski_votes`/`ski_suggestions` (`docs/ski-planung-setup.sql`). Unabhängig von der Coach-App.
 - **Storage:** Aktuell nur localStorage (`artcyc:test:v3` Key) — keine Backend-Anbindung.
 - **PDF-Parser:** pdfjs 3.11.174 wird über CDN (cdnjs.cloudflare.com) zur Laufzeit geladen — `loadPdfJs()` Helper.
 - **UCI-Übungs-Datenbank:** Hardcoded ~2011 Übungen (1er/2er/4er/6er) in der Datei.

@@ -3,7 +3,7 @@
 //
 // Alles Inhaltliche (Texte, Fragen, Antworten) wird HIER gepflegt. Die
 // Antworten der Leute liegen in Supabase (ski_votes / ski_suggestions,
-// siehe docs/migration-ski-planung.sql).
+// siehe docs/ski-planung-setup.sql).
 //
 // Neuer Trip / neues Jahr: `slug` ändern → Fragebogen startet leer.
 // =============================================================
