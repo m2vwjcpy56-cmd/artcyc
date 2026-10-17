@@ -173,10 +173,10 @@ Deno.serve(async (req: Request) => {
 
   // Antworten der Person
   const labelOf = (p: Poll, val: unknown) => p.options.find((o) => o.id === val)?.label ?? (val ? String(val) : "—");
-  const answerRows = polls.map((p) => {
-    const v = mine.find((x: any) => x.poll_id === p.id);
-    return [p.title, labelOf(p, v?.answers?.value)];
-  });
+  const answerRows = polls
+    .map((p) => ({ p, v: mine.find((x: any) => x.poll_id === p.id) }))
+    .filter(({ v }) => v?.answers?.value)          // übersprungene Fragen weglassen
+    .map(({ p, v }) => [p.title, labelOf(p, v.answers.value)]);
 
   // Gesamtstand
   const people = new Set(allVotes.map((v: any) => v.name_key));

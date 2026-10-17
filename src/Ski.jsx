@@ -260,7 +260,9 @@ function Results({ trip, short, name, votes, suggestions, myKey, dev, onLike, on
 
   return (
     <div className="ski-step" style={{ justifyContent: 'flex-start' }}>
-      <h2 className="ski-h2">{name.trim() ? (r.thanks || 'Danke, {name}!').replace('{name}', name.trim().split(/\s+/)[0]) + ' 🙌' : 'Zwischenstand'}</h2>
+      <h2 className="ski-h2">{!name.trim() ? 'Zwischenstand'
+        : answerOf(myKey, 'dabei') === 'nein' ? `Schade, ${name.trim().split(/\s+/)[0]}! Danke fürs Bescheidgeben 💙`
+        : (r.thanks || 'Danke, {name}!').replace('{name}', name.trim().split(/\s+/)[0]) + ' 🙌'}</h2>
       <p className="ski-sub">{r.text}</p>
 
       {status === 'error' && (
@@ -472,22 +474,37 @@ export default function Ski() {
     if (error) { setStatus('error'); setErrMsg(error.message); }
   };
 
+  // Fragen mit showIf(antworten) === false werden übersprungen (z. B. wer absagt,
+  // bekommt keine Termin- und Zusatztag-Fragen mehr).
+  const isShown = (x, ans) => !x.showIf || x.showIf(ans || {});
   const start = (toResults) => { setStep(0); setScreen(toResults ? 'results' : 'q'); };
-  const next = () => {
-    if (step + 1 < qs.length) setStep(step + 1);
-    else finish();
+  const next = (ans = answers) => {
+    for (let i = step + 1; i < qs.length; i++) if (isShown(qs[i], ans)) { setStep(i); return; }
+    finish(ans);
   };
-  const back = () => { if (step === 0) setScreen('welcome'); else setStep(step - 1); };
+  const back = () => {
+    for (let i = step - 1; i >= 0; i--) if (isShown(qs[i], answers)) { setStep(i); return; }
+    setScreen('welcome');
+  };
 
   const pick = (q, id) => {
-    setAnswers(a => ({ ...a, [q.id]: id }));
+    const ans = { ...answers, [q.id]: id };
+    setAnswers(ans);
     saveVote(q.id, { value: id });
-    next();
+    next(ans);
   };
 
-  const finish = async () => {
+  const finish = async (ans = answers) => {
     lsSet(NAME_KEY, name.trim());
     lsSet(DONE_KEY, '1');
+    // Antworten auf übersprungene Fragen entfernen (z. B. Termine nach Absage).
+    const hidden = qs.filter(x => x.type === 'choice' && !isShown(x, ans)).map(x => x.id);
+    if (hidden.length && myKey) {
+      setVotes(prev => prev.filter(v => !(v.name_key === myKey && hidden.includes(v.poll_id))));
+      setAnswers(a => { const c = { ...a }; hidden.forEach(h => delete c[h]); return c; });
+      const { error } = await supabase.from('ski_votes').delete().eq('trip', trip.slug).eq('name_key', myKey).in('poll_id', hidden);
+      if (error) { setStatus('error'); setErrMsg(error.message); }
+    }
     if (pendingSugs.length) {
       const rows = pendingSugs.map(t => ({ trip: trip.slug, name: name.trim(), text: t, device: dev }));
       const { error } = await supabase.from('ski_suggestions').insert(rows);
@@ -537,7 +554,9 @@ export default function Ski() {
   };
 
   const q = qs[step];
-  const progress = screen === 'q' ? ((step + 1) / qs.length) * 100 : screen === 'results' ? 100 : 0;
+  const shownQs = qs.filter(x => isShown(x, answers));
+  const shownPos = Math.max(0, shownQs.indexOf(q)) + 1;
+  const progress = screen === 'q' ? (shownPos / shownQs.length) * 100 : screen === 'results' ? 100 : 0;
 
   return (
     <div className="ski-root">
@@ -547,7 +566,7 @@ export default function Ski() {
           <>
             <div className="ski-top">
               <button className="ski-link" onClick={screen === 'q' ? back : () => setScreen('welcome')} style={{ padding: 0 }}><ArrowLeft size={16} /> {screen === 'q' && step > 0 ? 'Zurück' : 'Start'}</button>
-              <span>{screen === 'q' ? `Frage ${step + 1} von ${qs.length}` : trip.title}</span>
+              <span>{screen === 'q' ? `Frage ${shownPos} von ${shownQs.length}` : trip.title}</span>
             </div>
             <div className="ski-prog"><i style={{ width: progress + '%' }} /></div>
           </>
@@ -564,7 +583,7 @@ export default function Ski() {
 
         {screen === 'q' && q.type === 'name' && <NameStep key={q.id} q={q} members={members} voted={voted} value={name} onPick={(n) => { setAnswers({}); setName(n); lsSet(NAME_KEY, n); next(); }} />}
         {screen === 'q' && q.type === 'choice' && <ChoiceStep key={q.id} q={q} value={answers[q.id]} onPick={(id) => pick(q, id)} />}
-        {screen === 'q' && q.type === 'text' && <TextStep key={q.id} q={q} items={pendingSugs} onAddItem={(t) => setPendingSugs(a => [...a, t])} onRemoveItem={(i) => setPendingSugs(a => a.filter((_, j) => j !== i))} onNext={finish} />}
+        {screen === 'q' && q.type === 'text' && <TextStep key={q.id} q={q} items={pendingSugs} onAddItem={(t) => setPendingSugs(a => [...a, t])} onRemoveItem={(i) => setPendingSugs(a => a.filter((_, j) => j !== i))} onNext={() => finish()} />}
 
         {screen === 'results' && (
           <Results trip={trip} short={short} name={name} votes={votes} suggestions={suggestions} myKey={myKey} dev={dev}

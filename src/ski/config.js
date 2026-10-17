@@ -32,6 +32,8 @@ export const SKI_TRIP = {
   //   'choice' → genau eine Antwort (große Kacheln, geht automatisch weiter)
   //   'text'   → freie Eingabe, optional (wird als Vorschlag gespeichert)
   // short = Spaltentitel in der Ergebnis-Tabelle.
+  // showIf(antworten) → Frage nur zeigen, wenn true. Übersprungene Fragen
+  // werden beim Abschicken für diese Person gelöscht.
   // Antworten: { id, label, sub?, short? (Kurzform für Ergebnis-Seite), emoji? }
   questions: [
     {
@@ -55,6 +57,7 @@ export const SKI_TRIP = {
       id: 'we-jan-23',
       type: 'choice',
       title: 'Sa 23. – So 24. Januar',
+      showIf: (a) => a.dabei !== 'nein',   // wer absagt, wird nichts weiter gefragt
       short: '23./24.1.',
       sub: 'Passt dir dieses Wochenende?',
       kind: 'availability',   // Ja / Vielleicht / Nein → Ergebnis als Favorit-Vergleich
@@ -68,6 +71,7 @@ export const SKI_TRIP = {
       id: 'we-jan-30',
       type: 'choice',
       title: 'Sa 30. – So 31. Januar',
+      showIf: (a) => a.dabei !== 'nein',   // wer absagt, wird nichts weiter gefragt
       short: '30./31.1.',
       sub: 'Und dieses Wochenende?',
       kind: 'availability',
@@ -81,6 +85,8 @@ export const SKI_TRIP = {
       id: 'zusatztag',
       type: 'choice',
       title: 'Zusätzlich zu Sa + So?',
+      // nur fragen, wenn dabei und mindestens ein Wochenende nicht „Geht nicht“ ist
+      showIf: (a) => a.dabei !== 'nein' && !(a['we-jan-23'] === 'no' && a['we-jan-30'] === 'no'),
       short: 'Zusatztag',
       sub: 'Wir hängen einen Tag dran — Freitag oder Montag. Die Unterkunft ist für 3 Tage gebucht, später anreisen oder früher abreisen geht immer.',
       options: [
@@ -93,6 +99,7 @@ export const SKI_TRIP = {
       id: 'vorschlag',
       type: 'text',
       title: 'Vorschläge für Skigebiet oder Unterkunft?',
+      showIf: (a) => a.dabei !== 'nein',   // wer absagt, wird nichts weiter gefragt
       sub: 'Optional, gerne mehrere. Unterkunft und Skigebiet suche ich nach der Abstimmung.',
       placeholder: 'z. B. Zillertal Arena, Heustadl …',
       optional: true,
