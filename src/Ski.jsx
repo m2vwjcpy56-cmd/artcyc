@@ -221,7 +221,13 @@ function TextStep({ q, items, onAddItem, onRemoveItem, onNext }) {
   );
 }
 
-function Results({ trip, short, name, votes, suggestions, myKey, dev, onLike, onAddSuggestion, onDeleteSuggestion, onEdit, onShare, copied, status, onReload }) {
+function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, onLike, onAddSuggestion, onDeleteSuggestion, onEdit, onShare, copied, status, onReload }) {
+  // Wer abgesagt hat (dabei = nein), zählt bei Terminen und Zusatztag nicht mit —
+  // auch wenn noch alte Antworten von vor der Absage gespeichert sind.
+  const votes = useMemo(() => {
+    const declined = new Set(rawVotes.filter(v => v.poll_id === 'dabei' && v.answers?.value === 'nein').map(v => v.name_key));
+    return rawVotes.filter(v => v.poll_id === 'dabei' || v.poll_id === LIKES_POLL || !declined.has(v.name_key));
+  }, [rawVotes]);
   const qs = trip.questions;
   const r = trip.results;
   const byQ = (qid) => votes.filter(v => v.poll_id === qid);
