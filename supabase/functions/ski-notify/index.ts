@@ -15,7 +15,7 @@
 //
 // Env-Vars:
 //   RESEND_API_KEY    — Pflicht (ist für die anderen Mails schon gesetzt)
-//   SKI_NOTIFY_EMAIL  — Empfänger, Default info@neue-weberei.de
+//   SKI_NOTIFY_EMAIL  — Empfänger. Ohne Wert wird keine Mail verschickt.
 // =============================================================
 
 // @ts-ignore Deno
@@ -30,7 +30,7 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 // @ts-ignore Deno-Runtime
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 // @ts-ignore Deno-Runtime
-const TO = Deno.env.get("SKI_NOTIFY_EMAIL") || "info@neue-weberei.de";
+const TO = Deno.env.get("SKI_NOTIFY_EMAIL") || "";   // kein Default: ohne Empfänger wird nichts verschickt
 const FROM = "ArtCyc Ski-Planung <no-reply@artcyc.app>";
 const PAGE_URL = "https://artcyc.app/ski";
 const LIKES_POLL = "likes";
@@ -76,6 +76,7 @@ function cleanPolls(raw: unknown): Poll[] {
 
 async function sendMail(subject: string, html: string, text: string) {
   if (!RESEND_API_KEY) return { ok: false, error: "RESEND_API_KEY fehlt" };
+  if (!TO) return { ok: false, error: "kein Empfaenger (SKI_NOTIFY_EMAIL) gesetzt" };
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": "Bearer " + RESEND_API_KEY },
