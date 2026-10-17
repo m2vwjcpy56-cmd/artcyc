@@ -15,7 +15,7 @@
 //
 // Env-Vars:
 //   RESEND_API_KEY    — Pflicht (ist für die anderen Mails schon gesetzt)
-//   SKI_NOTIFY_EMAIL  — Empfänger. Ohne Wert wird keine Mail verschickt.
+//   SKI_NOTIFY_EMAIL  — Empfänger, Default info@artcyc.app
 // =============================================================
 
 // @ts-ignore Deno
@@ -30,7 +30,7 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 // @ts-ignore Deno-Runtime
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 // @ts-ignore Deno-Runtime
-const TO = Deno.env.get("SKI_NOTIFY_EMAIL") || "";   // kein Default: ohne Empfänger wird nichts verschickt
+const TO = Deno.env.get("SKI_NOTIFY_EMAIL") || "info@artcyc.app";
 const FROM = "ArtCyc Ski-Planung <no-reply@artcyc.app>";
 const PAGE_URL = "https://artcyc.app/ski";
 const LIKES_POLL = "likes";
