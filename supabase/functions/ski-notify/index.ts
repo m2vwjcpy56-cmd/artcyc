@@ -22,6 +22,8 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 // @ts-ignore Deno-Runtime resolution
 import { corsHeaders, jsonHeaders } from "../_shared/cors.ts";
+// @ts-ignore Deno-Runtime resolution
+import { SKI_MEMBERS } from "../_shared/ski-members.ts";
 
 // @ts-ignore Deno-Runtime
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -86,6 +88,53 @@ async function sendMail(subject: string, html: string, text: string) {
   return { ok: true };
 }
 
+// Komplette Auswertung für die Abschluss-Mail.
+function buildFinal(polls: Poll[], allVotes: any[], rawVotes: any[], sugs: any[]) {
+  const names = (pid: string, oid: string) => allVotes.filter((v) => v.poll_id === pid && v.answers?.value === oid).map((v) => v.name);
+  const avail = polls.filter((p) => p.kind === "availability");
+  let fav = "";
+  let best = -1;
+  for (const p of avail) {
+    const n = names(p.id, "yes").length;
+    if (n > best) { best = n; fav = p.title; } else if (n === best) fav += " / " + p.title;
+  }
+  const likes: Record<string, string[]> = {};
+  for (const v of rawVotes) if (v.poll_id === LIKES_POLL) for (const id of (v.answers?.selected || [])) (likes[id] ||= []).push(v.name);
+  const sortedSugs = [...sugs].sort((a, b) => (likes[b.id]?.length || 0) - (likes[a.id]?.length || 0));
+
+  const sec = (title: string, body: string) => `<h3 style="margin:20px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#94A3B8">${esc(title)}</h3>${body}`;
+  const pollHtml = polls.map((p) => sec(p.title, `<table style="border-collapse:collapse;font-size:14px;width:100%">${p.options.map((o) => {
+    const ns = names(p.id, o.id);
+    return `<tr><td style="padding:5px 10px 5px 0;vertical-align:top;white-space:nowrap;font-weight:700;color:#0F172A">${esc(o.label)} · ${ns.length}</td><td style="padding:5px 0;color:#475569">${esc(ns.join(", ") || "—")}</td></tr>`;
+  }).join("")}</table>`)).join("");
+  const sugHtml = sortedSugs.length
+    ? sec("Vorschläge", `<ul style="margin:0;padding-left:18px;font-size:14px;color:#0F172A">${sortedSugs.map((s) => `<li>${esc(s.text)} <span style="color:#64748B">(von ${esc(s.name)}${likes[s.id]?.length ? `, 👍 ${likes[s.id].length}` : ""})</span></li>`).join("")}</ul>`)
+    : "";
+  const count = new Set(allVotes.map((v) => v.name_key)).size;
+  const subject = `✅ Ski 2027: Alle ${SKI_MEMBERS.length} haben abgestimmt`;
+  const html = `<!doctype html><html><body style="margin:0;background:#F1F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <div style="max-width:600px;margin:0 auto;padding:24px 16px">
+    <div style="background:#0B1F3A;color:#fff;border-radius:16px 16px 0 0;padding:20px 22px">
+      <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Skifahren 2027 · Auswertung</div>
+      <div style="font-size:22px;font-weight:800;margin-top:4px">Alle ${SKI_MEMBERS.length} haben abgestimmt 🎉</div>
+      ${fav && best > 0 ? `<div style="margin-top:10px;font-size:15px">Favorit: <b>${esc(fav)}</b> mit ${best}× „Passt"</div>` : ""}
+    </div>
+    <div style="background:#fff;border-radius:0 0 16px 16px;padding:6px 22px 20px">
+      ${pollHtml}${sugHtml}
+      <p style="margin:22px 0 0"><a href="${PAGE_URL}" style="display:inline-block;background:#FF9500;color:#fff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:999px">Ergebnisse ansehen</a></p>
+    </div>
+  </div></body></html>`;
+  const text = [
+    `Alle ${SKI_MEMBERS.length} haben abgestimmt (${count} Antworten).`,
+    fav && best > 0 ? `Favorit: ${fav} mit ${best}x "Passt"` : "",
+    "",
+    ...polls.flatMap((p) => [p.title, ...p.options.map((o) => { const ns = names(p.id, o.id); return `  ${o.label} (${ns.length}): ${ns.join(", ") || "-"}`; }), ""]),
+    ...(sortedSugs.length ? ["Vorschläge:", ...sortedSugs.map((s) => `  - ${s.text} (von ${s.name}${likes[s.id]?.length ? `, ${likes[s.id].length} Daumen` : ""})`), ""] : []),
+    PAGE_URL,
+  ].join("\n");
+  return { subject, html, text };
+}
+
 // @ts-ignore Deno-Runtime
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
@@ -112,7 +161,7 @@ Deno.serve(async (req: Request) => {
   const db = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
   const [{ data: votes, error: vErr }, { data: sugs, error: sErr }] = await Promise.all([
     db.from("ski_votes").select("poll_id,name,name_key,answers").eq("trip", trip),
-    db.from("ski_suggestions").select("name,text,created_at").eq("trip", trip).order("created_at", { ascending: true }),
+    db.from("ski_suggestions").select("id,name,text,created_at").eq("trip", trip).order("created_at", { ascending: true }),
   ]);
   if (vErr || sErr) return json({ error: (vErr || sErr)?.message }, 500);
 
@@ -131,6 +180,11 @@ Deno.serve(async (req: Request) => {
 
   // Gesamtstand
   const people = new Set(allVotes.map((v: any) => v.name_key));
+  // „abgestimmt" = hat die erste Frage (dabei?) beantwortet
+  const keyPoll = polls.find((p) => p.id === "dabei")?.id || polls[0]?.id;
+  const votedKeys = new Set(allVotes.filter((v: any) => v.poll_id === keyPoll).map((v: any) => v.name_key));
+  const missing = SKI_MEMBERS.filter((m) => !votedKeys.has(m.trim().toLowerCase()));
+  const allDone = !!keyPoll && SKI_MEMBERS.length > 0 && missing.length === 0;
   const standRows = polls.map((p) => {
     const counts = p.options.map((o) => ({ label: o.label, n: allVotes.filter((v: any) => v.poll_id === p.id && v.answers?.value === o.id).length }));
     return [p.title, counts.map((c) => `${c.label}: ${c.n}`).join(" · ")];
@@ -152,6 +206,7 @@ Deno.serve(async (req: Request) => {
       ${sugList.length ? `<h3 style="margin:18px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#94A3B8">Vorschläge</h3><ul style="margin:0;padding-left:18px;font-size:15px;color:#0F172A">${sugList.map((s: any) => `<li>${esc(s.text)}</li>`).join("")}</ul>` : ""}
       <h3 style="margin:18px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#94A3B8">Zwischenstand · ${people.size} ${people.size === 1 ? "Person" : "Personen"}</h3>
       <table style="border-collapse:collapse;font-size:14px">${standRows.map(([a, b]) => tr(a, b)).join("")}</table>
+      ${missing.length ? `<p style="margin:16px 0 0;font-size:14px;color:#64748B">Es fehlen noch ${missing.length}: ${esc(missing.join(", "))}</p>` : `<p style="margin:16px 0 0;font-size:14px;font-weight:700;color:#16A34A">Alle haben abgestimmt ✓</p>`}
       <p style="margin:22px 0 0"><a href="${PAGE_URL}" style="display:inline-block;background:#FF9500;color:#fff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:999px">Alle Ergebnisse ansehen</a></p>
     </div>
   </div></body></html>`;
@@ -163,11 +218,28 @@ Deno.serve(async (req: Request) => {
     "",
     `Zwischenstand (${people.size}):`,
     ...standRows.map(([a, b]) => `${a}: ${b}`),
+    missing.length ? `Es fehlen noch ${missing.length}: ${missing.join(", ")}` : "Alle haben abgestimmt.",
     "",
     PAGE_URL,
   ].join("\n");
 
   const r = await sendMail(subject, html, text);
   if (r.ok) cooldown.set(ck, Date.now());
-  return json({ ok: r.ok, mail_sent: r.ok, error: r.ok ? undefined : r.error }, r.ok ? 200 : 502);
+
+  // ---- Abschluss-Mail, sobald ALLE aus der Namensliste abgestimmt haben ----
+  // Einmalig: ski_events merkt sich den Versand (Primärschlüssel trip+event).
+  // Kommt später jemand neu auf die Liste, gibt es nach dessen Abstimmung
+  // eine neue Abschluss-Mail (event enthält die Listenlänge).
+  let finalSent = false;
+  if (allDone) {
+    const event = `all-voted:${SKI_MEMBERS.length}`;
+    const { error: evErr } = await db.from("ski_events").insert({ trip, event });
+    if (!evErr) {
+      const f = buildFinal(polls, allVotes, votes || [], sugs || []);
+      const fr = await sendMail(f.subject, f.html, f.text);
+      if (!fr.ok) await db.from("ski_events").delete().eq("trip", trip).eq("event", event);
+      finalSent = fr.ok;
+    }
+  }
+  return json({ ok: r.ok, mail_sent: r.ok, final_sent: finalSent, error: r.ok ? undefined : r.error }, r.ok ? 200 : 502);
 });

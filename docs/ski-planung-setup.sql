@@ -128,6 +128,19 @@ $$;
 revoke all on function public.ski_save_contact(text, text, text) from public;
 grant execute on function public.ski_save_contact(text, text, text) to anon, authenticated;
 
+-- =============================================================
+-- Ereignisse, die nur EINMAL passieren sollen (z. B. Abschluss-Mail
+-- „alle haben abgestimmt"). Nur die Edge Function (Service-Role) schreibt.
+-- =============================================================
+create table if not exists public.ski_events (
+  trip        text not null,
+  event       text not null,
+  created_at  timestamptz not null default now(),
+  primary key (trip, event)
+);
+alter table public.ski_events enable row level security;
+revoke all on public.ski_events from anon, authenticated;
+
 -- PostgREST (die REST-Schnittstelle) soll die neuen Tabellen sofort kennen —
 -- sonst meldet die Seite „Could not find the table … in the schema cache".
 notify pgrst, 'reload schema';
