@@ -313,7 +313,8 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
     const yes = [], maybe = [], no = [];
     for (const p of allPeople) {
       const st = statusOf(p.k), a = answerOf(p.k, qid);
-      if (st === 'nein' || a === 'no') no.push(p);
+      if (st === 'nein') continue;            // Absagen stehen separat, nicht beim Termin
+      if (a === 'no') no.push(p);
       else if (a === 'yes') yes.push(p);
       else if (a === 'maybe') maybe.push(p);
     }
@@ -322,6 +323,7 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
     return { yes, maybe, no, fr, mo };
   };
   const namesOf = (arr) => arr.map(p => short(p.n)).sort((a, b) => a.localeCompare(b, 'de')).join(', ');
+  const absagen = allPeople.filter(p => statusOf(p.k) === 'nein').map(p => short(p.n)).sort((a, b) => a.localeCompare(b, 'de'));
   const plans = weekends.map(w => ({ ...w, plan: weekendPlan(w.qid), days: r.weekendDays?.[w.qid] || {} }));
   const bestYes = Math.max(0, ...plans.map(w => w.plan.yes.length));
   const plansSorted = [...plans].sort((a, b) => b.plan.yes.length - a.plan.yes.length);
@@ -401,6 +403,14 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
           ? <div className="ski-pills">{stOffen.map(it => <span key={it.k} className="ski-pill o">{it.n}</span>)}</div>
           : <div style={{ fontSize: 16, fontWeight: 700, color: '#4ADE80' }}>Alle haben abgestimmt ✓</div>}
       </div>
+
+      {/* Absagen — separat, zählen bei keinem Termin mit */}
+      {absagen.length > 0 && (
+        <div className="ski-card">
+          <h3>Dieses Jahr nicht dabei · {absagen.length}</h3>
+          <div className="ski-pills">{absagen.map(n => <span key={n} className="ski-pill r">{n}</span>)}</div>
+        </div>
+      )}
 
       {/* Vorschläge */}
       <div className="ski-card">
