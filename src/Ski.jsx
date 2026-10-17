@@ -70,11 +70,6 @@ const CSS = `
 .ski-chip{display:inline-flex;align-items:center;gap:6px;padding:8px 8px 8px 14px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);font-size:15px;font-weight:600}
 .ski-chip button{width:22px;height:22px;border-radius:999px;border:0;background:rgba(255,255,255,.2);color:#fff;display:flex;align-items:center;justify-content:center}
 .ski-del{background:none;border:0;color:rgba(255,255,255,.45);padding:4px;display:flex}
-.ski-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:18px}
-.ski-stat{border-radius:16px;padding:10px 6px;text-align:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14)}
-.ski-stat b{display:block;font-size:26px;font-weight:800;line-height:1.1}
-.ski-stat span{display:block;font-size:11px;font-weight:700;letter-spacing:.03em;opacity:.75;margin-top:2px}
-.ski-stat.g b{color:#4ADE80}.ski-stat.y b{color:#FBBF24}.ski-stat.r b{color:#F87171}.ski-stat.o b{color:rgba(255,255,255,.6)}
 .ski-grp{display:flex;align-items:center;gap:6px;margin-top:12px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
 .ski-grp.g{color:#4ADE80}.ski-grp.y{color:#FBBF24}.ski-grp.r{color:#F87171}.ski-grp.o{color:rgba(255,255,255,.5)}
 .ski-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
@@ -291,8 +286,6 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
     return z === 'fr-mo' ? 'Fr+Mo' : z === 'fr' ? 'Fr' : z === 'mo' ? 'Mo' : '';
   };
   const pill = (p, withExtra) => ({ k: p.k, n: short(p.n), extra: withExtra ? extraOf(p.k) : '' });
-  const byStatus = (st) => allPeople.filter(p => statusOf(p.k) === st).map(p => pill(p));
-  const stDabei = byStatus('ja'), stVielleicht = byStatus('vielleicht'), stAbsage = byStatus('nein');
   const stOffen = allPeople.filter(p => !statusOf(p.k)).map(p => pill(p));
   const weekendGroups = (qid) => {
     const g = { yes: [], maybe: [], no: [], open: [] };
@@ -333,23 +326,6 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
         <div className="ski-note">Verbindung fehlgeschlagen. <button className="ski-link" style={{ padding: 0 }} onClick={onReload}><RefreshCw size={14} /> Neu laden</button></div>
       )}
 
-      {/* Gesamtstand */}
-      <div className="ski-stats">
-        <div className="ski-stat g"><b>{stDabei.length}</b><span>Dabei</span></div>
-        <div className="ski-stat y"><b>{stVielleicht.length}</b><span>Vielleicht</span></div>
-        <div className="ski-stat r"><b>{stAbsage.length}</b><span>Absage</span></div>
-        <div className="ski-stat o"><b>{stOffen.length}</b><span>Offen</span></div>
-      </div>
-
-      {/* Wer ist dabei */}
-      <div className="ski-card">
-        <h3>Wer ist dabei · {allPeople.length - stOffen.length} von {allPeople.length} haben abgestimmt</h3>
-        <Group tone="g" label="Dabei" items={stDabei} />
-        <Group tone="y" label="Vielleicht" items={stVielleicht} />
-        <Group tone="r" label="Absage" items={stAbsage} />
-        <Group tone="o" label="Noch nicht abgestimmt" items={stOffen} />
-      </div>
-
       {/* Wer kann wann */}
       {weekends.length > 0 && (
         <div className="ski-card">
@@ -366,13 +342,20 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
                 <Group tone="g" label="Kann" items={g.yes} />
                 <Group tone="y" label="Vielleicht" items={g.maybe} />
                 <Group tone="r" label="Kann nicht" items={g.no} />
-                {g.open.length > 0 && <div className="ski-grp o">Noch offen · {g.open.length}</div>}
               </div>
             );
           })}
           <div className="ski-names" style={{ marginTop: 12 }}>Etikett am Namen = Zusatztag (Fr, Mo oder Fr+Mo).</div>
         </div>
       )}
+
+      {/* Noch nicht abgestimmt */}
+      <div className="ski-card">
+        <h3>Noch nicht abgestimmt · {stOffen.length} von {allPeople.length}</h3>
+        {stOffen.length
+          ? <div className="ski-pills">{stOffen.map(it => <span key={it.k} className="ski-pill o">{it.n}</span>)}</div>
+          : <div style={{ fontSize: 16, fontWeight: 700, color: '#4ADE80' }}>Alle haben abgestimmt ✓</div>}
+      </div>
 
       {/* Weitere Auswahlfragen */}
       {choices.filter(q => q.id !== 'dabei').map(q => {
