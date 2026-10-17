@@ -8,34 +8,17 @@
 // Neuer Trip / neues Jahr: `slug` ändern → Fragebogen startet leer.
 // =============================================================
 
+import { SKI_MEMBERS } from '../../supabase/functions/_shared/ski-members.ts';
+
 export const SKI_TRIP = {
   slug: 'ski-2027',
 
   title: 'Skifahren 2027',
   tagline: 'Planung Saison 26/27',
 
-  // Mitglieder der WhatsApp-Gruppe „Skifahren 26/27" — werden zum Antippen
-  // angezeigt. Neue Leute einfach hier ergänzen.
-  members: [
-    'Emilio Arellano',
-    'Benedikt Bugner',
-    'Jonas Beiter',
-    'Lukas Beiter',
-    'Ruben Geyer',
-    'Simon Halter',
-    'Max Hanselmann',
-    'Simeon Hufen',
-    'Simon Köcher',
-    'Niklas Kreuzmann',
-    'Jonas Mächtig',
-    'Max Maute',
-    'Philipp Rapp',
-    'Simon Riedinger',
-    'Sea Schefold',
-    'Patrick Tisch',
-    'Simon Vogel',
-    'Markus Wechtner',
-  ],
+  // Mitglieder der WhatsApp-Gruppe „Skifahren 26/27" — gepflegt in
+  // supabase/functions/_shared/ski-members.ts (gemeinsam mit der Mail-Funktion).
+  members: SKI_MEMBERS,
 
   // Startbildschirm — kurz und knackig, Rest kommt in den Fragen.
   welcome: {
