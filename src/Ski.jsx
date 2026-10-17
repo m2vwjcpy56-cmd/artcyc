@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { ArrowLeft, ArrowRight, Check, ThumbsUp, Share2, RefreshCw, Pencil, Trophy, Plus, X } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { SKI_TRIP } from './ski/config.js';
+import { groupSuggestions } from '../supabase/functions/_shared/ski-suggest.ts';
 
 // =============================================================
 // Ski-Planung — Fragebogen-Website unter /ski (kein Login, kein App-Look).
@@ -98,6 +99,7 @@ const CSS = `
 .ski-day.y .d,.ski-day.y .c{color:#FBBF24;font-size:14px}
 .ski-day.r .d,.ski-day.r .c{color:#F87171;font-size:14px}
 .ski-day.y .n,.ski-day.r .n{font-size:13px;color:rgba(255,255,255,.55)}
+.ski-multi{display:inline-block;margin-left:8px;vertical-align:middle;font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(255,149,0,.2);color:#FFB340}
 .ski-names-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:22px}
 .ski-name{position:relative;text-align:left;padding:12px 14px;border-radius:16px;border:1.5px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;transition:transform .12s,background .15s;-webkit-tap-highlight-color:transparent}
 .ski-name:active{transform:scale(.97)}
@@ -335,10 +337,19 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
   const choices = qs.filter(q => q.type === 'choice' && q.kind !== 'availability');
   const likes = useMemo(() => {
     const m = {};
-    for (const v of votes) if (v.poll_id === LIKES_POLL) for (const id of (v.answers?.selected || [])) (m[id] ||= []).push({ name: short(v.name), mine: v.name_key === myKey });
+    for (const v of votes) if (v.poll_id === LIKES_POLL) for (const id of (v.answers?.selected || [])) (m[id] ||= []).push({ key: v.name_key, name: short(v.name), mine: v.name_key === myKey });
     return m;
   }, [votes, myKey]);
-  const sortedSug = [...suggestions].sort((a, b) => (likes[b.id]?.length || 0) - (likes[a.id]?.length || 0) || a.created_at.localeCompare(b.created_at));
+  // Gleiche Vorschläge (Schreibweise, Füllwörter, kleine Tippfehler) zusammenfassen.
+  // Unterstützer = alle, die ihn vorgeschlagen ODER mit Daumen hoch markiert haben.
+  const sugGroups = useMemo(() => groupSuggestions(suggestions).map(g => {
+    const uniq = (arr) => Array.from(new Map(arr.map(x => [x.key, x])).values());
+    const proposers = uniq(g.items.map(it => ({ key: nameKey(it.name), name: short(it.name) })));
+    const likers = uniq(g.ids.flatMap(id => (likes[id] || []).map(l => ({ key: l.key, name: l.name, mine: l.mine }))));
+    const support = new Set([...proposers, ...likers].map(x => x.key)).size;
+    const mineItem = g.items.find(it => it.device === dev && !(likes[it.id] || []).length);
+    return { ...g, proposers, likers, support, on: likers.some(l => l.mine), mineItem };
+  }).sort((a, b) => b.support - a.support || b.likers.length - a.likers.length), [suggestions, likes, dev, short]);
   const overviewCols = [...choices.filter(q => q.id === 'dabei'), ...qs.filter(q => q.kind === 'availability'), ...choices.filter(q => q.id !== 'dabei')];
   const shortOf = (q, val) => q.options.find(o => o.id === val)?.short ?? (val ? '•' : '–');
   const tone = (q, val) => q.kind === 'availability' || q.id === 'dabei'
@@ -415,25 +426,27 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
       {/* Vorschläge */}
       <div className="ski-card">
         <h3>Vorschläge Skigebiet & Unterkunft</h3>
-        {sortedSug.length === 0 && <div style={{ fontSize: 15, color: 'rgba(255,255,255,.6)' }}>Noch keine Vorschläge.</div>}
-        {sortedSug.map((s, i) => {
-          const l = likes[s.id] || [];
-          const on = l.some(x => x.mine);
-          return (
-            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: i ? 12 : 0 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 16, fontWeight: 600 }}>{s.text}</div>
-                <div className="ski-names">von {short(s.name)}{l.length > 0 && <> · 👍 {l.map(x => x.name).join(', ')}</>}</div>
+        {sugGroups.length === 0 && <div style={{ fontSize: 15, color: 'rgba(255,255,255,.6)' }}>Noch keine Vorschläge.</div>}
+        {sugGroups.map((g, i) => (
+          <div key={g.ids[0]} style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: i ? 12 : 0 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>
+                {g.text}
+                {g.proposers.length > 1 && <span className="ski-multi">{g.proposers.length}× vorgeschlagen</span>}
               </div>
-              {s.device === dev && l.length === 0 && (
-                <button type="button" className="ski-del" onClick={() => onDeleteSuggestion(s.id)} aria-label="Eigenen Vorschlag löschen"><X size={16} strokeWidth={2.6} /></button>
-              )}
-              <button type="button" className={cx('ski-like', on && 'on')} onClick={() => onLike(s.id)} aria-label="Daumen hoch">
-                <ThumbsUp size={15} strokeWidth={2.4} /> {l.length}
-              </button>
+              <div className="ski-names">
+                von {g.proposers.map(p => p.name).join(', ')}
+                {g.likers.length > 0 && <> · 👍 {g.likers.map(l => l.name).join(', ')}</>}
+              </div>
             </div>
-          );
-        })}
+            {g.mineItem && g.items.length === 1 && (
+              <button type="button" className="ski-del" onClick={() => onDeleteSuggestion(g.mineItem.id)} aria-label="Eigenen Vorschlag löschen"><X size={16} strokeWidth={2.6} /></button>
+            )}
+            <button type="button" className={cx('ski-like', g.on && 'on')} onClick={() => onLike(g.ids, g.on)} aria-label="Daumen hoch">
+              <ThumbsUp size={15} strokeWidth={2.4} /> {g.likers.length}
+            </button>
+          </div>
+        ))}
         {name.trim() && <SuggestionInput placeholder="Weiterer Vorschlag …" onAdd={onAddSuggestion} />}
       </div>
 
@@ -616,9 +629,11 @@ export default function Ski() {
     load();
   };
 
-  const like = (id) => {
+  // Daumen gilt für die ganze Gruppe gleicher Vorschläge: an = erste ID merken,
+  // aus = alle IDs der Gruppe entfernen.
+  const like = (ids, on) => {
     const cur = new Set(votes.find(v => v.poll_id === LIKES_POLL && v.name_key === myKey)?.answers?.selected || []);
-    cur.has(id) ? cur.delete(id) : cur.add(id);
+    if (on) ids.forEach(id => cur.delete(id)); else cur.add(ids[0]);
     saveVote(LIKES_POLL, { selected: Array.from(cur) });
   };
 

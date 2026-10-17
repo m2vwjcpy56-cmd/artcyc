@@ -24,6 +24,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { corsHeaders, jsonHeaders } from "../_shared/cors.ts";
 // @ts-ignore Deno-Runtime resolution
 import { SKI_MEMBERS } from "../_shared/ski-members.ts";
+// @ts-ignore Deno-Runtime resolution
+import { groupSuggestions } from "../_shared/ski-suggest.ts";
 
 // @ts-ignore Deno-Runtime
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -100,7 +102,12 @@ function buildFinal(polls: Poll[], allVotes: any[], rawVotes: any[], sugs: any[]
   }
   const likes: Record<string, string[]> = {};
   for (const v of rawVotes) if (v.poll_id === LIKES_POLL) for (const id of (v.answers?.selected || [])) (likes[id] ||= []).push(v.name);
-  const sortedSugs = [...sugs].sort((a, b) => (likes[b.id]?.length || 0) - (likes[a.id]?.length || 0));
+  // Gleiche Vorschläge zusammenfassen (wie auf der Seite)
+  const sortedSugs = groupSuggestions(sugs).map((g: any) => {
+    const proposers = [...new Set(g.items.map((it: any) => it.name))];
+    const likers = [...new Set(g.ids.flatMap((id: string) => likes[id] || []))];
+    return { text: g.text, name: proposers.join(", "), likeCount: likers.length, support: new Set([...proposers, ...likers]).size };
+  }).sort((a: any, b: any) => b.support - a.support || b.likeCount - a.likeCount);
 
   const sec = (title: string, body: string) => `<h3 style="margin:20px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#94A3B8">${esc(title)}</h3>${body}`;
   const pollHtml = polls.map((p) => sec(p.title, `<table style="border-collapse:collapse;font-size:14px;width:100%">${p.options.map((o) => {
@@ -108,7 +115,7 @@ function buildFinal(polls: Poll[], allVotes: any[], rawVotes: any[], sugs: any[]
     return `<tr><td style="padding:5px 10px 5px 0;vertical-align:top;white-space:nowrap;font-weight:700;color:#0F172A">${esc(o.label)} · ${ns.length}</td><td style="padding:5px 0;color:#475569">${esc(ns.join(", ") || "—")}</td></tr>`;
   }).join("")}</table>`)).join("");
   const sugHtml = sortedSugs.length
-    ? sec("Vorschläge", `<ul style="margin:0;padding-left:18px;font-size:14px;color:#0F172A">${sortedSugs.map((s) => `<li>${esc(s.text)} <span style="color:#64748B">(von ${esc(s.name)}${likes[s.id]?.length ? `, 👍 ${likes[s.id].length}` : ""})</span></li>`).join("")}</ul>`)
+    ? sec("Vorschläge", `<ul style="margin:0;padding-left:18px;font-size:14px;color:#0F172A">${sortedSugs.map((s) => `<li>${esc(s.text)} <span style="color:#64748B">(von ${esc(s.name)}${s.likeCount ? `, 👍 ${s.likeCount}` : ""})</span></li>`).join("")}</ul>`)
     : "";
   const count = new Set(allVotes.map((v) => v.name_key)).size;
   const subject = `✅ Ski 2027: Alle ${SKI_MEMBERS.length} haben abgestimmt`;
@@ -129,7 +136,7 @@ function buildFinal(polls: Poll[], allVotes: any[], rawVotes: any[], sugs: any[]
     fav && best > 0 ? `Favorit: ${fav} mit ${best}x "Passt"` : "",
     "",
     ...polls.flatMap((p) => [p.title, ...p.options.map((o) => { const ns = names(p.id, o.id); return `  ${o.label} (${ns.length}): ${ns.join(", ") || "-"}`; }), ""]),
-    ...(sortedSugs.length ? ["Vorschläge:", ...sortedSugs.map((s) => `  - ${s.text} (von ${s.name}${likes[s.id]?.length ? `, ${likes[s.id].length} Daumen` : ""})`), ""] : []),
+    ...(sortedSugs.length ? ["Vorschläge:", ...sortedSugs.map((s) => `  - ${s.text} (von ${s.name}${s.likeCount ? `, ${s.likeCount} Daumen` : ""})`), ""] : []),
     PAGE_URL,
   ].join("\n");
   return { subject, html, text };
