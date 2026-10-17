@@ -79,8 +79,25 @@ const CSS = `
 .ski-pill.r{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.45);color:#FEE2E2}
 .ski-pill.o{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.18);color:rgba(255,255,255,.65)}
 .ski-pill em{font-style:normal;font-size:11px;font-weight:800;padding:1px 6px;border-radius:999px;background:rgba(255,255,255,.16)}
-.ski-wk{padding-top:14px;margin-top:14px;border-top:1px solid rgba(255,255,255,.12)}
-.ski-wk:first-of-type{padding-top:0;margin-top:4px;border-top:0}
+.ski-cmp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
+.ski-cmp-t{position:relative;border-radius:20px;padding:16px 16px 14px;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.14)}
+.ski-cmp-t.win{background:rgba(74,222,128,.16);border-color:rgba(74,222,128,.7)}
+.ski-cmp-t .lbl{font-size:15px;font-weight:700;opacity:.85}
+.ski-cmp-t .num{font-size:52px;font-weight:800;line-height:1;margin-top:8px;letter-spacing:-.02em}
+.ski-cmp-t.win .num{color:#4ADE80}
+.ski-cmp-t .sub{font-size:15px;font-weight:600;opacity:.8}
+.ski-cmp-t .mb{font-size:13px;color:#FBBF24;font-weight:600;margin-top:6px}
+.ski-cmp-t .badge{display:inline-block;margin-top:10px;font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;background:#4ADE80;color:#0B1F3A}
+.ski-card-win{border-color:rgba(74,222,128,.5)}
+.ski-day{display:grid;grid-template-columns:1fr auto;column-gap:10px;align-items:baseline;padding:12px 0;border-top:1px solid rgba(255,255,255,.1)}
+.ski-day:first-of-type{border-top:0;padding-top:2px}
+.ski-day .d{font-size:16px;font-weight:800}
+.ski-day .c{font-size:22px;font-weight:800;text-align:right}
+.ski-day .n{grid-column:1 / -1;font-size:14px;line-height:1.45;color:rgba(255,255,255,.75);margin-top:3px}
+.ski-day.m .d,.ski-day.m .c{color:#4ADE80}
+.ski-day.y .d,.ski-day.y .c{color:#FBBF24;font-size:14px}
+.ski-day.r .d,.ski-day.r .c{color:#F87171;font-size:14px}
+.ski-day.y .n,.ski-day.r .n{font-size:13px;color:rgba(255,255,255,.55)}
 .ski-names-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:22px}
 .ski-name{position:relative;text-align:left;padding:12px 14px;border-radius:16px;border:1.5px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;transition:transform .12s,background .15s;-webkit-tap-highlight-color:transparent}
 .ski-name:active{transform:scale(.97)}
@@ -249,18 +266,6 @@ function legacyDuplicates(votes, members) {
   return out;
 }
 
-function Group({ tone, label, items }) {
-  if (!items.length) return null;
-  return (
-    <>
-      <div className={cx('ski-grp', tone)}>{label} · {items.length}</div>
-      <div className="ski-pills">
-        {items.map(it => <span key={it.k} className={cx('ski-pill', tone)}>{it.n}{it.extra && <em>{it.extra}</em>}</span>)}
-      </div>
-    </>
-  );
-}
-
 function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, onLike, onAddSuggestion, onDeleteSuggestion, onEdit, onShare, copied, status, onReload }) {
   // Wer abgesagt hat (dabei = nein), zählt bei Terminen und Zusatztag nicht mit —
   // auch wenn noch alte Antworten von vor der Absage gespeichert sind.
@@ -300,23 +305,27 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
     for (const p of people) if (!m.has(p.k)) m.set(p.k, p.n);    // auch „Mein Name fehlt"-Einträge
     return Array.from(m.entries()).map(([k, n]) => ({ k, n }));
   }, [members, people]);
-  const extraOf = (k) => {                                            // Zusatztag als kleines Etikett
-    const z = answerOf(k, 'zusatztag');
-    return z === 'fr-mo' ? 'Fr+Mo' : z === 'fr' ? 'Fr' : z === 'mo' ? 'Mo' : '';
-  };
-  const pill = (p, withExtra) => ({ k: p.k, n: short(p.n), extra: withExtra ? extraOf(p.k) : '' });
+  const pill = (p) => ({ k: p.k, n: short(p.n) });
   const stOffen = allPeople.filter(p => !statusOf(p.k)).map(p => pill(p));
-  const weekendGroups = (qid) => {
-    const g = { yes: [], maybe: [], no: [], open: [] };
+  // Tagesplan je Wochenende: wer kann Sa+So, wer zusätzlich Fr / Mo
+  const zOf = (k) => answerOf(k, 'zusatztag');
+  const weekendPlan = (qid) => {
+    const yes = [], maybe = [], no = [];
     for (const p of allPeople) {
       const st = statusOf(p.k), a = answerOf(p.k, qid);
-      if (st === 'nein' || a === 'no') g.no.push(pill(p));
-      else if (a === 'yes') g.yes.push(pill(p, true));
-      else if (a === 'maybe') g.maybe.push(pill(p, true));
-      else g.open.push(pill(p));
+      if (st === 'nein' || a === 'no') no.push(p);
+      else if (a === 'yes') yes.push(p);
+      else if (a === 'maybe') maybe.push(p);
     }
-    return g;
+    const fr = yes.filter(p => ['fr', 'fr-mo'].includes(zOf(p.k)));
+    const mo = yes.filter(p => ['mo', 'fr-mo'].includes(zOf(p.k)));
+    return { yes, maybe, no, fr, mo };
   };
+  const namesOf = (arr) => arr.map(p => short(p.n)).sort((a, b) => a.localeCompare(b, 'de')).join(', ');
+  const plans = weekends.map(w => ({ ...w, plan: weekendPlan(w.qid), days: r.weekendDays?.[w.qid] || {} }));
+  const bestYes = Math.max(0, ...plans.map(w => w.plan.yes.length));
+  const plansSorted = [...plans].sort((a, b) => b.plan.yes.length - a.plan.yes.length);
+
   const rank = (k) => ({ ja: 0, vielleicht: 1, nein: 2 }[statusOf(k)] ?? 3);
   const tableRows = [...allPeople].sort((a, b) => rank(a.k) - rank(b.k) || short(a.n).localeCompare(short(b.n), 'de'));
 
@@ -345,28 +354,45 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
         <div className="ski-note">Verbindung fehlgeschlagen. <button className="ski-link" style={{ padding: 0 }} onClick={onReload}><RefreshCw size={14} /> Neu laden</button></div>
       )}
 
-      {/* Wer kann wann */}
-      {weekends.length > 0 && (
-        <div className="ski-card">
-          <h3>Wer kann wann</h3>
-          {weekends.map(w => {
-            const g = weekendGroups(w.qid);
-            const fav = maxYes > 0 && w.yes.length === maxYes;
+      {/* Vergleich auf einen Blick */}
+      {plans.length > 0 && (
+        <div className="ski-cmp">
+          {plans.map(w => {
+            const win = bestYes > 0 && w.plan.yes.length === bestYes;
             return (
-              <div key={w.qid} className="ski-wk">
-                <div className="ski-row">
-                  <span style={{ fontSize: 18 }}>{w.label}{fav && <span className="ski-fav">Favorit</span>}</span>
-                  <small><b style={{ color: '#4ADE80' }}>{g.yes.length}</b> {g.yes.length === 1 ? 'kann' : 'können'}</small>
-                </div>
-                <Group tone="g" label="Passt" items={g.yes} />
-                <Group tone="y" label="Vielleicht" items={g.maybe} />
-                <Group tone="r" label="Geht nicht" items={g.no} />
+              <div key={w.qid} className={cx('ski-cmp-t', win && 'win')}>
+                <div className="lbl">{w.label}</div>
+                <div className="num">{w.plan.yes.length}</div>
+                <div className="sub">{w.plan.yes.length === 1 ? 'kann' : 'können'}</div>
+                {w.plan.maybe.length > 0 && <div className="mb">+ {w.plan.maybe.length} vielleicht</div>}
+                {win && <div className="badge">Die meisten</div>}
               </div>
             );
           })}
-          <div className="ski-names" style={{ marginTop: 12 }}>Etikett am Namen = Zusatztag (Fr, Mo oder Fr+Mo).</div>
         </div>
       )}
+
+      {/* Tagesplan je Wochenende (Favorit zuerst) */}
+      {plansSorted.map(w => {
+        const win = bestYes > 0 && w.plan.yes.length === bestYes;
+        const row = (label, arr, tone) => (
+          <div className={cx('ski-day', tone)}>
+            <div className="d">{label}</div>
+            <div className="c">{arr.length}</div>
+            <div className="n">{arr.length ? namesOf(arr) : '—'}</div>
+          </div>
+        );
+        return (
+          <div key={w.qid} className={cx('ski-card', win && 'ski-card-win')}>
+            <h3>{w.label}{win && <span className="ski-fav">Favorit</span>}</h3>
+            {row(`${w.days.fr || 'Freitag'} · zusätzlich`, w.plan.fr, 'x')}
+            {row(w.days.main || 'Sa + So', w.plan.yes, 'm')}
+            {row(`${w.days.mo || 'Montag'} · zusätzlich`, w.plan.mo, 'x')}
+            {w.plan.maybe.length > 0 && row('Vielleicht', w.plan.maybe, 'y')}
+            {w.plan.no.length > 0 && row('Geht nicht', w.plan.no, 'r')}
+          </div>
+        );
+      })}
 
       {/* Noch nicht abgestimmt */}
       <div className="ski-card">
@@ -375,27 +401,6 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
           ? <div className="ski-pills">{stOffen.map(it => <span key={it.k} className="ski-pill o">{it.n}</span>)}</div>
           : <div style={{ fontSize: 16, fontWeight: 700, color: '#4ADE80' }}>Alle haben abgestimmt ✓</div>}
       </div>
-
-      {/* Weitere Auswahlfragen */}
-      {choices.filter(q => q.id !== 'dabei').map(q => {
-        const vs = byQ(q.id);
-        return (
-          <div className="ski-card" key={q.id}>
-            <h3>{q.title}</h3>
-            {q.options.map((o, i) => {
-              const ns = vs.filter(v => v.answers?.value === o.id).map(nameOf);
-              const pct = vs.length ? Math.round(ns.length / vs.length * 100) : 0;
-              return (
-                <div key={o.id} style={{ marginTop: i ? 12 : 0 }}>
-                  <div className="ski-row"><span>{o.label}</span><small>{ns.length}</small></div>
-                  <div className="ski-bar"><i style={{ width: pct + '%' }} /></div>
-                  {ns.length > 0 && <div className="ski-names">{ns.join(', ')}</div>}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
 
       {/* Vorschläge */}
       <div className="ski-card">
