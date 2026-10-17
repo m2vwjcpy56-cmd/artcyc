@@ -10,6 +10,7 @@ export const SKI_MEMBERS: string[] = [
     'Ruben Geyer',
     'Simon Halter',
     'Max Hanselmann',
+    'Moritz Herbst',
     'Simeon Hufen',
     'Simon Köcher',
     'Niklas Kreuzmann',
@@ -19,6 +20,7 @@ export const SKI_MEMBERS: string[] = [
     'Simon Riedinger',
     'Sea Schefold',
     'Patrick Tisch',
+    'Tim Kühne',
     'Simon Vogel',
     'Markus Wechtner',
 ];
