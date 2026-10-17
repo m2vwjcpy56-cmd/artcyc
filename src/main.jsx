@@ -130,7 +130,7 @@ if (_standalone && !_appPath && !_authCb) {
 }
 
 // Ski-Planung: eigenständige, loginfreie Unterseite unter /ski (siehe src/Ski.jsx).
-const _skiPath = /^\/ski(\/|$)/.test(_p);
+const _skiPath = /^\/ski(\.html)?(\/|$)/.test(_p);
 
 const _isApp = _appPath || _authCb;
 const Root = _isApp ? App : (_skiPath ? Ski : Landing);

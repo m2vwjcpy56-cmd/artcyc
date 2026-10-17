@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 // Build-Konstanten — werden zur Build-Zeit ins Bundle injiziert.
 // Damit zeigt die App Version + Build-Datum in den Einstellungen an.
@@ -85,6 +86,16 @@ export default defineConfig({
       }
     })
   ],
+  // Zwei HTML-Einstiege: index.html (Landingpage + App) und ski.html (/ski,
+  // eigene Link-Vorschau für WhatsApp). Beide laden dasselbe main.jsx.
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        ski: fileURLToPath(new URL('./ski.html', import.meta.url)),
+      },
+    },
+  },
   server: {
     port: 5173,
     host: true
