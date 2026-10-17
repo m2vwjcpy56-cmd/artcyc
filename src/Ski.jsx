@@ -494,14 +494,24 @@ export default function Ski() {
       if (error) { setStatus('error'); setErrMsg(error.message); }
       setPendingSugs([]);
     }
+    notify('submit');
     setScreen('results');
     load();
+  };
+
+  // Mail an den Organisator (Edge Function ski-notify). Läuft im Hintergrund,
+  // ein Fehler hier darf den Fragebogen nie blockieren.
+  const notify = (kind) => {
+    const polls = qs.filter(x => x.type === 'choice').map(x => ({
+      id: x.id, title: x.title, kind: x.kind, options: x.options.map(o => ({ id: o.id, label: o.label })),
+    }));
+    supabase.functions.invoke('ski-notify', { body: { trip: trip.slug, name: name.trim(), kind, polls } }).catch(() => {});
   };
 
   const addSuggestion = async (t) => {
     if (!name.trim()) return;
     const { error } = await supabase.from('ski_suggestions').insert({ trip: trip.slug, name: name.trim(), text: t, device: dev });
-    if (error) { setStatus('error'); setErrMsg(error.message); }
+    if (error) { setStatus('error'); setErrMsg(error.message); } else notify('suggestion');
     load();
   };
   const deleteSuggestion = async (id) => {
