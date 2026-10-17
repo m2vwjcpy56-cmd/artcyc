@@ -112,5 +112,10 @@ export const SKI_TRIP = {
     text: 'Deine Antworten sind gespeichert. So steht’s gerade:',
     weekends: ['we-jan-23', 'we-jan-30'],   // Fragen-IDs der Terminwahl (Favorit-Vergleich)
     weekendLabels: { 'we-jan-23': '23. – 24. Jan', 'we-jan-30': '30. – 31. Jan' },
+    // Zusatztage je Wochenende für den Tagesplan auf der Ergebnis-Seite
+    weekendDays: {
+      'we-jan-23': { fr: 'Fr 22.1.', main: 'Sa 23. + So 24.', mo: 'Mo 25.1.' },
+      'we-jan-30': { fr: 'Fr 29.1.', main: 'Sa 30. + So 31.', mo: 'Mo 1.2.' },
+    },
   },
 };
