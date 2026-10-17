@@ -30,6 +30,7 @@ export const SKI_TRIP = {
     'Jonas Mächtig',
     'Max Maute',
     'Philipp Rapp',
+    'Simon Riedinger',
     'Sea Schefold',
     'Patrick Tisch',
     'Simon Vogel',
