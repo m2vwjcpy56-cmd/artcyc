@@ -232,6 +232,23 @@ function TextStep({ q, items, onAddItem, onRemoveItem, onNext }) {
   );
 }
 
+// Alt-Einträge aus der Zeit, als man den Namen noch eintippte (z. B. „Ruben"),
+// ausblenden, wenn sie eindeutig zu einem Listen-Mitglied gehören, das inzwischen
+// selbst abgestimmt hat — sonst steht die Person doppelt in der Übersicht.
+function legacyDuplicates(votes, members) {
+  const memberKeys = new Set(members.map(nameKey));
+  const byFirst = {};
+  for (const m of members) (byFirst[nameKey(m).split(' ')[0]] ||= []).push(nameKey(m));
+  const voted = new Set(votes.filter(v => v.poll_id === 'dabei').map(v => v.name_key));
+  const out = new Set();
+  for (const k of new Set(votes.map(v => v.name_key))) {
+    if (memberKeys.has(k)) continue;
+    const cands = byFirst[k];
+    if (cands && cands.length === 1 && voted.has(cands[0])) out.add(k);
+  }
+  return out;
+}
+
 function Group({ tone, label, items }) {
   if (!items.length) return null;
   return (
@@ -249,8 +266,10 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
   // auch wenn noch alte Antworten von vor der Absage gespeichert sind.
   const votes = useMemo(() => {
     const declined = new Set(rawVotes.filter(v => v.poll_id === 'dabei' && v.answers?.value === 'nein').map(v => v.name_key));
-    return rawVotes.filter(v => v.poll_id === 'dabei' || v.poll_id === LIKES_POLL || !declined.has(v.name_key));
-  }, [rawVotes]);
+    const legacy = legacyDuplicates(rawVotes, trip.members || []);
+    return rawVotes.filter(v => !legacy.has(v.name_key)
+      && (v.poll_id === 'dabei' || v.poll_id === LIKES_POLL || !declined.has(v.name_key)));
+  }, [rawVotes, trip.members]);
   const qs = trip.questions;
   const r = trip.results;
   const byQ = (qid) => votes.filter(v => v.poll_id === qid);
@@ -337,11 +356,11 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
               <div key={w.qid} className="ski-wk">
                 <div className="ski-row">
                   <span style={{ fontSize: 18 }}>{w.label}{fav && <span className="ski-fav">Favorit</span>}</span>
-                  <small><b style={{ color: '#4ADE80' }}>{g.yes.length}</b> kann</small>
+                  <small><b style={{ color: '#4ADE80' }}>{g.yes.length}</b> {g.yes.length === 1 ? 'kann' : 'können'}</small>
                 </div>
-                <Group tone="g" label="Kann" items={g.yes} />
+                <Group tone="g" label="Passt" items={g.yes} />
                 <Group tone="y" label="Vielleicht" items={g.maybe} />
-                <Group tone="r" label="Kann nicht" items={g.no} />
+                <Group tone="r" label="Geht nicht" items={g.no} />
               </div>
             );
           })}
