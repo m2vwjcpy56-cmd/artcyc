@@ -167,7 +167,16 @@ Deno.serve(async (req: Request) => {
 
   // Wer abgesagt hat (dabei = nein), zählt bei Terminen/Zusatztag nicht mit.
   const declined = new Set((votes || []).filter((v: any) => v.poll_id === "dabei" && v.answers?.value === "nein").map((v: any) => v.name_key));
-  const allVotes = (votes || []).filter((v: any) => v.poll_id !== LIKES_POLL && (v.poll_id === "dabei" || !declined.has(v.name_key)));
+  // Alt-Einträge mit eingetipptem Vornamen (z. B. „Ruben"), die eindeutig zu einem
+  // Mitglied gehören, das selbst abgestimmt hat, nicht doppelt zählen.
+  const memberKeys = new Set(SKI_MEMBERS.map((m) => m.trim().toLowerCase()));
+  const byFirst: Record<string, string[]> = {};
+  for (const m of memberKeys) (byFirst[m.split(" ")[0]] ||= []).push(m);
+  const votedAll = new Set((votes || []).filter((v: any) => v.poll_id === "dabei").map((v: any) => v.name_key));
+  const legacy = new Set([...new Set((votes || []).map((v: any) => v.name_key as string))]
+    .filter((k) => !memberKeys.has(k) && byFirst[k]?.length === 1 && votedAll.has(byFirst[k][0])));
+  const allVotes = (votes || []).filter((v: any) => v.poll_id !== LIKES_POLL && !legacy.has(v.name_key)
+    && (v.poll_id === "dabei" || !declined.has(v.name_key)));
   const mine = allVotes.filter((v: any) => v.name_key === nameKey);
   const mySugs = (sugs || []).filter((s: any) => String(s.name).trim().toLowerCase() === nameKey);
   if (mine.length === 0 && mySugs.length === 0) return json({ ok: true, mail_sent: false, reason: "nichts gespeichert" });
