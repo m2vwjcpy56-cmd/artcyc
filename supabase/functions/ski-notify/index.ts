@@ -165,7 +165,9 @@ Deno.serve(async (req: Request) => {
   ]);
   if (vErr || sErr) return json({ error: (vErr || sErr)?.message }, 500);
 
-  const allVotes = (votes || []).filter((v: any) => v.poll_id !== LIKES_POLL);
+  // Wer abgesagt hat (dabei = nein), zählt bei Terminen/Zusatztag nicht mit.
+  const declined = new Set((votes || []).filter((v: any) => v.poll_id === "dabei" && v.answers?.value === "nein").map((v: any) => v.name_key));
+  const allVotes = (votes || []).filter((v: any) => v.poll_id !== LIKES_POLL && (v.poll_id === "dabei" || !declined.has(v.name_key)));
   const mine = allVotes.filter((v: any) => v.name_key === nameKey);
   const mySugs = (sugs || []).filter((s: any) => String(s.name).trim().toLowerCase() === nameKey);
   if (mine.length === 0 && mySugs.length === 0) return json({ ok: true, mail_sent: false, reason: "nichts gespeichert" });
