@@ -70,6 +70,22 @@ const CSS = `
 .ski-chip{display:inline-flex;align-items:center;gap:6px;padding:8px 8px 8px 14px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);font-size:15px;font-weight:600}
 .ski-chip button{width:22px;height:22px;border-radius:999px;border:0;background:rgba(255,255,255,.2);color:#fff;display:flex;align-items:center;justify-content:center}
 .ski-del{background:none;border:0;color:rgba(255,255,255,.45);padding:4px;display:flex}
+.ski-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:18px}
+.ski-stat{border-radius:16px;padding:10px 6px;text-align:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14)}
+.ski-stat b{display:block;font-size:26px;font-weight:800;line-height:1.1}
+.ski-stat span{display:block;font-size:11px;font-weight:700;letter-spacing:.03em;opacity:.75;margin-top:2px}
+.ski-stat.g b{color:#4ADE80}.ski-stat.y b{color:#FBBF24}.ski-stat.r b{color:#F87171}.ski-stat.o b{color:rgba(255,255,255,.6)}
+.ski-grp{display:flex;align-items:center;gap:6px;margin-top:12px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.ski-grp.g{color:#4ADE80}.ski-grp.y{color:#FBBF24}.ski-grp.r{color:#F87171}.ski-grp.o{color:rgba(255,255,255,.5)}
+.ski-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.ski-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:999px;font-size:14px;font-weight:600;border:1px solid}
+.ski-pill.g{background:rgba(74,222,128,.14);border-color:rgba(74,222,128,.45);color:#DCFCE7}
+.ski-pill.y{background:rgba(251,191,36,.14);border-color:rgba(251,191,36,.45);color:#FEF3C7}
+.ski-pill.r{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.45);color:#FEE2E2}
+.ski-pill.o{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.18);color:rgba(255,255,255,.65)}
+.ski-pill em{font-style:normal;font-size:11px;font-weight:800;padding:1px 6px;border-radius:999px;background:rgba(255,255,255,.16)}
+.ski-wk{padding-top:14px;margin-top:14px;border-top:1px solid rgba(255,255,255,.12)}
+.ski-wk:first-of-type{padding-top:0;margin-top:4px;border-top:0}
 .ski-names-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:22px}
 .ski-name{position:relative;text-align:left;padding:12px 14px;border-radius:16px;border:1.5px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;transition:transform .12s,background .15s;-webkit-tap-highlight-color:transparent}
 .ski-name:active{transform:scale(.97)}
@@ -221,6 +237,18 @@ function TextStep({ q, items, onAddItem, onRemoveItem, onNext }) {
   );
 }
 
+function Group({ tone, label, items }) {
+  if (!items.length) return null;
+  return (
+    <>
+      <div className={cx('ski-grp', tone)}>{label} · {items.length}</div>
+      <div className="ski-pills">
+        {items.map(it => <span key={it.k} className={cx('ski-pill', tone)}>{it.n}{it.extra && <em>{it.extra}</em>}</span>)}
+      </div>
+    </>
+  );
+}
+
 function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, onLike, onAddSuggestion, onDeleteSuggestion, onEdit, onShare, copied, status, onReload }) {
   // Wer abgesagt hat (dabei = nein), zählt bei Terminen und Zusatztag nicht mit —
   // auch wenn noch alte Antworten von vor der Absage gespeichert sind.
@@ -250,6 +278,36 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
   });
   const maxYes = Math.max(0, ...weekends.map(w => w.yes.length));
 
+  // ---- Übersicht „wer kann / wer nicht" über ALLE Mitglieder ----
+  const members = trip.members || [];
+  const statusOf = (k) => answerOf(k, 'dabei');                     // ja | vielleicht | nein | undefined
+  const allPeople = useMemo(() => {
+    const m = new Map(members.map(n => [nameKey(n), n]));
+    for (const p of people) if (!m.has(p.k)) m.set(p.k, p.n);    // auch „Mein Name fehlt"-Einträge
+    return Array.from(m.entries()).map(([k, n]) => ({ k, n }));
+  }, [members, people]);
+  const extraOf = (k) => {                                            // Zusatztag als kleines Etikett
+    const z = answerOf(k, 'zusatztag');
+    return z === 'fr-mo' ? 'Fr+Mo' : z === 'fr' ? 'Fr' : z === 'mo' ? 'Mo' : '';
+  };
+  const pill = (p, withExtra) => ({ k: p.k, n: short(p.n), extra: withExtra ? extraOf(p.k) : '' });
+  const byStatus = (st) => allPeople.filter(p => statusOf(p.k) === st).map(p => pill(p));
+  const stDabei = byStatus('ja'), stVielleicht = byStatus('vielleicht'), stAbsage = byStatus('nein');
+  const stOffen = allPeople.filter(p => !statusOf(p.k)).map(p => pill(p));
+  const weekendGroups = (qid) => {
+    const g = { yes: [], maybe: [], no: [], open: [] };
+    for (const p of allPeople) {
+      const st = statusOf(p.k), a = answerOf(p.k, qid);
+      if (st === 'nein' || a === 'no') g.no.push(pill(p));
+      else if (a === 'yes') g.yes.push(pill(p, true));
+      else if (a === 'maybe') g.maybe.push(pill(p, true));
+      else g.open.push(pill(p));
+    }
+    return g;
+  };
+  const rank = (k) => ({ ja: 0, vielleicht: 1, nein: 2 }[statusOf(k)] ?? 3);
+  const tableRows = [...allPeople].sort((a, b) => rank(a.k) - rank(b.k) || short(a.n).localeCompare(short(b.n), 'de'));
+
   // Einfache Auswahlfragen (ohne Termin, ohne Name/Text)
   const choices = qs.filter(q => q.type === 'choice' && q.kind !== 'availability');
   const likes = useMemo(() => {
@@ -275,47 +333,44 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
         <div className="ski-note">Verbindung fehlgeschlagen. <button className="ski-link" style={{ padding: 0 }} onClick={onReload}><RefreshCw size={14} /> Neu laden</button></div>
       )}
 
-      {/* Dabei */}
-      {choices.filter(q => q.id === 'dabei').map(q => {
-        const vs = byQ(q.id);
-        return (
-          <div className="ski-card" key={q.id}>
-            <h3>Wer ist dabei · {vs.length} {vs.length === 1 ? 'Antwort' : 'Antworten'}</h3>
-            {q.options.map((o, i) => {
-              const ns = vs.filter(v => v.answers?.value === o.id).map(nameOf);
-              const pct = vs.length ? Math.round(ns.length / vs.length * 100) : 0;
-              return (
-                <div key={o.id} style={{ marginTop: i ? 12 : 0 }}>
-                  <div className="ski-row"><span>{o.emoji} {o.label}</span><small>{ns.length}</small></div>
-                  <div className={cx('ski-bar', i === 0 ? 'g' : i === 1 ? 'y' : 'r')}><i style={{ width: pct + '%' }} /></div>
-                  {ns.length > 0 && <div className="ski-names">{ns.join(', ')}</div>}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
+      {/* Gesamtstand */}
+      <div className="ski-stats">
+        <div className="ski-stat g"><b>{stDabei.length}</b><span>Dabei</span></div>
+        <div className="ski-stat y"><b>{stVielleicht.length}</b><span>Vielleicht</span></div>
+        <div className="ski-stat r"><b>{stAbsage.length}</b><span>Absage</span></div>
+        <div className="ski-stat o"><b>{stOffen.length}</b><span>Offen</span></div>
+      </div>
 
-      {/* Termine */}
+      {/* Wer ist dabei */}
+      <div className="ski-card">
+        <h3>Wer ist dabei · {allPeople.length - stOffen.length} von {allPeople.length} haben abgestimmt</h3>
+        <Group tone="g" label="Dabei" items={stDabei} />
+        <Group tone="y" label="Vielleicht" items={stVielleicht} />
+        <Group tone="r" label="Absage" items={stAbsage} />
+        <Group tone="o" label="Noch nicht abgestimmt" items={stOffen} />
+      </div>
+
+      {/* Wer kann wann */}
       {weekends.length > 0 && (
         <div className="ski-card">
-          <h3>Welches Wochenende</h3>
-          {weekends.map((w, i) => {
-            const pct = w.total ? Math.round(w.yes.length / w.total * 100) : 0;
+          <h3>Wer kann wann</h3>
+          {weekends.map(w => {
+            const g = weekendGroups(w.qid);
             const fav = maxYes > 0 && w.yes.length === maxYes;
             return (
-              <div key={w.qid} style={{ marginTop: i ? 14 : 0 }}>
+              <div key={w.qid} className="ski-wk">
                 <div className="ski-row">
-                  <span>{w.label}{fav && <span className="ski-fav">Favorit</span>}</span>
-                  <small><b style={{ color: '#4ADE80' }}>{w.yes.length}</b> passt · <b style={{ color: '#FBBF24' }}>{w.maybe.length}</b> vielleicht · <b style={{ color: '#F87171' }}>{w.no.length}</b> nicht</small>
+                  <span style={{ fontSize: 18 }}>{w.label}{fav && <span className="ski-fav">Favorit</span>}</span>
+                  <small><b style={{ color: '#4ADE80' }}>{g.yes.length}</b> kann</small>
                 </div>
-                <div className="ski-bar g"><i style={{ width: pct + '%' }} /></div>
-                {(w.yes.length + w.maybe.length) > 0 && (
-                  <div className="ski-names">{w.yes.length > 0 && <>✓ {w.yes.join(', ')}</>}{w.yes.length > 0 && w.maybe.length > 0 && ' · '}{w.maybe.length > 0 && <>? {w.maybe.join(', ')}</>}</div>
-                )}
+                <Group tone="g" label="Kann" items={g.yes} />
+                <Group tone="y" label="Vielleicht" items={g.maybe} />
+                <Group tone="r" label="Kann nicht" items={g.no} />
+                {g.open.length > 0 && <div className="ski-grp o">Noch offen · {g.open.length}</div>}
               </div>
             );
           })}
+          <div className="ski-names" style={{ marginTop: 12 }}>Etikett am Namen = Zusatztag (Fr, Mo oder Fr+Mo).</div>
         </div>
       )}
 
@@ -366,14 +421,14 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
       </div>
 
       {/* Übersicht */}
-      {people.length > 0 && (
+      {allPeople.length > 0 && (
         <div className="ski-card">
           <h3>Alle Antworten</h3>
           <div className="ski-scroll">
             <table className="ski-table">
               <thead><tr><th>Name</th>{overviewCols.map(q => <th key={q.id}>{q.short || q.title}</th>)}</tr></thead>
               <tbody>
-                {people.map(p => (
+                {tableRows.map(p => (
                   <tr key={p.k}>
                     <td style={{ fontWeight: 600 }}>{short(p.n)}</td>
                     {overviewCols.map(q => { const v = answerOf(p.k, q.id); return <td key={q.id} style={{ color: tone(q, v), fontWeight: 700 }}>{shortOf(q, v)}</td>; })}
