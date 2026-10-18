@@ -9,6 +9,7 @@
 // =============================================================
 
 import { SKI_MEMBERS } from '../../supabase/functions/_shared/ski-members.ts';
+export { canonicalVotes, canonicalName } from '../../supabase/functions/_shared/ski-members.ts';
 
 export const SKI_TRIP = {
   slug: 'ski-2027',
@@ -105,6 +106,13 @@ export const SKI_TRIP = {
       optional: true,
     },
   ],
+
+  // Tricount-Box auf der Ergebnis-Seite. Erscheint nur, wenn `url` gesetzt ist.
+  tricount: {
+    url: '',   // z. B. 'https://tricount.com/…' — Link aus der Tricount-App („Teilen")
+    title: 'Gemeinsame Kosten in Tricount',
+    text: 'Unterkunft, Skipass, Essen: Wer etwas für die Gruppe zahlt, trägt es hier ein. Tricount rechnet aus, wer wem wie viel schuldet.',
+  },
 
   // Ergebnis-Seite
   results: {

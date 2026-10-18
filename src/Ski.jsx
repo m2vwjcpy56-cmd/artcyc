@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { ArrowLeft, ArrowRight, Check, ThumbsUp, Share2, RefreshCw, Pencil, Trophy, Plus, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ThumbsUp, Share2, RefreshCw, Pencil, Trophy, Plus, X, Home, ExternalLink, Users, Wallet } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
-import { SKI_TRIP } from './ski/config.js';
+import { SKI_TRIP, canonicalVotes, canonicalName } from './ski/config.js';
 import { groupSuggestions } from '../supabase/functions/_shared/ski-suggest.ts';
 
 // =============================================================
@@ -39,7 +39,7 @@ function makeShort(members) {
   for (const m of members) count[first(m).toLowerCase()] = (count[first(m).toLowerCase()] || 0) + 1;
   const known = new Map(members.map(m => [nameKey(m), m]));
   return (name) => {
-    const full = known.get(nameKey(name));
+    const full = known.get(nameKey(canonicalName(name)));
     if (!full) return name;
     const parts = full.trim().split(/\s+/);
     return count[parts[0].toLowerCase()] > 1 && parts[1] ? `${parts[0]} ${parts[1][0]}.` : parts[0];
@@ -100,6 +100,22 @@ const CSS = `
 .ski-day.r .d,.ski-day.r .c{color:#F87171;font-size:14px}
 .ski-day.y .n,.ski-day.r .n{font-size:13px;color:rgba(255,255,255,.55)}
 .ski-multi{display:inline-block;margin-left:8px;vertical-align:middle;font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(255,149,0,.2);color:#FFB340}
+.ski-me{display:flex;align-items:center;gap:10px;margin-top:16px}
+.ski-input.sm{margin-top:8px;font-size:16px;padding:12px 14px;border-radius:14px}
+.ski-lform{margin-top:12px;padding-top:6px;border-top:1px solid rgba(255,255,255,.12)}
+.ski-lodge{padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}
+.ski-lodge-a{color:#fff;text-decoration:none;border-bottom:1px solid rgba(255,255,255,.35)}
+.ski-lodge svg{display:inline-block}
+.ski-lodge-a svg{vertical-align:-1px;opacity:.7;margin-left:2px}
+.ski-lodge-price{margin-top:4px;font-size:15px;color:rgba(255,255,255,.8)}
+.ski-lodge-price b{font-size:22px;font-weight:800;color:#4ADE80;margin-right:4px}
+.ski-tri{display:flex;gap:14px;align-items:flex-start;margin-top:14px;padding:16px 18px;border-radius:20px;text-decoration:none;color:#fff;background:linear-gradient(135deg,rgba(45,212,191,.22),rgba(45,212,191,.06));border:1px solid rgba(45,212,191,.5);transition:transform .12s;-webkit-tap-highlight-color:transparent}
+.ski-tri:active{transform:scale(.98)}
+.ski-tri .ic{width:44px;height:44px;border-radius:13px;background:#0F766E;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ski-tri svg{display:inline-block}
+.ski-tri .t{display:block;font-size:17px;font-weight:800}
+.ski-tri .d{display:block;font-size:14px;line-height:1.4;color:rgba(255,255,255,.8);margin-top:4px}
+.ski-tri .cta{display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:8px 14px;border-radius:999px;background:#2DD4BF;color:#0B1F3A;font-size:14px;font-weight:800}
 .ski-names-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:22px}
 .ski-name{position:relative;text-align:left;padding:12px 14px;border-radius:16px;border:1.5px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;transition:transform .12s,background .15s;-webkit-tap-highlight-color:transparent}
 .ski-name:active{transform:scale(.97)}
@@ -268,7 +284,112 @@ function legacyDuplicates(votes, members) {
   return out;
 }
 
-function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, onLike, onAddSuggestion, onDeleteSuggestion, onEdit, onShare, copied, status, onReload }) {
+// ---- Unterkünfte ----------------------------------------------------------
+const eur = (n, digits = 0) => (Number.isFinite(n)
+  ? n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: digits, maximumFractionDigits: digits })
+  : '');
+// „1.250,50 €" / „1250.5" / „1 250" → 1250.5
+function parsePrice(v) {
+  let t = String(v || '').replace(/[€\s]/g, '');
+  if (!t) return null;
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : NaN;
+}
+function normUrl(v) {
+  const t = String(v || '').trim();
+  if (!t) return null;
+  const u = /^https?:\/\//i.test(t) ? t : 'https://' + t;
+  try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href.slice(0, 500) : NaN; } catch { return NaN; }
+}
+
+function LodgingForm({ onAdd, onCancel }) {
+  const [f, setF] = useState({ title: '', url: '', price: '', persons: '', note: '' });
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setF(x => ({ ...x, [k]: e.target.value }));
+  const price = parsePrice(f.price);
+  const persons = f.persons ? parseInt(f.persons, 10) : null;
+  const per = Number.isFinite(price) && price && persons > 0 ? price / persons : null;
+  const submit = async (e) => {
+    e.preventDefault();
+    const url = normUrl(f.url);
+    if (!f.title.trim()) return setErr('Bitte einen Namen für die Unterkunft eingeben.');
+    if (Number.isNaN(url)) return setErr('Der Link sieht nicht gültig aus.');
+    if (Number.isNaN(price)) return setErr('Bitte den Gesamtpreis als Zahl eingeben, z. B. 2400.');
+    if (f.persons && !(persons >= 1 && persons <= 200)) return setErr('Bitte die Personenanzahl als Zahl eingeben.');
+    setBusy(true); setErr('');
+    const ok = await onAdd({ title: f.title.trim().slice(0, 120), url, price_total: price, persons, note: f.note.trim().slice(0, 300) || null });
+    setBusy(false);
+    if (ok) setF({ title: '', url: '', price: '', persons: '', note: '' });
+  };
+  return (
+    <form onSubmit={submit} className="ski-lform">
+      <input className="ski-input sm" value={f.title} onChange={set('title')} placeholder="Name der Unterkunft *" maxLength={120} autoFocus />
+      <input className="ski-input sm" value={f.url} onChange={set('url')} placeholder="Link (Booking, Airbnb, Website …)" inputMode="url" autoCapitalize="none" autoCorrect="off" />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input className="ski-input sm" value={f.price} onChange={set('price')} placeholder="Gesamtpreis €" inputMode="decimal" />
+        <input className="ski-input sm" value={f.persons} onChange={set('persons')} placeholder="Personen" inputMode="numeric" style={{ maxWidth: 120 }} />
+      </div>
+      {per && <div className="ski-names" style={{ marginTop: 6 }}>= {eur(per, per % 1 ? 2 : 0)} pro Person</div>}
+      <input className="ski-input sm" value={f.note} onChange={set('note')} placeholder="Notiz, z. B. Halbpension, 3 Nächte" maxLength={300} />
+      {err && <div style={{ marginTop: 8, fontSize: 14, color: '#FBBF24' }}>{err}</div>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button type="submit" className="ski-btn" disabled={busy} style={{ flex: 1, padding: '13px 18px', fontSize: 16 }}><Check size={17} strokeWidth={2.6} /> Eintragen</button>
+        <button type="button" className="ski-btn ghost" onClick={onCancel} style={{ padding: '13px 18px', fontSize: 16 }}>Abbrechen</button>
+      </div>
+    </form>
+  );
+}
+
+function Lodgings({ lodgings, likes, short, name, dev, onAdd, onDelete, onLike }) {
+  const [open, setOpen] = useState(false);
+  const list = useMemo(() => lodgings.map(l => {
+    const ls = likes[l.id] || [];
+    const per = l.price_total != null && l.persons ? Number(l.price_total) / l.persons : null;
+    return { ...l, ls, on: ls.some(x => x.mine), per };
+  }).sort((a, b) => b.ls.length - a.ls.length || (a.per ?? 1e9) - (b.per ?? 1e9)), [lodgings, likes]);
+  return (
+    <div className="ski-card">
+      <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Home size={14} /> Unterkünfte · {list.length}</h3>
+      {list.length === 0 && !open && <div style={{ fontSize: 15, color: 'rgba(255,255,255,.6)' }}>Noch keine Unterkunft eingetragen.</div>}
+      {list.map((l, i) => (
+        <div key={l.id} className="ski-lodge" style={{ marginTop: i ? 12 : 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.25 }}>
+                {l.url ? <a href={l.url} target="_blank" rel="noopener noreferrer" className="ski-lodge-a">{l.title} <ExternalLink size={14} /></a> : l.title}
+              </div>
+              {l.per != null && (
+                <div className="ski-lodge-price"><b>{eur(l.per, l.per % 1 ? 2 : 0)}</b> pro Person</div>
+              )}
+              <div className="ski-names" style={{ marginTop: 2 }}>
+                {l.price_total != null && <>Gesamt {eur(Number(l.price_total))}</>}
+                {l.price_total != null && l.persons ? ' · ' : ''}
+                {l.persons ? <><Users size={12} style={{ verticalAlign: '-1px' }} /> {l.persons} Personen</> : null}
+              </div>
+              {l.note && <div className="ski-names" style={{ color: 'rgba(255,255,255,.8)' }}>{l.note}</div>}
+              <div className="ski-names">von {short(l.name)}{l.ls.length > 0 && <> · 👍 {l.ls.map(x => x.name).join(', ')}</>}</div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+              <button type="button" className={cx('ski-like', l.on && 'on')} onClick={() => onLike([l.id], l.on)} aria-label="Daumen hoch" disabled={!name.trim()}>
+                <ThumbsUp size={15} strokeWidth={2.4} /> {l.ls.length}
+              </button>
+              {l.device === dev && l.ls.length === 0 && (
+                <button type="button" className="ski-del" onClick={() => onDelete(l.id)} aria-label="Eigene Unterkunft löschen"><X size={16} strokeWidth={2.6} /></button>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+      {name.trim() && (open
+        ? <LodgingForm onAdd={async (row) => { const ok = await onAdd(row); if (ok) setOpen(false); return ok; }} onCancel={() => setOpen(false)} />
+        : <button type="button" className="ski-btn ghost" onClick={() => setOpen(true)} style={{ width: '100%', marginTop: 14, padding: '12px 18px', fontSize: 16 }}><Plus size={17} strokeWidth={2.6} /> Unterkunft eintragen</button>)}
+    </div>
+  );
+}
+
+function Results({ trip, short, name, votes: rawVotes, suggestions, lodgings, myKey, dev, onLike, onAddSuggestion, onDeleteSuggestion, onAddLodging, onDeleteLodging, onEdit, onSwitchName, justSubmitted, onShare, copied, status, onReload }) {
   // Wer abgesagt hat (dabei = nein), zählt bei Terminen und Zusatztag nicht mit —
   // auch wenn noch alte Antworten von vor der Absage gespeichert sind.
   const votes = useMemo(() => {
@@ -359,9 +480,16 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
   return (
     <div className="ski-step" style={{ justifyContent: 'flex-start' }}>
       <h2 className="ski-h2">{!name.trim() ? 'Zwischenstand'
+        : !justSubmitted ? `Hallo ${name.trim().split(/\s+/)[0]} 👋`
         : answerOf(myKey, 'dabei') === 'nein' ? `Schade, ${name.trim().split(/\s+/)[0]}! Danke fürs Bescheidgeben 💙`
         : (r.thanks || 'Danke, {name}!').replace('{name}', name.trim().split(/\s+/)[0]) + ' 🙌'}</h2>
-      <p className="ski-sub">{r.text}</p>
+      <p className="ski-sub">{justSubmitted ? r.text : 'So steht’s gerade:'}</p>
+      {name.trim() && (
+        <div className="ski-me">
+          <button type="button" className="ski-btn" onClick={onEdit} style={{ flex: 1, padding: '12px 16px', fontSize: 15 }}><Pencil size={16} /> Meine Antworten ändern</button>
+          <button type="button" className="ski-link" onClick={onSwitchName} style={{ padding: '0 4px', fontSize: 14 }}>Nicht {name.trim().split(/\s+/)[0]}?</button>
+        </div>
+      )}
 
       {status === 'error' && (
         <div className="ski-note">Verbindung fehlgeschlagen. <button className="ski-link" style={{ padding: 0 }} onClick={onReload}><RefreshCw size={14} /> Neu laden</button></div>
@@ -406,6 +534,22 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
           </div>
         );
       })}
+
+      {/* Unterkünfte */}
+      <Lodgings lodgings={lodgings} likes={likes} short={short} name={name} dev={dev}
+        onAdd={onAddLodging} onDelete={onDeleteLodging} onLike={onLike} />
+
+      {/* Tricount — nur wenn in config.js ein Link hinterlegt ist */}
+      {trip.tricount?.url && /^https?:\/\//i.test(trip.tricount.url) && (
+        <a className="ski-tri" href={trip.tricount.url} target="_blank" rel="noopener noreferrer">
+          <span className="ic"><Wallet size={22} strokeWidth={2.2} /></span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span className="t">{trip.tricount.title || 'Tricount'}</span>
+            {trip.tricount.text && <span className="d">{trip.tricount.text}</span>}
+            <span className="cta">In Tricount öffnen <ExternalLink size={14} /></span>
+          </span>
+        </a>
+      )}
 
       {/* Noch nicht abgestimmt */}
       <div className="ski-card">
@@ -471,7 +615,6 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, myKey, dev, 
       )}
 
       <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <button className="ski-btn ghost" onClick={onEdit}><Pencil size={16} /> Meine Antworten ändern</button>
         <button className="ski-btn ghost" onClick={onShare}>{copied ? <Check size={16} /> : <Share2 size={16} />} {copied ? 'Link kopiert' : 'Link teilen'}</button>
       </div>
       {/* Hinweis auf ArtCyc — Zusammenfassung bleibt oben stehen, Link führt zur Homepage */}
@@ -506,6 +649,9 @@ export default function Ski() {
   const [step, setStep] = useState(0);
   const [votes, setVotes] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
+  const [lodgings, setLodgings] = useState([]);
+  const [editing, setEditing] = useState(false);
+  const [justSubmitted, setJustSubmitted] = useState(false);
   const [status, setStatus] = useState('loading');     // loading | ok | error | missing
   const [errMsg, setErrMsg] = useState('');
   const [copied, setCopied] = useState(false);
@@ -533,9 +679,12 @@ export default function Ski() {
       setErrMsg(err.message || String(err));
       return;
     }
-    setVotes(v.data || []);
+    setVotes(canonicalVotes(v.data || []));
     setSuggestions(sg.data || []);
     setStatus('ok');
+    // Unterkünfte separat laden: fehlt die Tabelle (noch), bleibt der Rest nutzbar.
+    const lg = await supabase.from('ski_lodgings').select('*').eq('trip', trip.slug).order('created_at', { ascending: true });
+    if (!lg.error) setLodgings(lg.data || []);
   }, [trip.slug]);
 
   useEffect(() => {
@@ -603,6 +752,8 @@ export default function Ski() {
       setPendingSugs([]);
     }
     notify('submit');
+    setEditing(false);
+    setJustSubmitted(true);
     setScreen('results');
     load();
   };
@@ -628,6 +779,30 @@ export default function Ski() {
     if (error) { setStatus('error'); setErrMsg(error.message); }
     load();
   };
+
+  const addLodging = async (row) => {
+    if (!name.trim()) return false;
+    const { error } = await supabase.from('ski_lodgings').insert({ trip: trip.slug, name: name.trim(), device: dev, ...row });
+    if (error) { setStatus('error'); setErrMsg(error.message); return false; }
+    notify('lodging');
+    load();
+    return true;
+  };
+  const deleteLodging = async (id) => {
+    setLodgings(prev => prev.filter(x => x.id !== id));
+    const { error } = await supabase.from('ski_lodgings').delete().eq('id', id).eq('device', dev);
+    if (error) { setStatus('error'); setErrMsg(error.message); }
+    load();
+  };
+
+  // „Meine Antworten ändern": direkt zur ersten Frage nach dem Namen.
+  const editAnswers = () => {
+    if (!name.trim()) { setEditing(false); start(false); return; }
+    setEditing(true);
+    setStep(Math.max(0, qs.findIndex(x => x.type !== 'name')));
+    setScreen('q');
+  };
+  const switchName = () => { setEditing(false); setStep(0); setScreen('q'); };
 
   // Daumen gilt für die ganze Gruppe gleicher Vorschläge: an = erste ID merken,
   // aus = alle IDs der Gruppe entfernen.
@@ -674,13 +849,16 @@ export default function Ski() {
 
         {screen === 'welcome' && <Welcome trip={trip} onStart={start} known={!!lsGet(NAME_KEY)} />}
 
-        {screen === 'q' && q.type === 'name' && <NameStep key={q.id} q={q} members={members} voted={voted} value={name} onPick={(n) => { setAnswers({}); setName(n); lsSet(NAME_KEY, n); next(); }} />}
+        {screen === 'q' && q.type === 'name' && <NameStep key={q.id} q={q} members={members} voted={voted} value={name} onPick={(n) => { setAnswers({}); setName(n); lsSet(NAME_KEY, n); if (!editing && voted.has(nameKey(n))) { lsSet(DONE_KEY, '1'); setJustSubmitted(false); setScreen('results'); } else next(); }} />}
         {screen === 'q' && q.type === 'choice' && <ChoiceStep key={q.id} q={q} value={answers[q.id]} onPick={(id) => pick(q, id)} />}
         {screen === 'q' && q.type === 'text' && <TextStep key={q.id} q={q} items={pendingSugs} onAddItem={(t) => setPendingSugs(a => [...a, t])} onRemoveItem={(i) => setPendingSugs(a => a.filter((_, j) => j !== i))} onNext={() => finish()} />}
 
         {screen === 'results' && (
-          <Results trip={trip} short={short} name={name} votes={votes} suggestions={suggestions} myKey={myKey} dev={dev}
-            onLike={like} onAddSuggestion={addSuggestion} onDeleteSuggestion={deleteSuggestion} onEdit={() => start(false)} onShare={share} copied={copied} status={status} onReload={load} />
+          <Results trip={trip} short={short} name={name} votes={votes} suggestions={suggestions} lodgings={lodgings} myKey={myKey} dev={dev}
+            onLike={like} onAddSuggestion={addSuggestion} onDeleteSuggestion={deleteSuggestion}
+            onAddLodging={addLodging} onDeleteLodging={deleteLodging}
+            onEdit={editAnswers} onSwitchName={switchName} justSubmitted={justSubmitted}
+            onShare={share} copied={copied} status={status} onReload={load} />
         )}
       </div>
     </div>
