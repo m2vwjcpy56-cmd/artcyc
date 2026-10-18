@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { ArrowLeft, ArrowRight, Check, ThumbsUp, Share2, RefreshCw, Pencil, Trophy, Plus, X, Home, ExternalLink, Users, Wallet } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ThumbsUp, Share2, RefreshCw, Pencil, Trophy, Plus, X, Home, ExternalLink, Users, Wallet, ChevronDown } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { SKI_TRIP, canonicalVotes, canonicalName } from './ski/config.js';
 import { groupSuggestions } from '../supabase/functions/_shared/ski-suggest.ts';
@@ -116,6 +116,15 @@ const CSS = `
 .ski-tri .t{display:block;font-size:17px;font-weight:800}
 .ski-tri .d{display:block;font-size:14px;line-height:1.4;color:rgba(255,255,255,.8);margin-top:4px}
 .ski-tri .cta{display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:8px 14px;border-radius:999px;background:#2DD4BF;color:#0B1F3A;font-size:14px;font-weight:800}
+.ski-acc-h{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;padding:0;color:inherit;text-align:left;-webkit-tap-highlight-color:transparent}
+.ski-acc-h .sum{display:block;font-size:14px;color:rgba(255,255,255,.75);margin-top:6px}
+.ski-acc-h .sum b{color:#4ADE80;font-size:16px}
+.ski-acc-h .chev{flex-shrink:0;opacity:.7;transition:transform .2s}
+.ski-acc-h .chev.up{transform:rotate(180deg)}
+button.ski-cmp-t{text-align:left;color:#fff;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button.ski-cmp-t:active{transform:scale(.98)}
+.ski-sec{margin:30px 2px 0;font-size:13px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.55);display:flex;align-items:center;gap:10px}
+.ski-sec::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.15)}
 .ski-names-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:22px}
 .ski-name{position:relative;text-align:left;padding:12px 14px;border-radius:16px;border:1.5px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;transition:transform .12s,background .15s;-webkit-tap-highlight-color:transparent}
 .ski-name:active{transform:scale(.97)}
@@ -398,6 +407,14 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, lodgings, my
     return rawVotes.filter(v => !legacy.has(v.name_key)
       && (v.poll_id === 'dabei' || v.poll_id === LIKES_POLL || !declined.has(v.name_key)));
   }, [rawVotes, trip.members]);
+  // Aufklapp-Zustand: Tagespläne und Tabelle starten zu, damit die Boxen
+  // darunter (Unterkünfte, Tricount, …) nicht übersehen werden.
+  const [openPlan, setOpenPlan] = useState({});
+  const [openTable, setOpenTable] = useState(false);
+  const togglePlan = (qid, scroll) => {
+    setOpenPlan(o => ({ ...o, [qid]: scroll ? true : !o[qid] }));
+    if (scroll) setTimeout(() => document.getElementById('plan-' + qid)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  };
   const qs = trip.questions;
   const r = trip.results;
   const byQ = (qid) => votes.filter(v => v.poll_id === qid);
@@ -495,19 +512,21 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, lodgings, my
         <div className="ski-note">Verbindung fehlgeschlagen. <button className="ski-link" style={{ padding: 0 }} onClick={onReload}><RefreshCw size={14} /> Neu laden</button></div>
       )}
 
+      <div className="ski-sec">Ergebnisse</div>
+
       {/* Vergleich auf einen Blick */}
       {plans.length > 0 && (
         <div className="ski-cmp">
           {plans.map(w => {
             const win = bestYes > 0 && w.plan.yes.length === bestYes;
             return (
-              <div key={w.qid} className={cx('ski-cmp-t', win && 'win')}>
+              <button type="button" key={w.qid} className={cx('ski-cmp-t', win && 'win')} onClick={() => togglePlan(w.qid, true)}>
                 <div className="lbl">{w.label}</div>
                 <div className="num">{w.plan.yes.length}</div>
                 <div className="sub">{w.plan.yes.length === 1 ? 'kann' : 'können'}</div>
                 {w.plan.maybe.length > 0 && <div className="mb">+ {w.plan.maybe.length} vielleicht</div>}
                 {win && <div className="badge">Die meisten</div>}
-              </div>
+              </button>
             );
           })}
         </div>
@@ -524,32 +543,30 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, lodgings, my
           </div>
         );
         return (
-          <div key={w.qid} className={cx('ski-card', win && 'ski-card-win')}>
-            <h3>{w.label}{win && <span className="ski-fav">Favorit</span>}</h3>
-            {row(`${w.days.fr || 'Freitag'} · zusätzlich`, w.plan.fr, 'x')}
-            {row(w.days.main || 'Sa + So', w.plan.yes, 'm')}
-            {row(`${w.days.mo || 'Montag'} · zusätzlich`, w.plan.mo, 'x')}
-            {w.plan.maybe.length > 0 && row('Vielleicht', w.plan.maybe, 'y')}
-            {w.plan.no.length > 0 && row('Geht nicht', w.plan.no, 'r')}
+          <div key={w.qid} id={'plan-' + w.qid} className={cx('ski-card', win && 'ski-card-win')} style={{ scrollMarginTop: 12 }}>
+            <button type="button" className="ski-acc-h" onClick={() => togglePlan(w.qid)} aria-expanded={!!openPlan[w.qid]}>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <h3 style={{ margin: 0 }}>{w.label}{win && <span className="ski-fav">Favorit</span>}</h3>
+                <span className="sum">
+                  <b>{w.plan.yes.length}</b> {w.plan.yes.length === 1 ? 'kann' : 'können'}
+                  {' · '}Fr {w.plan.fr.length}{' · '}Mo {w.plan.mo.length}
+                  {w.plan.maybe.length > 0 && <> · {w.plan.maybe.length} vielleicht</>}
+                </span>
+              </span>
+              <ChevronDown size={20} className={cx('chev', openPlan[w.qid] && 'up')} />
+            </button>
+            {openPlan[w.qid] && (
+              <div style={{ marginTop: 10 }}>
+                {row(`${w.days.fr || 'Freitag'} · zusätzlich`, w.plan.fr, 'x')}
+                {row(w.days.main || 'Sa + So', w.plan.yes, 'm')}
+                {row(`${w.days.mo || 'Montag'} · zusätzlich`, w.plan.mo, 'x')}
+                {w.plan.maybe.length > 0 && row('Vielleicht', w.plan.maybe, 'y')}
+                {w.plan.no.length > 0 && row('Geht nicht', w.plan.no, 'r')}
+              </div>
+            )}
           </div>
         );
       })}
-
-      {/* Unterkünfte */}
-      <Lodgings lodgings={lodgings} likes={likes} short={short} name={name} dev={dev}
-        onAdd={onAddLodging} onDelete={onDeleteLodging} onLike={onLike} />
-
-      {/* Tricount — nur wenn in config.js ein Link hinterlegt ist */}
-      {trip.tricount?.url && /^https?:\/\//i.test(trip.tricount.url) && (
-        <a className="ski-tri" href={trip.tricount.url} target="_blank" rel="noopener noreferrer">
-          <span className="ic"><Wallet size={22} strokeWidth={2.2} /></span>
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span className="t">{trip.tricount.title || 'Tricount'}</span>
-            {trip.tricount.text && <span className="d">{trip.tricount.text}</span>}
-            <span className="cta">In Tricount öffnen <ExternalLink size={14} /></span>
-          </span>
-        </a>
-      )}
 
       {/* Noch nicht abgestimmt */}
       <div className="ski-card">
@@ -565,6 +582,47 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, lodgings, my
           <h3>Dieses Jahr nicht dabei · {absagen.length}</h3>
           <div className="ski-pills">{absagen.map(n => <span key={n} className="ski-pill r">{n}</span>)}</div>
         </div>
+      )}
+
+      {/* Übersicht */}
+      {allPeople.length > 0 && (
+        <div className="ski-card">
+          <button type="button" className="ski-acc-h" onClick={() => setOpenTable(o => !o)} aria-expanded={openTable}>
+            <h3 style={{ margin: 0, flex: 1 }}>Alle Antworten · Tabelle</h3>
+            <ChevronDown size={20} className={cx('chev', openTable && 'up')} />
+          </button>
+          {openTable && <div className="ski-scroll" style={{ marginTop: 10 }}>
+            <table className="ski-table">
+              <thead><tr><th>Name</th>{overviewCols.map(q => <th key={q.id}>{q.short || q.title}</th>)}</tr></thead>
+              <tbody>
+                {tableRows.map(p => (
+                  <tr key={p.k}>
+                    <td style={{ fontWeight: 600 }}>{short(p.n)}</td>
+                    {overviewCols.map(q => { const v = answerOf(p.k, q.id); return <td key={q.id} style={{ color: tone(q, v), fontWeight: 700 }}>{shortOf(q, v)}</td>; })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>}
+        </div>
+      )}
+
+      <div className="ski-sec">Planung · Unterkunft, Kosten & Ideen</div>
+
+      {/* Unterkünfte */}
+      <Lodgings lodgings={lodgings} likes={likes} short={short} name={name} dev={dev}
+        onAdd={onAddLodging} onDelete={onDeleteLodging} onLike={onLike} />
+
+      {/* Tricount — nur wenn in config.js ein Link hinterlegt ist */}
+      {trip.tricount?.url && /^https?:\/\//i.test(trip.tricount.url) && (
+        <a className="ski-tri" href={trip.tricount.url} target="_blank" rel="noopener noreferrer">
+          <span className="ic"><Wallet size={22} strokeWidth={2.2} /></span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span className="t">{trip.tricount.title || 'Tricount'}</span>
+            {trip.tricount.text && <span className="d">{trip.tricount.text}</span>}
+            <span className="cta">In Tricount öffnen <ExternalLink size={14} /></span>
+          </span>
+        </a>
       )}
 
       {/* Vorschläge */}
@@ -593,26 +651,6 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, lodgings, my
         ))}
         {name.trim() && <SuggestionInput placeholder="Weiterer Vorschlag …" onAdd={onAddSuggestion} />}
       </div>
-
-      {/* Übersicht */}
-      {allPeople.length > 0 && (
-        <div className="ski-card">
-          <h3>Alle Antworten</h3>
-          <div className="ski-scroll">
-            <table className="ski-table">
-              <thead><tr><th>Name</th>{overviewCols.map(q => <th key={q.id}>{q.short || q.title}</th>)}</tr></thead>
-              <tbody>
-                {tableRows.map(p => (
-                  <tr key={p.k}>
-                    <td style={{ fontWeight: 600 }}>{short(p.n)}</td>
-                    {overviewCols.map(q => { const v = answerOf(p.k, q.id); return <td key={q.id} style={{ color: tone(q, v), fontWeight: 700 }}>{shortOf(q, v)}</td>; })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <button className="ski-btn ghost" onClick={onShare}>{copied ? <Check size={16} /> : <Share2 size={16} />} {copied ? 'Link kopiert' : 'Link teilen'}</button>
