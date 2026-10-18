@@ -99,10 +99,10 @@ export const SKI_TRIP = {
     {
       id: 'vorschlag',
       type: 'text',
-      title: 'Vorschläge für Skigebiet oder Unterkunft?',
+      title: 'Vorschläge fürs Skigebiet?',
       showIf: (a) => a.dabei !== 'nein',   // wer absagt, wird nichts weiter gefragt
-      sub: 'Optional, gerne mehrere. Unterkunft und Skigebiet suche ich nach der Abstimmung.',
-      placeholder: 'z. B. Zillertal Arena, Heustadl …',
+      sub: 'Optional, gerne mehrere. Unterkünfte kannst du danach in der Übersicht eintragen.',
+      placeholder: 'z. B. Zillertal Arena, Arlberg …',
       optional: true,
     },
   ],
