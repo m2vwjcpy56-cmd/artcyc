@@ -23,7 +23,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // @ts-ignore Deno-Runtime resolution
 import { corsHeaders, jsonHeaders } from "../_shared/cors.ts";
 // @ts-ignore Deno-Runtime resolution
-import { SKI_MEMBERS } from "../_shared/ski-members.ts";
+import { SKI_MEMBERS, canonicalVotes, canonicalName } from "../_shared/ski-members.ts";
 // @ts-ignore Deno-Runtime resolution
 import { groupSuggestions } from "../_shared/ski-suggest.ts";
 
@@ -155,7 +155,7 @@ Deno.serve(async (req: Request) => {
   try { body = await req.json(); } catch { /* leer */ }
   const trip = String(body?.trip ?? "").trim();
   const name = String(body?.name ?? "").trim();
-  const kind = body?.kind === "suggestion" ? "suggestion" : "submit";
+  const kind = body?.kind === "suggestion" ? "suggestion" : body?.kind === "lodging" ? "lodging" : "submit";
   if (!/^[a-z0-9-]{1,40}$/.test(trip) || name.length < 1 || name.length > 40) return json({ error: "ungueltige Eingabe" }, 400);
   const polls = cleanPolls(body?.polls);
   const nameKey = name.toLowerCase();
@@ -166,11 +166,52 @@ Deno.serve(async (req: Request) => {
 
   if (!SUPABASE_URL || !SERVICE_ROLE) return json({ error: "server config" }, 500);
   const db = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
-  const [{ data: votes, error: vErr }, { data: sugs, error: sErr }] = await Promise.all([
-    db.from("ski_votes").select("poll_id,name,name_key,answers").eq("trip", trip),
+  // ---- Neue Unterkunft: kurze Mail mit den Eckdaten (aus der DB gelesen) ----
+  if (kind === "lodging") {
+    const { data: ls, error: lErr } = await db.from("ski_lodgings")
+      .select("name,title,url,price_total,persons,note,created_at").eq("trip", trip)
+      .order("created_at", { ascending: false }).limit(20);
+    if (lErr) return json({ error: lErr.message }, 500);
+    const l = (ls || []).find((x: any) => String(x.name).trim().toLowerCase() === nameKey
+      && Date.now() - new Date(x.created_at).getTime() < 15 * 60_000);
+    if (!l) return json({ ok: true, mail_sent: false, reason: "keine neue Unterkunft" });
+    const eur = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
+    const per = l.price_total != null && l.persons ? Number(l.price_total) / l.persons : null;
+    const rows: [string, string][] = [
+      ["Unterkunft", l.title],
+      ...(per != null ? [["Pro Person", eur(per)] as [string, string]] : []),
+      ...(l.price_total != null ? [["Gesamtpreis", eur(Number(l.price_total))] as [string, string]] : []),
+      ...(l.persons ? [["Personen", String(l.persons)] as [string, string]] : []),
+      ...(l.note ? [["Notiz", l.note] as [string, string]] : []),
+      ...(l.url ? [["Link", l.url] as [string, string]] : []),
+    ];
+    const subject = `🏠 Ski 2027: neue Unterkunft von ${l.name}`;
+    const tr = (a: string, b: string) => `<tr><td style="padding:6px 12px 6px 0;color:#64748B;vertical-align:top">${esc(a)}</td><td style="padding:6px 0;font-weight:600;color:#0F172A">${a === "Link" && /^https?:\/\//i.test(b) ? `<a href="${esc(b)}">${esc(b)}</a>` : esc(b)}</td></tr>`;
+    const html = `<!doctype html><html><body style="margin:0;background:#F1F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <div style="max-width:560px;margin:0 auto;padding:24px 16px">
+    <div style="background:#0B1F3A;color:#fff;border-radius:16px 16px 0 0;padding:20px 22px">
+      <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.7">Skifahren 2027 · Unterkunft</div>
+      <div style="font-size:22px;font-weight:800;margin-top:4px">${esc(l.name)} hat eine Unterkunft eingetragen</div>
+    </div>
+    <div style="background:#fff;border-radius:0 0 16px 16px;padding:18px 22px">
+      <table style="border-collapse:collapse;font-size:15px">${rows.map(([a, b]) => tr(a, b)).join("")}</table>
+      <p style="margin:22px 0 0"><a href="${PAGE_URL}" style="display:inline-block;background:#FF9500;color:#fff;text-decoration:none;font-weight:700;padding:11px 18px;border-radius:999px">Alle Unterkünfte ansehen</a></p>
+    </div>
+  </div></body></html>`;
+    const text = [`${l.name} hat eine Unterkunft eingetragen`, "", ...rows.map(([a, b]) => `${a}: ${b}`), "", PAGE_URL].join("\n");
+    const r = await sendMail(subject, html, text);
+    if (r.ok) cooldown.set(ck, Date.now());
+    return json({ ok: r.ok, mail_sent: r.ok, error: r.ok ? undefined : r.error }, r.ok ? 200 : 502);
+  }
+
+  const [{ data: rawVotesDb, error: vErr }, { data: rawSugsDb, error: sErr }] = await Promise.all([
+    db.from("ski_votes").select("poll_id,name,name_key,answers,updated_at").eq("trip", trip),
     db.from("ski_suggestions").select("id,name,text,created_at").eq("trip", trip).order("created_at", { ascending: true }),
   ]);
   if (vErr || sErr) return json({ error: (vErr || sErr)?.message }, 500);
+  // Falsch geschriebene Namen auf den richtigen umbiegen (siehe SKI_ALIASES)
+  const votes = canonicalVotes(rawVotesDb || []);
+  const sugs = (rawSugsDb || []).map((x: any) => ({ ...x, name: canonicalName(x.name) }));
 
   // Wer abgesagt hat (dabei = nein), zählt bei Terminen/Zusatztag nicht mit.
   const declined = new Set((votes || []).filter((v: any) => v.poll_id === "dabei" && v.answers?.value === "nein").map((v: any) => v.name_key));
