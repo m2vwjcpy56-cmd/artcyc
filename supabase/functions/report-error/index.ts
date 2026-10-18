@@ -160,6 +160,14 @@ Deno.serve(async (req: Request) => {
   if (!message) {
     return new Response(JSON.stringify({ error: "message fehlt" }), { status: 400, headers: jsonHeaders(req) });
   }
+  // „Script error." ohne Stack/Datei/Zeile stammt aus fremden Skripten
+  // (Browser-Erweiterungen, In-App-Browser) — nicht auswertbar, keine Mail.
+  // Greift auch für ältere, noch zwischengespeicherte App-Versionen.
+  if (/^script error\.?$/i.test(message.trim()) && !stack && !source) {
+    return new Response(JSON.stringify({ ok: true, mail_sent: false, ignored: "script-error" }), {
+      status: 200, headers: jsonHeaders(req),
+    });
+  }
 
   // Optional: User-Identifikation aus Bearer Token (User-JWT, nicht anon).
   // Anon-Calls schlagen hier nicht fehl — wir kriegen einfach keinen User.
