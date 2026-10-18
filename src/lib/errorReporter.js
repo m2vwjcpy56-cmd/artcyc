@@ -198,6 +198,10 @@ export function initErrorReporter() {
   window.addEventListener('error', (event) => {
     // event.error ist manchmal null (z. B. bei Cross-Origin-Script-Errors);
     // dann fallback auf event.message
+    // „Script error." ohne Datei/Zeile kommt aus fremden Skripten (Safari-
+    // Erweiterungen, In-App-Browser von WhatsApp & Co.). Der Browser verbirgt
+    // alle Details — nicht auswertbar, daher nicht melden.
+    if (!event.error && /^script error\.?$/i.test(String(event.message || '').trim()) && !event.filename && !event.lineno) return;
     const err = event.error || { message: event.message, stack: '' };
     reportError(err, 'window.onerror', {
       source: event.filename || '',
