@@ -148,7 +148,7 @@ function seed() {
   ];
   return {
     profiles: [
-      { id: ME, role: 'coach', display_name: 'Ruben', last_name: 'Geyer', license_no: '12345', created_at: '2024-01-01T10:00:00Z' },
+      { id: ME, role: 'coach', display_name: 'Ruben', last_name: 'Geyer', setup_done: true, license_no: '12345', created_at: '2024-01-01T10:00:00Z' },
       { id: OTHER_COACH, role: 'coach', display_name: 'Theresa', last_name: 'Trainerin', license_no: null, created_at: '2024-01-01T10:00:00Z' },
     ],
     athletes,

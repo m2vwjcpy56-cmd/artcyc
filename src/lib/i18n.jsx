@@ -925,6 +925,13 @@ const dict = {
     'auth.privacyNote': 'Mit der Registrierung akzeptierst du, dass deine Trainings-Daten in unserer Datenbank in Frankfurt gespeichert werden. Du kannst deinen Account jederzeit löschen.',
     'auth.notConfirmedHint': 'Deine E-Mail ist noch nicht bestätigt. Gib den Code aus der Mail ein oder lass sie dir neu schicken.',
     'auth.linkErrorHint': 'Gib oben deine E-Mail ein und fordere einen frischen Link an (72 h gültig):',
+    // Apple-Anmeldung nicht verfuegbar (18.10.2026)
+    'auth.appleUnavailable': 'Die Anmeldung mit Apple ist gerade nicht verfügbar. Bitte melde dich mit E-Mail und Passwort an.',
+    // Begruessung nach Apple-Anmeldung (18.10.2026)
+    'welcome.title': 'Willkommen bei ArtCyc',
+    'welcome.created': 'Dein Konto wurde gerade mit deiner Apple-ID angelegt. Zwei Angaben fehlen noch, dann kann es losgehen.',
+    'welcome.start': 'Los geht\'s',
+    'welcome.changeLater': 'Beides lässt sich später in den Einstellungen ändern.',
   },
 
   en: {
@@ -1795,6 +1802,13 @@ const dict = {
     'auth.privacyNote': 'By registering you accept that your training data is stored in our database in Frankfurt. You can delete your account at any time.',
     'auth.notConfirmedHint': 'Your e-mail is not confirmed yet. Enter the code from the mail or have it sent again.',
     'auth.linkErrorHint': 'Enter your e-mail above and request a fresh link (valid 72 h):',
+    // Apple-Anmeldung nicht verfuegbar (18.10.2026)
+    'auth.appleUnavailable': 'Signing in with Apple isn\'t available right now. Please sign in with e-mail and password.',
+    // Begruessung nach Apple-Anmeldung (18.10.2026)
+    'welcome.title': 'Welcome to ArtCyc',
+    'welcome.created': 'Your account has just been created with your Apple ID. Two details are missing, then you\'re set.',
+    'welcome.start': 'Let\'s go',
+    'welcome.changeLater': 'Both can be changed later in the settings.',
     },
 
   fr: {
@@ -2660,6 +2674,13 @@ const dict = {
     'auth.privacyNote': 'En t\'inscrivant, tu acceptes que tes données d\'entraînement soient enregistrées dans notre base de données à Francfort. Tu peux supprimer ton compte à tout moment.',
     'auth.notConfirmedHint': 'Ton e-mail n\'est pas encore confirmé. Saisis le code reçu par mail ou fais-le renvoyer.',
     'auth.linkErrorHint': 'Saisis ton e-mail ci-dessus et demande un nouveau lien (valable 72 h) :',
+    // Apple-Anmeldung nicht verfuegbar (18.10.2026)
+    'auth.appleUnavailable': 'La connexion avec Apple n\'est pas disponible pour le moment. Connecte-toi avec ton e-mail et ton mot de passe.',
+    // Begruessung nach Apple-Anmeldung (18.10.2026)
+    'welcome.title': 'Bienvenue sur ArtCyc',
+    'welcome.created': 'Ton compte vient d\'être créé avec ton identifiant Apple. Il manque deux informations et c\'est parti.',
+    'welcome.start': 'C\'est parti',
+    'welcome.changeLater': 'Les deux peuvent être modifiés plus tard dans les réglages.',
     },
 
   it: {
@@ -3525,6 +3546,13 @@ const dict = {
     'auth.privacyNote': 'Registrandoti accetti che i tuoi dati di allenamento siano conservati nel nostro database a Francoforte. Puoi eliminare il tuo account in qualsiasi momento.',
     'auth.notConfirmedHint': 'La tua e-mail non è ancora confermata. Inserisci il codice dalla mail o fattela rimandare.',
     'auth.linkErrorHint': 'Inserisci sopra la tua e-mail e richiedi un nuovo link (valido 72 h):',
+    // Apple-Anmeldung nicht verfuegbar (18.10.2026)
+    'auth.appleUnavailable': 'L\'accesso con Apple non è disponibile al momento. Accedi con e-mail e password.',
+    // Begruessung nach Apple-Anmeldung (18.10.2026)
+    'welcome.title': 'Benvenuto in ArtCyc',
+    'welcome.created': 'Il tuo account è appena stato creato con il tuo ID Apple. Mancano due dati e sei pronto.',
+    'welcome.start': 'Iniziamo',
+    'welcome.changeLater': 'Puoi cambiare entrambi più tardi nelle impostazioni.',
     },
 
   es: {
@@ -4390,6 +4418,13 @@ const dict = {
     'auth.privacyNote': 'Al registrarte aceptas que tus datos de entrenamiento se guarden en nuestra base de datos en Fráncfort. Puedes borrar tu cuenta en cualquier momento.',
     'auth.notConfirmedHint': 'Tu correo aún no está confirmado. Introduce el código del mensaje o pide que te lo reenvíen.',
     'auth.linkErrorHint': 'Introduce arriba tu correo y pide un enlace nuevo (válido 72 h):',
+    // Apple-Anmeldung nicht verfuegbar (18.10.2026)
+    'auth.appleUnavailable': 'El inicio de sesión con Apple no está disponible ahora mismo. Inicia sesión con tu correo y contraseña.',
+    // Begruessung nach Apple-Anmeldung (18.10.2026)
+    'welcome.title': 'Bienvenido a ArtCyc',
+    'welcome.created': 'Tu cuenta acaba de crearse con tu ID de Apple. Faltan dos datos y listo.',
+    'welcome.start': 'Empezar',
+    'welcome.changeLater': 'Puedes cambiar ambos más tarde en los ajustes.',
     },
 
   cs: {

@@ -5732,7 +5732,22 @@ export default function App() {
   const [lastNameSnoozed, setLastNameSnoozed] = useState(() => {
     try { return sessionStorage.getItem('artcyc:lastname-snooze') === '1'; } catch { return false; }
   });
-  const showLastNamePrompt = !!session && !!profile && !profile.last_name && !lastNameSnoozed;
+  // Begruessung nach einer Anmeldung mit Apple: dabei kommen weder Name noch Rolle
+  // mit, der Sportler hiesse sonst nach dem E-Mail-Praefix (bei „E-Mail verbergen"
+  // eine Zufallsfolge). profiles.setup_done ist fuer Bestands-Konten auf true
+  // gesetzt, nur frisch angelegte sehen das Fenster.
+  const [setupDone, setSetupDone] = useState(false);
+  const profileLooksComplete = !!profile && !!(profile.display_name || '').trim() && !!(profile.last_name || '').trim();
+  const showWelcome = !!session && !!profile && profile.setup_done === false && !setupDone && !profileLooksComplete;
+  // Registrierung per E-Mail bringt Name und Rolle schon mit — dann die Frage
+  // stillschweigend abhaken, statt sie unnoetig zu stellen.
+  useEffect(() => {
+    if (!session || !profile || profile.setup_done !== false || !profileLooksComplete) return;
+    supabase.from('profiles').update({ setup_done: true }).eq('id', session.user.id)
+      .then(() => setProfile(p => (p ? { ...p, setup_done: true } : p)));
+  }, [session, profile, profileLooksComplete]);
+
+  const showLastNamePrompt = !!session && !!profile && !showWelcome && !profile.last_name && !lastNameSnoozed;
 
   // Verein-Nachtrag: eigener Sportler-Eintrag ohne Verein (notes) → einmal pro
   // Session fragen. Erst nach dem Nachname-Pop-up (nicht zwei gleichzeitig).
@@ -5743,7 +5758,7 @@ export default function App() {
   const [clubSnoozed, setClubSnoozed] = useState(() => {
     try { return sessionStorage.getItem('artcyc:club-snooze') === '1'; } catch { return false; }
   });
-  const showClubPrompt = !!session && !showLastNamePrompt && !!myAthlete
+  const showClubPrompt = !!session && !showWelcome && !showLastNamePrompt && !!myAthlete
     && !((myAthlete.notes || '').trim()) && !clubSnoozed;
 
   // Normalizer für Wettkämpfe — hier, weil athlete_id auf den aktiven/eigenen
@@ -6199,6 +6214,18 @@ export default function App() {
       {/* Globales Feedback-Modal — kann aus Dashboard, Settings o.\xa0a. geöffnet werden */}
       {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
 
+      {/* Begrüßung nach Apple-Anmeldung: sagt, dass gerade ein Konto entstanden ist */}
+      {showWelcome && (
+        <WelcomeSetupModal
+          profile={profile}
+          onDone={(vals) => {
+            setProfile(p => (p ? { ...p, ...vals, setup_done: true } : p));
+            setSetupDone(true);
+            refreshAthletes && refreshAthletes();
+          }}
+        />
+      )}
+
       {/* Nachname-Nachtrag für Bestands-User ohne last_name */}
       {showLastNamePrompt && (
         <LastNameModal
@@ -6488,12 +6515,30 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
   const signInWithApple = async () => {
     setBusy(true); setErr(''); setInfo('');
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      // NICHT blind weiterleiten. Ist der Anbieter nicht fertig eingerichtet, antwortet
+      // Supabase auf dem Hinweg mit 400 und der Browser zeigt rohes JSON — eine
+      // Sackgasse ohne Zurück-Knopf, in der genau diese App nicht mehr mitredet.
+      // Deshalb erst anklopfen, dann gehen.
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
-        options: { redirectTo: window.location.origin },
+        options: { redirectTo: window.location.origin, skipBrowserRedirect: true },
       });
       if (error) throw error;
-      // Bei Erfolg verlässt die Seite den Browser Richtung Apple — kein weiterer Code.
+
+      // Die Probe darf den Versuch NIE verhindern, wenn sie selbst scheitert (CORS,
+      // Funkloch): nur eine echte Fehlerantwort zählt als „geht nicht".
+      let blocked = null;
+      try {
+        const probe = await fetch(data.url, { redirect: 'manual' });
+        if (probe.type !== 'opaqueredirect' && probe.status >= 400) {
+          blocked = await probe.json().then(j => j.msg || '').catch(() => '');
+        }
+      } catch { /* Probe nicht möglich — dann eben normal weiterleiten */ }
+      if (blocked !== null) {
+        console.warn('Apple-Anmeldung nicht verfügbar:', blocked);
+        throw new Error(t('auth.appleUnavailable'));
+      }
+      window.location.assign(data.url);
     } catch (e) {
       setErr(e.message || t('validation.genericError'));
       setBusy(false);
@@ -21170,6 +21215,106 @@ function WettkampfDetail({ competition, program, athlete, competitions = [], pro
           className="flex-1 bg-white border border-slate-300 px-4 py-3 rounded-xl font-medium">
           Zurück
         </button>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================
+// BEGRÜSSUNG NACH APPLE-ANMELDUNG
+// =============================================================
+// Eine Anmeldung mit Apple legt das Konto gleich mit an — ohne Name und ohne
+// Rolle, weil Apple nur die (oft verborgene) Adresse liefert. Ohne diesen
+// Schritt landet man wortlos in einer leeren App, und der eigene Sportler
+// heißt nach dem E-Mail-Präfix. Deshalb EINMAL fragen und dabei sagen, was
+// gerade passiert ist. Gesteuert über profiles.setup_done.
+function WelcomeSetupModal({ profile, onDone }) {
+  const { t } = useI18n();
+  // Der vom Trigger gesetzte Name ist nur das E-Mail-Präfix — als Vorschlag
+  // taugt er nur, wenn er wie ein Name aussieht und nicht wie eine Kennung.
+  const suggested = (profile?.display_name || '').trim();
+  const looksLikeName = /^[\p{L}][\p{L}'-]{1,}$/u.test(suggested);
+  const [first, setFirst] = useState(looksLikeName ? suggested : '');
+  const [last, setLast] = useState((profile?.last_name || '').trim());
+  const [role, setRole] = useState(profile?.role === 'coach' ? 'coach' : 'athlete');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const canSave = first.trim().length >= 2 && last.trim().length >= 2;
+
+  const save = async () => {
+    if (!canSave || busy) return;
+    setBusy(true); setErr('');
+    try {
+      // Rolle zuerst: der Datenbank-Auslöser hat bei 'athlete' bereits einen
+      // Sportler angelegt; die Namen spiegeln die Helfer unten dorthin.
+      const { error: rErr } = await supabase.from('profiles')
+        .update({ role, setup_done: true }).eq('id', profile.id);
+      if (rErr) throw rErr;
+      const a = await updateMyDisplayName(first.trim());
+      if (a.error) throw a.error;
+      const b = await updateMyLastName(last.trim());
+      if (b.error) throw b.error;
+      onDone({ display_name: first.trim(), last_name: last.trim(), role });
+    } catch (e) {
+      setErr(e.message || t('validation.genericError'));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm">
+      <div className="w-full sm:max-w-sm">
+        <div className="bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-xl rounded-2xl overflow-hidden">
+          <div className="px-6 pt-6 pb-3 text-center">
+            <div className="w-14 h-14 rounded-[18px] flex items-center justify-center mx-auto mb-3
+                            bg-gradient-to-br from-[#FFB340] to-[#FF8A00] shadow-[0_8px_22px_rgba(255,149,0,0.3)]">
+              <Trophy className="text-white" size={26} strokeWidth={2.1} />
+            </div>
+            <h3 className="font-semibold text-[19px] mb-1.5">{t('welcome.title')}</h3>
+            <p className="text-[13px] text-[#3C3C43] dark:text-slate-300 leading-snug">
+              {t('welcome.created')}
+            </p>
+          </div>
+          <div className="px-5 pb-3 space-y-3">
+            <div>
+              <label className="auth-label block mb-1.5 px-1">{t('auth.firstName')}</label>
+              <input value={first} onChange={e => setFirst(e.target.value)} autoFocus
+                placeholder={t('auth.firstName')} autoComplete="given-name"
+                className="auth-field w-full px-4 py-3 rounded-2xl text-[15px] outline-none transition" />
+            </div>
+            <div>
+              <label className="auth-label block mb-1.5 px-1">{t('auth.lastName')}</label>
+              <input value={last} onChange={e => setLast(e.target.value)}
+                placeholder={t('auth.lastName')} autoComplete="family-name"
+                className="auth-field w-full px-4 py-3 rounded-2xl text-[15px] outline-none transition" />
+            </div>
+            <div>
+              <label className="auth-label block mb-1.5 px-1">{t('auth.role')}</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setRole('athlete')}
+                  className={'py-3 px-3 rounded-2xl text-[14px] font-medium flex items-center justify-center gap-1.5 transition ' +
+                    (role === 'athlete' ? 'bg-[#FF9500] text-white shadow-[0_2px_8px_rgba(255,149,0,0.3)]'
+                                        : 'bg-[#F2F2F7] dark:bg-white/5 text-[#3C3C43] dark:text-slate-200 active:opacity-70')}>
+                  <Dumbbell size={16} /> {t('auth.roleAthlete')}
+                </button>
+                <button type="button" onClick={() => setRole('coach')}
+                  className={'py-3 px-3 rounded-2xl text-[14px] font-medium flex items-center justify-center gap-1.5 transition ' +
+                    (role === 'coach' ? 'bg-[#FF9500] text-white shadow-[0_2px_8px_rgba(255,149,0,0.3)]'
+                                      : 'bg-[#F2F2F7] dark:bg-white/5 text-[#3C3C43] dark:text-slate-200 active:opacity-70')}>
+                  <UserCog size={16} /> {t('auth.roleCoach')}
+                </button>
+              </div>
+            </div>
+            {err && <div className="text-[13px] text-[#FF3B30]">✗ {err}</div>}
+          </div>
+          <div className="px-5 pb-5">
+            <button onClick={save} disabled={!canSave || busy}
+              className="w-full bg-[#FF9500] text-white px-5 py-3.5 rounded-2xl font-semibold text-[15px] active:scale-[0.98] transition disabled:opacity-40">
+              {busy ? '\u2026' : t('welcome.start')}
+            </button>
+            <p className="text-[11px] text-[#8E8E93] text-center mt-3 leading-relaxed">{t('welcome.changeLater')}</p>
+          </div>
+        </div>
       </div>
     </div>
   );
