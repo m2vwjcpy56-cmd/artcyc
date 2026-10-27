@@ -6508,6 +6508,11 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
     } finally { setBusy(false); }
   };
 
+  // Apple-Login im Web vorerst AUS: Supabase fehlt noch die Services-ID samt
+  // Geheimnis fürs Web („Unsupported provider: missing OAuth secret"). Sobald
+  // das eingerichtet ist, hier auf true stellen — Knopf + „oder"-Linie erscheinen.
+  const APPLE_WEB_LOGIN = false;
+
   // Mit Apple anmelden (Parität zu iOS). Im Web läuft das über die Weiterleitung zu
   // Apple und zurück auf `redirectTo` — anders als nativ, wo das Gerät den Token
   // direkt liefert. Supabase braucht dafür eine eigene Services-ID samt Geheimnis;
@@ -6749,7 +6754,8 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
           </button>
 
           {/* Mit Apple anmelden — Apples Vorgabe: eigene Fläche, schwarz auf hell
-              bzw. weiß auf dunkel, Apfel vor dem Text. */}
+              bzw. weiß auf dunkel, Apfel vor dem Text. Vorerst aus (APPLE_WEB_LOGIN). */}
+          {APPLE_WEB_LOGIN && (<>
           <div className="flex items-center gap-3 my-3">
             <span className="h-px flex-1 bg-slate-200 dark:bg-[#3A3A3C]" />
             <span className="text-[12px] text-[#8E8E93]">{t('login.or')}</span>
@@ -6763,6 +6769,7 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
             </svg>
             {t('login.withApple')}
           </button>
+          </>)}
 
           {mode === 'login' && (
             <div className="flex items-center justify-center gap-2 pt-1 text-[13px]">

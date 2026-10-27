@@ -71,14 +71,16 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
 // ---------------------------------------------------------------------------
 if (typeof window !== 'undefined') {
   let healing = false;
-  const selfHeal = async () => {
+  const selfHeal = async (target) => {
     if (healing) return;
-    // Schleifen-Sicherung: höchstens EIN Selbstheilungs-Reload pro Sitzung.
-    // Sollte ein Zwischenspeicher wider Erwarten dauerhaft eine alte
-    // version.json ausliefern, hängt die App sonst im Neuladen fest.
+    // Schleifen-Sicherung: höchstens EIN Selbstheilungs-Reload pro neuer
+    // Server-Version und Sitzung. Früher „einmal pro Sitzung" — wer den Tab
+    // offen ließ, blieb nach dem zweiten Update am selben Tag auf altem Stand.
+    // Liefert ein Zwischenspeicher dauerhaft dieselbe alte version.json,
+    // wird trotzdem nur einmal neu geladen.
     try {
-      if (sessionStorage.getItem('artcyc_healed') === '1') return;
-      sessionStorage.setItem('artcyc_healed', '1');
+      if (sessionStorage.getItem('artcyc_healed') === target) return;
+      sessionStorage.setItem('artcyc_healed', target);
     } catch { /* privater Modus: dann ohne Sicherung */ }
     healing = true;
     try {
@@ -100,7 +102,7 @@ if (typeof window !== 'undefined') {
       if (!res.ok) return;
       const v = await res.json();
       if (v && v.build && typeof __BUILD_DATE__ !== 'undefined' && v.build !== __BUILD_DATE__) {
-        await selfHeal();
+        await selfHeal(String(v.build));
       }
     } catch { /* Netzfehler: nichts tun */ }
   };
@@ -130,7 +132,7 @@ if (_standalone && !_appPath && !_authCb) {
 }
 
 // Ski-Planung: eigenständige, loginfreie Unterseite unter /ski (siehe src/Ski.jsx).
-const _skiPath = /^\/ski(\/|$)/.test(_p);
+const _skiPath = /^\/ski(\.html)?(\/|$)/.test(_p);
 
 const _isApp = _appPath || _authCb;
 const Root = _isApp ? App : (_skiPath ? Ski : Landing);

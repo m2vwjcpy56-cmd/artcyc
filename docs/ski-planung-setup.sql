@@ -128,6 +128,55 @@ $$;
 revoke all on function public.ski_save_contact(text, text, text) from public;
 grant execute on function public.ski_save_contact(text, text, text) to anon, authenticated;
 
+-- =============================================================
+-- Ereignisse, die nur EINMAL passieren sollen (z. B. Abschluss-Mail
+-- „alle haben abgestimmt"). Nur die Edge Function (Service-Role) schreibt.
+-- =============================================================
+create table if not exists public.ski_events (
+  trip        text not null,
+  event       text not null,
+  created_at  timestamptz not null default now(),
+  primary key (trip, event)
+);
+alter table public.ski_events enable row level security;
+revoke all on public.ski_events from anon, authenticated;
+
+-- =============================================================
+-- Unterkünfte: jeder kann Vorschläge mit Link, Gesamtpreis und
+-- Personenanzahl eintragen (Preis pro Person rechnet die Seite aus).
+-- Daumen hoch läuft wie bei den Vorschlägen über ski_votes ('likes').
+-- =============================================================
+create table if not exists public.ski_lodgings (
+  id           uuid primary key default gen_random_uuid(),
+  trip         text not null,
+  name         text not null,                 -- wer eingetragen hat
+  title        text not null,                 -- Name der Unterkunft
+  url          text,
+  price_total  numeric(10,2),
+  persons      integer,
+  note         text,
+  device       text,
+  created_at   timestamptz not null default now(),
+  constraint ski_lodgings_name_len    check (char_length(btrim(name)) between 1 and 40),
+  constraint ski_lodgings_title_len   check (char_length(btrim(title)) between 1 and 120),
+  constraint ski_lodgings_url_ok      check (url is null or (char_length(url) <= 500 and url ~* '^https?://')),
+  constraint ski_lodgings_price_ok    check (price_total is null or (price_total >= 0 and price_total <= 1000000)),
+  constraint ski_lodgings_persons_ok  check (persons is null or persons between 1 and 200),
+  constraint ski_lodgings_note_len    check (note is null or char_length(note) <= 300)
+);
+create index if not exists ski_lodgings_trip_idx on public.ski_lodgings(trip, created_at);
+
+alter table public.ski_lodgings enable row level security;
+
+drop policy if exists "ski_lodgings_select" on public.ski_lodgings;
+create policy "ski_lodgings_select" on public.ski_lodgings for select to anon, authenticated using (true);
+drop policy if exists "ski_lodgings_insert" on public.ski_lodgings;
+create policy "ski_lodgings_insert" on public.ski_lodgings for insert to anon, authenticated with check (true);
+drop policy if exists "ski_lodgings_delete" on public.ski_lodgings;
+create policy "ski_lodgings_delete" on public.ski_lodgings for delete to anon, authenticated using (true);
+
+grant select, insert, delete on public.ski_lodgings to anon, authenticated;
+
 -- PostgREST (die REST-Schnittstelle) soll die neuen Tabellen sofort kennen —
 -- sonst meldet die Seite „Could not find the table … in the schema cache".
 notify pgrst, 'reload schema';

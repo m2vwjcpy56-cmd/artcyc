@@ -8,33 +8,18 @@
 // Neuer Trip / neues Jahr: `slug` ändern → Fragebogen startet leer.
 // =============================================================
 
+import { SKI_MEMBERS } from '../../supabase/functions/_shared/ski-members.ts';
+export { canonicalVotes, canonicalName } from '../../supabase/functions/_shared/ski-members.ts';
+
 export const SKI_TRIP = {
   slug: 'ski-2027',
 
   title: 'Skifahren 2027',
   tagline: 'Planung Saison 26/27',
 
-  // Mitglieder der WhatsApp-Gruppe „Skifahren 26/27" — werden zum Antippen
-  // angezeigt. Neue Leute einfach hier ergänzen.
-  members: [
-    'Emilio Arellano',
-    'Benedikt Bugner',
-    'Jonas Beiter',
-    'Lukas Beiter',
-    'Ruben Geyer',
-    'Simon Halter',
-    'Max Hanselmann',
-    'Simeon Hufen',
-    'Simon Köcher',
-    'Niklas Kreuzmann',
-    'Jonas Mächtig',
-    'Max Maute',
-    'Philipp Rapp',
-    'Sea Schefold',
-    'Patrick Tisch',
-    'Simon Vogel',
-    'Markus Wechtner',
-  ],
+  // Mitglieder der WhatsApp-Gruppe „Skifahren 26/27" — gepflegt in
+  // supabase/functions/_shared/ski-members.ts (gemeinsam mit der Mail-Funktion).
+  members: SKI_MEMBERS,
 
   // Startbildschirm — kurz und knackig, Rest kommt in den Fragen.
   welcome: {
@@ -48,6 +33,8 @@ export const SKI_TRIP = {
   //   'choice' → genau eine Antwort (große Kacheln, geht automatisch weiter)
   //   'text'   → freie Eingabe, optional (wird als Vorschlag gespeichert)
   // short = Spaltentitel in der Ergebnis-Tabelle.
+  // showIf(antworten) → Frage nur zeigen, wenn true. Übersprungene Fragen
+  // werden beim Abschicken für diese Person gelöscht.
   // Antworten: { id, label, sub?, short? (Kurzform für Ergebnis-Seite), emoji? }
   questions: [
     {
@@ -71,6 +58,7 @@ export const SKI_TRIP = {
       id: 'we-jan-23',
       type: 'choice',
       title: 'Sa 23. – So 24. Januar',
+      showIf: (a) => a.dabei !== 'nein',   // wer absagt, wird nichts weiter gefragt
       short: '23./24.1.',
       sub: 'Passt dir dieses Wochenende?',
       kind: 'availability',   // Ja / Vielleicht / Nein → Ergebnis als Favorit-Vergleich
@@ -84,6 +72,7 @@ export const SKI_TRIP = {
       id: 'we-jan-30',
       type: 'choice',
       title: 'Sa 30. – So 31. Januar',
+      showIf: (a) => a.dabei !== 'nein',   // wer absagt, wird nichts weiter gefragt
       short: '30./31.1.',
       sub: 'Und dieses Wochenende?',
       kind: 'availability',
@@ -97,6 +86,8 @@ export const SKI_TRIP = {
       id: 'zusatztag',
       type: 'choice',
       title: 'Zusätzlich zu Sa + So?',
+      // nur fragen, wenn dabei und mindestens ein Wochenende nicht „Geht nicht“ ist
+      showIf: (a) => a.dabei !== 'nein' && !(a['we-jan-23'] === 'no' && a['we-jan-30'] === 'no'),
       short: 'Zusatztag',
       sub: 'Wir hängen einen Tag dran — Freitag oder Montag. Die Unterkunft ist für 3 Tage gebucht, später anreisen oder früher abreisen geht immer.',
       options: [
@@ -108,12 +99,20 @@ export const SKI_TRIP = {
     {
       id: 'vorschlag',
       type: 'text',
-      title: 'Vorschläge für Skigebiet oder Unterkunft?',
-      sub: 'Optional, gerne mehrere. Unterkunft und Skigebiet suche ich nach der Abstimmung.',
-      placeholder: 'z. B. Zillertal Arena, Heustadl …',
+      title: 'Vorschläge fürs Skigebiet?',
+      showIf: (a) => a.dabei !== 'nein',   // wer absagt, wird nichts weiter gefragt
+      sub: 'Optional, gerne mehrere. Unterkünfte kannst du danach in der Übersicht eintragen.',
+      placeholder: 'z. B. Zillertal Arena, Arlberg …',
       optional: true,
     },
   ],
+
+  // Tricount-Box auf der Ergebnis-Seite. Erscheint nur, wenn `url` gesetzt ist.
+  tricount: {
+    url: 'https://tricount.com/tqoqjHpzgEfgktMAgf',   // Link aus der Tricount-App („Teilen")
+    title: 'Gemeinsame Kosten in Tricount',
+    text: 'Unterkunft, Skipass, Essen: Wer etwas für die Gruppe zahlt, trägt es hier ein. Tricount rechnet aus, wer wem wie viel schuldet.',
+  },
 
   // Ergebnis-Seite
   results: {
@@ -121,5 +120,10 @@ export const SKI_TRIP = {
     text: 'Deine Antworten sind gespeichert. So steht’s gerade:',
     weekends: ['we-jan-23', 'we-jan-30'],   // Fragen-IDs der Terminwahl (Favorit-Vergleich)
     weekendLabels: { 'we-jan-23': '23. – 24. Jan', 'we-jan-30': '30. – 31. Jan' },
+    // Zusatztage je Wochenende für den Tagesplan auf der Ergebnis-Seite
+    weekendDays: {
+      'we-jan-23': { fr: 'Fr 22.1.', main: 'Sa 23. + So 24.', mo: 'Mo 25.1.' },
+      'we-jan-30': { fr: 'Fr 29.1.', main: 'Sa 30. + So 31.', mo: 'Mo 1.2.' },
+    },
   },
 };
