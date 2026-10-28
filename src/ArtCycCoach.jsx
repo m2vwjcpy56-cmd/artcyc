@@ -10718,6 +10718,10 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
   const myUserId = session?.user?.id;
   const myAthletes = (dbAthletes || []).filter(a => a.auth_user_id === myUserId);
 
+  // Kontolöschung: 0 = zu, 1 = Fenster offen. Siehe unten, warum es kein confirm() mehr ist.
+  const [deleteAccountStep, setDeleteAccountStep] = useState(0);
+  const [deleteAccountBusy, setDeleteAccountBusy] = useState(false);
+
   // Phase 9d-2: Migration Blob → Tabellen
   const [migrateBusy, setMigrateBusy] = useState(false);
   const [migrateResult, setMigrateResult] = useState(null);
@@ -11109,24 +11113,60 @@ function SettingsView({ data, setData, onResetAll, profile, session, onLogout, c
         </IOSListRow>
       </IOSList>
 
-      {/* Konto löschen — Self-Service (Apple-Pflicht 5.1.1(v)): unwiderruflich */}
-      <IOSList footer="Löscht dein Konto und ALLE deine Daten (Trainings, Wettkämpfe, Übungen, Programme, Feedback) unwiderruflich. Das kann nicht rückgängig gemacht werden.">
+      {/* Konto löschen — Self-Service (Apple-Pflicht 5.1.1(v)): unwiderruflich.
+          Die Zeile ist bewusst RUHIG, nicht rot: direkt über ihr steht „Zurücksetzen"
+          in Rot, und zwei gleich aussehende rote Zeilen laden zum Fehlgriff ein.
+          Die Warnung steht dort, wo sie zählt — im Fenster dahinter. */}
+      <IOSList footer={t('settings.deleteAccountHint')}>
         <IOSListRow
-          onClick={async () => {
-            if (!confirm('Dein Konto und ALLE deine Daten werden unwiderruflich gelöscht.\n\nFortfahren?')) return;
-            if (!confirm('Wirklich löschen? Das kann NICHT rückgängig gemacht werden.')) return;
-            const { error } = await deleteMyAccount();
-            if (error) { alert('Löschen fehlgeschlagen: ' + error.message); return; }
-            alert(t('settings.accountDeleted'));
-            window.location.assign('/web');
-          }}
+          onClick={() => setDeleteAccountStep(1)}
           trailing={<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" />}>
           <span className="flex items-center gap-3">
-            <Trash2 size={18} className="text-[#FF3B30]" />
-            <span className="text-[15px] text-[#FF3B30] font-medium">{t('settings.deleteAccount')}</span>
+            <Trash2 size={18} className="text-[#8E8E93]" />
+            <span className="text-[15px]">{t('settings.deleteAccount')}</span>
           </span>
         </IOSListRow>
       </IOSList>
+
+      {/* Dasselbe Fenster wie in der nativen App: erst aufzählen, was verloren geht,
+          dann erst der Knopf. Vorher standen hier zwei confirm()-Abfragen — die
+          liest niemand, weil sie überall gleich aussehen. */}
+      {deleteAccountStep > 0 && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+             onClick={() => !deleteAccountBusy && setDeleteAccountStep(0)}>
+          <div className="bg-white rounded-3xl p-5 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-[17px] mb-1">{t('settings.deleteAccount')}</h3>
+            <p className="text-[13px] text-[#8E8E93] mb-3">{t('settings.deleteAccountWhat')}</p>
+            <ul className="text-[14px] mb-3 space-y-1.5">
+              {[t('nav.trainings'), t('competition.competitions'), t('nav.uebungen'),
+                t('competition.programs'), t('athletes.tagAthlete')].map(x => (
+                <li key={x} className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#FF3B30] shrink-0" />{x}
+                </li>
+              ))}
+            </ul>
+            <p className="text-[13px] text-[#8E8E93] mb-4">{t('settings.deleteAccountKeep')}</p>
+            <div className="flex gap-2">
+              <button disabled={deleteAccountBusy} onClick={() => setDeleteAccountStep(0)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 font-medium text-sm disabled:opacity-50">
+                {t('common.cancel')}
+              </button>
+              <button disabled={deleteAccountBusy}
+                onClick={async () => {
+                  setDeleteAccountBusy(true);
+                  const { error } = await deleteMyAccount();
+                  setDeleteAccountBusy(false);
+                  if (error) { alert(t('settings.deleteAccountFailed') + ': ' + error.message); return; }
+                  alert(t('settings.accountDeleted'));
+                  window.location.assign('/web');
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white font-medium text-sm disabled:opacity-50">
+                {deleteAccountBusy ? '…' : t('settings.deleteAccountConfirmShort')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Über */}
       <IOSList header={t('settings.about')}>
