@@ -307,10 +307,11 @@ function Home() {
           <div className="w-11 h-11 rounded-2xl flex items-center justify-center mb-4" style={{ background: ACCENT + '22' }}>
             <ShieldCheck size={22} style={{ color: ACCENT }} />
           </div>
-          <h3 className="font-semibold text-[18px] mb-1.5">Rechte-Kontrolle & Papierkorb</h3>
+          <h3 className="font-semibold text-[18px] mb-1.5">Rechte vergeben, Gelöschtes zurückholen</h3>
           <p className="text-[14px] text-slate-600 leading-relaxed">
-            Jeder Sportler legt pro Trainer fest, ob dieser nur eintragen oder auch bearbeiten und löschen darf
-            („Volle Rechte"). Gelöschtes landet 30 Tage im Papierkorb und lässt sich jederzeit wiederherstellen.
+            Jeder Sportler entscheidet für jeden seiner Trainer einzeln: nur eintragen — oder auch bearbeiten
+            und löschen. Und falls doch einmal zu viel verschwindet: Gelöschtes bleibt 30 Tage im Papierkorb
+            und lässt sich jederzeit zurückholen.
           </p>
         </div>
       </Section>
