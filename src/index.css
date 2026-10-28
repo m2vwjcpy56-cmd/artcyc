@@ -14,6 +14,23 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
 }
 
+/* =============================================================
+   SEITENGRUND (Hellmodus)
+
+   Apples Systemgrau #F2F2F7 steht so dicht am Kartenweiss, dass die Karten
+   im Hellmodus kaum eine Kante haben — dieselbe Beobachtung wie in der
+   nativen App. Der Grund zieht deshalb jetzt ins Schiefer des Logos
+   (#0F172A) und entspricht Surface.page im Swift-Code. Ein kuehler Grund
+   laesst das Bernstein der Aktionen zusaetzlich hervortreten.
+
+   Eine Regel statt 43 geaenderter Klassen im JSX: der Dunkelmodus haengt
+   schon an genau derselben Klasse, der Hellmodus tut es jetzt auch.
+   ============================================================= */
+html:not([data-theme="dark"]) body                   { background: #E1E8F2; }
+html:not([data-theme="dark"]) .bg-\[\#F2F2F7\]       { background-color: #E1E8F2; }
+html:not([data-theme="dark"]) .bg-\[\#F2F2F7\]\/40   { background-color: rgba(225, 232, 242, 0.40); }
+html:not([data-theme="dark"]) .bg-\[\#F2F2F7\]\/95   { background-color: rgba(225, 232, 242, 0.95); }
+
 /* Tap-Highlight auf Mobile entfernen */
 button, a, [role="button"] {
   -webkit-tap-highlight-color: transparent;
@@ -21,7 +38,7 @@ button, a, [role="button"] {
 
 /* iOS-Style Header-Background (Light: hellgrau-transparent) */
 .ios-header-bg {
-  background: rgba(242, 242, 247, 0.78);
+  background: rgba(225, 232, 242, 0.78);
 }
 html[data-theme="dark"] .ios-header-bg {
   background: rgba(0, 0, 0, 0.72);
