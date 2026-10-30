@@ -2209,6 +2209,29 @@ function localizedExerciseName(ex) {
 }
 
 const DATA_KEY = 'artcyc:test:v3';
+
+/* ---------------------------------------------------------------------------
+   FARBE ALS AUSSAGE
+
+   Orange kennzeichnet in dieser App *Aktionen und die Marke* — Knöpfe, Plus,
+   aktiver Tab, Pokal. Auf einer ZAHL heißt es seit dem 30.10.2026 genau eine
+   Sache: mittlere Erfolgsquote.
+
+   Vorher trug dieselbe Farbe drei Aufgaben gleichzeitig, und die Ampel stand
+   an 13 Stellen einzeln im Code — mit vier verschiedenen Schwellen (50/55/60
+   und zweistufig) und fünf verschiedenen Farbvokabularen (emerald-600,
+   emerald-700, #34C759 …). Auf einem Bildschirm stand damit „187.25" orange
+   neben „67 %" orange: einmal wertfrei, einmal als Warnung — und das Grün
+   daneben legte nahe, die Punktzahl sei „mittelmäßig".
+
+   Spiegelt `Rate.color` / `Brand` in der nativen App (Theme.swift).
+--------------------------------------------------------------------------- */
+/** Erfolgsquote in Prozent → Textfarbe. Einziger Ort mit den Schwellen. */
+const rateCls = (p) =>
+  p >= 80 ? 'text-[#34C759]' : p >= 50 ? 'text-[#FF9500]' : 'text-[#FF3B30]';
+/** Eine Zahl, die nur ein Wert ist (Punkte, Abzüge, Zähler) — nie Akzentfarbe.
+    Ihre Bedeutung tragen Größe und Gewicht, nicht die Farbe. */
+const VALUE_CLS = 'text-slate-900 dark:text-white';
 // Echte UUID (v4) — die DB-Tabellen erwarten UUID-Format. crypto.randomUUID()
 // gibt es ab iOS Safari 15.4 und in allen aktuellen Browsern; der manuelle
 // Fallback ist für sehr alte Umgebungen (eigentlich nicht mehr nötig).
@@ -3701,7 +3724,7 @@ function TrainingRecapCard({ data, onOpenExercise }) {
   const recap = useMemo(() => computeLastTrainingRecap(data), [data.sessions, data.exercises]);
   if (!recap) return null;
   const rel = recap.daysAgo === 0 ? 'heute' : recap.daysAgo === 1 ? 'gestern' : `vor ${recap.daysAgo} Tagen`;
-  const rc = r => r >= 80 ? 'text-emerald-600' : r >= 50 ? 'text-[#FF9500]' : 'text-red-500';
+  const rc = r => rateCls(r);
   const pct = r => r.total ? Math.round(r.success / r.total * 100) : 0;
   const ropePct = (s, t) => t ? Math.round(s / t * 100) : 0;
   return (
@@ -7344,7 +7367,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
                       <span className="block text-[12px] text-[#8E8E93] truncate">{formatDateShort(c.date)}{c.location ? ' · ' + c.location : ''}</span>
                     </span>
                     <span className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-right"><span className="block text-[14px] font-bold text-[#FF9500] tabular-nums leading-none">{final != null ? final.toFixed(2) : '—'}</span><span className="block text-[10px] text-[#8E8E93] uppercase tracking-wide mt-0.5">{t('common.pts')}</span></span>
+                      <span className="text-right"><span className="block text-[14px] font-bold text-slate-900 dark:text-white tabular-nums leading-none">{final != null ? final.toFixed(2) : '—'}</span><span className="block text-[10px] text-[#8E8E93] uppercase tracking-wide mt-0.5">{t('common.pts')}</span></span>
                       <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC]" />
                     </span>
                   </button>
@@ -7365,7 +7388,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
                 {neglected.slice(0, 6).map(({ ex, days }) => (
                   <button key={ex.id} onClick={() => setView('erfassen')} className="w-full text-left px-3 py-2.5 flex items-center justify-between gap-3 border-b border-slate-100 last:border-0 active:opacity-60">
                     <span className="text-[15px] font-medium truncate">{localizedExerciseName(ex)}</span>
-                    <span className="text-[13px] text-[#FF9500] font-semibold tabular-nums shrink-0">{days} Tage</span>
+                    <span className="text-[13px] text-slate-900 dark:text-white font-semibold tabular-nums shrink-0">{days} Tage</span>
                   </button>
                 ))}
               </div>
@@ -7473,7 +7496,7 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
               <button key={ex.id} onClick={() => setView('erfassen')}
                 className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-white/10 last:border-0 active:bg-slate-50 dark:active:bg-white/10 transition">
                 <span className="text-[15px] font-medium truncate">{localizedExerciseName(ex)}</span>
-                <span className="text-[13px] text-[#FF9500] font-semibold tabular-nums shrink-0">{days} Tage</span>
+                <span className="text-[13px] text-slate-900 dark:text-white font-semibold tabular-nums shrink-0">{days} Tage</span>
               </button>
             ))}
           </div>
@@ -8309,7 +8332,7 @@ function TrainingView({ data, setData, setView, profile = null, myUserId = null 
     const fail = (s.entries || []).filter(e => e === 'fail').length;
     const third = (s.entries || []).filter(e => e === 'third').length;
     const rate = total > 0 ? Math.round((success / total) * 100) : 0;
-    const rateColor = rate >= 80 ? 'text-emerald-600' : rate >= 60 ? 'text-amber-600' : 'text-rose-600';
+    const rateColor = rateCls(rate);
     return (
       <button key={s._origIdx} onClick={() => setEditing(s)}
         className="w-full text-left px-4 py-3 hover:bg-slate-50 active:bg-slate-100 transition flex items-center gap-3 border-b border-slate-100 last:border-0">
@@ -8358,7 +8381,7 @@ function TrainingView({ data, setData, setView, profile = null, myUserId = null 
 
   const renderExerciseGroup = (g) => {
     const rate = g.totalEntries > 0 ? Math.round((g.totalSuccess / g.totalEntries) * 100) : 0;
-    const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 60 ? 'text-[#FF9500]' : 'text-[#FF3B30]';
+    const rateColor = rateCls(rate);
     const isOpen = openExercises.has(g.exerciseId || g.exerciseName);
     const key = g.exerciseId || g.exerciseName;
     return (
@@ -8531,7 +8554,7 @@ function TrainingView({ data, setData, setView, profile = null, myUserId = null 
   const renderRateTrend = ({ recSucc, recTot, prevSucc, prevTot, allRate, allTotal }) => {
     if (recTot > 0) {
       const recRate = Math.round((recSucc / recTot) * 100);
-      const color = recRate >= 80 ? 'text-[#34C759]' : recRate >= 55 ? 'text-slate-600 dark:text-slate-200' : 'text-rose-600';
+      const color = rateCls(recRate);
       let arrow = null;
       if (prevTot > 0) {
         const delta = recRate - Math.round((prevSucc / prevTot) * 100);
@@ -8643,7 +8666,7 @@ function TrainingView({ data, setData, setView, profile = null, myUserId = null 
                 <div className="bg-white rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
                   {aggregateDay(day.items).map(agg => {
                     const ex = agg.exId ? (data.exercises || []).find(e => e.id === agg.exId) : null;
-                    const rc = agg.rate >= 80 ? 'text-emerald-600' : agg.rate >= 50 ? 'text-amber-600' : 'text-rose-600';
+                    const rc = rateCls(agg.rate);
                     return (
                       <button key={agg.key} onClick={() => ex && setSelectedExercise(ex)}
                         className="w-full text-left px-4 py-3 flex items-center gap-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 active:bg-slate-100 transition">
@@ -8861,7 +8884,7 @@ function TrainingView({ data, setData, setView, profile = null, myUserId = null 
                       <span className="block text-[12px] text-[#8E8E93] truncate">{c.name || (programMap.get(c.program_id) && programMap.get(c.program_id).name) || 'Training'}</span>
                     </span>
                     <span className="flex items-center gap-1.5 shrink-0">
-                      {v != null && <span className="text-[14px] font-bold tabular-nums text-[#FF9500]">{v.toFixed(2)}</span>}
+                      {v != null && <span className="text-[14px] font-bold tabular-nums text-slate-900 dark:text-white">{v.toFixed(2)}</span>}
                       <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC]" />
                     </span>
                   </button>
@@ -8920,7 +8943,7 @@ function TrainingView({ data, setData, setView, profile = null, myUserId = null 
                     <span className="block text-[12px] text-[#8E8E93]">{formatDateShort(c.date)}</span>
                   </span>
                   <span className="flex items-center gap-1.5 shrink-0">
-                    {final != null && <span className="text-[14px] font-bold text-[#FF9500] tabular-nums">{final.toFixed(2)}</span>}
+                    {final != null && <span className="text-[14px] font-bold text-slate-900 dark:text-white tabular-nums">{final.toFixed(2)}</span>}
                     <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC]" />
                   </span>
                 </button>
@@ -9150,7 +9173,7 @@ function TrainingView({ data, setData, setView, profile = null, myUserId = null 
             label="Erfolgsquote"
             value={trainTopStats.rate + '%'}
             sub="über alle Sessions"
-            color={trainTopStats.rate >= 80 ? 'emerald' : trainTopStats.rate >= 60 ? 'amber' : 'rose'}
+            color={trainTopStats.rate >= 80 ? 'emerald' : trainTopStats.rate >= 50 ? 'amber' : 'rose'}
           />
           <StatCard
             icon={Calendar}
@@ -9182,7 +9205,7 @@ function TrainingView({ data, setData, setView, profile = null, myUserId = null 
           header={'Übungen (' + trainedExercises.length + ')'}
           footer="Sortiert nach zuletzt trainiert. Klick öffnet die Übungs-Detail-Seite.">
           {trainedExercises.map(({ ex, sessions, total, rate, lastDate }) => {
-            const rateColor = rate >= 80 ? 'text-[#34C759]' : rate >= 60 ? 'text-[#FF9500]' : 'text-[#FF3B30]';
+            const rateColor = rateCls(rate);
             const meta = (ex.uci_code ? ('Nr. ' + ex.uci_code) : (ex.points ? Number(ex.points).toFixed(1) + ' Pkt' : ''));
             const subtitle = (meta ? meta + ' · ' : '') + sessions + ' Sessions · ' + total + ' Versuche';
             return (
@@ -9697,7 +9720,7 @@ function TrainingsplanView({ data, setData, onBack }) {
     <div className="bg-white rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       {log.map((d, idx) => {
         const rate = d.total > 0 ? Math.round(d.succ / d.total * 100) : 0;
-        const rc = rate >= 80 ? 'text-emerald-600' : (rate >= 50 ? 'text-[#FF9500]' : 'text-rose-500');
+        const rc = rateCls(rate);
         return (
           <div key={d.date} className={'px-4 py-3 ' + (idx > 0 ? 'border-t border-[#C6C6C8]/40' : '')}>
             <div className="flex items-center justify-between gap-3">
@@ -10322,7 +10345,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                               <div className="flex items-center gap-2">
                                 <button onClick={() => setPlanRepCount(ex, planRepCount(ex) - 1)}
                                   className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-700 text-lg leading-none active:scale-90">−</button>
-                                <span className="text-[15px] font-bold tabular-nums w-7 text-center text-[#FF9500]">{planRepCount(ex)}</span>
+                                <span className="text-[15px] font-bold tabular-nums w-7 text-center text-slate-900 dark:text-white">{planRepCount(ex)}</span>
                                 <button onClick={() => setPlanRepCount(ex, planRepCount(ex) + 1)}
                                   className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-700 text-lg leading-none active:scale-90">+</button>
                               </div>
@@ -10400,7 +10423,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                       )}
                       <div className="flex-1" />
                       {r.total > 0 && (
-                        <div className={'text-[20px] font-bold tabular-nums ' + (r.rate >= 80 ? 'text-[#34C759]' : (r.rate >= 50 ? 'text-[#FF9500]' : 'text-[#FF3B30]'))}>{r.rate} %</div>
+                        <div className={'text-[20px] font-bold tabular-nums ' + rateCls(r.rate)}>{r.rate} %</div>
                       )}
                     </div>
                   )}
@@ -10433,7 +10456,7 @@ function TrainingsplanView({ data, setData, onBack }) {
                       <div className="flex-1" />
                       {r.total > 0 && (
                         <>
-                          <span className={'text-[15px] font-semibold tabular-nums ' + (runRate(r) >= 80 ? 'text-[#34C759]' : (runRate(r) >= 50 ? 'text-[#FF9500]' : 'text-[#FF3B30]'))}>{runRate(r)} %</span>
+                          <span className={'text-[15px] font-semibold tabular-nums ' + rateCls(runRate(r))}>{runRate(r)} %</span>
                           <span className="text-[12px] text-slate-400 tabular-nums">{r.succ}/{r.total}</span>
                         </>
                       )}
@@ -12264,7 +12287,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <span className="text-[13px] text-slate-400 tabular-nums">{s.success}/{s.total}</span>
-                    <span className={'text-[15px] font-semibold tabular-nums w-11 text-right ' + (s.rate >= 80 ? 'text-emerald-700' : 'text-slate-700')}>{s.rate}%</span>
+                    <span className={'text-[15px] font-semibold tabular-nums w-11 text-right ' + rateCls(s.rate)}>{s.rate}%</span>
                     {canEditSessions && <ChevronRight size={16} strokeWidth={2.4} className="text-[#C7C7CC]" />}
                   </div>
                 </button>
@@ -12318,7 +12341,7 @@ function ExerciseDetailV2({ exercise, data, setData, onBack, onEdit, onArchive, 
                         <div className="text-[12px] text-amber-900 font-medium">Ø Abzug / Wertung</div>
                         {dedSchw > 0 && <div className="text-[10px] text-amber-700/70">{t('exercise.inclDifficulty')}</div>}
                       </div>
-                      <div className="font-bold text-[22px] text-amber-700 tabular-nums">−{avgDed.toFixed(2)}</div>
+                      <div className="font-bold text-[22px] text-slate-900 dark:text-white tabular-nums">−{avgDed.toFixed(2)}</div>
                     </div>
                   );
                 })()}
@@ -12536,7 +12559,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
     return { cls: 'bg-slate-100 text-slate-500', arrow: '·' };
   })();
 
-  const sessionRate = (r) => r >= 80 ? 'text-emerald-700' : 'text-slate-700';
+  const sessionRate = (r) =>rateCls(r);
   const periodTabs = [['4w', '4 Wo.'], ['3m', '3 Mon.'], ['6m', '6 Mon.'], ['total', 'Gesamt']];
   const periodLabel = (periodTabs.find(p => p[0] === trendPeriod) || ['', 'Gesamt'])[1];
 
@@ -12549,7 +12572,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
     danger: (vm.dangerTrendSeries[i] || {}).rate || 0,
     delta: i > 0 ? s.rate - vm.successTrendSeries[i - 1].rate : null,
   })).reverse();
-  const rateColor = (r) => r >= 80 ? 'text-emerald-600' : r >= 55 ? 'text-slate-800' : 'text-rose-600';
+  const rateColor = (r) => rateCls(r);
 
   const sessionRows = (list) => list.map((s, i) => (
     <div key={i} className="px-4 py-3 flex items-center justify-between gap-3">
@@ -12672,8 +12695,8 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
               {is3 && (
                 <div className="bg-amber-50 border border-amber-100 rounded-[20px] p-3 text-center">
                   <div className="text-[12px] font-medium text-amber-700">{statusLabel(exercise, 'third')}</div>
-                  <div className="text-[26px] font-bold text-amber-700 tabular-nums leading-none mt-1">{vm.hitRate} %</div>
-                  <div className="text-[11px] text-amber-600/70 tabular-nums mt-0.5">{vm.totalHit}</div>
+                  <div className={'text-[26px] font-bold tabular-nums leading-none mt-1 ' + rateCls(vm.hitRate)}>{vm.hitRate} %</div>
+                  <div className="text-[11px] text-slate-900 dark:text-white tabular-nums mt-0.5">{vm.totalHit}</div>
                 </div>
               )}
               <div className="bg-rose-50 border border-rose-100 rounded-[20px] p-3 text-center">
@@ -12856,7 +12879,7 @@ function ExerciseDetail({ exercise, data, setData, onBack, onEdit, onArchive, on
                         <div className="text-[12px] text-amber-900 font-medium">Ø Abzug / Wertung</div>
                         {dedSchw > 0 && <div className="text-[10px] text-amber-700/70">{t('exercise.inclDifficulty')}</div>}
                       </div>
-                      <div className="font-bold text-[22px] text-amber-700 tabular-nums">−{avgDed.toFixed(2)}</div>
+                      <div className="font-bold text-[22px] text-slate-900 dark:text-white tabular-nums">−{avgDed.toFixed(2)}</div>
                     </div>
                   );
                 })()}
@@ -13100,9 +13123,7 @@ function UebungenView({ data, setData, onBack, onOpenView, focusExerciseId, onFo
     const nTr = compStats.wettkaempfe - nWk;
     const countLabel = [nWk > 0 ? nWk + '× Wettkampf' : null, nTr > 0 ? nTr + '× Training' : null].filter(Boolean).join(' · ');
     const trainStats = calcExerciseTrainingStats(ex, data.sessions || []);
-    const rateColor = trainStats.rate >= 80 ? 'text-[#34C759]'
-      : trainStats.rate >= 60 ? 'text-[#FF9500]'
-      : 'text-[#FF3B30]';
+    const rateColor = rateCls(trainStats.rate);
     return (
       <IOSListRow
         key={ex.id}
@@ -15559,11 +15580,11 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null, profile = n
       const athlete = athletes.find(a => a.id === c.athlete_id);
       return (
         <IOSListRow key={c.id} onClick={() => setViewId(c.id)}
-          trailing={<div className="flex items-center gap-2 shrink-0">{final !== null && <div className="text-right"><div className="text-[14px] font-bold text-[#FF9500] leading-none tabular-nums">{final.toFixed(2)}</div><div className="text-[10px] text-[#8E8E93] uppercase tracking-wide font-medium mt-0.5">{t('common.pts')}</div></div>}<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" /></div>}>
+          trailing={<div className="flex items-center gap-2 shrink-0">{final !== null && <div className="text-right"><div className="text-[14px] font-bold text-slate-900 dark:text-white leading-none tabular-nums">{final.toFixed(2)}</div><div className="text-[10px] text-[#8E8E93] uppercase tracking-wide font-medium mt-0.5">{t('common.pts')}</div></div>}<ChevronRight size={18} strokeWidth={2.4} className="text-[#C7C7CC]" /></div>}>
           <div className="font-medium text-[15px] truncate">{c.name}</div>
           <div className="text-[13px] text-[#8E8E93] mt-0.5 truncate">
             {formatDateShort(c.date)}{c.location ? ' · ' + c.location : ''}{athlete ? ' · ' + athlete.name : ''}
-            {avgDedEx != null && avgDedEx > 0 && <span className="text-[#FF9500] font-medium"> · Ø −{avgDedEx.toFixed(2).replace('.', ',')}/Üb.</span>}
+            {avgDedEx != null && avgDedEx > 0 && <span className="text-slate-900 dark:text-white font-medium"> · Ø −{avgDedEx.toFixed(2).replace('.', ',')}/Üb.</span>}
           </div>
         </IOSListRow>
       );
@@ -15709,7 +15730,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null, profile = n
                         <div className="text-[14px] font-medium truncate">{r.name}</div>
                         <div className="text-[12px] text-[#8E8E93]">
                           {r.competitions}× {dedScope === 'training' ? 'Training' : dedScope === 'wettkampf' ? 'Wettkampf' : 'gewertet'}
-                          {r.trainingRate != null && <> · Training <span className={r.trainingRate >= 80 ? 'text-emerald-600' : r.trainingRate >= 50 ? 'text-amber-600' : 'text-rose-600'}>{r.trainingRate}%</span></>}
+                          {r.trainingRate != null && <> · Training <span className={rateCls(r.trainingRate)}>{r.trainingRate}%</span></>}
                         </div>
                       </div>
                       <div className="text-right shrink-0">
@@ -15885,7 +15906,7 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null, profile = n
                       <div className="flex items-center gap-2 shrink-0">
                         {final !== null && (
                           <div className="text-right">
-                            <div className="text-[14px] font-bold text-[#FF9500] leading-none">{final.toFixed(2)}</div>
+                            <div className="text-[14px] font-bold text-slate-900 dark:text-white leading-none">{final.toFixed(2)}</div>
                             <div className="text-[10px] text-[#8E8E93] uppercase tracking-wide font-medium mt-0.5">{t('common.pts')}</div>
                           </div>
                         )}
@@ -16173,7 +16194,7 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
             {ex.code && <span className="font-mono">Nr. {ex.code} · </span>}
             {std.toFixed(1).replace('.', ',')} Pkt
           </>)}
-          {total > 0 && <span className="text-[#FF9500] font-semibold ml-2 tabular-nums">Σ −{total.toFixed(1).replace('.', ',')}</span>}
+          {total > 0 && <span className="text-slate-900 dark:text-white font-semibold ml-2 tabular-nums">Σ −{total.toFixed(1).replace('.', ',')}</span>}
         </div>
       </div>
       {/* KG-Umschalter (nur pro-KG mit ≥2 KG) */}
@@ -16218,7 +16239,7 @@ function StellungScorer({ program, tables, gesamt, kampfgerichte, startIndex = 0
         <div className="bg-white dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 rounded-2xl p-3">
           <div className="flex justify-between items-center mb-2">
             <span className="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wide">Schwierigkeit</span>
-            {schw > 0 && <span className="text-[#FF9500] text-xs font-semibold tabular-nums">−{schw.toFixed(1).replace('.', ',')} Pkt</span>}
+            {schw > 0 && <span className="text-slate-900 dark:text-white text-xs font-semibold tabular-nums">−{schw.toFixed(1).replace('.', ',')} Pkt</span>}
           </div>
           {gesamt ? (
             <PanelTapButtons options={[10, 50, 100]} hits={e.schwHits || []} limit={N} onChange={(h) => onUpdateSchwHits(row, h)} fmt={(v) => v + ' %'} />
@@ -17112,7 +17133,7 @@ function WettkampfEditor({ competition, programs, athletes, existingExercises, e
                 {importPreview.starter && <div><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.starter')}:</span> <strong>{importPreview.starter}</strong></div>}
                 {importPreview.disziplin && <div className="col-span-2"><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.discipline')}:</span> <strong>{importPreview.disziplin}</strong></div>}
                 {typeof importPreview.aufgestellt === 'number' && <div><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.tabled')}:</span> <strong>{importPreview.aufgestellt.toFixed(2)}</strong></div>}
-                {typeof importPreview.endergebnis === 'number' && <div className="col-span-2 text-amber-700 dark:text-amber-300"><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.finalScorePdf')}:</span> <strong>{importPreview.endergebnis.toFixed(2)}</strong></div>}
+                {typeof importPreview.endergebnis === 'number' && <div className="col-span-2 text-slate-900 dark:text-white"><span className="text-slate-500 dark:text-slate-400">{t('pdfImport.finalScorePdf')}:</span> <strong>{importPreview.endergebnis.toFixed(2)}</strong></div>}
               </div>
               {/* Der Wertungsbogen ist die alleinige Quelle für das Programm —
                   es wird automatisch aus den erkannten Zeilen aufgebaut. Daher
@@ -17427,7 +17448,7 @@ function MarkLine({ groups }) {
   );
   const pct = (key, lvl, n) => (
     <span key={key} className="flex items-center gap-0.5">
-      <span className="text-[11px] font-semibold tabular-nums text-[#FF9500]">{lvl} %</span>
+      <span className="text-[11px] font-semibold tabular-nums text-slate-900 dark:text-white">{lvl} %</span>
       {n > 1 && <span className="text-[11px] tabular-nums text-slate-500 dark:text-slate-400">×{n}</span>}
     </span>
   );
@@ -17477,7 +17498,7 @@ function MarkSummary({ tables, program, kampfgerichte, gesamt }) {
   );
   const pct = (lvl, n) => (
     <div key={lvl} className="flex items-center gap-1">
-      <span className="text-[13px] font-semibold tabular-nums text-[#FF9500]">{lvl} %</span>
+      <span className="text-[13px] font-semibold tabular-nums text-slate-900 dark:text-white">{lvl} %</span>
       <span className="text-sm tabular-nums text-slate-600 dark:text-slate-300">×{n}</span>
     </div>
   );
@@ -17578,7 +17599,7 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
                     {isTaktisch ? (
                       <span className="font-medium">
                         <span className="text-slate-400 line-through">{Number(ex.points).toFixed(1)}</span>
-                        <span className="text-amber-700 ml-1">→ {Number(e.taktischePunkte).toFixed(1)} Pkt</span>
+                        <span className="text-slate-900 dark:text-white ml-1">→ {Number(e.taktischePunkte).toFixed(1)} Pkt</span>
                         <span className="ml-1 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">T</span>
                       </span>
                     ) : (
@@ -17769,7 +17790,7 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
                   <td className="py-1.5 px-1 text-center text-slate-600">
                     {Number(e.taktischePunkte || 0) > 0 && Number(e.taktischePunkte) !== Number(ex.points) ? (
                       <span title={'Taktisch anerkannt (Standard: ' + Number(ex.points).toFixed(1) + ')'}>
-                        <span className="text-amber-700 font-semibold">{Number(e.taktischePunkte).toFixed(1)}</span>
+                        <span className="text-slate-900 dark:text-white font-semibold">{Number(e.taktischePunkte).toFixed(1)}</span>
                         <span className="text-[9px] text-amber-700 ml-0.5">T</span>
                       </span>
                     ) : (
@@ -17856,7 +17877,7 @@ function WertungstischEditor({ program, entries, onUpdate, onUpdateSchwHits, onU
           </div>
           <div>
             <div className="text-amber-700">{t('common.result')}</div>
-            <div className="font-bold text-amber-700">{result.ergebnis.toFixed(2)}</div>
+            <div className="font-bold text-slate-900 dark:text-white">{result.ergebnis.toFixed(2)}</div>
           </div>
         </div>
       )}
@@ -18043,7 +18064,7 @@ function AthleteDetailView({ athlete, ownData, onBack }) {
                         {ex.total} Serien · {ex.success} geklappt
                       </div>
                     </div>
-                    <div className={'text-xl font-bold ' + (ex.rate >= 80 ? 'text-emerald-600' : ex.rate >= 60 ? 'text-amber-600' : 'text-rose-600')}>
+                    <div className={'text-xl font-bold ' + rateCls(ex.rate)}>
                       {ex.rate}%
                     </div>
                   </div>
@@ -21175,7 +21196,7 @@ function WettkampfDetail({ competition, program, athlete, competitions = [], pro
                           {isTaktisch ? (
                             <span>
                               <span className="text-slate-400 line-through">{Number(ex.points).toFixed(1)}</span>
-                              <span className="text-amber-700 font-semibold ml-1">→ {Number(e.taktischePunkte).toFixed(1)} Pkt</span>
+                              <span className="text-slate-900 dark:text-white font-semibold ml-1">→ {Number(e.taktischePunkte).toFixed(1)} Pkt</span>
                               <span className="ml-1 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">T</span>
                             </span>
                           ) : (
@@ -21242,7 +21263,7 @@ function WettkampfDetail({ competition, program, athlete, competitions = [], pro
                 </div>
                 <div className="bg-amber-50 rounded-lg p-2">
                   <div className="text-amber-700">{t('common.result')}</div>
-                  <div className="font-bold text-amber-700">{result.ergebnis.toFixed(2)}</div>
+                  <div className="font-bold text-slate-900 dark:text-white">{result.ergebnis.toFixed(2)}</div>
                 </div>
               </div>
             )}

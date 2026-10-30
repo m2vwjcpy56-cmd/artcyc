@@ -19,17 +19,79 @@ body {
 
    Apples Systemgrau #F2F2F7 steht so dicht am Kartenweiss, dass die Karten
    im Hellmodus kaum eine Kante haben — dieselbe Beobachtung wie in der
-   nativen App. Der Grund zieht deshalb jetzt ins Schiefer des Logos
-   (#0F172A) und entspricht Surface.page im Swift-Code. Ein kuehler Grund
-   laesst das Bernstein der Aktionen zusaetzlich hervortreten.
+   nativen App. Der Grund zieht deshalb ins Schiefer des Logos (#0F172A)
+   und entspricht Surface.page im Swift-Code. Ein kuehler Grund laesst das
+   Bernstein der Aktionen zusaetzlich hervortreten.
 
    Eine Regel statt 43 geaenderter Klassen im JSX: der Dunkelmodus haengt
    schon an genau derselben Klasse, der Hellmodus tut es jetzt auch.
+
+   Der Grund lag bis 30.10.2026 bei #E1E8F2. Gemessen ergab das gegenueber
+   der weissen Karte ein Verhaeltnis von 1,23 : 1 — bei JEDER Karte, und die
+   Haarlinie der .card-surface stand bei 6 % Schwarz. Beides zusammen war zu
+   wenig: die Seite wirkte flach UND zu hell, weil fast die ganze Flaeche
+   nahe Weiss lag. Ein tieferer Grund behebt beides auf einmal (jetzt
+   1,36 : 1), ohne den Karten ihr Weiss zu nehmen.
    ============================================================= */
-html:not([data-theme="dark"]) body                   { background: #E1E8F2; }
-html:not([data-theme="dark"]) .bg-\[\#F2F2F7\]       { background-color: #E1E8F2; }
-html:not([data-theme="dark"]) .bg-\[\#F2F2F7\]\/40   { background-color: rgba(225, 232, 242, 0.40); }
-html:not([data-theme="dark"]) .bg-\[\#F2F2F7\]\/95   { background-color: rgba(225, 232, 242, 0.95); }
+:root {
+  --ac-page:        #D4DEEC;   /* Seitengrund hell */
+  --ac-page-rgb:    212, 222, 236;
+  --ac-hairline:    rgba(15, 23, 42, 0.11);   /* Kartenkante hell */
+  --ac-warm:        0.085;     /* Akzentlicht oben links */
+  --ac-cool:        0.10;      /* Gegenlicht unten rechts */
+}
+html[data-theme="dark"] {
+  --ac-warm:        0.16;
+  --ac-cool:        0.20;
+}
+html:not([data-theme="dark"]) body                   { background: var(--ac-page); }
+html:not([data-theme="dark"]) .bg-\[\#F2F2F7\]       { background-color: var(--ac-page); }
+html:not([data-theme="dark"]) .bg-\[\#F2F2F7\]\/40   { background-color: rgba(var(--ac-page-rgb), 0.40); }
+html:not([data-theme="dark"]) .bg-\[\#F2F2F7\]\/95   { background-color: rgba(var(--ac-page-rgb), 0.95); }
+
+/* =============================================================
+   LICHT AUF DEM GRUND
+
+   Eine einzige Volltonflaeche liest sich als „nur blau". Zwei sehr weite
+   Lichter machen daraus eine Flaeche mit Tiefe — warm oben links in der
+   Akzentfarbe, kuehl unten rechts. Dieselbe Behandlung wie bei den Widgets.
+
+   Radial, nicht linear: ein linearer Verlauf mit Endpunkt in der Mitte zieht
+   eine sichtbare Diagonale quer durchs Bild. `fixed` haelt die Lichter am
+   Fenster statt am Dokument — sonst sieht man sie bei einer langen Liste nur
+   ganz oben und ganz unten. Die Deckkraft ist im Hellmodus geringer: Orange
+   auf hellem Schiefer wird schnell schmutzig, auf dunklem traegt es.
+   ============================================================= */
+.bg-\[\#F2F2F7\] {
+  background-image:
+    radial-gradient(760px 540px at 0% 0%,     rgba(245, 140, 33, var(--ac-warm)), transparent 68%),
+    radial-gradient(900px 640px at 100% 100%, rgba(59, 130, 246, var(--ac-cool)), transparent 68%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+/* =============================================================
+   KARTENKANTE (Hellmodus)
+
+   Von ~230 weissen Flaechen trugen nur 44 die .card-surface, der Rest stand
+   ohne Kante auf dem Grund. Die Kante kommt deshalb als Schatten mit reinem
+   Radius (0 0 0 0.5px) statt als `border`: so verschiebt sie kein Layout und
+   ueberschreibt auch keine absichtliche Akzent-Umrandung (amber/emerald/rose),
+   die ein `border` hier platt gemacht haette.
+
+   Pillen und Schalter (rounded-full) bleiben aussen vor — die sollen wie
+   Bedienelemente aussehen, nicht wie Karten.
+   ============================================================= */
+html:not([data-theme="dark"]) .bg-white.rounded-xl,
+html:not([data-theme="dark"]) .bg-white.rounded-2xl,
+html:not([data-theme="dark"]) .bg-white.rounded-3xl,
+html:not([data-theme="dark"]) .bg-white[class*="rounded-["],
+html:not([data-theme="dark"]) .card-surface {
+  box-shadow:
+    0 0 0 0.5px var(--ac-hairline),
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 8px 22px rgba(15, 23, 42, 0.05);
+}
 
 /* Tap-Highlight auf Mobile entfernen */
 button, a, [role="button"] {
@@ -38,7 +100,7 @@ button, a, [role="button"] {
 
 /* iOS-Style Header-Background (Light: hellgrau-transparent) */
 .ios-header-bg {
-  background: rgba(225, 232, 242, 0.78);
+  background: rgba(var(--ac-page-rgb), 0.78);
 }
 html[data-theme="dark"] .ios-header-bg {
   background: rgba(0, 0, 0, 0.72);
@@ -162,8 +224,7 @@ html[data-theme="dark"] .ios-seg-active {
           ohne harte Umrisse. */
 .card-surface {
   background: #fff;
-  border: 0.5px solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  border: 0.5px solid var(--ac-hairline);
 }
 html[data-theme="dark"] .card-surface {
   background: linear-gradient(180deg, #202023 0%, #161618 100%);
@@ -173,6 +234,10 @@ html[data-theme="dark"] .card-surface {
 
 /* Brand-Orange & iOS-Blau im Dark brillanter (systemnäher) */
 html[data-theme="dark"] .text-\[\#FF9500\] { color: #FF9F0A !important; }
+/* Die beiden anderen Ampelstufen brauchen denselben Dienst — sonst steht ein
+   gedaempftes Gruen/Rot neben einem aufgehellten Orange. */
+html[data-theme="dark"] .text-\[\#34C759\] { color: #30D158 !important; }
+html[data-theme="dark"] .text-\[\#FF3B30\] { color: #FF453A !important; }
 html[data-theme="dark"] .text-\[\#007AFF\] { color: #0A84FF !important; }
 
 /* Akzent-Borders */
