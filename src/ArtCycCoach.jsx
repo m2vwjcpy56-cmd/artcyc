@@ -7272,9 +7272,15 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
           <MetricCard accent="amber" icon={Trophy} label={t('dashboard.bestScore')} value={compStats.best ? compStats.best.final.toFixed(2) : '—'} sub={t('common.points')} />
         </div>
 
-        {/* TRAININGS-ERFOLGSQUOTE — Quote je Monat als Linie, Versuche als gedämpfte Balken
-            dahinter (max. 45 % Höhe, damit sie nicht wie Prozentwerte gelesen werden);
-            Monat antippbar → Treffer/Versuche. Parität zu iOS „chart.trainRate". */}
+        {/* TRAININGS-ERFOLGSQUOTE — Quote je Monat als Linie, Versuche als neutrales
+            Relief dahinter; Monat antippbar → Treffer/Versuche. Parität zu iOS „chart.trainRate".
+
+            Ruben am 30.10.: „Was soll mir eigentlich der untere Balken sagen?" — zu Recht.
+            Der Balken stand auf der PROZENT-Achse und reichte bis 45, während daneben
+            „50 %" steht: ein Zählwert, der sich als Prozentzahl liest. Dazu im selben
+            Orange wie die Quoten-Linie, obwohl er keine Quote ist. Jetzt niedriger
+            (max. 30 %), neutral getönt, und mit einer Legende, die Größe und Obergrenze
+            nennt — ohne die bleibt eine zweite Skala im selben Bild immer eine Falle. */}
         {trainMonthly.some(m => m.rate != null) && (() => {
           const W = 100, H = 60, PADX = 6, PADY = 6;              // viewBox-Einheiten
           const n = trainMonthly.length;
@@ -7310,9 +7316,10 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
                 <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-32 block" aria-hidden="true">
                   {[0, 25, 50, 75, 100].map(g => <line key={g} x1={0} x2={W} y1={y(g)} y2={y(g)} stroke="currentColor" className="text-[#8E8E93]/25" strokeWidth={0.3} vectorEffect="non-scaling-stroke" />)}
                   {trainMonthly.map((m, i) => {
-                    const h = (H - 2 * PADY) * 0.45 * m.attempts / maxAtt;
+                    const h = (H - 2 * PADY) * 0.30 * m.attempts / maxAtt;
                     return <rect key={i} x={x(i) - barW / 2} y={H - PADY - h} width={barW} height={h} rx={1.5}
-                      fill="#FF9500" opacity={barSel == null || barSel === i ? 0.18 : 0.08} />;
+                      fill="currentColor" className="text-[#8E8E93]"
+                      opacity={barSel == null || barSel === i ? 0.34 : 0.15} />;
                   })}
                   {pts.length > 1 && <path d={path} fill="none" stroke="#FF9500" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
                   {trainMonthly.map((m, i) => m.rate == null ? null : (
@@ -7335,6 +7342,12 @@ function Dashboard({ data, setView, onOpenFeedback, onOpenExercise }) {
               </div>
               <div className="flex">
                 {trainMonthly.map((m, i) => <span key={i} className={'flex-1 text-[10px] text-center truncate ' + (barSel === i ? 'text-[#FF9500] font-semibold' : 'text-[#8E8E93]')}>{m.label}</span>)}
+              </div>
+              {/* Legende zum Balken: Größe UND Spanne. Ohne die Obergrenze bliebe
+                  die Höhe eine Form ohne Maßstab. */}
+              <div className="flex items-center gap-1.5 text-[11px] text-[#8E8E93] tabular-nums">
+                <span className="inline-block w-2.5 h-[7px] rounded-sm bg-[#8E8E93]/45 shrink-0" />
+                Versuche · 0–{maxAtt}
               </div>
               <div className="text-[12px] text-[#8E8E93] tabular-nums">{trainEx ? trainEx.sessions : 0} Sessions · {totalAttempts} Versuche{avg != null ? ' · Ø ' + avg + ' %' : ''}</div>
             </div>
