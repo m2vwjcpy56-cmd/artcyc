@@ -2233,6 +2233,20 @@ const rateCls = (p) =>
     Ihre Bedeutung tragen Größe und Gewicht, nicht die Farbe. */
 const VALUE_CLS = 'text-slate-900 dark:text-white';
 // Echte UUID (v4) — die DB-Tabellen erwarten UUID-Format. crypto.randomUUID()
+// Wortweise Übungssuche über Name und Reglement-Nummer: JEDES Wort der Eingabe
+// muss in Name oder Nummer vorkommen, Reihenfolge egal. So findet „Fronthang
+// Sattellenkerhandstand" auch „Fronthang / Sattellenkerhandstand HR." — ohne
+// dass man den Schrägstrich mittippt (Ruben, 31.10.). Parität zu
+// `exerciseMatches` in ArtCyc/Models.swift; beide müssen gleich filtern, sonst
+// findet dieselbe Eingabe in den zwei Apps Verschiedenes.
+const exerciseMatches = (query, name, code) => {
+  const n = String(name || '').toLowerCase();
+  const c = String(code || '').toLowerCase();
+  const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return false;
+  return words.every(w => n.includes(w) || c.includes(w));
+};
+
 // gibt es ab iOS Safari 15.4 und in allen aktuellen Browsern; der manuelle
 // Fallback ist für sehr alte Umgebungen (eigentlich nicht mehr nötig).
 const uid = () => {
@@ -13502,7 +13516,7 @@ function ExerciseEditor({ exercise, onSave, onCancel, existingCodes = null }) {
     const q = assignQ.trim().toLowerCase();
     if (q.length < 2) return [];
     return getUciDb()
-      .filter(e => e.n.toLowerCase().includes(q) || (e.c || '').toLowerCase().includes(q))
+      .filter(e => exerciseMatches(q, e.n, e.c))
       .slice(0, 20);
   })();
 
@@ -13727,10 +13741,10 @@ function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung
   const q = query.trim().toLowerCase();
   const mine = (exercises || [])
     .filter(e => e.active !== false)
-    .filter(e => !q || (e.name || '').toLowerCase().includes(q) || (e.uci_code || '').toLowerCase().includes(q));
+    .filter(e => !q || exerciseMatches(q, e.name, e.uci_code));
   const myCodes = new Set((exercises || []).map(e => (e.uci_code || '').toLowerCase()).filter(Boolean));
   const uci = q.length >= 2
-    ? getUciDb().filter(e => (e.n.toLowerCase().includes(q) || (e.c || '').toLowerCase().includes(q)) && !myCodes.has((e.c || '').toLowerCase())).slice(0, 30)
+    ? getUciDb().filter(e => exerciseMatches(q, e.n, e.c) && !myCodes.has((e.c || '').toLowerCase())).slice(0, 30)
     : [];
   const fromUci = (u) => ({ id: uid(), name: u.n, uci_code: u.c, uci_disc: u.d, points: u.p, active: true, category_mode: 2, default_series: 10 });
 
@@ -13799,7 +13813,7 @@ function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null })
     const inDiscipline = getUciDb().filter(e => e.d === discipline);
     if (!query.trim()) return inDiscipline;   // ganze Disziplin, Liste scrollt (Parität zu iOS)
     const q = query.toLowerCase();
-    return inDiscipline.filter(e => e.n.toLowerCase().includes(q) || e.c.toLowerCase().includes(q)).slice(0, 50);
+    return inDiscipline.filter(e => exerciseMatches(q, e.n, e.c)).slice(0, 50);
   }, [query, discipline]);
 
   const selected = selectedCode ? getUciDb().find(e => e.c === selectedCode) : null;
@@ -14855,14 +14869,13 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
   // asCopy: legt ein NEUES Programm mit diesen Übungen an, das Original bleibt.
   // Simons Fall: „drei, vier Programme, die sich in einer Übung unterscheiden."
   const save = (asCopy = false) => {
-    if (!name.trim() || exercises.length === 0) return;
-    if (!validation.valid) return;
+    if (!athleteId) return;
     onSave({
       id: asCopy ? uid() : ((program && program.id) || uid()),
       // owner_id ERHALTEN — sonst fällt das Programm nach dem Sichern aus der
       // owner-gefilterten Liste („weg nach Sichern"), obwohl die DB es behält.
       owner_id: (program && program.owner_id) || undefined,
-      name: asCopy ? (name.trim() + ' (Kopie)') : name.trim(),
+      name: asCopy ? (effectiveName + ' (Kopie)') : effectiveName,
       discipline,
       ageClass,
       athlete_id: athleteId,
@@ -14871,8 +14884,19 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
     });
   };
 
-  // Sportler ist Pflicht: ein Programm gehoert genau einem Sportler.
-  const canSave = name.trim().length > 0 && exercises.length > 0 && validation.valid && !!athleteId;
+  // Sportler ist Pflicht: ein Programm gehoert genau einem Sportler. Ein Name,
+  // Übungen und ein fehlerfreies Reglement sind es NICHT mehr — halb fertige
+  // Programme sollen sich jederzeit ablegen lassen (Ruben, 31.10.:
+  // „zwischenspeichern, wie so als Entwurf"), und genau dann ist die Liste noch
+  // unvollständig und der Validator meldet zwangsläufig Fehler. Die Prüfung
+  // bleibt sichtbar, sie blockiert nur nicht mehr. Parität zu `canSave` in
+  // ArtCyc/ProgrammeView.swift, wo es den Validator gar nicht gibt.
+  const canSave = !!athleteId;
+  // Name fürs Sichern: leer → „Entwurf" mit heutigem Datum. So ist der
+  // Zwischenstand in der Liste sofort als Entwurf zu erkennen und beim
+  // Weiterarbeiten einfach umzubenennen.
+  const effectiveName = name.trim()
+    || t('programs.draftName', { date: new Date().toLocaleDateString() });
 
   return (
     <div className="-mx-3 sm:mx-0">
@@ -14898,6 +14922,13 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
               placeholder={t('programs.namePlaceholder')}
               className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#C7C7CC] text-right" />
           </div>
+          {/* Solange kein Name dasteht, sagen, was beim Sichern passiert — sonst
+              wirkt es, als ginge Sichern erst mit fertigem Programm. */}
+          {!name.trim() && (
+            <div className="px-4 pb-3 -mt-1 text-[12px] leading-snug text-[#8E8E93]">
+              {t('programs.draftFooter')}
+            </div>
+          )}
           <div className="px-4 py-3 flex items-center gap-3">
             <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">Disziplin</label>
             <select value={discipline} onChange={e => setDiscipline(e.target.value)}
