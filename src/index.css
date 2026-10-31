@@ -43,6 +43,11 @@ body {
 html[data-theme="dark"] {
   --ac-warm:        0.16;
   --ac-cool:        0.20;
+  /* Dieselben zwei Flaechen wie `Surface.page` / `Surface.card` der iOS-App. */
+  --ac-page-d:      #0B0F17;   /* Seitengrund dunkel */
+  --ac-page-d-rgb:  11, 15, 23;
+  --ac-card-d:      #161C27;   /* Karte darauf */
+  --ac-card-d-rgb:  22, 28, 39;
 }
 html:not([data-theme="dark"]) body                   { background: var(--ac-page); }
 html:not([data-theme="dark"]) .bg-\[\#F2F2F7\]       { background-color: var(--ac-page); }
@@ -167,29 +172,44 @@ html[data-theme="dark"] .ios-sheet {
    - Bei "System" → folgt prefers-color-scheme via matchMedia
    ============================================================= */
 html[data-theme="dark"] { color-scheme: dark; }
-html[data-theme="dark"] body { background: #0B0B0D; color: #fff; }
+html[data-theme="dark"] body { background: var(--ac-page-d); color: #fff; }
 
-/* ---------- App-Background / Cards ---------- */
-html[data-theme="dark"] .bg-\[\#F2F2F7\]                  { background-color: #0B0B0D !important; }
-html[data-theme="dark"] .bg-\[\#F2F2F7\]\/40              { background-color: rgba(0,0,0,0.40) !important; }
-html[data-theme="dark"] .bg-\[\#F2F2F7\]\/80              { background-color: rgba(0,0,0,0.78) !important; }
-html[data-theme="dark"] .bg-\[\#F2F2F7\]\/95              { background-color: rgba(0,0,0,0.92) !important; }
-html[data-theme="dark"] .bg-white                         { background-color: #1C1C1E !important; }
-html[data-theme="dark"] .bg-white\/80                     { background-color: rgba(28,28,30,0.85) !important; }
-html[data-theme="dark"] .bg-white\/90                     { background-color: rgba(28,28,30,0.92) !important; }
-html[data-theme="dark"] .bg-white\/95                     { background-color: rgba(28,28,30,0.96) !important; }
+/* ---------- App-Background / Cards ----------
+
+   Bis 01.11.2026 war der Dunkelmodus NEUTRAL grau (#0B0B0D Grund, #1C1C1E
+   Karte), waehrend der Hellmodus laengst ins Schiefer gezogen war (#D4DEEC)
+   und die beiden Lichter auf dem Grund liegen. Daneben standen die Flaechen,
+   die ihre Farbe selbst mitbringen — und so lagen auf EINEM Bildschirm zwei
+   verschiedene „Dunkel": manche Flaeche schwarz, manche blau. Genau das hat
+   Ruben an der iOS-App gemeldet; das Web hatte denselben Bruch.
+
+   Die Werte sind dieselben wie in `Surface` der iOS-App — eine Farbe, zwei
+   Apps. Aendern heisst: hier UND in Theme.swift. */
+html[data-theme="dark"] .bg-\[\#F2F2F7\]                  { background-color: var(--ac-page-d) !important; }
+html[data-theme="dark"] .bg-\[\#F2F2F7\]\/40              { background-color: rgba(var(--ac-page-d-rgb), 0.40) !important; }
+html[data-theme="dark"] .bg-\[\#F2F2F7\]\/80              { background-color: rgba(var(--ac-page-d-rgb), 0.78) !important; }
+html[data-theme="dark"] .bg-\[\#F2F2F7\]\/95              { background-color: rgba(var(--ac-page-d-rgb), 0.92) !important; }
+html[data-theme="dark"] .bg-white                         { background-color: var(--ac-card-d) !important; }
+html[data-theme="dark"] .bg-white\/80                     { background-color: rgba(var(--ac-card-d-rgb), 0.85) !important; }
+html[data-theme="dark"] .bg-white\/90                     { background-color: rgba(var(--ac-card-d-rgb), 0.92) !important; }
+html[data-theme="dark"] .bg-white\/95                     { background-color: rgba(var(--ac-card-d-rgb), 0.96) !important; }
 
 /* Slate-Backgrounds (Listen, Hover, Tags) */
 html[data-theme="dark"] .bg-slate-50                      { background-color: rgba(255,255,255,0.04) !important; }
-html[data-theme="dark"] .bg-slate-100                     { background-color: #2C2C2E !important; }
+/* Die kleine Marke in einer Karte — als durchscheinendes Weiss, nicht als
+   eigener Grauton: so bleibt sie auf JEDER Kartenfarbe eine Stufe heller
+   (= `Surface.chip`, 12 %). */
+html[data-theme="dark"] .bg-slate-100                     { background-color: rgba(255,255,255,0.12) !important; }
 html[data-theme="dark"] .bg-slate-100\/50,
 html[data-theme="dark"] .bg-slate-100\/60,
 html[data-theme="dark"] .bg-slate-100\/80                 { background-color: rgba(255,255,255,0.08) !important; }
 html[data-theme="dark"] .bg-slate-200                     { background-color: rgba(255,255,255,0.10) !important; }
 html[data-theme="dark"] .bg-slate-200\/60                 { background-color: rgba(255,255,255,0.08) !important; }
 
-/* Dark-buttons / pillen behalten Erhöhung, aber unsichtbar auf schwarz */
-html[data-theme="dark"] .bg-slate-900                     { background-color: #2C2C2E !important; }
+/* Dark-buttons / pillen behalten Erhöhung, aber unsichtbar auf schwarz.
+   Durchscheinend statt eigenem Grauton — sonst steht hier wieder ein zweites
+   „Dunkel" neben der Karte (= `Surface.fill`, 22 %). */
+html[data-theme="dark"] .bg-slate-900                     { background-color: rgba(255,255,255,0.22) !important; }
 
 /* ---------- Text ---------- */
 html[data-theme="dark"] .text-slate-900,
