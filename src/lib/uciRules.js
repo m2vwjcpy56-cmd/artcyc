@@ -197,19 +197,37 @@ export function disciplineFromCode(code) {
   return null;
 }
 
-// Heuristik: Ist eine 2er-Übung „auf einem Rad"? Laut Kapitel V
-// liegen die Codes der Einrad-Gruppen bei 8.5.012 (Niederrad 1 Rad),
-// 8.5.013 (Steiger 1 Rad), 8.5.014 (Übergänge 1 Rad). Nach den
-// üblichen Code-Bereichen sind das Codes ≥ 2300.
-// Wenn das Programm-Item ein `subgroup`-Feld trägt, bevorzugen
-// wir das (zukünftige Erweiterung).
+// Steht diese 2er-Übung „auf einem Rad"?
+//
+// Das war bis 01.11.2026 eine Heuristik („Codes ≥ 2300") und damit FALSCH.
+// Nachgemessen am offiziellen PDF, Kapitel V, über die Abschnittsüberschriften:
+//   8.5.007–8.5.011  „… auf zwei Rädern"  → 2001 … 2250 (endet mit Schlussübung)
+//   8.5.012–8.5.014  „… auf einem Rad"    → ab 2261
+// Die sechzehn Nummern 2261 bis 2296 lagen damit auf der falschen Seite, und
+// die 8-bis-15-Regel aus 8.2.002 rechnete bei jedem Programm mit, das eine
+// davon enthält. Die Grenze liegt bei 2251.
+//
+// Trägt das Programm-Item ein `subgroup`-Feld, geht das vor.
 export function isOnOneWheel2er(exercise) {
   if (!exercise) return false;
   if (exercise.subgroup === 'on_one') return true;
   if (exercise.subgroup === 'on_two') return false;
   const stem = parseInt(codeStem(exercise.code || ''), 10);
   if (!Number.isFinite(stem)) return false;
-  return stem >= 2300;
+  return stem >= 2251 && stem <= 2999;
+}
+
+// Schlussübungen — 8.5.006 (Einer: Übungsnummer 1301) und 8.5.011 (Zweier: 2250).
+// Für 4er/6er führt das Reglement keinen eigenen Abschnitt.
+export function isSchlussuebung(code) {
+  const stem = parseInt(codeStem(code || ''), 10);
+  return stem === 1301 || stem === 2250;
+}
+
+// Standdrehungen im Zweier — Abschnitt 8.5.009, Nummern 2211 bis 2216.
+export function isStanddrehung2er(code) {
+  const stem = parseInt(codeStem(code || ''), 10);
+  return stem >= 2211 && stem <= 2216;
 }
 
 function pushErr(arr, rule, message, extra = {}) {
@@ -290,6 +308,44 @@ export function validateProgram(program, options = {}) {
       }
     }
   }
+
+  // Regel 7 — 8.2.006: „Während des Fahrprogramms dürfen die Sportler die Räder
+  // nicht verlassen. Ausnahme 2er Kunstradsport: DER EINMALIGE Wechsel von zwei
+  // Rädern auf ein Rad oder von einem Rad auf zwei Räder."
+  // Einmalig heisst: die Übungen auf einem Rad stehen am Stück. Wer zwischendurch
+  // zurückwechselt, bräuchte einen zweiten Wechsel.
+  if (discipline === '2er' && exercises.length > 1) {
+    const folge = exercises.map(isOnOneWheel2er);
+    let wechsel = 0;
+    for (let i = 1; i < folge.length; i++) if (folge[i] !== folge[i - 1]) wechsel++;
+    if (wechsel > 1) {
+      pushErr(errors, 'wheel_change',
+        `${wechsel} Radwechsel — erlaubt ist nur einer. Die Übungen auf einem Rad müssen am Stück stehen.`);
+    }
+  }
+
+  // Regel 8 — 8.1.020: „Im 2er Kunstradsport sind maximal 3 Standdrehungen erlaubt."
+  if (discipline === '2er') {
+    const dreh = exercises.filter(ex => isStanddrehung2er(ex && ex.code));
+    if (dreh.length > 3) {
+      pushErr(errors, 'too_many_standdrehung',
+        `${dreh.length} Standdrehungen — höchstens 3 erlaubt.`);
+    }
+  }
+
+  // Regel 9 — 8.2.011: „Schlussübungen können nur vor dem Radwechsel oder als
+  // letzte Übung gezeigt werden."
+  exercises.forEach((ex, idx) => {
+    if (!isSchlussuebung(ex && ex.code)) return;
+    const istLetzte = idx === exercises.length - 1;
+    const vorWechsel = discipline === '2er' && idx + 1 < exercises.length
+      && isOnOneWheel2er(ex) !== isOnOneWheel2er(exercises[idx + 1]);
+    if (!istLetzte && !vorWechsel) {
+      pushErr(errors, 'schluss_position',
+        `Schlussübung an Position ${idx + 1}: nur als letzte Übung oder direkt vor dem Radwechsel.`,
+        { exerciseIndex: idx, exerciseCode: ex && ex.code });
+    }
+  });
 
   // SHOULD — Regel 10: Programm-Vollständigkeit (< 70% der Cap)
   if (cap != null && exercises.length > 0 && exercises.length < Math.round(cap * 0.7)) {

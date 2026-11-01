@@ -21,7 +21,7 @@ import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attach
 import { suggestClubs, normClub, CLUBS, COUNTRY_FLAG } from './lib/clubs.js';
 import { parseProgramFile } from './lib/programImport.js';
 import { exportMauteVorlage, layoutMaute } from './lib/mauteExport.js';
-import { loadUciExercisesFromDb, getRulesLanguage, getTaktScale, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram } from './lib/uciRules.js';
+import { loadUciExercisesFromDb, getRulesLanguage, getTaktScale, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram, codeStem } from './lib/uciRules.js';
 
 // =============================================================
 // Haptisches Feedback + Tap-Animation
@@ -13804,10 +13804,13 @@ function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung
   );
 }
 
-function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null }) {
+function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null, usedStems = null }) {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
   const haveIt = (code) => !!(existingCodes && existingCodes.has(String(code || '').trim().toLowerCase()));
+  // Schon im Programm? Geprueft wird der STAMM — 1124c und 1124d schliessen
+  // einander aus, nicht nur zweimal dasselbe `c` (Regel 2 in uciRules).
+  const inProgram = (code) => !!(usedStems && usedStems.has(codeStem(code)));
 
   const filtered = useMemo(() => {
     const inDiscipline = getUciDb().filter(e => e.d === discipline);
@@ -13840,13 +13843,15 @@ function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null })
           <div className="p-4 text-sm text-slate-500 text-center">{t('exercises.notFound')}</div>
         ) : (
           filtered.map(e => (
-            <button key={e.c} onClick={() => onSelect(e)}
-              className={'w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-0 ' +
+            <button key={e.c} onClick={() => { if (!inProgram(e.c)) onSelect(e); }}
+              disabled={inProgram(e.c)}
+              className={'w-full text-left px-3 py-2 border-b border-slate-100 last:border-0 ' +
+                (inProgram(e.c) ? 'opacity-55 cursor-not-allowed ' : 'hover:bg-slate-50 ') +
                 (selectedCode === e.c ? 'bg-amber-50' : '')}>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">{e.n}</div>
-                  <div className={'text-xs ' + (haveIt(e.c) ? 'text-[#FF9500]' : 'text-slate-500')}>Nr. {e.c}{haveIt(e.c) ? ' · Schon in deinem Konto' : ''}</div>
+                  <div className={'text-xs ' + (inProgram(e.c) ? 'text-[#3B82F6]' : haveIt(e.c) ? 'text-[#FF9500]' : 'text-slate-500')}>Nr. {e.c}{inProgram(e.c) ? ' · ' + t('prog.alreadyInProgram') : haveIt(e.c) ? ' · Schon in deinem Konto' : ''}</div>
                 </div>
                 <span className="bg-sky-100 text-sky-700 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">
                   {e.p} Pkt
@@ -15051,6 +15056,12 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
                     <ProgrammExerciseRow
                       ex={e}
                       discipline={discipline}
+                      /* Stamm-Nummern der ANDEREN Zeilen: eine Uebungsnummer darf
+                         im Programm nur EINMAL vorkommen (Regel 2 in uciRules). */
+                      usedStems={new Set(exercises
+                        .filter((_, i) => i !== idx)
+                        .map(x => codeStem(x && x.code))
+                        .filter(Boolean))}
                       onUci={(u) => setUci(idx, u)}
                       onUpdate={(k, v) => updateField(idx, k, v)}
                       onToggleMark={() => updateField(idx, 'marked', !e.marked)}
@@ -15107,7 +15118,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
   );
 }
 
-function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onToggleMark, onRemove }) {
+function ProgrammExerciseRow({ ex, discipline, usedStems, onUci, onUpdate, onToggleMark, onRemove }) {
   const { t } = useI18n();
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -15149,6 +15160,7 @@ function ProgrammExerciseRow({ ex, discipline, onUci, onUpdate, onToggleMark, on
         <div className="px-4 pb-4 pt-1 border-t border-[#C6C6C8]/40 bg-[#F2F2F7]/40">
           <UciPicker discipline={discipline}
             onSelect={(u) => { onUci(u); setPickerOpen(false); }}
+            usedStems={usedStems}
             selectedCode={ex.code} />
           <div className="text-[12px] text-[#8E8E93] mt-3 mb-1.5">
             {t('reglement.typeManually')}

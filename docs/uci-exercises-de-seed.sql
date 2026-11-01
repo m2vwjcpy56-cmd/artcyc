@@ -8253,4 +8253,54 @@ insert into public.uci_exercises (code, discipline, points, name_de, version)
 -- Verifizieren:
 --   select code, name_de, name_de from public.uci_exercises where version = '2026' and name_de is not null limit 10;
 --   select count(*) from public.uci_exercises where version = '2026' and name_de is not null;
---   -- erwartet: ~2060
+--   -- erwartet: 2069
+
+-- ---------------------------------------------------------------------------
+-- Nachtrag 01.11.2026: neun Uebungen, die in dieser Datei NIE standen.
+--
+-- Gefunden durch einen vollstaendigen Abgleich gegen das offizielle PDF
+-- (Reglement/UCI-Reglement-Kunstrad-2026-de.pdf, lagegenau ausgelesen):
+-- PDF 2069 Nummern, Datenbank 2060 — und die 2060 stimmten in JEDEM Punktwert.
+-- Es fehlten also keine falschen Daten, sondern schlicht neun Zeilen.
+--
+-- Aufgefallen ist es Ruben an „Maute Sprung Einzeln" (2081a): im Zweier-
+-- Programm nicht auffindbar. Der englische Seed kannte sieben davon laengst —
+-- seine UPDATEs liefen ins Leere, weil es die Zeile hier nie gab. Merke:
+-- ein `update ... where code = ...` meldet keinen Fehler, wenn nichts passt.
+-- ---------------------------------------------------------------------------
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1112k', '1er', 7, 'Lenkerdoppelstützwaage 8', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1113a', '1er', 6, 'Freie Stützwaage ein Bein (2 Sekunden)', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1113b', '1er', 7.5, 'Freie Stützwaage gespreizt (2 Sekunden)', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1113c', '1er', 9, 'Freie Stützwaage geschlossene Beine (2 Sekunden)', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1181a', '1er', 1.9, 'Pedalsprung', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301p', '1er', 6.1, 'Vorhebehalte Schweizer Handstand umgelegtes Rad', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('1301q', '1er', 11.1, 'Frontlenkerstand Salto rw. gehockt', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('2079a', '2er', 8.4, 'Sprung Sattellenkerstand Frontlenkerstand Einzeln', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();
+insert into public.uci_exercises (code, discipline, points, name_de, version)
+  values ('2081a', '2er', 10.2, 'Maute Sprung Einzeln', '2026')
+  on conflict (code, version) do update set
+    discipline = excluded.discipline, points = excluded.points, name_de = excluded.name_de, updated_at = now();

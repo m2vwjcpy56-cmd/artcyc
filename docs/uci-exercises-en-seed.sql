@@ -1461,4 +1461,11 @@ update public.uci_exercises set name_en = '4 con. raiser 2 turns on the spot', u
 -- Verifizieren:
 --   select code, name_en, name_de from public.uci_exercises where version = '2026' and name_en is not null limit 10;
 --   select count(*) from public.uci_exercises where version = '2026' and name_en is not null;
---   -- erwartet: ~1448
+--   -- erwartet: ~1457
+
+-- Nachtrag 01.11.2026: 1301p/q fehlten auch hier. Die englischen Begriffe sind
+-- aus den direkten Nachbarn zusammengesetzt (1301o „Handstand bicycle lying
+-- down", 1301n „... somersault bw. hooked legs", 2077g „L-shape hold Swiss
+-- ..."), nicht frei uebersetzt.
+update public.uci_exercises set name_en = 'L-shape hold Swiss handstand bicycle lying down', updated_at = now() where code = '1301p' and version = '2026';
+update public.uci_exercises set name_en = 'Fronthandlebarstand somersault bw. hooked legs', updated_at = now() where code = '1301q' and version = '2026';
