@@ -205,16 +205,18 @@ export function disciplineFromCode(code) {
 //   8.5.012–8.5.014  „… auf einem Rad"    → ab 2261
 // Die sechzehn Nummern 2261 bis 2296 lagen damit auf der falschen Seite, und
 // die 8-bis-15-Regel aus 8.2.002 rechnete bei jedem Programm mit, das eine
-// davon enthält. Die Grenze liegt bei 2251.
+// davon enthält. Dazwischen vergibt das Reglement keine Nummer.
 //
 // Trägt das Programm-Item ein `subgroup`-Feld, geht das vor.
+export const ERSTE_AUF_EINEM_RAD_2ER = 2261;
+
 export function isOnOneWheel2er(exercise) {
   if (!exercise) return false;
   if (exercise.subgroup === 'on_one') return true;
   if (exercise.subgroup === 'on_two') return false;
   const stem = parseInt(codeStem(exercise.code || ''), 10);
   if (!Number.isFinite(stem)) return false;
-  return stem >= 2251 && stem <= 2999;
+  return stem >= ERSTE_AUF_EINEM_RAD_2ER && stem <= 2999;
 }
 
 // Schlussübungen — 8.5.006 (Einer: Übungsnummer 1301) und 8.5.011 (Zweier: 2250).
@@ -229,6 +231,79 @@ export function isStanddrehung2er(code) {
   const stem = parseInt(codeStem(code || ''), 10);
   return stem >= 2211 && stem <= 2216;
 }
+
+// Pflicht-Folgeübungen — Art. 8.2.028 „Übergänge":
+//   „Ist die Endstellung eine Steigerposition, muss in dieser Steigerart die
+//    Folgeübung gefahren werden. Beginn und Ende eines Überganges ist die in
+//    dem jeweiligen Übungsnamen angegebene Anfangsstellung und Endstellung."
+//
+// Die Tabelle ist nicht eingetippt, sondern aus unserem eigenen Katalog erzeugt
+// (`docs/folgeuebungen.py`): aus „Übergang <Von> <Nach>" wird die Zielstellung
+// gelesen und es werden die Stammnummern derselben Disziplin gesucht, deren Name
+// mit <Nach> beginnt — gefiltert auf dieselbe Radzahl, denn ein Übergang ist kein
+// Radwechsel. Bei der nächsten Reglement-Ausgabe läuft das Skript erneut.
+//
+// Warum als Tabelle und nicht zur Laufzeit hergeleitet: die Herleitung hängt am
+// deutschen Übungsnamen, der Katalog liegt in acht Sprachen vor. Nummern sind
+// international, Namen nicht.
+//
+// „Einzeln"-Übungen (Art. 8.1.020) aus demselben Grund über die Nummer statt über
+// den Namen — „einzeln" steht nur im deutschen Namen.
+// erzeugt:anfang — docs/folgeuebungen.py --write
+const FOLLOW_UP_GROUPS = {
+  '1281a': [1236, 1237],                                // Übergang Fronthang Steuerrohrsteiger
+  '1282a': [1248, 1249],                                // Übergang Fronthang Kehrstandsteiger
+  '1283a': [1226, 1227],                                // Übergang Reitsitzsteiger Lenkersitzsteiger
+  '1283b': [1201, 1202],                                // Übergang Lenkersitzsteiger Reitsitzsteiger
+  '1284a': [1236, 1237],                                // Übergang Reitsitzsteiger Steuerrohrsteiger
+  '1284b': [1201, 1202],                                // Übergang Steuerrohrsteiger Reitsitzsteiger
+  '1285a': [1248, 1249],                                // Übergang Reitsitzsteiger Kehrstandsteiger
+  '1285b': [1201, 1202],                                // Übergang Kehrstandsteiger Reitsitzsteiger
+  '1286a': [1236, 1237],                                // Übergang Lenkersitzsteiger Steuerrohrsteiger
+  '1286b': [1226, 1227],                                // Übergang Steuerrohrsteiger Lenkersitzsteiger
+  '1287a': [1248, 1249],                                // Übergang Steuerrohrsteiger Kehrstandsteiger
+  '1287b': [1236, 1237],                                // Übergang Kehrstandsteiger Steuerrohrsteiger
+  '1288a': [1238, 1239],                                // Übergang Kehrhang Kehrsteuerrohrsteiger
+  '1289a': [1246, 1247],                                // Übergang Kehrhang Standsteiger
+  '1290a': [1228, 1229],                                // Übergang Kehrreitsitz Kehrlenkersitzsteiger
+  '1291a': [1246, 1247],                                // Übergang Kehrlenkersitzsteiger Standsteiger
+  '1291b': [1228, 1229],                                // Übergang Standsteiger Kehrlenkersitzsteiger
+  '1292a': [1228, 1229],                                // Übergang Kehrsteuerrohrsteiger Kehrlenkersitzsteiger
+  '1292b': [1238, 1239],                                // Übergang Kehrlenkersitzsteiger Kehrsteuerrohrsteiger
+  '1293a': [1238, 1239],                                // Übergang Standsteiger Kehrsteuerrohrsteiger
+  '1293b': [1246, 1247],                                // Übergang Kehrsteuerrohrsteiger Standsteiger
+  '2236a': [2161, 2162, 2163, 2164, 2211],              // Übergang Reitsitzsteiger Lenkersitzsteiger
+  '2236b': [2131, 2132, 2133, 2134],                    // Übergang Lenkersitzsteiger Reitsitzsteiger
+  '2237a': [2176, 2177, 2178, 2179, 2213],              // Übergang Reitsitzsteiger Steuerrohrsteiger
+  '2237b': [2131, 2132, 2133, 2134],                    // Übergang Steuerrohrsteiger Reitsitzsteiger
+  '2238a': [2176, 2177, 2178, 2179, 2213],              // Übergang Lenkersitzsteiger Steuerrohrsteiger
+  '2238b': [2161, 2162, 2163, 2164, 2211],              // Übergang Steuerrohrsteiger Lenkersitzsteiger
+  '2239a': [2195, 2196, 2197, 2198, 2216],              // Übergang Steuerrohrsteiger Kehrstandsteiger
+  '2239b': [2176, 2177, 2178, 2179, 2213],              // Übergang Kehrstandsteiger Steuerrohrsteiger
+  '2240a': [2180, 2181, 2182, 2183, 2214],              // Übergang Standsteiger Kehrsteuerrohrsteiger
+  '2240b': [2191, 2192, 2193, 2194, 2215],              // Übergang Kehrsteuerrohrsteiger Standsteiger
+  '2241a': [2165, 2166, 2167, 2168, 2212],              // Übergang Kehrsteuerrohrsteiger Kehrlenkersitzsteiger
+  '2241b': [2180, 2181, 2182, 2183, 2214],              // Übergang Kehrlenkersitzsteiger Kehrsteuerrohrsteiger
+  '2242a': [2191, 2192, 2193, 2194, 2215],              // Übergang Kehrhang Standsteiger einzeln
+  '2243a': [2180, 2181, 2182, 2183, 2214],              // Übergang Kehrhang Kehrsteuerrohrsteiger einzeln
+  '2471a': [2426, 2427, 2428, 2429],                    // Übergang Reitsitzsteiger Lenkersitzsteiger / Schultersitz
+  '2471b': [2426, 2427, 2428, 2429],                    // Übergang Reitsitzsteiger Lenkersitzsteiger / Schulterstand
+  '2472a': [2436, 2437, 2438, 2439],                    // Übergang Reitsitzsteiger Steuerrohrsteiger / Schultersitz
+  '2472b': [2436, 2437, 2438, 2439],                    // Übergang Reitsitzsteiger Steuerrohrsteiger / Schulterstand
+  '2473a': [2436, 2437, 2438, 2439],                    // Übergang Lenkersitzsteiger Steuerrohrsteiger / Schultersitz
+  '2473b': [2436, 2437, 2438, 2439],                    // Übergang Lenkersitzsteiger Steuerrohrsteiger / Schulterstand
+}
+
+const EINZELN_CODES = new Set([
+  '2067a', '2067b', '2068a', '2068b', '2069a', '2069b',
+  '2070a', '2070aa', '2070b', '2070ba', '2071a', '2071b',
+  '2073a', '2073b', '2074a', '2074b', '2076a', '2076b',
+  '2076d', '2076e', '2076g', '2076h', '2076j', '2076k',
+  '2077a', '2077b', '2077d', '2077e', '2077g', '2077h',
+  '2077j', '2077k', '2077m', '2077n', '2079a', '2081a',
+  '2242a', '2243a',
+])
+// erzeugt:ende
 
 function pushErr(arr, rule, message, extra = {}) {
   arr.push({ rule, message, ...extra });
@@ -279,14 +354,35 @@ export function validateProgram(program, options = {}) {
     });
   }
 
-  // Regel 6 — 2er: max. 3 „einzeln"-Übungen
+  // Regel 11 — 8.2.028 „Übergänge": endet der Übergang in einer Steigerposition,
+  // muss die nächste Übung in genau dieser Steigerart gefahren werden. Ein Übergang
+  // als letzte Übung ist ebenfalls ein Fehler — die geforderte Folgeübung fehlt dann.
+  exercises.forEach((ex, idx) => {
+    const code = String((ex && ex.code) || '').trim().toLowerCase();
+    const erlaubt = FOLLOW_UP_GROUPS[code];
+    if (!erlaubt) return;
+    const next = exercises[idx + 1];
+    const nextStem = next ? parseInt(codeStem(next.code || ''), 10) : NaN;
+    if (!erlaubt.includes(nextStem)) {
+      pushErr(errors, 'follow_up',
+        `Nach dem Übergang ${ex.code} (Position ${idx + 1}) muss eine Übung aus ${erlaubt.join(', ')} folgen — dort endet der Übergang.`,
+        { exerciseIndex: idx, exerciseCode: ex.code });
+    }
+  });
+
+  // Regel 6 — 2er: max. 3 „Einzeln"-Übungen (Ausnahme: Übergänge auf zwei Rädern)
   if (discipline === '2er') {
     const einzelnExercises = exercises
       .map((ex, idx) => ({ ex, idx }))
-      .filter(({ ex }) => /einzeln/i.test(String(ex && ex.name || '')));
+      .filter(({ ex }) => {
+        const code = String((ex && ex.code) || '').trim().toLowerCase();
+        const stem = parseInt(codeStem(code), 10);
+        const istUebergang = stem >= 2236 && stem <= 2243;
+        return EINZELN_CODES.has(code) && !istUebergang;
+      });
     if (einzelnExercises.length > 3) {
       pushErr(errors, 'too_many_einzeln',
-        `Max. 3 Übungen mit „einzeln" im Namen erlaubt (gefunden: ${einzelnExercises.length}).`);
+        `${einzelnExercises.length} Übungen „Einzeln" — höchstens 3 erlaubt.`);
     }
 
     // Regel 4 — 2er-Splitting (Anzahl auf einem Rad)
@@ -316,11 +412,11 @@ export function validateProgram(program, options = {}) {
   // zurückwechselt, bräuchte einen zweiten Wechsel.
   if (discipline === '2er' && exercises.length > 1) {
     const folge = exercises.map(isOnOneWheel2er);
-    let wechsel = 0;
-    for (let i = 1; i < folge.length; i++) if (folge[i] !== folge[i - 1]) wechsel++;
-    if (wechsel > 1) {
+    const wechsel = [];
+    for (let i = 1; i < folge.length; i++) if (folge[i] !== folge[i - 1]) wechsel.push(i + 1);
+    if (wechsel.length > 1) {
       pushErr(errors, 'wheel_change',
-        `${wechsel} Radwechsel — erlaubt ist nur einer. Die Übungen auf einem Rad müssen am Stück stehen.`);
+        `${wechsel.length} Radwechsel (Position ${wechsel.join(', ')}) — erlaubt ist nur einer. Die Übungen auf einem Rad müssen am Stück stehen.`);
     }
   }
 
