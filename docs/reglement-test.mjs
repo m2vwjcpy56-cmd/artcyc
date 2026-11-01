@@ -20,7 +20,8 @@ const quelle = fs.readFileSync(path.join(REPO, 'src/lib/uciRules.js'), 'utf8')
   .replace(/^import .*supabase\.js.*$/m, 'const supabase = null;');
 const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'artcyc-')), 'rules.mjs');
 fs.writeFileSync(tmp, quelle);
-const { validateProgram, disciplineKey, isOnOneWheel2er, ERSTE_AUF_EINEM_RAD_2ER } = await import(tmp);
+const { validateProgram, disciplineKey, isOnOneWheel2er, ERSTE_AUF_EINEM_RAD_2ER,
+        ageClassKey, istSchueler, AGE_CLASSES } = await import(tmp);
 
 let ok = 0, fehlt = 0;
 const pruefe = (name, bedingung, zusatz = '') => {
@@ -95,6 +96,28 @@ pruefe('ein Radwechsel ist erlaubt',
        zahl(['2001a', '2002a', '2261a', '2262a'], 'wheel_change') === 0);
 pruefe('zwei Radwechsel sind einer zu viel',
        zahl(['2001a', '2261a', '2002a', '2262a'], 'wheel_change') === 1);
+
+// ── Altersklassen: fünf Klassen, zwei Grenzsätze
+console.log('\n8.1.010 / 8.2.002 / 8.2.003 — Altersklassen');
+pruefe('fünf Klassen', AGE_CLASSES.length === 5, AGE_CLASSES.join(', '));
+pruefe('U13 ist eine Schülerklasse', istSchueler('u13'));
+pruefe('Junioren sind keine Schülerklasse', !istSchueler('junioren'));
+pruefe('Alt-Wert „schueler" bleibt eine Schülerklasse', istSchueler(ageClassKey('schueler')));
+pruefe('leere Angabe wird Elite', ageClassKey(null) === 'elite');
+const einer26 = Array.from({ length: 26 }, (_, i) => `1${String(100 + i)}a`);
+pruefe('26 Übungen: für Elite erlaubt',
+       !befunde(einer26, '1er', 'elite').some(e => e.rule === 'count_max'));
+['u15', 'u13', 'u11'].forEach(k =>
+  pruefe(`26 Übungen: für ${k} zu viele`,
+         befunde(einer26, '1er', k).some(e => e.rule === 'count_max')));
+pruefe('Junioren rechnen wie Elite',
+       befunde(einer26, '1er', 'junioren').length === befunde(einer26, '1er', 'elite').length);
+pruefe('Schüler dürfen 4 Übungen auf einem Rad',
+       !befunde(['2001a', '2261a', '2262a', '2263a', '2264a'], '2er', 'u11')
+         .some(e => e.rule === 'two_split_min'));
+pruefe('Elite nicht — dort sind 8 das Minimum',
+       befunde(['2001a', '2261a', '2262a', '2263a', '2264a'], '2er', 'elite')
+         .some(e => e.rule === 'two_split_min'));
 
 // ── Schreibfehler des Reglements
 console.log('\nSuche — die vier Verschreiber in den Übungstabellen');

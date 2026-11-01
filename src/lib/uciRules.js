@@ -159,19 +159,38 @@ export async function dismissNotice(noticeId) {
 // Bausteine prüfen können.
 // =============================================================
 
-// Max. Übungsanzahl je Disziplin × Altersklasse (Art. 8.2.002 / 8.2.003)
+// Die fünf Altersklassen des Reglements, einzeln — Art. 8.1.010:
+//   A. Elite (über 18) · B. Junioren U19 · C./D./E. Schüler U15 / U13 / U11
+// Bei der Übungsanzahl fasst das Reglement sie zu zwei Gruppen zusammen
+// (8.2.002 für Elite und Junioren, 8.2.003 für alle Schülerklassen) — das heißt
+// aber nicht, dass ein Programm nur zu einer Gruppe gehört. Bis zum 01.11.2026
+// konnte man „Schüler" nur pauschal angeben (Ruben: „bitte alle Altersklassen
+// separat, nicht zusammenfassen").
+export const AGE_CLASSES = ['elite', 'junioren', 'u15', 'u13', 'u11'];
+
+const SCHUELER = new Set(['u15', 'u13', 'u11']);
+export function istSchueler(ageClass) { return SCHUELER.has(ageClass); }
+
+// Alt-Programme trugen „schueler" für alle drei Schülerklassen. Die Grenzen sind
+// dort ohnehin gleich; gewählt wird die höchste, damit aus einer fehlenden
+// Angabe nicht versehentlich Elite wird.
+export function ageClassKey(raw) {
+  if (AGE_CLASSES.includes(raw)) return raw;
+  return raw === 'schueler' ? 'u15' : 'elite';
+}
+
+// Max. Übungsanzahl je Disziplin (Art. 8.2.002 / 8.2.003)
 const MAX_EXERCISES = {
-  '1er': { elite: 30, junioren: 30, schueler: 25 },
-  '2er': { elite: 25, junioren: 25, schueler: 20 },
-  '4er': { elite: 25, junioren: 25, schueler: 25 },
-  '6er': { elite: 25, junioren: 25, schueler: 25 },
+  '1er': { normal: 30, schueler: 25 },
+  '2er': { normal: 25, schueler: 20 },
+  '4er': { normal: 25, schueler: 25 },
+  '6er': { normal: 25, schueler: 25 },
 };
 
 // 2er-Splitting: Anzahl Übungen auf einem Rad muss in diesem
 // Bereich liegen (Art. 8.2.002 / 8.2.003).
 const TWO_ON_ONE_WHEEL_RANGE = {
-  elite:    { min: 8, max: 15 },
-  junioren: { min: 8, max: 15 },
+  normal:   { min: 8, max: 15 },
   schueler: { min: 4, max: 12 },
 };
 
@@ -333,12 +352,14 @@ export function validateProgram(program, options = {}) {
   }
   const discipline = disciplineKey(program.discipline);
   const exercises = Array.isArray(program.exercises) ? program.exercises : [];
-  const ageClass = options.ageClass || 'elite';
+  const ageClass = ageClassKey(options.ageClass);
+  // Für die Grenzen zählt nur: Schülerklasse oder nicht.
+  const grenzen = istSchueler(ageClass) ? 'schueler' : 'normal';
   const expectedPrefix = DISCIPLINE_PREFIX[discipline];
 
   // Regel 1 — Übungsanzahl-Cap
   const caps = MAX_EXERCISES[discipline];
-  const cap = caps ? caps[ageClass] : null;
+  const cap = caps ? caps[grenzen] : null;
   if (cap != null && exercises.length > cap) {
     pushErr(errors, 'count_max', `Zu viele Übungen: ${exercises.length} / max. ${cap} (${discipline}, ${ageClass}).`);
   }
@@ -407,7 +428,7 @@ export function validateProgram(program, options = {}) {
     // angelegte Zeile ohne Nummer ist keine Übung auf zwei Rädern, sie ist unbekannt.
     // (Parität zu ProgramRules.swift, das dafür `mitCode` nimmt.)
     const onTwo = exercises.filter(ex => codeStem(ex && ex.code) && !isOnOneWheel2er(ex)).length;
-    const range = TWO_ON_ONE_WHEEL_RANGE[ageClass];
+    const range = TWO_ON_ONE_WHEEL_RANGE[grenzen];
     if (range) {
       if (onOne.length < range.min) {
         pushErr(errors, 'two_split_min',

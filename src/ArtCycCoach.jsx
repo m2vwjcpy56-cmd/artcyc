@@ -21,7 +21,7 @@ import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attach
 import { suggestClubs, normClub, CLUBS, COUNTRY_FLAG } from './lib/clubs.js';
 import { parseProgramFile } from './lib/programImport.js';
 import { exportMauteVorlage, layoutMaute } from './lib/mauteExport.js';
-import { loadUciExercisesFromDb, getRulesLanguage, getTaktScale, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram, codeStem, disciplineKey } from './lib/uciRules.js';
+import { loadUciExercisesFromDb, getRulesLanguage, getTaktScale, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram, codeStem, disciplineKey, ageClassKey, isOnOneWheel2er } from './lib/uciRules.js';
 
 // =============================================================
 // Haptisches Feedback + Tap-Animation
@@ -13848,12 +13848,49 @@ function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null, u
       : ' · ' + t('prog.numberTaken', { code: beleger });
   };
 
+  // Sortierung und Filter (Paritaet zur nativen App). Die Radzahl ist im 2er die
+  // nuetzlichste Einschraenkung: ein Programm braucht 8 bis 15 Uebungen auf einem
+  // Rad (8.2.002), und die sucht man gezielt. „Noch frei" blendet aus, was schon
+  // eine belegte Uebungsnummer hat — mit 8.1.019 im Ruecken ist das die Liste, aus
+  // der ueberhaupt noch zu waehlen ist.
+  const [sortBy, setSortBy] = useState('nummer');
+  const [radFilter, setRadFilter] = useState('alle');
+  const [nurTaktisch, setNurTaktisch] = useState(false);
+  const [nurFreie, setNurFreie] = useState(false);
+  const istZweier = discipline === '2er';
+  const filterAktiv = radFilter !== 'alle' || nurTaktisch || nurFreie;
+
+  const passt = (e) => {
+    if (nurTaktisch && getTaktScale(e.c) === null) return false;
+    if (nurFreie && belegtDurch(e.c)) return false;
+    if (radFilter === 'zwei') return !isOnOneWheel2er({ code: e.c });
+    if (radFilter === 'eins') return isOnOneWheel2er({ code: e.c });
+    return true;
+  };
+
+  const sortiere = (xs) => {
+    const ys = [...xs];
+    if (sortBy === 'punkte') ys.sort((a, b) => (b.p - a.p) || a.c.localeCompare(b.c));
+    else if (sortBy === 'name') ys.sort((a, b) => a.n.localeCompare(b.n));
+    else ys.sort((a, b) => a.c.localeCompare(b.c));
+    return ys;
+  };
+
   const filtered = useMemo(() => {
-    const inDiscipline = getUciDb().filter(e => e.d === discipline);
-    if (!query.trim()) return inDiscipline;   // ganze Disziplin, Liste scrollt (Parität zu iOS)
+    const inDiscipline = getUciDb().filter(e => e.d === discipline).filter(passt);
+    if (!query.trim()) return sortiere(inDiscipline);   // ganze Disziplin, Liste scrollt (Paritaet zu iOS)
     const q = query.toLowerCase();
-    return inDiscipline.filter(e => exerciseMatches(q, e.n, e.c)).slice(0, 50);
-  }, [query, discipline]);
+    return sortiere(inDiscipline.filter(e => exerciseMatches(q, e.n, e.c))).slice(0, 50);
+  }, [query, discipline, sortBy, radFilter, nurTaktisch, nurFreie, usedCodes]);
+
+  const chip = (label, aktiv, onClick) => (
+    <button type="button" onClick={onClick}
+      className={'px-2.5 py-1 rounded-full text-xs whitespace-nowrap border transition-colors ' +
+        (aktiv ? 'bg-amber-100 border-amber-300 text-amber-800 font-medium dark:bg-amber-500/20 dark:border-amber-500/40 dark:text-amber-300'
+               : 'bg-slate-100 border-slate-200 text-slate-600 dark:bg-slate-700/50 dark:border-slate-600 dark:text-slate-300')}>
+      {label}
+    </button>
+  );
 
   const selected = selectedCode ? getUciDb().find(e => e.c === selectedCode) : null;
 
@@ -13874,9 +13911,37 @@ function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null, u
         </div>
       )}
 
+      <div className="mt-2 flex items-center gap-1.5 overflow-x-auto pb-0.5">
+        {istZweier && chip(t('prog.filter.twoWheels'), radFilter === 'zwei',
+          () => setRadFilter(radFilter === 'zwei' ? 'alle' : 'zwei'))}
+        {istZweier && chip(t('prog.filter.oneWheel'), radFilter === 'eins',
+          () => setRadFilter(radFilter === 'eins' ? 'alle' : 'eins'))}
+        {chip(t('prog.filter.tactical'), nurTaktisch, () => setNurTaktisch(!nurTaktisch))}
+        {chip(t('prog.filter.free'), nurFreie, () => setNurFreie(!nurFreie))}
+      </div>
+      <div className="mt-1.5 flex items-center justify-between gap-2">
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+          className="text-xs bg-transparent outline-none text-amber-700 dark:text-amber-400">
+          <option value="nummer">{t('prog.sort.nummer')}</option>
+          <option value="punkte">{t('prog.sort.punkte')}</option>
+          <option value="name">{t('prog.sort.name')}</option>
+        </select>
+        <span className="text-xs text-slate-400 tabular-nums">
+          {t('prog.filterCount', { n: filtered.length })}
+        </span>
+      </div>
+
       <div className="mt-2 border border-slate-200 rounded-xl max-h-64 overflow-y-auto">
         {filtered.length === 0 ? (
-          <div className="p-4 text-sm text-slate-500 text-center">{t('exercises.notFound')}</div>
+          <div className="p-4 text-sm text-slate-500 text-center">
+            {filterAktiv ? t('prog.noMatchFiltered') : t('exercises.notFound')}
+            {filterAktiv && (
+              <button type="button" className="block mx-auto mt-2 text-amber-700 dark:text-amber-400"
+                onClick={() => { setRadFilter('alle'); setNurTaktisch(false); setNurFreie(false); }}>
+                {t('prog.filterReset')}
+              </button>
+            )}
+          </div>
         ) : (
           filtered.map(e => (
             <button key={e.c} onClick={() => { if (!inProgram(e.c)) onSelect(e); }}
@@ -14835,7 +14900,9 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
   const [athleteId, setAthleteId] = useState(program ? (program.athlete_id || null) : defaultAthleteId);
   // Altersklasse für Reglement-Validierung. Wird mit dem Programm
   // gespeichert, damit der Validator beim Bearbeiten konsistent prüft.
-  const [ageClass, setAgeClass] = useState((program && program.ageClass) || 'elite');
+  // Alt-Programme trugen „schueler" fuer alle drei Schuelerklassen — auf eine
+  // der fuenf heutigen bringen, sonst zeigt das Feld nichts Passendes an.
+  const [ageClass, setAgeClass] = useState(ageClassKey(program && program.ageClass));
   // Programm-Import-Status
   const [importStatus, setImportStatus] = useState(null); // null | 'parsing' | 'success' | 'error'
   const [importMsg, setImportMsg] = useState('');
@@ -15002,9 +15069,13 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
             <label className="text-[15px] text-[#3C3C43] w-24 shrink-0">{t('class.label')}</label>
             <select value={ageClass} onChange={e => setAgeClass(e.target.value)}
               className="flex-1 bg-transparent text-[15px] outline-none appearance-none text-right">
+              {/* Alle fuenf Klassen einzeln (8.1.010). Bei der Uebungszahl fasst das
+                  Reglement sie zu zwei Gruppen zusammen, zur Meldung aber nicht. */}
               <option value="elite">{t('class.elite')}</option>
               <option value="junioren">{t('class.juniors')}</option>
-              <option value="schueler">{t('class.pupils')}</option>
+              <option value="u15">{t('class.u15')}</option>
+              <option value="u13">{t('class.u13')}</option>
+              <option value="u11">{t('class.u11')}</option>
             </select>
             <ChevronRight size={16} className="text-[#C7C7CC] rotate-90 shrink-0" />
           </div>
