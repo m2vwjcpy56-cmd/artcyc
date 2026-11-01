@@ -177,6 +177,22 @@ const TWO_ON_ONE_WHEEL_RANGE = {
 
 const DISCIPLINE_PREFIX = { '1er': '1', '2er': '2', '4er': '4', '6er': '6' };
 
+// „2er Kunstrad" → „2er". Beide Apps schreiben in DIESELBE `programs`-Tabelle,
+// aber in verschiedener Schreibweise: die native App legt „2er Kunstrad" ab, die
+// Web-App „2er". Ohne diese Zeile fiel jedes nativ angelegte Programm aus der
+// Prüfung — `MAX_EXERCISES['2er Kunstrad']` ist undefined, und `discipline === '2er'`
+// ist falsch. Damit galten Höchstzahl, Disziplin-Prüfung, Einzeln, Standdrehungen,
+// die 8-bis-15-Regel und der Radwechsel für die Hälfte aller Programme NICHT —
+// stillschweigend, ohne eine einzige Fehlermeldung. Nachgewiesen am 01.11.2026 an
+// den echten Programmen in der Datenbank.
+// Auch der Programm-Import liefert eigene Schreibweisen („4er-OB" für die
+// Oberstufe) — die Übungstabelle und damit die Höchstzahl ist dieselbe wie im 4er.
+// Deshalb auf die führende Kennung prüfen, nicht auf exakte Gleichheit.
+export function disciplineKey(discipline) {
+  const m = String(discipline || '').trim().match(/^([1246]er)\b/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
 // Stamm-Code = Code ohne den nachgestellten Buchstaben.
 // Beispiel: '1001a' -> '1001', '2074b' -> '2074'.
 // Bei Codes ohne Buchstabe Rückgabe = Code selbst.
@@ -238,7 +254,7 @@ export function isStanddrehung2er(code) {
 //    dem jeweiligen Übungsnamen angegebene Anfangsstellung und Endstellung."
 //
 // Die Tabelle ist nicht eingetippt, sondern aus unserem eigenen Katalog erzeugt
-// (`docs/folgeuebungen.py`): aus „Übergang <Von> <Nach>" wird die Zielstellung
+// (`docs/reglement-tabellen.py`): aus „Übergang <Von> <Nach>" wird die Zielstellung
 // gelesen und es werden die Stammnummern derselben Disziplin gesucht, deren Name
 // mit <Nach> beginnt — gefiltert auf dieselbe Radzahl, denn ein Übergang ist kein
 // Radwechsel. Bei der nächsten Reglement-Ausgabe läuft das Skript erneut.
@@ -249,7 +265,7 @@ export function isStanddrehung2er(code) {
 //
 // „Einzeln"-Übungen (Art. 8.1.020) aus demselben Grund über die Nummer statt über
 // den Namen — „einzeln" steht nur im deutschen Namen.
-// erzeugt:anfang — docs/folgeuebungen.py --write
+// erzeugt:anfang — docs/reglement-tabellen.py --write
 const FOLLOW_UP_GROUPS = {
   '1281a': [1236, 1237],                                // Übergang Fronthang Steuerrohrsteiger
   '1282a': [1248, 1249],                                // Übergang Fronthang Kehrstandsteiger
@@ -315,7 +331,7 @@ export function validateProgram(program, options = {}) {
   if (!program || typeof program !== 'object') {
     return { valid: false, errors: [{ rule: 'input', message: 'Programm fehlt.' }], warnings };
   }
-  const discipline = program.discipline;
+  const discipline = disciplineKey(program.discipline);
   const exercises = Array.isArray(program.exercises) ? program.exercises : [];
   const ageClass = options.ageClass || 'elite';
   const expectedPrefix = DISCIPLINE_PREFIX[discipline];
@@ -387,7 +403,10 @@ export function validateProgram(program, options = {}) {
 
     // Regel 4 — 2er-Splitting (Anzahl auf einem Rad)
     const onOne = exercises.filter(isOnOneWheel2er);
-    const onTwo = exercises.length - onOne.length;
+    // „Auf zwei Rädern" wird nur unter den Übungen MIT Nummer gezählt — eine selbst
+    // angelegte Zeile ohne Nummer ist keine Übung auf zwei Rädern, sie ist unbekannt.
+    // (Parität zu ProgramRules.swift, das dafür `mitCode` nimmt.)
+    const onTwo = exercises.filter(ex => codeStem(ex && ex.code) && !isOnOneWheel2er(ex)).length;
     const range = TWO_ON_ONE_WHEEL_RANGE[ageClass];
     if (range) {
       if (onOne.length < range.min) {

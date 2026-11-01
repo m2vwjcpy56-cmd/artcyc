@@ -21,7 +21,7 @@ import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attach
 import { suggestClubs, normClub, CLUBS, COUNTRY_FLAG } from './lib/clubs.js';
 import { parseProgramFile } from './lib/programImport.js';
 import { exportMauteVorlage, layoutMaute } from './lib/mauteExport.js';
-import { loadUciExercisesFromDb, getRulesLanguage, getTaktScale, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram, codeStem } from './lib/uciRules.js';
+import { loadUciExercisesFromDb, getRulesLanguage, getTaktScale, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram, codeStem, disciplineKey } from './lib/uciRules.js';
 
 // =============================================================
 // Haptisches Feedback + Tap-Animation
@@ -2239,10 +2239,34 @@ const VALUE_CLS = 'text-slate-900 dark:text-white';
 // dass man den Schrägstrich mittippt (Ruben, 31.10.). Parität zu
 // `exerciseMatches` in ArtCyc/Models.swift; beide müssen gleich filtern, sonst
 // findet dieselbe Eingabe in den zwei Apps Verschiedenes.
+//
+// Die Übungstabellen des Reglements enthalten vier verschriebene Wörter. Zwölf
+// Übungen waren dadurch unter ihrem RICHTIGEN Namen nicht zu finden: wer
+// „Reitsitz" eingibt, bekam die sechs Übungen mit „Reitzsitz" nicht zu sehen.
+// Angezeigt wird weiter der Name aus dem Reglement — so muss er auf dem
+// Wertungsbogen stehen —, aber gesucht wird über beide Schreibweisen.
+// Die Liste ist hergeleitet, nicht eingetippt: docs/reglement-tabellen.py.
+// erzeugt:anfang — docs/reglement-tabellen.py --write
+const REGLEMENT_SCHREIBFEHLER = [
+  ['brustschwegehang', 'brustschwebehang'], // 2270b, 2271b
+  ['reisitzsteiger', 'reitsitzsteiger'],    // 2415b
+  ['reitzsitz', 'reitsitz'],                // 2070ha, 2070ja, 2070ka, 2070la, 2070ma, 2070na
+  ['seitvorhabehalte', 'seitvorhebehalte'], // 2076j, 2076k, 2076l
+];
+// erzeugt:ende
+
+// Beide Seiten durch dieselbe Berichtigung schicken — dann trifft die richtige
+// Schreibweise den falschen Namen UND die falsche den richtigen.
+const ohneSchreibfehler = (s) => {
+  let t = String(s || '').toLowerCase();
+  for (const [falsch, richtig] of REGLEMENT_SCHREIBFEHLER) t = t.split(falsch).join(richtig);
+  return t;
+};
+
 const exerciseMatches = (query, name, code) => {
-  const n = String(name || '').toLowerCase();
+  const n = ohneSchreibfehler(name);
   const c = String(code || '').toLowerCase();
-  const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  const words = ohneSchreibfehler(query).split(/\s+/).filter(Boolean);
   if (!words.length) return false;
   return words.every(w => n.includes(w) || c.includes(w));
 };
@@ -13804,13 +13828,25 @@ function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung
   );
 }
 
-function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null, usedStems = null }) {
+function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null, usedCodes = null }) {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
   const haveIt = (code) => !!(existingCodes && existingCodes.has(String(code || '').trim().toLowerCase()));
   // Schon im Programm? Geprueft wird der STAMM — 1124c und 1124d schliessen
   // einander aus, nicht nur zweimal dasselbe `c` (Regel 2 in uciRules).
-  const inProgram = (code) => !!(usedStems && usedStems.has(codeStem(code)));
+  // Der Code, der diese Uebungsnummer schon belegt — null, wenn sie frei ist.
+  const belegtDurch = (code) => (usedCodes && usedCodes[codeStem(code)]) || null;
+  const inProgram = (code) => !!belegtDurch(code);
+  // „schon im Programm" stimmt nur, wenn GENAU diese Uebung drinsteht. Sonst ist der
+  // Grund eine andere Uebung derselben Nummer — und der gehoert hin, sonst sucht man
+  // im Programm nach einer Uebung, die dort nicht steht.
+  const sperrGrund = (code) => {
+    const beleger = belegtDurch(code);
+    if (!beleger) return '';
+    return beleger.toLowerCase() === String(code || '').trim().toLowerCase()
+      ? ' · ' + t('prog.alreadyInProgram')
+      : ' · ' + t('prog.numberTaken', { code: beleger });
+  };
 
   const filtered = useMemo(() => {
     const inDiscipline = getUciDb().filter(e => e.d === discipline);
@@ -13851,7 +13887,7 @@ function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null, u
               <div className="flex items-center justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">{e.n}</div>
-                  <div className={'text-xs ' + (inProgram(e.c) ? 'text-[#3B82F6]' : haveIt(e.c) ? 'text-[#FF9500]' : 'text-slate-500')}>Nr. {e.c}{inProgram(e.c) ? ' · ' + t('prog.alreadyInProgram') : haveIt(e.c) ? ' · Schon in deinem Konto' : ''}</div>
+                  <div className={'text-xs ' + (inProgram(e.c) ? 'text-[#3B82F6]' : haveIt(e.c) ? 'text-[#FF9500]' : 'text-slate-500')}>Nr. {e.c}{inProgram(e.c) ? sperrGrund(e.c) : haveIt(e.c) ? ' · Schon in deinem Konto' : ''}</div>
                 </div>
                 <span className="bg-sky-100 text-sky-700 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">
                   {e.p} Pkt
@@ -14787,7 +14823,11 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
   const { t } = useI18n();
   const [confirmDel, setConfirmDel] = useState(false);
   const [name, setName] = useState((program && program.name) || '');
-  const [discipline, setDiscipline] = useState((program && program.discipline) || '1er');
+  // Beim Laden auf das Kuerzel bringen: die native App legt „1er Kunstrad" ab.
+  // Ohne das stand im Auswahlfeld nichts Passendes und die Uebungsauswahl war
+  // LEER (der Katalog fuehrt nur „1er"), weil nichts auf „1er Kunstrad" passt.
+  const [discipline, setDiscipline] = useState(
+    disciplineKey(program && program.discipline) || '1er');
   const [exercises, setExercises] = useState((program && program.exercises) || []);
   // Ein Programm gehoert zu EINEM Sportler — ohne Zuordnung sahen alle Sportler
   // eines Besitzers dieselben Programme (Paritaet zur nativen App).
@@ -14864,7 +14904,10 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
     }
     setExercises(result.exercises.map(e => ({ ...e, id: uid() })));
     if (!name && result.name) setName(result.name);
-    if (result.discipline) setDiscipline(result.discipline);
+    // Der Import kennt auch „4er-OB" — dafuer gibt es kein Auswahlfeld und keine
+    // eigene Uebungstabelle; auf die Kennung bringen, sonst stuende hier ein Wert,
+    // den weder die Auswahl noch die Uebungsliste kennt.
+    if (result.discipline) setDiscipline(disciplineKey(result.discipline) || '1er');
     setImportStatus('success');
     setImportMsg(t('programImport.success', { n: result.exercises.length, name: result.name }));
   };
@@ -15056,12 +15099,17 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
                     <ProgrammExerciseRow
                       ex={e}
                       discipline={discipline}
-                      /* Stamm-Nummern der ANDEREN Zeilen: eine Uebungsnummer darf
-                         im Programm nur EINMAL vorkommen (Regel 2 in uciRules). */
-                      usedStems={new Set(exercises
-                        .filter((_, i) => i !== idx)
-                        .map(x => codeStem(x && x.code))
-                        .filter(Boolean))}
+                      /* Welche Uebungsnummer die ANDEREN Zeilen belegen — und WOMIT.
+                         Aus jeder Nummer darf nur eine Uebung gewaehlt werden (8.1.019),
+                         2241a und 2241b schliessen sich also aus. Ohne den belegenden
+                         Code stand an der Schwester-Uebung „schon im Programm", obwohl
+                         sie gar nicht drin war (Ruben, 01.11.2026). */
+                      usedCodes={exercises.reduce((acc, x, i) => {
+                        if (i === idx) return acc;
+                        const s = codeStem(x && x.code);
+                        if (s) acc[s] = String((x && x.code) || '').trim();
+                        return acc;
+                      }, {})}
                       onUci={(u) => setUci(idx, u)}
                       onUpdate={(k, v) => updateField(idx, k, v)}
                       onToggleMark={() => updateField(idx, 'marked', !e.marked)}
@@ -15118,7 +15166,7 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
   );
 }
 
-function ProgrammExerciseRow({ ex, discipline, usedStems, onUci, onUpdate, onToggleMark, onRemove }) {
+function ProgrammExerciseRow({ ex, discipline, usedCodes, onUci, onUpdate, onToggleMark, onRemove }) {
   const { t } = useI18n();
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -15160,7 +15208,7 @@ function ProgrammExerciseRow({ ex, discipline, usedStems, onUci, onUpdate, onTog
         <div className="px-4 pb-4 pt-1 border-t border-[#C6C6C8]/40 bg-[#F2F2F7]/40">
           <UciPicker discipline={discipline}
             onSelect={(u) => { onUci(u); setPickerOpen(false); }}
-            usedStems={usedStems}
+            usedCodes={usedCodes}
             selectedCode={ex.code} />
           <div className="text-[12px] text-[#8E8E93] mt-3 mb-1.5">
             {t('reglement.typeManually')}

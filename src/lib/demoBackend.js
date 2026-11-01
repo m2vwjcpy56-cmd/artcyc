@@ -118,8 +118,12 @@ function seed() {
   const programs = [
     { id: 'p0000000-0000-4000-8000-000000000001', owner_id: ME, athlete_id: A1, name: '1er Kürprogramm',
       discipline: '1er', exercises: progEx, created_at: '2025-09-01T10:00:00Z', deleted_at: null },
+    // Absichtlich in der Schreibweise der nativen App: beide schreiben in dieselbe
+    // Tabelle, und ein so gespeichertes Programm fiel bis zum 01.11.2026 aus der
+    // Reglement-Prüfung und zeigte eine leere Übungsauswahl. Die Demo deckt jetzt
+    // beide Schreibweisen ab, damit das nicht unbemerkt zurückkommt.
     { id: 'p0000000-0000-4000-8000-000000000002', owner_id: ME, athlete_id: A2, name: 'Lena Kür',
-      discipline: '1er', exercises: progEx.slice(0, 5).map(({ marked, ...e }) => e), created_at: '2025-10-01T10:00:00Z', deleted_at: null },
+      discipline: '1er Kunstrad', exercises: progEx.slice(0, 5).map(({ marked, ...e }) => e), created_at: '2025-10-01T10:00:00Z', deleted_at: null },
   ];
   const table = (seedN) => {
     const rr = rng(seedN);
