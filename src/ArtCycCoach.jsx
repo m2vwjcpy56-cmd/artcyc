@@ -21,7 +21,7 @@ import { submitFeedback, getFeedback, clearFeedback, buildFeedbackMailto, attach
 import { suggestClubs, normClub, CLUBS, COUNTRY_FLAG } from './lib/clubs.js';
 import { parseProgramFile } from './lib/programImport.js';
 import { exportMauteVorlage, layoutMaute } from './lib/mauteExport.js';
-import { loadUciExercisesFromDb, getRulesLanguage, getTaktScale, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram, codeStem, disciplineKey, ageClassKey, isOnOneWheel2er } from './lib/uciRules.js';
+import { loadUciExercisesFromDb, getRulesLanguage, getTaktScale, fetchActiveNotices, dismissNotice, RULES_LANG_KEY, SUPPORTED_RULES_LANGS, validateProgram, codeStem, disciplineKey, ageClassKey, isOnOneWheel2er, kontingente, REGEL_ARTIKEL } from './lib/uciRules.js';
 
 // =============================================================
 // Haptisches Feedback + Tap-Animation
@@ -13828,7 +13828,8 @@ function ExercisePickerSheet({ open, onClose, onPick, exercises, title = 'Übung
   );
 }
 
-function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null, usedCodes = null }) {
+function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null, usedCodes = null,
+                     zeilen = null, zielIndex = -1, ageClass = 'elite' }) {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
   const haveIt = (code) => !!(existingCodes && existingCodes.has(String(code || '').trim().toLowerCase()));
@@ -13847,6 +13848,56 @@ function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null, u
       ? ' · ' + t('prog.alreadyInProgram')
       : ' · ' + t('prog.numberTaken', { code: beleger });
   };
+
+  // Was diese Uebung im Programm anrichten wuerde — die Pruefung laeuft VOR der
+  // Auswahl, nicht erst beim Sichern (Ruben, 01.11.2026: „man soll es auch schon
+  // sehen bevor man auf die Uebung klickt"). Einmal fuer das Programm, wie es
+  // ist, und einmal mit der Uebung an der Stelle, die gerade bearbeitet wird;
+  // gemeldet wird nur, was dabei NEU dazukommt. Ein Programm ist beim Bauen fast
+  // immer kurz ungueltig, und ein Fehler in Zeile 3 darf nicht jede Zeile der
+  // Suche anstreichen. Parität zu `vorschau` in ProgrammeView.swift.
+  const vorschauAn = Array.isArray(zeilen) && zielIndex >= 0 && zielIndex < zeilen.length;
+  const signatur = (e) => `${e.rule}|${e.exerciseIndex ?? ''}|${(e.positions || []).join(',')}`;
+  const pruefe = (liste) =>
+    validateProgram({ discipline, exercises: liste }, { ageClass }).errors;
+  const grundbefunde = useMemo(
+    () => (vorschauAn ? new Set(pruefe(zeilen).map(signatur)) : new Set()),
+    [vorschauAn, zeilen, discipline, ageClass]);
+
+  // Gemeldet wird ein Befund, wenn er NEU dazukommt — oder wenn er ausdruecklich
+  // die Zielzeile nennt. Das zweite ist noetig, weil eine leere Zeile selbst schon
+  // Fehler erzeugt: hinter einem Uebergang fehlt die Folgeuebung, und eine Zeile
+  // ohne Nummer zaehlt als „auf zwei Raedern". Ohne den Zusatz bliebe die falsche
+  // Wahl still, weil derselbe Fehler vorher auch schon dastand.
+  // Ein Uebergang, auf den noch nichts folgt, ist kein Verstoss der Uebung, die man
+  // gerade waehlt — die Folgeuebung kommt in die naechste Zeile, die es noch nicht
+  // gibt. Ohne diese Ausnahme meldete JEDER Uebergang beim Auswaehlen einen Fehler.
+  // Im Programm selbst bleibt der Befund stehen, bis die Zeile steht.
+  const fehltNochDahinter = (f) =>
+    f.rule === 'follow_up' && (f.positions || []).join() === String(zielIndex + 1);
+
+  const vorschau = (e) => {
+    if (!vorschauAn) return [];
+    const probe = zeilen.map((z, i) => (i === zielIndex ? { name: e.n, code: e.c } : z));
+    return pruefe(probe).filter(f =>
+      (!grundbefunde.has(signatur(f)) || (f.positions || []).includes(zielIndex + 1))
+      && !fehltNochDahinter(f));
+  };
+
+  // Wie voll die begrenzten Gruppen schon sind (8.1.020) — steht ueber der Liste,
+  // bevor man waehlt.
+  const kontiStand = useMemo(() => {
+    if (!vorschauAn) return [];
+    const andere = zeilen.filter((_, i) => i !== zielIndex);
+    return kontingente(discipline)
+      .map(k => ({ k, benutzt: andere.filter(z => k.enthaelt(z && z.code)).length }))
+      .filter(x => x.benutzt > 0);
+  }, [vorschauAn, zeilen, zielIndex, discipline]);
+
+  // Eine Auswahl, die gegen eine Regel verstoesst — festgehalten, bis die
+  // Rueckfrage beantwortet ist. Nicht gesperrt: zwei Uebungen derselben Nummer
+  // sind unmoeglich, eine vierte Standdrehung dagegen nur regelwidrig.
+  const [frage, setFrage] = useState(null);
 
   // Sortierung und Filter (Paritaet zur nativen App). Die Radzahl ist im 2er die
   // nuetzlichste Einschraenkung: ein Programm braucht 8 bis 15 Uebungen auf einem
@@ -13882,6 +13933,14 @@ function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null, u
     const q = query.toLowerCase();
     return sortiere(inDiscipline.filter(e => exerciseMatches(q, e.n, e.c))).slice(0, 50);
   }, [query, discipline, sortBy, radFilter, nurTaktisch, nurFreie, usedCodes]);
+
+  // Einmal fuer die ganze Liste statt einmal je Neuzeichnen: ohne Suchtext stehen
+  // hier ueber 400 Zeilen, und jede kostet einen Pruefdurchlauf.
+  const warnMap = useMemo(() => {
+    const m = new Map();
+    if (vorschauAn) for (const e of filtered) m.set(e.c, vorschau(e));
+    return m;
+  }, [filtered, grundbefunde, zielIndex, discipline, ageClass]);
 
   const chip = (label, aktiv, onClick) => (
     <button type="button" onClick={onClick}
@@ -13930,6 +13989,35 @@ function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null, u
           {t('prog.filterCount', { n: filtered.length })}
         </span>
       </div>
+      {kontiStand.length > 0 && (
+        <div className="mt-1 text-xs text-slate-400">
+          {kontiStand.map(({ k, benutzt }) =>
+            t('prog.quotaState', { label: t('quota.' + k.id), n: benutzt, max: k.max })
+          ).join(' · ')}
+        </div>
+      )}
+
+      {/* Rueckfrage statt Sperre: die Uebung geht, sie verstoesst nur gegen eine
+          Regel. Beim Umbauen will man sie vielleicht kurz drinhaben. */}
+      {frage && (
+        <div className="mt-2 p-3 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/40 text-sm">
+          <div className="font-medium text-amber-900 dark:text-amber-200">{t('prog.ruleWarnTitle')}</div>
+          <ul className="mt-1 list-disc pl-4 text-[13px] text-amber-900/90 dark:text-amber-200/90">
+            {frage.warn.map((f, i) => <li key={i}>{f.message}</li>)}
+          </ul>
+          <div className="mt-1.5 text-[12px] text-amber-900/70 dark:text-amber-200/70">{t('prog.ruleWarnNote')}</div>
+          <div className="mt-2 flex gap-2">
+            <button type="button" onClick={() => { const e = frage.e; setFrage(null); onSelect(e); }}
+              className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-[13px] font-medium">
+              {t('prog.ruleAnyway')}
+            </button>
+            <button type="button" onClick={() => setFrage(null)}
+              className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-700 text-[13px]">
+              {t('common.cancel')}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="mt-2 border border-slate-200 rounded-xl max-h-64 overflow-y-auto">
         {filtered.length === 0 ? (
@@ -13943,23 +14031,42 @@ function UciPicker({ discipline, onSelect, selectedCode, existingCodes = null, u
             )}
           </div>
         ) : (
-          filtered.map(e => (
-            <button key={e.c} onClick={() => { if (!inProgram(e.c)) onSelect(e); }}
-              disabled={inProgram(e.c)}
-              className={'w-full text-left px-3 py-2 border-b border-slate-100 last:border-0 ' +
-                (inProgram(e.c) ? 'opacity-55 cursor-not-allowed ' : 'hover:bg-slate-50 ') +
-                (selectedCode === e.c ? 'bg-amber-50' : '')}>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{e.n}</div>
-                  <div className={'text-xs ' + (inProgram(e.c) ? 'text-[#3B82F6]' : haveIt(e.c) ? 'text-[#FF9500]' : 'text-slate-500')}>Nr. {e.c}{inProgram(e.c) ? sperrGrund(e.c) : haveIt(e.c) ? ' · Schon in deinem Konto' : ''}</div>
+          filtered.map(e => {
+            const drin = inProgram(e.c);
+            const warn = drin ? [] : (warnMap.get(e.c) || []);
+            // In der Zeile nur die Artikelnummer — der ganze Satz machte die Liste
+            // unlesbar, und zum Erkennen reicht sie (Ruben: „reicht auch
+            // Ausrufezeichen oder so"). Den Satz bringt die Rueckfrage.
+            const artikel = [...new Set(warn.map(f => REGEL_ARTIKEL[f.rule]).filter(Boolean))];
+            const zusatz = [
+              drin ? sperrGrund(e.c).replace(' · ', '') : (artikel.join(', ') || null),
+              haveIt(e.c) ? t('prog.inAccount') : null,
+            ].filter(Boolean);
+            return (
+              <button key={e.c} disabled={drin}
+                onClick={() => { if (drin) return; if (warn.length) setFrage({ e, warn }); else onSelect(e); }}
+                className={'w-full text-left px-3 py-2 border-b border-slate-100 last:border-0 ' +
+                  (drin ? 'opacity-55 cursor-not-allowed ' : 'hover:bg-slate-50 ') +
+                  (selectedCode === e.c ? 'bg-amber-50' : '')}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{e.n}</div>
+                    <div className={'text-xs ' + (drin ? 'text-[#3B82F6]' : 'text-slate-500')}>
+                      Nr. {e.c}{zusatz.length ? ' · ' + zusatz.join(' · ') : ''}
+                    </div>
+                  </div>
+                  {/* Regelwidrig heisst nicht gesperrt: statt der Punktzahl steht
+                      das Ausrufezeichen davor, antippbar bleibt die Zeile. */}
+                  {warn.length > 0 && (
+                    <AlertTriangle size={14} className="text-amber-500 shrink-0" />
+                  )}
+                  <span className="bg-sky-100 text-sky-700 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">
+                    {e.p} Pkt
+                  </span>
                 </div>
-                <span className="bg-sky-100 text-sky-700 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">
-                  {e.p} Pkt
-                </span>
-              </div>
-            </button>
-          ))
+              </button>
+            );
+          })
         )}
       </div>
       <p className="text-xs text-slate-400 mt-1">{filtered.length} von {getUciDb().filter(e => e.d === discipline).length} Übungen aus {discipline}</p>
@@ -15181,6 +15288,12 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
                         if (s) acc[s] = String((x && x.code) || '').trim();
                         return acc;
                       }, {})}
+                      /* Das ganze Programm, damit die Suche vorher sagen kann, was
+                         eine Uebung an DIESER Stelle anrichten wuerde — Folgeuebung,
+                         Radwechsel, Hoechstzahlen. Ohne die Reihenfolge geht das nicht. */
+                      zeilen={exercises.map(x => ({ name: x.name, code: x.code }))}
+                      zielIndex={idx}
+                      ageClass={ageClass}
                       onUci={(u) => setUci(idx, u)}
                       onUpdate={(k, v) => updateField(idx, k, v)}
                       onToggleMark={() => updateField(idx, 'marked', !e.marked)}
@@ -15237,7 +15350,8 @@ function ProgrammEditor({ program, onSave, onCancel, onDelete, athletes = [], de
   );
 }
 
-function ProgrammExerciseRow({ ex, discipline, usedCodes, onUci, onUpdate, onToggleMark, onRemove }) {
+function ProgrammExerciseRow({ ex, discipline, usedCodes, zeilen, zielIndex, ageClass,
+                               onUci, onUpdate, onToggleMark, onRemove }) {
   const { t } = useI18n();
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -15280,6 +15394,7 @@ function ProgrammExerciseRow({ ex, discipline, usedCodes, onUci, onUpdate, onTog
           <UciPicker discipline={discipline}
             onSelect={(u) => { onUci(u); setPickerOpen(false); }}
             usedCodes={usedCodes}
+            zeilen={zeilen} zielIndex={zielIndex} ageClass={ageClass}
             selectedCode={ex.code} />
           <div className="text-[12px] text-[#8E8E93] mt-3 mb-1.5">
             {t('reglement.typeManually')}

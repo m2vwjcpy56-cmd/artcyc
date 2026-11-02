@@ -267,6 +267,51 @@ export function isStanddrehung2er(code) {
   return stem >= 2211 && stem <= 2216;
 }
 
+// Übergänge auf zwei Rädern — Abschnitt 8.5.010, Nummern 2236 bis 2243.
+// 8.1.020 nimmt sie von der „Einzeln"-Obergrenze ausdrücklich aus.
+export function isUebergangZweiRaeder(code) {
+  const stem = parseInt(codeStem(code || ''), 10);
+  return stem >= 2236 && stem <= 2243;
+}
+
+// Regeln, die nicht EINE Übungsnummer sperren, sondern eine ganze GRUPPE
+// begrenzen. 8.1.020 lässt im Zweier höchstens drei Standdrehungen und höchstens
+// drei „Einzeln"-Übungen zu.
+//
+// Als Tabelle, weil zwei Stellen sie brauchen: die Prüfung unten und die
+// Übungssuche, die die Höchstzahl schon beim Auswählen meldet. Parität zu
+// `ProgramRules.kontingente` der nativen App.
+export function kontingente(discipline) {
+  if (disciplineKey(discipline) !== '2er') return [];
+  return [
+    { id: 'standdrehung', rule: 'too_many_standdrehung', article: '8.1.020',
+      label: 'Standdrehungen', max: 3, enthaelt: (code) => isStanddrehung2er(code) },
+    // Über die Nummer, nicht über den Namen: „Einzeln" steht nur im deutschen
+    // Namen, der Katalog liegt in acht Sprachen vor.
+    { id: 'einzeln', rule: 'too_many_einzeln', article: '8.1.020',
+      label: 'Übungen „Einzeln"', max: 3,
+      enthaelt: (code) => EINZELN_CODES.has(String(code || '').trim().toLowerCase())
+                          && !isUebergangZweiRaeder(code) },
+  ];
+}
+
+// Welcher Reglement-Artikel hinter einer Regel steht. Die Meldungen selbst
+// tragen ihn nicht; die Übungssuche schreibt ihn an die Zeile, damit man vor dem
+// Antippen sieht, WORAN es liegt, ohne den ganzen Satz zu lesen.
+export const REGEL_ARTIKEL = {
+  count_max: '8.2.002',
+  duplicate_stem: '8.1.019',
+  wrong_discipline: '8.1.019',
+  follow_up: '8.2.028',
+  too_many_einzeln: '8.1.020',
+  too_many_standdrehung: '8.1.020',
+  two_split_min: '8.2.002',
+  two_split_max: '8.2.002',
+  two_split_no_two: '8.2.002',
+  wheel_change: '8.2.006',
+  schluss_position: '8.2.011',
+};
+
 // Pflicht-Folgeübungen — Art. 8.2.028 „Übergänge":
 //   „Ist die Endstellung eine Steigerposition, muss in dieser Steigerart die
 //    Folgeübung gefahren werden. Beginn und Ende eines Überganges ist die in
@@ -372,7 +417,8 @@ export function validateProgram(program, options = {}) {
     if (seenStems.has(stem)) {
       pushErr(errors, 'duplicate_stem',
         `Übungsnummer ${stem} kommt mehrfach vor (Position ${seenStems.get(stem) + 1} und ${idx + 1}).`,
-        { exerciseIndex: idx, exerciseCode: ex.code });
+        { exerciseIndex: idx, exerciseCode: ex.code,
+          positions: [seenStems.get(stem) + 1, idx + 1] });
     } else {
       seenStems.set(stem, idx);
     }
@@ -386,7 +432,7 @@ export function validateProgram(program, options = {}) {
       if (!String(code).startsWith(expectedPrefix)) {
         pushErr(errors, 'wrong_discipline',
           `Übung ${code} passt nicht zur Disziplin ${discipline}.`,
-          { exerciseIndex: idx, exerciseCode: code });
+          { exerciseIndex: idx, exerciseCode: code, positions: [idx + 1] });
       }
     });
   }
@@ -398,30 +444,38 @@ export function validateProgram(program, options = {}) {
     const code = String((ex && ex.code) || '').trim().toLowerCase();
     const erlaubt = FOLLOW_UP_GROUPS[code];
     if (!erlaubt) return;
-    const next = exercises[idx + 1];
+    // Die naechste Zeile MIT Uebungsnummer. Eine leere Zeile ist ein Platzhalter
+    // im Editor, keine Uebung — mitgezaehlt meldete sie hinter jedem Uebergang
+    // eine fehlende Folgeuebung, die der Nutzer nur noch nicht eingetragen hat.
+    let n = idx + 1;
+    while (n < exercises.length && !codeStem(exercises[n] && exercises[n].code)) n++;
+    const next = n < exercises.length ? exercises[n] : null;
     const nextStem = next ? parseInt(codeStem(next.code || ''), 10) : NaN;
     if (!erlaubt.includes(nextStem)) {
       pushErr(errors, 'follow_up',
         `Nach dem Übergang ${ex.code} (Position ${idx + 1}) muss eine Übung aus ${erlaubt.join(', ')} folgen — dort endet der Übergang.`,
-        { exerciseIndex: idx, exerciseCode: ex.code });
+        // Beide Zeilen: der Übergang UND die Zeile, die ihm folgen müsste. Sonst
+        // merkt die Vorschau nicht, dass die Kandidatin selbst die falsche ist.
+        { exerciseIndex: idx, exerciseCode: ex.code,
+          positions: next ? [idx + 1, n + 1] : [idx + 1] });
     }
   });
 
-  // Regel 6 — 2er: max. 3 „Einzeln"-Übungen (Ausnahme: Übergänge auf zwei Rädern)
-  if (discipline === '2er') {
-    const einzelnExercises = exercises
+  // Regel 6 — 8.1.020: die beiden Kontingente des Zweiers (höchstens 3 Übungen
+  // „Einzeln", höchstens 3 Standdrehungen). Beide kommen aus derselben Tabelle
+  // wie die Vorab-Warnung in der Übungssuche — getrennt gezählt liefen sie beim
+  // nächsten Reglement auseinander.
+  kontingente(discipline).forEach(k => {
+    const treffer = exercises
       .map((ex, idx) => ({ ex, idx }))
-      .filter(({ ex }) => {
-        const code = String((ex && ex.code) || '').trim().toLowerCase();
-        const stem = parseInt(codeStem(code), 10);
-        const istUebergang = stem >= 2236 && stem <= 2243;
-        return EINZELN_CODES.has(code) && !istUebergang;
-      });
-    if (einzelnExercises.length > 3) {
-      pushErr(errors, 'too_many_einzeln',
-        `${einzelnExercises.length} Übungen „Einzeln" — höchstens 3 erlaubt.`);
+      .filter(({ ex }) => k.enthaelt(ex && ex.code));
+    if (treffer.length > k.max) {
+      pushErr(errors, k.rule, `${treffer.length} ${k.label} — höchstens ${k.max} erlaubt.`,
+        { positions: treffer.map(({ idx }) => idx + 1) });
     }
+  });
 
+  if (discipline === '2er') {
     // Regel 4 — 2er-Splitting (Anzahl auf einem Rad)
     const onOne = exercises.filter(isOnOneWheel2er);
     // „Auf zwei Rädern" wird nur unter den Übungen MIT Nummer gezählt — eine selbst
@@ -451,23 +505,25 @@ export function validateProgram(program, options = {}) {
   // Einmalig heisst: die Übungen auf einem Rad stehen am Stück. Wer zwischendurch
   // zurückwechselt, bräuchte einen zweiten Wechsel.
   if (discipline === '2er' && exercises.length > 1) {
-    const folge = exercises.map(isOnOneWheel2er);
+    // Auch hier nur die Zeilen MIT Nummer: eine leere Zeile zaehlte als „auf zwei
+    // Raedern" und erzeugte damit Radwechsel, die niemand gefahren ist.
+    const mitCode = exercises.map((ex, idx) => ({ ex, idx }))
+      .filter(({ ex }) => codeStem(ex && ex.code));
     const wechsel = [];
-    for (let i = 1; i < folge.length; i++) if (folge[i] !== folge[i - 1]) wechsel.push(i + 1);
+    for (let i = 1; i < mitCode.length; i++) {
+      if (isOnOneWheel2er(mitCode[i].ex) !== isOnOneWheel2er(mitCode[i - 1].ex)) {
+        wechsel.push(mitCode[i].idx + 1);
+      }
+    }
     if (wechsel.length > 1) {
       pushErr(errors, 'wheel_change',
-        `${wechsel.length} Radwechsel (Position ${wechsel.join(', ')}) — erlaubt ist nur einer. Die Übungen auf einem Rad müssen am Stück stehen.`);
+        `${wechsel.length} Radwechsel (Position ${wechsel.join(', ')}) — erlaubt ist nur einer. Die Übungen auf einem Rad müssen am Stück stehen.`,
+        { positions: wechsel });
     }
   }
 
-  // Regel 8 — 8.1.020: „Im 2er Kunstradsport sind maximal 3 Standdrehungen erlaubt."
-  if (discipline === '2er') {
-    const dreh = exercises.filter(ex => isStanddrehung2er(ex && ex.code));
-    if (dreh.length > 3) {
-      pushErr(errors, 'too_many_standdrehung',
-        `${dreh.length} Standdrehungen — höchstens 3 erlaubt.`);
-    }
-  }
+  // Regel 8 — „maximal 3 Standdrehungen" steht oben bei Regel 6, zusammen mit
+  // der zweiten Höchstzahl desselben Artikels.
 
   // Regel 9 — 8.2.011: „Schlussübungen können nur vor dem Radwechsel oder als
   // letzte Übung gezeigt werden."
@@ -479,7 +535,7 @@ export function validateProgram(program, options = {}) {
     if (!istLetzte && !vorWechsel) {
       pushErr(errors, 'schluss_position',
         `Schlussübung an Position ${idx + 1}: nur als letzte Übung oder direkt vor dem Radwechsel.`,
-        { exerciseIndex: idx, exerciseCode: ex && ex.code });
+        { exerciseIndex: idx, exerciseCode: ex && ex.code, positions: [idx + 1] });
     }
   });
 

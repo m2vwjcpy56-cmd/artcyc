@@ -119,6 +119,73 @@ pruefe('Elite nicht — dort sind 8 das Minimum',
        befunde(['2001a', '2261a', '2262a', '2263a', '2264a'], '2er', 'elite')
          .some(e => e.rule === 'two_split_min'));
 
+// ── Die Vorschau der Übungssuche: was eine Übung an DIESER Stelle anrichten würde
+//
+// Dieselbe Rechnung wie in UciPicker (Web) und ExerciseSearchPicker (nativ):
+// einmal das Programm, wie es ist, einmal mit der Kandidatin an der Zielzeile —
+// gemeldet wird nur, was NEU dazukommt. Der Diff ist der heikle Teil: ohne ihn
+// würde ein Fehler in Zeile 3 jede Zeile der Suche anstreichen.
+console.log('\nÜbungssuche — Vorschau vor dem Antippen');
+const signatur = (e) => `${e.rule}|${e.exerciseIndex ?? ''}|${(e.positions || []).join(',')}`;
+// Gemeldet wird ein Befund, wenn er NEU dazukommt — oder wenn er ausdrücklich die
+// Zielzeile nennt. Das zweite ist nötig, weil eine leere Zeile selbst schon Fehler
+// erzeugt: hinter einem Übergang fehlt die Folgeübung, und eine Zeile ohne Nummer
+// zählt als „auf zwei Rädern". Ohne diesen Zusatz bliebe die falsche Wahl still,
+// weil der Fehler ja vorher auch schon dastand.
+const vorschau = (zeilen, zielIndex, code, disc = '2er') => {
+  const prog = (xs) => ({ discipline: disc, exercises: xs.map(c => ({ code: c, name: c })) });
+  const alt = new Set(validateProgram(prog(zeilen), {}).errors.map(signatur));
+  const probe = zeilen.map((z, i) => (i === zielIndex ? code : z));
+  // Ein Übergang, auf den noch nichts folgt, ist kein Verstoß der Übung, die man
+  // gerade wählt — die Folgeübung kommt in die nächste Zeile, die es noch nicht
+  // gibt. Ohne die Ausnahme meldete JEDER Übergang beim Auswählen einen Fehler.
+  const fehltNochDahinter = (f) =>
+    f.rule === 'follow_up' && (f.positions || []).join() === String(zielIndex + 1);
+  return validateProgram(prog(probe), {}).errors
+    .filter(f => (!alt.has(signatur(f)) || (f.positions || []).includes(zielIndex + 1))
+                 && !fehltNochDahinter(f));
+};
+
+// Drei Standdrehungen stehen schon, die letzte Zeile ist noch leer.
+const dreiDreh = ['2215c', '2214c', '2212c', ''];
+pruefe('vierte Standdrehung wird gemeldet',
+       vorschau(dreiDreh, 3, '2211a').some(f => f.rule === 'too_many_standdrehung'));
+pruefe('eine andere Übung wird nicht gemeldet',
+       vorschau(dreiDreh, 3, '2001a').every(f => f.rule !== 'too_many_standdrehung'));
+pruefe('Standdrehung gegen Standdrehung tauschen bleibt still',
+       vorschau(['2215c', '2214c', '2212c'], 2, '2211a').length === 0,
+       JSON.stringify(vorschau(['2215c', '2214c', '2212c'], 2, '2211a').map(f => f.rule)));
+
+// 8.2.028: hinter einem Übergang muss die passende Folgeübung stehen.
+pruefe('falsche Folgeübung hinter dem Übergang wird gemeldet',
+       vorschau(['2236a', ''], 1, '2131a').some(f => f.rule === 'follow_up'));
+pruefe('richtige Folgeübung bleibt still',
+       vorschau(['2236a', ''], 1, '2161a').every(f => f.rule !== 'follow_up'));
+
+// Ein Fehler, der schon vorher drinsteht, darf keine fremde Zeile anstreichen.
+const schonKaputt = ['2236a', '2131a', ''];
+pruefe('bestehender Fehler färbt nicht jede Kandidatin',
+       vorschau(schonKaputt, 2, '2001a').length === 0,
+       JSON.stringify(vorschau(schonKaputt, 2, '2001a').map(f => f.rule)));
+
+// 8.2.006: der Radwechsel ist einmalig — zurück auf zwei Räder ist der zweite.
+pruefe('zweiter Radwechsel wird gemeldet',
+       vorschau(['2001a', '2261a', '2262a', ''], 3, '2002a')
+         .some(f => f.rule === 'wheel_change'));
+
+// Leere Zeilen sind Platzhalter, keine Übungen — sonst meldet die Suche Fehler,
+// die erst der noch leere Rest des Programms erzeugt.
+pruefe('ein Übergang ohne Folgezeile warnt noch nicht',
+       vorschau(['2001a', '', ''], 1, '2236a').length === 0,
+       JSON.stringify(vorschau(['2001a', '', ''], 1, '2236a').map(f => f.rule)));
+pruefe('eine leere Zeile erzeugt keinen Radwechsel',
+       vorschau(['2261a', '', ''], 1, '2262a').every(f => f.rule !== 'wheel_change'));
+pruefe('aber hinter dem Übergang steht die falsche Übung sehr wohl',
+       vorschau(['2236a', '2131a', ''], 1, '2132a').some(f => f.rule === 'follow_up'));
+pruefe('ein Übergang als letzte Übung bleibt im Programm ein Fehler',
+       validateProgram({ discipline: '2er', exercises: [{ code: '2001a' }, { code: '2236a' }] }, {})
+         .errors.some(f => f.rule === 'follow_up'));
+
 // ── Schreibfehler des Reglements
 console.log('\nSuche — die vier Verschreiber in den Übungstabellen');
 const jsx = fs.readFileSync(path.join(REPO, 'src/ArtCycCoach.jsx'), 'utf8');
