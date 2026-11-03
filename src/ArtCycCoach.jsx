@@ -9012,9 +9012,14 @@ function TrainingView({ data, setData, setView, profile = null, myUserId = null 
         <p className="px-1 text-[12px] leading-snug text-[#8E8E93]">{t('training.runExplainer')}</p>
 
         {/* OVERVIEW — getönte Karten; Erfolgsquote NICHT als Warnung (violet, neutral-positiv) */}
-        {/* Kacheln wie nativ (27.09.): Sessions · Übungen · Ø 12 Monate · Letzter. Eine
-            Erfolgsquote über ALLE Übungen zusammen sagt nichts (Ruben) — sie gibt es nur
-            noch je Übung; Serie und Trainingstage sind raus. */}
+        {/* DIESELBEN VIER KACHELN WIE IM WETTKAMPF (03.11.): Bestleistung ·
+            Ø 12 Monate · Letzter · Wertungen, gleiche Reihenfolge, gleiche
+            Tönung. Vorher standen hier Sessions und Übungen vorn — beim
+            Wechsel zwischen den beiden Tabs sprang damit jede Zahl an eine
+            andere Stelle, obwohl zwei davon dasselbe meinen. Sessions und
+            Übungen zählen etwas anderes als eine Wertung und stehen deshalb
+            als Zeile darunter. Eine Erfolgsquote über ALLE Übungen zusammen
+            sagt nichts (Ruben) — die gibt es nur je Übung. */}
         {totalCount > 0 && (() => {
           const pm = new Map((data.programs || []).map(p => [p.id, p]));
           const cut = new Date(); cut.setMonth(cut.getMonth() - 12);
@@ -9025,16 +9030,22 @@ function TrainingView({ data, setData, setView, profile = null, myUserId = null 
           const recent = runs.filter(x => x.date >= cutoff);
           const avg = recent.length ? recent.reduce((sum, x) => sum + x.v, 0) / recent.length : null;
           const last = runs.length ? runs[runs.length - 1] : null;
-          return (
+          const best = runs.length ? runs.reduce((a, b) => (b.v > a.v ? b : a)) : null;
+          return (<>
             <div className="grid grid-cols-2 gap-3">
-              <MetricCard accent="sky" icon={Dumbbell} label="Sessions" value={String(trainTopStats.sessionCount)} sub={t('common.total')} />
-              <MetricCard accent="amber" icon={Activity} label="Übungen" value={String(trainTopStats.exCount)} sub={t('stats.trained')} />
+              <MetricCard accent="amber" icon={Trophy} label={t('dashboard.bestScore')} value={best ? best.v.toFixed(2) : '—'}
+                sub={best ? formatDateShort(best.date) : '—'} />
               <MetricCard accent="violet" icon={TrendingUp} label={t('training.avg12Months')} value={avg != null ? avg.toFixed(2) : '—'}
                 sub={recent.length === 1 ? '1 Trainingsprogramm' : recent.length + ' Trainingsprogramme'} />
               <MetricCard accent="emerald" icon={Calendar} label={t('common.last')} value={last ? last.v.toFixed(2) : '—'}
                 sub={last ? formatDateShort(last.date) : 'noch keine Wertung'} />
+              <MetricCard accent="sky" icon={Target} label={t('common.scores')} value={String(runs.length)}
+                sub={t('training.runs')} subLines={2} />
             </div>
-          );
+            <p className="px-1 text-[12px] text-[#8E8E93]">
+              {trainTopStats.sessionCount} Sessions · {trainTopStats.exCount} {t('nav.uebungen')} {t('stats.trained')}
+            </p>
+          </>);
         })()}
 
         {/* ÜBUNGEN — kompakter, primärer Einstieg (keine Rohdaten) */}
@@ -15971,19 +15982,44 @@ function WettkampfView({ data, setData, dbAthletes, myUserId = null, profile = n
         {competitions.length === 0 ? (
           <EmptyState title={t('competition.none')} hint={t('competition.recordFirstNew')} />
         ) : (<>
-          {/* OVERVIEW — getönte Karten */}
-          <div className="grid grid-cols-2 gap-3">
-            <MetricCard accent="amber" icon={Trophy} label={t('dashboard.bestScore')} value={stats.best ? stats.best.final.toFixed(2) : '—'} sub={stats.best ? stats.best.c.name : '—'} subLines={2} />
-            <MetricCard accent="violet" icon={TrendingUp} label={t('competition.lowestDeduction')} value={stats.minDed ? stats.minDed.ded.toFixed(2) : '—'} sub={stats.minDed ? stats.minDed.c.name : '—'} subLines={2} />
-            <MetricCard accent="sky" icon={Target} label="Wettkämpfe" value={String(competitions.length)} sub={stats.last ? formatDateShort(stats.last.c.date) : '—'} />
-            <MetricCard accent="emerald" icon={Calendar} label={String(currentYear)} value={String(thisYearCount)} sub={thisYearCount === 1 ? 'Wettkampf' : 'Wettkämpfe'} />
-          </div>
+          {/* OVERVIEW — getönte Karten.
+              DIESELBEN VIER WIE IM TRAINING (03.11.): Bestleistung · Ø 12
+              Monate · Letzter · Anzahl. „Geringster Abzug" und das laufende
+              Jahr waren hier die einzigen beiden Kacheln ohne Gegenstück im
+              Training; der geringste Abzug steht jetzt unter dem Verlauf,
+              genau wie in der nativen App. */}
+          {(() => {
+            const cut = new Date(); cut.setMonth(cut.getMonth() - 12);
+            const cutoff = cut.toISOString().slice(0, 10);
+            const recent = withFinal.filter(x => (x.c.date || '') >= cutoff);
+            const avg12 = recent.length ? recent.reduce((s, x) => s + x.final, 0) / recent.length : null;
+            return (
+              <div className="grid grid-cols-2 gap-3">
+                <MetricCard accent="amber" icon={Trophy} label={t('dashboard.bestScore')} value={stats.best ? stats.best.final.toFixed(2) : '—'} sub={stats.best ? stats.best.c.name : '—'} subLines={2} />
+                <MetricCard accent="violet" icon={TrendingUp} label={t('training.avg12Months')} value={avg12 != null ? avg12.toFixed(2) : '—'}
+                  sub={recent.length === 1 ? '1 ' + t('competition.competitions') : recent.length + ' ' + t('competition.competitions')} />
+                <MetricCard accent="emerald" icon={Calendar} label={t('common.last')} value={stats.last && stats.last.final != null ? stats.last.final.toFixed(2) : '—'}
+                  sub={stats.last ? formatDateShort(stats.last.c.date) : '—'} />
+                <MetricCard accent="sky" icon={Target} label={t('competition.competitions')} value={String(competitions.length)}
+                  sub={thisYearCount + ' ' + String(currentYear)} />
+              </div>
+            );
+          })()}
 
           {/* VERLAUF */}
           {withFinal.length >= 2 && (
             <div className="card-surface rounded-[22px] p-4 space-y-2">
               <h2 className="text-[15px] font-semibold flex items-center gap-2"><TrendingUp size={16} className="text-[#FF9500]" /> {t('common.history')}</h2>
               <CompetitionTrendChart competitions={competitions} programs={programs} best={stats.best ? { competition: stats.best.c, final: stats.best.final } : null} onTapWettkampf={() => { }} bare />
+              {stats.minDed && (
+                <div className="flex items-center justify-between gap-3 pt-2 border-t border-black/5 dark:border-white/10">
+                  <span className="text-[13px] text-[#8E8E93]">{t('competition.lowestDeduction')}</span>
+                  <span className="text-right">
+                    <span className="text-[15px] font-semibold tabular-nums">{stats.minDed.ded.toFixed(2)}</span>
+                    <span className="block text-[11px] text-[#8E8E93] truncate max-w-[180px]">{stats.minDed.c.name}</span>
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
