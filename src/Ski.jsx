@@ -107,6 +107,8 @@ const CSS = `
 .ski-lodge-a{color:#fff;text-decoration:none;border-bottom:1px solid rgba(255,255,255,.35)}
 .ski-lodge svg{display:inline-block}
 .ski-lodge-a svg{vertical-align:-1px;opacity:.7;margin-left:2px}
+.ski-lodge-btn{display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:9px 14px;border-radius:999px;background:#fff;color:#0B1F3A;font-size:14px;font-weight:800;text-decoration:none;-webkit-tap-highlight-color:transparent}
+.ski-lodge-btn:active{transform:scale(.97)}
 .ski-lodge-price{margin-top:4px;font-size:15px;color:rgba(255,255,255,.8)}
 .ski-lodge-price b{font-size:22px;font-weight:800;color:#4ADE80;margin-right:4px}
 .ski-tri{display:flex;gap:14px;align-items:flex-start;margin-top:14px;padding:16px 18px;border-radius:20px;text-decoration:none;color:#fff;background:linear-gradient(135deg,rgba(45,212,191,.22),rgba(45,212,191,.06));border:1px solid rgba(45,212,191,.5);transition:transform .12s;-webkit-tap-highlight-color:transparent}
@@ -383,6 +385,11 @@ function Lodgings({ lodgings, likes, short, name, dev, onAdd, onDelete, onLike }
                 {l.persons ? <><Users size={12} style={{ verticalAlign: '-1px' }} /> {l.persons} Personen</> : null}
               </div>
               {l.note && <div className="ski-names" style={{ color: 'rgba(255,255,255,.8)' }}>{l.note}</div>}
+              {l.url && (
+                <a href={l.url} target="_blank" rel="noopener noreferrer" className="ski-lodge-btn">
+                  Angebot ansehen <ExternalLink size={14} strokeWidth={2.6} />
+                </a>
+              )}
               <div className="ski-names">von {short(l.name)}{l.ls.length > 0 && <> · 👍 {l.ls.map(x => x.name).join(', ')}</>}</div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
