@@ -107,6 +107,23 @@ export const SKI_TRIP = {
     },
   ],
 
+  // Unterkünfte, die der Organisator fest einträgt. Sie erscheinen zusätzlich
+  // zu den Einträgen, die andere über die Seite machen. `id` nie ändern —
+  // die Daumen hoch hängen daran. price_total in Euro, null = noch offen.
+  lodgings: [
+    {
+      id: 'cfg-tieflehner-hof',
+      name: 'Ruben Geyer',
+      title: 'Tieflehner Hof',
+      // genau der Link aus Booking (mit Zimmerauswahl), nicht kürzen
+      url: 'https://www.booking.com/hotel/at/tieflehner-hof.de.html?aid=304142&label=mkt123sc-2657e387-49dd-4d1d-81f3-f7817d37df47&sid=c76b6491ccf056e6290cd54d50d85e7a&all_sr_blocks=28078632_447073156_4_17_0_795120%2C28078632_447073156_4_17_0_795120%2C28078641_447073156_6_17_0_795120&checkin=2027-01-29&checkout=2027-01-31&dest_id=-1991873&dest_type=city&dist=0&group_adults=14&group_children=0&hapos=1&highlighted_blocks=28078632_447073156_4_17_0_795120%2C28078632_447073156_4_17_0_795120%2C28078641_447073156_6_17_0_795120&hpos=1&matching_block_id=28078632_447073156_4_17_0_795120&no_rooms=1&req_adults=14&req_children=0&room1=A%2CA%2CA%2CA%2CA%2CA%2CA%2CA%2CA%2CA%2CA%2CA%2CA%2CA&sb_price_type=total&sr_order=popularity&sr_pri_blocks=28078632_447073156_4_17_0_795120_97455%2C28078632_447073156_4_17_0_795120_97455%2C28078641_447073156_6_17_0_795120_151892&srepoch=1794341086&srpvid=516a758aecb49ead3b95c2004ca937f6&type=total&ucfs=1&',
+      price_total: null,
+      persons: 14,
+      note: 'Booking-Angebot: Fr 29.1. – So 31.1.2027 (2 Nächte), 14 Personen',
+      created_at: '2026-11-10T00:00:00Z',
+    },
+  ],
+
   // Tricount-Box auf der Ergebnis-Seite. Erscheint nur, wenn `url` gesetzt ist.
   tricount: {
     url: 'https://tricount.com/tqoqjHpzgEfgktMAgf',   // Link aus der Tricount-App („Teilen")
