@@ -6569,10 +6569,22 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
     } finally { setBusy(false); }
   };
 
-  // Apple-Login im Web vorerst AUS: Supabase fehlt noch die Services-ID samt
-  // Geheimnis fürs Web („Unsupported provider: missing OAuth secret"). Sobald
-  // das eingerichtet ist, hier auf true stellen — Knopf + „oder"-Linie erscheinen.
-  const APPLE_WEB_LOGIN = false;
+  // Apple-Login im Web: AN seit 10.11.2026. Der Schalter stand seit dem 17.10. auf
+  // false, weil Apple den Anmeldeversuch mit `invalid_client` abwies — und zwar
+  // NICHT, weil die Services-ID fehlte: `com.artcyc.coach.web` lag die ganze Zeit
+  // im Portal. Auf ihr war nur *Sign In with Apple* nie eingeschaltet, also gab es
+  // weder Primary App ID noch Domain noch Rückleitung. Von außen sieht beides
+  // identisch aus; Apple antwortet auf eine unbekannte und auf eine unkonfigurierte
+  // Client-ID mit derselben Meldung.
+  //
+  // Jetzt eingetragen: Primary App ID `com.artcyc.coach`, Domain
+  // `cpxsfctijcsezkspjlxy.supabase.co` (die SUPABASE-Adresse, nicht artcyc.app —
+  // dort landet die Rückleitung), Return-URL `…/auth/v1/callback`.
+  // Nach dem Speichern dauert es rund eine halbe Minute, bis Apple die Änderung
+  // kennt; die erste Probe direkt danach schlägt noch fehl.
+  //
+  // Gilt damit auch für Android: die dortige App IST diese Web-App.
+  const APPLE_WEB_LOGIN = true;
 
   // Mit Apple anmelden (Parität zu iOS). Im Web läuft das über die Weiterleitung zu
   // Apple und zurück auf `redirectTo` — anders als nativ, wo das Gerät den Token
