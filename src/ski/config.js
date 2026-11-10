@@ -107,6 +107,22 @@ export const SKI_TRIP = {
     },
   ],
 
+  // Unterkünfte, die der Organisator fest einträgt. Sie erscheinen zusätzlich
+  // zu den Einträgen, die andere über die Seite machen. `id` nie ändern —
+  // die Daumen hoch hängen daran. price_total in Euro, null = noch offen.
+  lodgings: [
+    {
+      id: 'cfg-tieflehner-hof',
+      name: 'Ruben Geyer',
+      title: 'Tieflehner Hof',
+      url: 'https://www.booking.com/hotel/at/tieflehner-hof.de.html?checkin=2027-01-29&checkout=2027-01-31&group_adults=14&group_children=0&no_rooms=1',
+      price_total: null,
+      persons: 14,
+      note: 'Booking-Angebot: Fr 29.1. – So 31.1.2027 (2 Nächte), 14 Personen',
+      created_at: '2026-11-10T00:00:00Z',
+    },
+  ],
+
   // Tricount-Box auf der Ergebnis-Seite. Erscheint nur, wenn `url` gesetzt ist.
   tricount: {
     url: 'https://tricount.com/tqoqjHpzgEfgktMAgf',   // Link aus der Tricount-App („Teilen")

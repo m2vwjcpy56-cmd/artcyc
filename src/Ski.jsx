@@ -646,7 +646,7 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, lodgings, my
       <div className="ski-sec">Planung</div>
 
       {/* Unterkünfte */}
-      <Lodgings lodgings={lodgings} likes={likes} short={short} name={name} dev={dev}
+      <Lodgings lodgings={[...(trip.lodgings || []), ...lodgings]} likes={likes} short={short} name={name} dev={dev}
         onAdd={onAddLodging} onDelete={onDeleteLodging} onLike={onLike} />
 
       {/* Tricount — nur wenn in config.js ein Link hinterlegt ist */}
