@@ -440,8 +440,82 @@ function Datenschutz() {
         <div><div className="font-semibold">3. Hosting & Speicherung</div><p>Die App wird über Vercel ausgeliefert; Daten werden bei Supabase (Rechenzentrum EU) gespeichert. Mit diesen Anbietern bestehen Verträge zur Auftragsverarbeitung.</p></div>
         <div><div className="font-semibold">4. KI-Funktionen (Scan und KI-Coach)</div><p>Zwei Funktionen der App arbeiten mit einem KI-Dienst. Beim <b>Wertungsbogen-Scan</b> wird das aufgenommene Foto zur automatischen Texterkennung übertragen. Beim <b>KI-Coach</b> werden deine Übungen, Trainings, Wettkämpfe und Programme sowie dein Name übertragen, damit sich die Antwort auf deine Daten beziehen kann; Namen anderer Sportlerinnen und Sportler werden dabei nicht übertragen. Die Übertragung läuft in beiden Fällen über OpenRouter (OpenRouter, Inc., USA) an Google Gemini (Google, auch USA). Die Fotos und Anfragen werden dort nur zur Beantwortung verarbeitet und nicht dauerhaft bei uns gespeichert. Beide Funktionen sind freiwillig; Rechtsgrundlage ist deine Einwilligung bzw. die Vertragserfüllung (Art. 6 Abs. 1 lit. a/b DSGVO). Nutzt du sie nicht, findet diese Übermittlung nicht statt.</p></div>
         <div><div className="font-semibold">5. Zweck & Rechtsgrundlage</div><p>Die Verarbeitung erfolgt zur Vertragserfüllung (Art. 6 Abs. 1 lit. b DSGVO) bzw. auf Grundlage deiner Einwilligung.</p></div>
-        <div><div className="font-semibold">6. Deine Rechte</div><p>Du hast das Recht auf Auskunft, Berichtigung, Löschung und Datenübertragbarkeit. Konto und Daten kannst du jederzeit in der App löschen (Einstellungen → Konto löschen).</p></div>
+        <div><div className="font-semibold">6. Deine Rechte</div><p>Du hast das Recht auf Auskunft, Berichtigung, Löschung und Datenübertragbarkeit. Konto und Daten kannst du jederzeit in der App löschen (Einstellungen → Konto löschen). Wie das geht und was dabei gelöscht wird, steht auf <a href="/konto-loeschen" className="underline">Konto und Daten löschen</a>.</p></div>
         <div><div className="font-semibold">7. Kontakt</div><p>Bei Datenschutz-Fragen: info@artcyc.app.</p></div>
+      </div>
+    </Section>
+  );
+}
+
+// ---- Konto löschen -------------------------------------------------------
+// Pflichtseite für Google Play: Apps mit Konten brauchen eine eigene,
+// ohne Anmeldung erreichbare Adresse, unter der die Löschung angefordert
+// werden kann. Ein Nebensatz in der Datenschutzerklärung reicht Google nicht.
+// Der englische Teil steht mit drin, weil es nur EINE solche Adresse gibt und
+// der Prüfer nicht zwingend Deutsch liest.
+//
+// Inhaltlich muss das hier zur App passen: `delete_my_account` (Postgres-RPC,
+// src/lib/supabase.js) löscht sofort und endgültig, der Papierkorb greift
+// dabei NICHT. Sportler, die man nur betreut, gehören deren eigenem Konto und
+// bleiben. Wer das in der App ändert, ändert bitte auch diese Seite.
+function KontoLoeschen() {
+  return (
+    <Section className="py-14 max-w-3xl">
+      <h1 className="text-[34px] font-bold tracking-tight mb-2">Konto und Daten löschen</h1>
+      <p className="text-[15px] text-slate-500 mb-7">ArtCyc Coach · Ruben Geyer</p>
+
+      <div className="space-y-6 text-[15px] text-slate-700 leading-relaxed">
+        <div>
+          <div className="font-semibold mb-1">In der App (sofort)</div>
+          <p>Öffne <b>Einstellungen → Konto löschen</b> und bestätige. Das Konto und alle
+            zugehörigen Daten werden unmittelbar gelöscht. Es gibt keine Wartezeit und
+            keine Wiederherstellung — auch nicht über den Papierkorb.</p>
+        </div>
+
+        <div>
+          <div className="font-semibold mb-1">Per E-Mail (wenn du dich nicht anmelden kannst)</div>
+          <p>Schreib an <a href="mailto:info@artcyc.app?subject=Konto%20l%C3%B6schen"
+            className="underline">info@artcyc.app</a> von der Adresse, mit der das Konto
+            angelegt wurde. Die Löschung erfolgt innerhalb von 30 Tagen; du bekommst eine
+            Bestätigung.</p>
+        </div>
+
+        <div>
+          <div className="font-semibold mb-1">Was gelöscht wird</div>
+          <ul className="list-disc pl-5 space-y-1 mt-1">
+            <li>Konto samt Name und E-Mail-Adresse</li>
+            <li>Trainings, Wettkämpfe, Übungen und Programme</li>
+            <li>Sportlerinnen und Sportler, die du selbst angelegt hast</li>
+            <li>Inhalte im Papierkorb</li>
+          </ul>
+        </div>
+
+        <div>
+          <div className="font-semibold mb-1">Was bleibt</div>
+          <p>Sportlerinnen und Sportler, die du nur <b>betreust</b>, gehören deren eigenem
+            Konto und bleiben bestehen — du verlierst lediglich den Zugriff. Sicherungskopien
+            der Datenbank werden turnusmäßig überschrieben; bis dahin können Reste darin
+            liegen. Aus ihnen wird nichts wiederhergestellt.</p>
+        </div>
+
+        <div>
+          <div className="font-semibold mb-1">Fragen</div>
+          <p><a href="mailto:info@artcyc.app" className="underline">info@artcyc.app</a> ·
+            weitere Angaben im <a href="/impressum" className="underline">Impressum</a> und
+            in der <a href="/datenschutz" className="underline">Datenschutzerklärung</a>.</p>
+        </div>
+
+        <div className="pt-5 mt-2 border-t border-slate-200 text-[14px] text-slate-600">
+          <div className="font-semibold text-slate-700 mb-1">In English</div>
+          <p>To delete your ArtCyc Coach account and all associated data, open
+            <b> Settings → Delete account</b> in the app and confirm; deletion is immediate
+            and permanent. If you cannot sign in, email <a href="mailto:info@artcyc.app"
+            className="underline">info@artcyc.app</a> from your account address — we delete
+            within 30 days. Deleted: account name and email, trainings, competitions,
+            exercises, programs, athletes you created, and anything in the trash. Kept:
+            athletes you only coach, which belong to their own accounts. Database backups
+            are rotated and overwritten; nothing is restored from them.</p>
+        </div>
       </div>
     </Section>
   );
@@ -470,6 +544,7 @@ function Footer() {
         <div className="flex flex-col gap-1.5 text-[14px]">
           <a href="/impressum" className="text-slate-600 hover:text-slate-900">Impressum</a>
           <a href="/datenschutz" className="text-slate-600 hover:text-slate-900">Datenschutz</a>
+          <a href="/konto-loeschen" className="text-slate-600 hover:text-slate-900">Konto löschen</a>
         </div>
       </div>
       <div className="max-w-6xl mx-auto px-4 pb-8 text-[12px] text-slate-400">© {new Date().getFullYear()} ArtCyc</div>
@@ -480,6 +555,7 @@ function Footer() {
 const PAGES = {
   '/': Home, '/funktionen': Funktionen, '/faq': FAQ,
   '/kontakt': Kontakt, '/impressum': Impressum, '/datenschutz': Datenschutz,
+  '/konto-loeschen': KontoLoeschen,
 };
 
 export default function Landing() {
