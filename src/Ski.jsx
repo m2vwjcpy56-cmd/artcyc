@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { ArrowLeft, ArrowRight, Check, ThumbsUp, Share2, RefreshCw, Pencil, Trophy, Plus, X, Home, ExternalLink, Users, Wallet } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ThumbsUp, Share2, RefreshCw, Pencil, Trophy, Plus, X, Home, ExternalLink, Users, Wallet, ChevronDown, MapPin, Car, Star, Mountain } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { SKI_TRIP, canonicalVotes, canonicalName } from './ski/config.js';
 import { groupSuggestions } from '../supabase/functions/_shared/ski-suggest.ts';
@@ -111,6 +111,55 @@ const CSS = `
 .ski-lodge-btn:active{transform:scale(.97)}
 .ski-lodge-price{margin-top:4px;font-size:15px;color:rgba(255,255,255,.8)}
 .ski-lodge-price b{font-size:22px;font-weight:800;color:#4ADE80;margin-right:4px}
+/* Zusatz-Felder der fest eingetragenen Unterkünfte (ort/gebiet/einheiten/urteil).
+   Einträge, die jemand über die Seite anlegt, haben sie nicht — dann fällt die
+   jeweilige Zeile einfach weg. */
+.ski-lodge-badge{display:inline-block;font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;background:#4ADE80;color:#0B1F3A;margin-bottom:6px}
+.ski-lodge-badge.warn{background:rgba(248,113,113,.2);color:#FEE2E2;border:1px solid rgba(248,113,113,.5)}
+.ski-meta{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:13px;color:rgba(255,255,255,.65)}
+.ski-meta span{display:inline-flex;align-items:center;gap:4px}
+.ski-meta svg{opacity:.6;flex-shrink:0}
+/* Kompakte Zeile: neun Vorschläge sollen auf einen Blick vergleichbar sein.
+   Alles Ausführliche steckt im Aufklappen. */
+/* Name über die volle Breite, darunter Preis + Kurzdaten nebeneinander —
+   sonst quetscht der Daumen-Knopf lange Namen auf drei Zeilen. */
+.ski-lz{display:grid;grid-template-columns:auto 1fr auto;column-gap:10px;row-gap:4px;width:100%;background:none;border:0;padding:0;color:inherit;text-align:left;font:inherit;-webkit-tap-highlight-color:transparent}
+.ski-lz .nm{grid-column:1 / -1;font-size:16px;font-weight:700;line-height:1.25;min-width:0}
+.ski-lz .pr{font-size:21px;font-weight:800;color:#4ADE80;font-variant-numeric:tabular-nums;white-space:nowrap;align-self:center}
+.ski-lz .cv{opacity:.55;transition:transform .2s;align-self:center}
+.ski-lz .cv.up{transform:rotate(180deg)}
+.ski-lz .mt{font-size:12.5px;color:rgba(255,255,255,.6);line-height:1.3;align-self:center;min-width:0}
+.ski-lz .mt.voll{grid-column:1 / -1}
+.ski-lz .dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:#4ADE80;margin-right:6px;vertical-align:1px}
+.ski-lz .dot.warn{background:#F87171}
+.ski-sort{display:flex;gap:6px;margin:-2px 0 12px;flex-wrap:wrap}
+.ski-sort button{padding:5px 11px;border-radius:999px;font-size:12.5px;font-weight:600;border:1px solid rgba(255,255,255,.2);background:transparent;color:rgba(255,255,255,.7);-webkit-tap-highlight-color:transparent}
+.ski-sort button.on{background:#fff;color:#0B1F3A;border-color:#fff}
+.ski-detail{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.12)}
+.ski-geb{margin-top:8px;font-size:13.5px;line-height:1.45;color:rgba(255,255,255,.8);padding-left:10px;border-left:2px solid rgba(255,255,255,.2)}
+.ski-units{list-style:none;margin:9px 0 0;padding:0;display:flex;flex-direction:column;gap:3px}
+.ski-units li{font-size:13.5px;line-height:1.35;color:rgba(255,255,255,.85);padding-left:16px;position:relative}
+.ski-units li::before{content:'';position:absolute;left:3px;top:7px;width:5px;height:5px;border-radius:999px;background:rgba(255,255,255,.45)}
+.ski-urteil{margin-top:9px;font-size:13.5px;line-height:1.5;color:rgba(255,255,255,.72)}
+/* Skigebiete-Kasten */
+.ski-geb-grid{display:flex;flex-direction:column;gap:12px;margin-top:4px}
+.ski-pass{border-radius:16px;padding:13px 15px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12)}
+.ski-pass .nm{font-size:16px;font-weight:800}
+.ski-pass .gr{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-top:4px}
+.ski-pass .sb{font-size:13px;color:rgba(255,255,255,.6);margin-top:1px}
+.ski-pass ul{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:1px}
+.ski-pass li{display:flex;justify-content:space-between;gap:10px;font-size:13.5px;padding:4px 0;border-top:1px solid rgba(255,255,255,.08)}
+.ski-pass li span:last-child{color:rgba(255,255,255,.6);white-space:nowrap;font-variant-numeric:tabular-nums}
+.ski-pass .vb{margin-top:10px;font-size:13px;line-height:1.5;padding:9px 11px;border-radius:12px}
+.ski-pass .vb.ja{background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.35);color:#DCFCE7}
+.ski-pass .vb.nein{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:#FEF3C7}
+.ski-drive{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:7px 0;border-top:1px solid rgba(255,255,255,.1)}
+.ski-drive:first-of-type{border-top:0}
+.ski-drive b{font-weight:600}
+.ski-drive .z{font-weight:700;font-variant-numeric:tabular-nums}
+.ski-drive .k{color:rgba(255,255,255,.45);font-variant-numeric:tabular-nums;min-width:58px;text-align:right}
+.ski-fuss{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:7px}
+.ski-fuss li{font-size:12.5px;line-height:1.5;color:rgba(255,255,255,.5)}
 .ski-tri{display:flex;gap:14px;align-items:flex-start;margin-top:14px;padding:16px 18px;border-radius:20px;text-decoration:none;color:#fff;background:linear-gradient(135deg,rgba(45,212,191,.22),rgba(45,212,191,.06));border:1px solid rgba(45,212,191,.5);transition:transform .12s;-webkit-tap-highlight-color:transparent}
 .ski-tri:active{transform:scale(.98)}
 .ski-tri .ic{width:44px;height:44px;border-radius:13px;background:#0F766E;display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -358,59 +407,196 @@ function LodgingForm({ onAdd, onCancel }) {
   );
 }
 
-function Lodgings({ lodgings, likes, short, name, dev, onAdd, onDelete, onLike }) {
+// „2:35 h" → 155. Fürs Sortieren nach Anfahrt; ohne Angabe ganz nach hinten.
+function fahrMin(s) {
+  const m = /(\d+):(\d+)/.exec(String(s || ''));
+  return m ? Number(m[1]) * 60 + Number(m[2]) : 1e9;
+}
+
+const SORTEN = [
+  { id: 'rang', label: 'Empfohlen', cmp: (a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9) || (a.per ?? 1e9) - (b.per ?? 1e9) },
+  { id: 'preis', label: 'Preis', cmp: (a, b) => (a.per ?? 1e9) - (b.per ?? 1e9) },
+  { id: 'fahrt', label: 'Fahrzeit', cmp: (a, b) => fahrMin(a.fahrzeit) - fahrMin(b.fahrzeit) },
+  { id: 'note', label: 'Note', cmp: (a, b) => (b.rating ?? -1) - (a.rating ?? -1) },
+];
+
+// Eine Unterkunft: zugeklappt eine Zeile zum Vergleichen, aufgeklappt alles.
+// Neun ausgeschriebene Karten untereinander kann niemand überblicken.
+function Lodge({ l, short, name, dev, votable, onDelete, onLike }) {
+  const [auf, setAuf] = useState(false);
+  // „2× Ferienhaus …" zählt als zwei Einheiten — die Zahl steht vorn im Text.
+  const zahl = l.einheiten?.reduce((n, e) => n + (Number(/^(\d+)×/.exec(e)?.[1]) || 1), 0) || 0;
+  // Einheiten zuerst: „nicht auf sieben Doppelzimmer verteilt" ist die Frage,
+  // um die es geht — der Preis steht ohnehin schon links daneben.
+  const meta = [zahl ? `${zahl} ${zahl === 1 ? 'Einheit' : 'Einheiten'}` : null,
+    l.ort, l.fahrzeit, l.rating ? `★ ${Number(l.rating).toFixed(1).replace('.', ',')}` : null]
+    .filter(Boolean).join(' · ');
+  return (
+    <div className="ski-lodge">
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <button type="button" className="ski-lz" onClick={() => setAuf(o => !o)} aria-expanded={auf}>
+          <span className="nm">
+            {l.badge?.text && <span className={cx('dot', l.badge.art === 'warn' && 'warn')} />}
+            {l.title}
+          </span>
+          {l.per != null && <span className="pr">{eur(Math.round(l.per))}</span>}
+          <span className="mt">{meta}</span>
+          <ChevronDown size={18} className={cx('cv', auf && 'up')} />
+          {l.note && !auf && <span className="mt voll" style={{ color: 'rgba(255,255,255,.45)' }}>{l.note}</span>}
+        </button>
+        {votable && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+            <button type="button" className={cx('ski-like', l.on && 'on')} onClick={() => onLike([l.id], l.on)} aria-label="Daumen hoch" disabled={!name.trim()}>
+              <ThumbsUp size={15} strokeWidth={2.4} /> {l.ls.length}
+            </button>
+            {l.device === dev && l.ls.length === 0 && (
+              <button type="button" className="ski-del" onClick={() => onDelete(l.id)} aria-label="Eigene Unterkunft löschen"><X size={16} strokeWidth={2.6} /></button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {auf && (
+        <div className="ski-detail">
+          {l.badge?.text && <div className={cx('ski-lodge-badge', l.badge.art === 'warn' && 'warn')}>{l.badge.text}</div>}
+          <div className="ski-names" style={{ marginTop: 0 }}>
+            {l.price_total != null && <>Gesamt {eur(Number(l.price_total))}</>}
+            {l.price_total != null && l.persons ? ' · ' : ''}
+            {l.persons ? <><Users size={12} style={{ verticalAlign: '-1px' }} /> {l.persons} Personen</> : null}
+            {l.reviews ? ` · ${l.reviews} Bewertungen` : ''}
+          </div>
+          {l.note && <div className="ski-names" style={{ color: 'rgba(255,255,255,.8)' }}>{l.note}</div>}
+          {l.gebiet && <div className="ski-geb">{l.gebiet}</div>}
+          {l.einheiten?.length > 0 && (
+            <ul className="ski-units">{l.einheiten.map((e, k) => <li key={k}>{e}</li>)}</ul>
+          )}
+          {l.urteil && <div className="ski-urteil">{l.urteil}</div>}
+          {l.url && (
+            <a href={l.url} target="_blank" rel="noopener noreferrer" className="ski-lodge-btn">
+              Auf Booking ansehen <ExternalLink size={14} strokeWidth={2.6} />
+            </a>
+          )}
+          <div className="ski-names">von {short(l.name)}{l.ls.length > 0 && <> · 👍 {l.ls.map(x => x.name).join(', ')}</>}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Lodgings({ lodgings, likes, short, name, dev, intro, titel, votable = true, onAdd, onDelete, onLike }) {
   const [open, setOpen] = useState(false);
-  const list = useMemo(() => lodgings.map(l => {
-    const ls = likes[l.id] || [];
-    const per = l.price_total != null && l.persons ? Number(l.price_total) / l.persons : null;
-    return { ...l, ls, on: ls.some(x => x.mine), per };
-  }).sort((a, b) => b.ls.length - a.ls.length || (a.per ?? 1e9) - (b.per ?? 1e9)), [lodgings, likes]);
+  const [sorte, setSorte] = useState('rang');
+  // Daumen hoch schlagen jede Sortierung — was der Gruppe gefällt, steht oben.
+  // Ohne Stimmen entscheidet die gewählte Sortierung; `rank` kommt aus der
+  // Config, weil der Billigste hier der mit der längsten Anfahrt ist.
+  const list = useMemo(() => {
+    const cmp = (SORTEN.find(s => s.id === sorte) || SORTEN[0]).cmp;
+    return lodgings.map(l => {
+      const ls = likes[l.id] || [];
+      const per = l.price_total != null && l.persons ? Number(l.price_total) / l.persons : null;
+      return { ...l, ls, on: ls.some(x => x.mine), per };
+    }).sort((a, b) => (votable ? b.ls.length - a.ls.length : 0) || cmp(a, b));
+  }, [lodgings, likes, sorte, votable]);
   return (
     <div className="ski-card">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Home size={14} /> Unterkünfte · {list.length}</h3>
-      {list.length === 0 && !open && <div style={{ fontSize: 15, color: 'rgba(255,255,255,.6)' }}>Noch keine Unterkunft eingetragen.</div>}
-      {list.map((l, i) => (
-        <div key={l.id} className="ski-lodge" style={{ marginTop: i ? 12 : 0 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.25 }}>
-                {l.url ? <a href={l.url} target="_blank" rel="noopener noreferrer" className="ski-lodge-a">{l.title} <ExternalLink size={14} /></a> : l.title}
-              </div>
-              {l.per != null && (
-                <div className="ski-lodge-price"><b>{eur(l.per, l.per % 1 ? 2 : 0)}</b> pro Person</div>
-              )}
-              <div className="ski-names" style={{ marginTop: 2 }}>
-                {l.price_total != null && <>Gesamt {eur(Number(l.price_total))}</>}
-                {l.price_total != null && l.persons ? ' · ' : ''}
-                {l.persons ? <><Users size={12} style={{ verticalAlign: '-1px' }} /> {l.persons} Personen</> : null}
-              </div>
-              {l.note && <div className="ski-names" style={{ color: 'rgba(255,255,255,.8)' }}>{l.note}</div>}
-              {l.url && (
-                <a href={l.url} target="_blank" rel="noopener noreferrer" className="ski-lodge-btn">
-                  Angebot ansehen <ExternalLink size={14} strokeWidth={2.6} />
-                </a>
-              )}
-              <div className="ski-names">von {short(l.name)}{l.ls.length > 0 && <> · 👍 {l.ls.map(x => x.name).join(', ')}</>}</div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-              <button type="button" className={cx('ski-like', l.on && 'on')} onClick={() => onLike([l.id], l.on)} aria-label="Daumen hoch" disabled={!name.trim()}>
-                <ThumbsUp size={15} strokeWidth={2.4} /> {l.ls.length}
-              </button>
-              {l.device === dev && l.ls.length === 0 && (
-                <button type="button" className="ski-del" onClick={() => onDelete(l.id)} aria-label="Eigene Unterkunft löschen"><X size={16} strokeWidth={2.6} /></button>
-              )}
-            </div>
-          </div>
+      <h3 style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Home size={14} /> {titel || 'Unterkünfte'} · {list.length}</h3>
+      {intro && <div className="ski-names" style={{ margin: '-4px 0 12px', fontSize: 14 }}>{intro}</div>}
+      {list.length > 2 && (
+        <div className="ski-sort">
+          {SORTEN.map(s => (
+            <button key={s.id} type="button" className={cx(sorte === s.id && 'on')} onClick={() => setSorte(s.id)}>{s.label}</button>
+          ))}
         </div>
-      ))}
-      {name.trim() && (open
+      )}
+      {list.length === 0 && !open && <div style={{ fontSize: 15, color: 'rgba(255,255,255,.6)' }}>Noch keine Unterkunft eingetragen.</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {list.map(l => (
+          <Lodge key={l.id} l={l} short={short} name={name} dev={dev} votable={votable}
+            onDelete={onDelete} onLike={onLike} />
+        ))}
+      </div>
+      {votable && name.trim() && (open
         ? <LodgingForm onAdd={async (row) => { const ok = await onAdd(row); if (ok) setOpen(false); return ok; }} onCancel={() => setOpen(false)} />
         : <button type="button" className="ski-btn ghost" onClick={() => setOpen(true)} style={{ width: '100%', marginTop: 14, padding: '12px 18px', fontSize: 16 }}><Plus size={17} strokeWidth={2.6} /> Unterkunft eintragen</button>)}
     </div>
   );
 }
 
+// ---- Skigebiete & Anfahrt -------------------------------------------------
+// Zugeklappt, weil es Hintergrund ist und nicht das, worüber abgestimmt wird.
+// Inhalt kommt vollständig aus `trip.regions` (src/ski/config.js).
+function Regions({ r }) {
+  const [open, setOpen] = useState(false);
+  if (!r?.passes?.length) return null;
+  return (
+    <div className="ski-card">
+      <button type="button" className="ski-acc-h" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,.6)' }}>
+            <Mountain size={14} /> {r.title || 'Skigebiete'}
+          </span>
+          {r.teaser && <span className="sum">{r.teaser}</span>}
+        </span>
+        <ChevronDown size={20} className={cx('chev', open && 'up')} />
+      </button>
+
+      {open && (
+        <div style={{ marginTop: 16 }}>
+          {r.lead && <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.55, color: 'rgba(255,255,255,.85)' }}>{r.lead}</p>}
+
+          <div className="ski-geb-grid">
+            {r.passes.map(p => (
+              <article key={p.name} className="ski-pass">
+                <div className="nm">{p.name}</div>
+                <div className="gr">{p.gross}</div>
+                <div className="sb">{p.sub}</div>
+                <ul>
+                  {p.areas.map(([a, km]) => <li key={a}><span>{a}</span><span>{km}</span></li>)}
+                </ul>
+                <div className={cx('vb', p.verbunden ? 'ja' : 'nein')}>
+                  <b>{p.verbunden ? 'Durchgehend mit dem Lift befahrbar.' : 'Nicht per Lift verbunden.'}</b>{' '}{p.text}
+                </div>
+              </article>
+            ))}
+          </div>
+
+          {r.drives?.length > 0 && (
+            <>
+              <div style={{ marginTop: 20, fontSize: 13, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,.6)' }}>Fahrzeit ab Denkendorf</div>
+              <div style={{ marginTop: 8 }}>
+                {r.drives.map(d => (
+                  <div key={d.ort} className="ski-drive"><b>{d.ort}</b><span style={{ flex: 1 }} /><span className="z">{d.zeit}</span><span className="k">{d.km}</span></div>
+                ))}
+              </div>
+              <div className="ski-names" style={{ marginTop: 8 }}>Ohne Verkehr gerechnet. Freitagnachmittag im Januar kommen 10–20 % dazu.</div>
+            </>
+          )}
+
+          {r.notes?.length > 0 && (
+            <>
+              <div style={{ marginTop: 20, fontSize: 13, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,.6)' }}>Woher die Zahlen kommen</div>
+              <ul className="ski-fuss">{r.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Sollen die fest eingetragenen Vorschläge gezeigt werden? Erst wenn in der
+// Config freigegeben — oder beim Aufruf mit `/ski?unterkuenfte`, damit der
+// Organisator sie ansehen kann, bevor die Gruppe sie zu Gesicht bekommt.
+function vorschlaegeSichtbar(trip) {
+  if (trip.lodgingsPublic) return true;
+  try { return new URLSearchParams(location.search).has('unterkuenfte'); } catch { return false; }
+}
+
 function Results({ trip, short, name, votes: rawVotes, suggestions, lodgings, myKey, dev, onLike, onAddSuggestion, onDeleteSuggestion, onAddLodging, onDeleteLodging, onEdit, onSwitchName, justSubmitted, onShare, copied, status, onReload }) {
+  const vorschlaege = useMemo(() => vorschlaegeSichtbar(trip), [trip]);
+  // Vorschau = über `?unterkuenfte` geöffnet, aber für die Gruppe noch nicht
+  // freigegeben. Nur dort wird die Abstimmung ausgeblendet.
+  const vorschau = vorschlaege && !trip.lodgingsPublic;
   // Wer abgesagt hat (dabei = nein), zählt bei Terminen und Zusatztag nicht mit —
   // auch wenn noch alte Antworten von vor der Absage gespeichert sind.
   const votes = useMemo(() => {
@@ -652,9 +838,31 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, lodgings, my
 
       <div className="ski-sec">Planung</div>
 
-      {/* Unterkünfte */}
-      <Lodgings lodgings={[...(trip.lodgings || []), ...lodgings]} likes={likes} short={short} name={name} dev={dev}
+      {/* Unterkünfte. Die recherchierten Vorschläge aus der Config erscheinen
+          nur, wenn sie freigegeben sind (siehe `vorschlaegeSichtbar`) — sonst
+          steht hier nur, was Leute selbst eingetragen haben. */}
+      <Lodgings lodgings={[...(vorschlaege ? trip.lodgings || [] : []), ...lodgings]}
+        likes={likes} short={short} name={name} dev={dev}
+        // Nur in der Vorschau (`?unterkuenfte`, noch nicht freigegeben) keine
+        // Daumen: dort wird gesichtet, nicht abgestimmt — und die Knöpfe
+        // quetschen die Vergleichszeilen. Die normale Ansicht bleibt wählbar.
+        votable={!vorschau}
+        intro={vorschau
+          ? 'Alles auf Booking Verfügbare für Fr 29.1. – Mo 1.2.2027, 14 Personen in einer Buchung. Zeile antippen für Details.'
+          : vorschlaege
+            ? 'Fr 29.1. – Mo 1.2.2027, drei Nächte, 14 Personen in einer Buchung. Antippen für Details, Daumen hoch bei allem, womit du leben könntest.'
+            : 'Trag ein, was du gefunden hast. Fr 29.1. – Mo 1.2.2027, drei Nächte, 14 Personen.'}
         onAdd={onAddLodging} onDelete={onDeleteLodging} onLike={onLike} />
+
+      {/* Skigebiete & Anfahrt — Hintergrund zu den Vorschlägen, zugeklappt */}
+      {vorschlaege && <Regions r={trip.regions} />}
+      {vorschlaege && !trip.lodgingsPublic && (
+        <div className="ski-note" style={{ fontSize: 13 }}>
+          Vorschauansicht: Die {trip.lodgings?.length || 0} recherchierten Vorschläge und der Skigebiete-Kasten
+          sind nur über <code>/ski?unterkuenfte</code> zu sehen. Für die Gruppe freigeben:
+          in <code>src/ski/config.js</code> <code>lodgingsPublic: true</code> setzen.
+        </div>
+      )}
 
       {/* Tricount — nur wenn in config.js ein Link hinterlegt ist */}
       {trip.tricount?.url && /^https?:\/\//i.test(trip.tricount.url) && (
