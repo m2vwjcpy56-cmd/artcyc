@@ -123,17 +123,44 @@ const CSS = `
    Alles Ausführliche steckt im Aufklappen. */
 /* Name über die volle Breite, darunter Preis + Kurzdaten nebeneinander —
    sonst quetscht der Daumen-Knopf lange Namen auf drei Zeilen. */
-.ski-lz{display:grid;grid-template-columns:auto 1fr auto;column-gap:10px;row-gap:4px;width:100%;background:none;border:0;padding:0;color:inherit;text-align:left;font:inherit;-webkit-tap-highlight-color:transparent}
-.ski-lz .nm{grid-column:1 / -1;font-size:16px;font-weight:700;line-height:1.25;min-width:0}
-.ski-lz .pr{font-size:21px;font-weight:800;color:#4ADE80;font-variant-numeric:tabular-nums;white-space:nowrap;align-self:center}
-.ski-lz .cv{opacity:.55;transition:transform .2s;align-self:center}
+/* Zugeklappte Zeile: Flex-Spalte statt Grid. Im Grid hat der lange Name die
+   Spalten auseinandergezogen und den Rest auf drei Zeilen gequetscht. */
+.ski-lz{display:flex;flex-direction:column;gap:6px;width:100%;background:none;border:0;padding:0;color:inherit;text-align:left;font:inherit;-webkit-tap-highlight-color:transparent}
+.ski-lz .r1{display:flex;align-items:center;gap:8px;width:100%;min-width:0}
+.ski-lz .r2{display:flex;align-items:baseline;gap:10px;width:100%;min-width:0}
+.ski-lz .nm{flex:1;min-width:0;font-size:16px;font-weight:700;line-height:1.25}
+.ski-lz .nt{flex-shrink:0;font-size:12.5px;font-weight:650;color:rgba(255,255,255,.7);white-space:nowrap;font-variant-numeric:tabular-nums}
+.ski-lz .pr{flex-shrink:0;font-size:21px;font-weight:800;color:#4ADE80;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ski-lz .cv{flex-shrink:0;opacity:.55;transition:transform .2s}
 .ski-lz .cv.up{transform:rotate(180deg)}
-.ski-lz .mt{font-size:12.5px;color:rgba(255,255,255,.6);line-height:1.3;align-self:center;min-width:0}
-.ski-lz .mt.voll{grid-column:1 / -1}
+.ski-lz .mt{font-size:12.5px;color:rgba(255,255,255,.6);line-height:1.3;min-width:0}
 .ski-lz .dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:#4ADE80;margin-right:6px;vertical-align:1px}
 .ski-lz .dot.warn{background:#F87171}
-.ski-sort{display:flex;gap:6px;margin:-2px 0 12px;flex-wrap:wrap}
-.ski-sort button{padding:5px 11px;border-radius:999px;font-size:12.5px;font-weight:600;border:1px solid rgba(255,255,255,.2);background:transparent;color:rgba(255,255,255,.7);-webkit-tap-highlight-color:transparent}
+
+/* Skigebiets-Band: welches Gebiet, wie weit, wie groß. Der Balken macht
+   „64 km" und „130 km" vergleichbar — eine nackte Zahl sagt nicht, ob das
+   viel ist. Ampel rechts: grün zu Fuß, orange kurze Fahrt, grau richtig fahren. */
+.ski-geb-band{display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:10px;row-gap:5px;margin-top:2px;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.09)}
+/* Darf umbrechen. Abgeschnitten („Oberstdorf –…") sieht der Name aus wie ein
+   Fehler, und genau dieser Name ist der Grund, warum das Band da ist. */
+.ski-geb-band .gn{font-size:13px;font-weight:650;color:rgba(255,255,255,.9);min-width:0;line-height:1.25}
+.ski-geb-band .gw{font-size:12.5px;font-weight:650;white-space:nowrap}
+.ski-geb-band .gw.nah{color:#4ADE80}
+.ski-geb-band .gw.mittel{color:#FB923C}
+.ski-geb-band .gw.weit{color:rgba(255,255,255,.5)}
+.ski-geb-band .bar{grid-column:1 / -1;display:flex;align-items:center;gap:9px;min-width:0}
+.ski-geb-band .bar .tr{flex:1;min-width:40px;height:6px;border-radius:999px;background:rgba(255,255,255,.12);overflow:hidden}
+.ski-geb-band .bar .fi{display:block;height:100%;border-radius:999px;background:#93C5FD}
+.ski-geb-band .bar .lb{flex-shrink:0;font-size:11.5px;color:rgba(255,255,255,.55);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* Aufgeklappt: Zahlen als Paare statt als Absatz. */
+.ski-kv{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:10px 0 0;font-size:13.5px;line-height:1.4}
+.ski-kv dt{color:rgba(255,255,255,.5);white-space:nowrap}
+.ski-kv dd{margin:0;color:rgba(255,255,255,.9)}
+/* Fünf Knöpfe müssen auf 375 px in EINE Zeile — umgebrochen sehen sie aus wie
+   ein Versehen. Darum knappe Beschriftungen und wenig Polsterung. */
+.ski-sort{display:flex;gap:4px;margin:-2px 0 12px;flex-wrap:wrap}
+.ski-sort button{padding:5px 8px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid rgba(255,255,255,.2);background:transparent;color:rgba(255,255,255,.7);-webkit-tap-highlight-color:transparent}
 .ski-sort button.on{background:#fff;color:#0B1F3A;border-color:#fff}
 .ski-detail{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.12)}
 .ski-geb{margin-top:8px;font-size:13.5px;line-height:1.45;color:rgba(255,255,255,.8);padding-left:10px;border-left:2px solid rgba(255,255,255,.2)}
@@ -416,33 +443,81 @@ function fahrMin(s) {
 const SORTEN = [
   { id: 'rang', label: 'Empfohlen', cmp: (a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9) || (a.per ?? 1e9) - (b.per ?? 1e9) },
   { id: 'preis', label: 'Preis', cmp: (a, b) => (a.per ?? 1e9) - (b.per ?? 1e9) },
-  { id: 'fahrt', label: 'Fahrzeit', cmp: (a, b) => fahrMin(a.fahrzeit) - fahrMin(b.fahrzeit) },
+  { id: 'fahrt', label: 'Fahrt', cmp: (a, b) => fahrMin(a.fahrzeit) - fahrMin(b.fahrzeit) },
+  { id: 'gebiet', label: 'Gebiet', cmp: (a, b) => (b.gebiet?.km ?? -1) - (a.gebiet?.km ?? -1) },
   { id: 'note', label: 'Note', cmp: (a, b) => (b.rating ?? -1) - (a.rating ?? -1) },
 ];
 
-// Eine Unterkunft: zugeklappt eine Zeile zum Vergleichen, aufgeklappt alles.
-// Neun ausgeschriebene Karten untereinander kann niemand überblicken.
+// Volle Balkenbreite = 140 km, die Silvretta Montafon. Fester Bezugswert und
+// nicht das Maximum der Liste: sonst springt die Skala, sobald ein Eintrag
+// dazukommt oder wegfällt, und zwei Screenshots sind nicht mehr vergleichbar.
+const GEBIET_MAX = 140;
+
+// Ampel auf den Weg zum Lift. An den Kilometern festgemacht, nicht an den
+// Minuten: eine Minutenangabe hat nicht jeder Eintrag, einen Kilometerwert
+// schon. Grün = zu Fuß oder um die Ecke, Orange = man fährt ein Stück,
+// Grau = man fährt jeden Morgen richtig hin.
+function wegArt(g) {
+  if (g.fuss) return 'nah';
+  const m = /([\d.,]+)\s*km/.exec(g.weg || '');
+  if (!m) return 'weit';
+  const km = Number(m[1].replace(',', '.'));
+  return km <= 3 ? 'nah' : km <= 12 ? 'mittel' : 'weit';
+}
+
+// Das Skigebiets-Band: welches Gebiet, wie weit, wie groß. Die Balkenlänge
+// macht „64 km" und „130 km" auf einen Blick vergleichbar — eine Zahl allein
+// sagt niemandem, ob das viel ist.
+function Gebietsband({ g, klein }) {
+  const breite = Math.max(3, Math.min(100, Math.round((Number(g.km) / GEBIET_MAX) * 100)));
+  return (
+    <span className={cx('ski-geb-band', klein && 'klein')}>
+      <span className="gn">{g.name}</span>
+      {g.weg && <span className={cx('gw', wegArt(g))}>{g.weg}</span>}
+      <span className="bar">
+        <span className="tr"><span className="fi" style={{ width: breite + '%' }} /></span>
+        <span className="lb">{g.km} km{g.anlagen ? ` · ${g.anlagen} Anlagen` : ''}</span>
+      </span>
+    </span>
+  );
+}
+
+// Eine Unterkunft: zugeklappt drei Zeilen zum Vergleichen, aufgeklappt alles.
+// Ausgeschriebene Karten untereinander kann niemand überblicken.
 function Lodge({ l, short, name, dev, votable, onDelete, onLike }) {
   const [auf, setAuf] = useState(false);
   // „2× Ferienhaus …" zählt als zwei Einheiten — die Zahl steht vorn im Text.
-  const zahl = l.einheiten?.reduce((n, e) => n + (Number(/^(\d+)×/.exec(e)?.[1]) || 1), 0) || 0;
-  // Einheiten zuerst: „nicht auf sieben Doppelzimmer verteilt" ist die Frage,
-  // um die es geht — der Preis steht ohnehin schon links daneben.
-  const meta = [zahl ? `${zahl} ${zahl === 1 ? 'Einheit' : 'Einheiten'}` : null,
-    l.ort, l.fahrzeit, l.rating ? `★ ${Number(l.rating).toFixed(1).replace('.', ',')}` : null]
+  const zahl = l.einheiten?.reduce((n, e) => n + (Number(/^(\d+)[×x]?\s/.exec(e)?.[1]) || 1), 0) || 0;
+  // Einträge, die jemand über die Seite macht, haben kein `gebiet`. Alte Zeilen
+  // hatten es als Fließtext — beides darf das Band nicht zerlegen.
+  const geb = l.gebiet && typeof l.gebiet === 'object' ? l.gebiet : null;
+  // Bewusst knapp: alles, was hier noch dazukommt, bricht auf einem 375er
+  // Display um und macht jede Zeile 20 px höher. Die Quadratmeter stehen
+  // aufgeklappt bei den Einheiten.
+  // „Einh." statt „Einheiten": ausgeschrieben passt „Obermaiselstein · 2:11 h ·
+  // 4 Einheiten" auf 375 px nicht mehr in eine Zeile. Aufgeklappt steht das
+  // Wort vollständig da.
+  const meta = [l.ort, l.fahrzeit, zahl ? `${zahl} Einh.` : null]
     .filter(Boolean).join(' · ');
+  const note = l.rating ? Number(l.rating).toFixed(1).replace('.', ',') : null;
   return (
     <div className="ski-lodge">
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
         <button type="button" className="ski-lz" onClick={() => setAuf(o => !o)} aria-expanded={auf}>
-          <span className="nm">
-            {l.badge?.text && <span className={cx('dot', l.badge.art === 'warn' && 'warn')} />}
-            {l.title}
+          <span className="r1">
+            <span className="nm">
+              {l.badge?.text && <span className={cx('dot', l.badge.art === 'warn' && 'warn')} />}
+              {l.title}
+            </span>
+            {note && <span className="nt">★ {note}</span>}
+            <ChevronDown size={18} className={cx('cv', auf && 'up')} />
           </span>
-          {l.per != null && <span className="pr">{eur(Math.round(l.per))}</span>}
-          <span className="mt">{meta}</span>
-          <ChevronDown size={18} className={cx('cv', auf && 'up')} />
-          {l.note && !auf && <span className="mt voll" style={{ color: 'rgba(255,255,255,.45)' }}>{l.note}</span>}
+          <span className="r2">
+            {l.per != null && <span className="pr">{eur(Math.round(l.per))}</span>}
+            {meta && <span className="mt">{meta}</span>}
+          </span>
+          {geb && <Gebietsband g={geb} />}
+          {!geb && l.note && !auf && <span className="mt">{l.note}</span>}
         </button>
         {votable && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
@@ -459,18 +534,32 @@ function Lodge({ l, short, name, dev, votable, onDelete, onLike }) {
       {auf && (
         <div className="ski-detail">
           {l.badge?.text && <div className={cx('ski-lodge-badge', l.badge.art === 'warn' && 'warn')}>{l.badge.text}</div>}
-          <div className="ski-names" style={{ marginTop: 0 }}>
-            {l.price_total != null && <>Gesamt {eur(Number(l.price_total))}</>}
-            {l.price_total != null && l.persons ? ' · ' : ''}
-            {l.persons ? <><Users size={12} style={{ verticalAlign: '-1px' }} /> {l.persons} Personen</> : null}
-            {l.reviews ? ` · ${l.reviews} Bewertungen` : ''}
-          </div>
-          {l.note && <div className="ski-names" style={{ color: 'rgba(255,255,255,.8)' }}>{l.note}</div>}
-          {l.gebiet && <div className="ski-geb">{l.gebiet}</div>}
-          {l.einheiten?.length > 0 && (
-            <ul className="ski-units">{l.einheiten.map((e, k) => <li key={k}>{e}</li>)}</ul>
-          )}
-          {l.urteil && <div className="ski-urteil">{l.urteil}</div>}
+          {l.kurz && <div className="ski-urteil">{l.kurz}</div>}
+          <dl className="ski-kv">
+            {l.price_total != null && (
+              <><dt>Gesamt</dt><dd>{eur(Number(l.price_total))}{l.persons ? ` für ${l.persons} Personen, 3 Nächte` : ''}</dd></>
+            )}
+            {l.einheiten?.length > 0 && (
+              <><dt>Einheiten</dt><dd>{l.einheiten.join(' · ')}</dd></>
+            )}
+            {l.fahrzeit && (
+              <><dt>Anfahrt</dt><dd>{l.fahrzeit}{l.km ? ` · ${l.km}` : ''} ab Denkendorf</dd></>
+            )}
+            {/* Gebiet und Weg stehen getrennt. Zusammen in einer Zeile liest
+                sich „140 km · 25 Min" wie eine Entfernung, gemeint sind aber
+                Pistenkilometer. */}
+            {geb && (
+              <><dt>Skigebiet</dt><dd>{geb.name} · {geb.km} km Pisten{geb.anlagen ? `, ${geb.anlagen} Anlagen` : ''}</dd></>
+            )}
+            {geb?.weg && (<><dt>Zum Lift</dt><dd>{geb.weg}</dd></>)}
+            {l.auch && (
+              <><dt>Auch von dort</dt><dd>{l.auch.name}{l.auch.km ? ` · ${l.auch.km} km Pisten` : ''}{l.auch.weg ? ` · ${l.auch.weg}` : ''}</dd></>
+            )}
+            {note && (
+              <><dt>Booking</dt><dd>★ {note}{l.reviews ? ` aus ${l.reviews} Bewertungen` : ''}</dd></>
+            )}
+            {!geb && l.note && (<><dt>Notiz</dt><dd>{l.note}</dd></>)}
+          </dl>
           {l.url && (
             <a href={l.url} target="_blank" rel="noopener noreferrer" className="ski-lodge-btn">
               Auf Booking ansehen <ExternalLink size={14} strokeWidth={2.6} />
@@ -848,9 +937,9 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, lodgings, my
         // quetschen die Vergleichszeilen. Die normale Ansicht bleibt wählbar.
         votable={!vorschau}
         intro={vorschau
-          ? 'Alles auf Booking Verfügbare für Fr 29.1. – Mo 1.2.2027, 14 Personen in einer Buchung. Zeile antippen für Details.'
+          ? 'Fr 29.1. – Mo 1.2.2027, 14 Personen in einer Buchung, höchstens 350 € pro Kopf. Preis pro Person, darunter das Skigebiet vor der Tür. Zeile antippen für Details.'
           : vorschlaege
-            ? 'Fr 29.1. – Mo 1.2.2027, drei Nächte, 14 Personen in einer Buchung. Antippen für Details, Daumen hoch bei allem, womit du leben könntest.'
+            ? 'Fr 29.1. – Mo 1.2.2027, drei Nächte, 14 Personen in einer Buchung, höchstens 350 € pro Kopf. Antippen für Details, Daumen hoch bei allem, womit du leben könntest.'
             : 'Trag ein, was du gefunden hast. Fr 29.1. – Mo 1.2.2027, drei Nächte, 14 Personen.'}
         onAdd={onAddLodging} onDelete={onDeleteLodging} onLike={onLike} />
 
