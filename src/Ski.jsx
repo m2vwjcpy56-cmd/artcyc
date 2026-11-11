@@ -125,7 +125,12 @@ const CSS = `
    sonst quetscht der Daumen-Knopf lange Namen auf drei Zeilen. */
 /* Zugeklappte Zeile: Flex-Spalte statt Grid. Im Grid hat der lange Name die
    Spalten auseinandergezogen und den Rest auf drei Zeilen gequetscht. */
-.ski-lz{display:flex;flex-direction:column;gap:6px;width:100%;background:none;border:0;padding:0;color:inherit;text-align:left;font:inherit;-webkit-tap-highlight-color:transparent}
+.ski-lz{display:flex;flex-direction:column;gap:6px;width:100%;background:none;border:0;padding:0;color:inherit;text-align:left;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.ski-lz:focus-visible{outline:2px solid rgba(255,255,255,.7);outline-offset:3px;border-radius:8px}
+/* Kompakt, weil der Daumen in der Namenszeile sitzt: jeder Pixel hier geht
+   dem Namen ab. Mindestens 32 px hoch, damit er am Handy noch zu treffen ist. */
+.ski-lz .ski-like{padding:5px 9px;min-height:32px;font-size:13px;gap:4px;border-width:1.5px}
+.ski-lz .ski-del{flex-shrink:0}
 .ski-lz .r1{display:flex;align-items:center;gap:8px;width:100%;min-width:0}
 .ski-lz .r2{display:flex;align-items:baseline;gap:10px;width:100%;min-width:0}
 .ski-lz .nm{flex:1;min-width:0;font-size:16px;font-weight:700;line-height:1.25}
@@ -500,35 +505,45 @@ function Lodge({ l, short, name, dev, votable, onDelete, onLike }) {
   const meta = [l.ort, l.fahrzeit, zahl ? `${zahl} Einh.` : null]
     .filter(Boolean).join(' · ');
   const note = l.rating ? Number(l.rating).toFixed(1).replace('.', ',') : null;
+  // Aufklappbar ist die ganze Zeile, darum ein div mit role="button" statt
+  // eines <button>: Der Daumen ist selbst ein Knopf, und Knopf im Knopf ist
+  // ungültiges HTML. Er sitzt bewusst IN der Namenszeile — stand er rechts
+  // neben der Karte, nahm er ALLEN Zeilen 52 px weg und jeder Name brach um.
   return (
     <div className="ski-lodge">
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        <button type="button" className="ski-lz" onClick={() => setAuf(o => !o)} aria-expanded={auf}>
-          <span className="r1">
-            <span className="nm">
-              {l.badge?.text && <span className={cx('dot', l.badge.art === 'warn' && 'warn')} />}
-              {l.title}
-            </span>
-            {note && <span className="nt">★ {note}</span>}
-            <ChevronDown size={18} className={cx('cv', auf && 'up')} />
+      <div className="ski-lz" role="button" tabIndex={0} aria-expanded={auf}
+        onClick={() => setAuf(o => !o)}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();          // Leertaste scrollt sonst die Seite
+          setAuf(o => !o);
+        }}>
+        <span className="r1">
+          <span className="nm">
+            {l.badge?.text && <span className={cx('dot', l.badge.art === 'warn' && 'warn')} />}
+            {l.title}
           </span>
-          <span className="r2">
-            {l.per != null && <span className="pr">{eur(Math.round(l.per))}</span>}
-            {meta && <span className="mt">{meta}</span>}
-          </span>
-          {geb && <Gebietsband g={geb} />}
-          {!geb && l.note && !auf && <span className="mt">{l.note}</span>}
-        </button>
-        {votable && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-            <button type="button" className={cx('ski-like', l.on && 'on')} onClick={() => onLike([l.id], l.on)} aria-label="Daumen hoch" disabled={!name.trim()}>
-              <ThumbsUp size={15} strokeWidth={2.4} /> {l.ls.length}
+          {note && <span className="nt">★ {note}</span>}
+          {votable && (
+            <button type="button" className={cx('ski-like', l.on && 'on')}
+              onClick={(e) => { e.stopPropagation(); onLike([l.id], l.on); }}
+              aria-label={`Daumen hoch für ${l.title}`} aria-pressed={l.on} disabled={!name.trim()}>
+              <ThumbsUp size={14} strokeWidth={2.4} /> {l.ls.length}
             </button>
-            {l.device === dev && l.ls.length === 0 && (
-              <button type="button" className="ski-del" onClick={() => onDelete(l.id)} aria-label="Eigene Unterkunft löschen"><X size={16} strokeWidth={2.6} /></button>
-            )}
-          </div>
-        )}
+          )}
+          {votable && l.device === dev && l.ls.length === 0 && (
+            <button type="button" className="ski-del"
+              onClick={(e) => { e.stopPropagation(); onDelete(l.id); }}
+              aria-label="Eigene Unterkunft löschen"><X size={16} strokeWidth={2.6} /></button>
+          )}
+          <ChevronDown size={18} className={cx('cv', auf && 'up')} />
+        </span>
+        <span className="r2">
+          {l.per != null && <span className="pr">{eur(Math.round(l.per))}</span>}
+          {meta && <span className="mt">{meta}</span>}
+        </span>
+        {geb && <Gebietsband g={geb} />}
+        {!geb && l.note && !auf && <span className="mt">{l.note}</span>}
       </div>
 
       {auf && (
@@ -932,12 +947,13 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, lodgings, my
           steht hier nur, was Leute selbst eingetragen haben. */}
       <Lodgings lodgings={[...(vorschlaege ? trip.lodgings || [] : []), ...lodgings]}
         likes={likes} short={short} name={name} dev={dev}
-        // Nur in der Vorschau (`?unterkuenfte`, noch nicht freigegeben) keine
-        // Daumen: dort wird gesichtet, nicht abgestimmt — und die Knöpfe
-        // quetschen die Vergleichszeilen. Die normale Ansicht bleibt wählbar.
-        votable={!vorschau}
+        // Abstimmen geht überall, auch in der Vorschau über `?unterkuenfte`:
+        // Der Organisator will seine Favoriten markieren können, bevor die
+        // Gruppe die Liste überhaupt sieht. Die Stimmen hängen an der `id` und
+        // bleiben erhalten, wenn später freigegeben wird.
+        votable
         intro={vorschau
-          ? 'Fr 29.1. – Mo 1.2.2027, 14 Personen in einer Buchung, höchstens 350 € pro Kopf. Preis pro Person, darunter das Skigebiet vor der Tür. Zeile antippen für Details.'
+          ? 'Fr 29.1. – Mo 1.2.2027, 14 Personen in einer Buchung, höchstens 350 € pro Kopf. Preis pro Person, darunter das Skigebiet vor der Tür. Zeile antippen für Details, Daumen hoch für deine Favoriten — die bleiben gespeichert, auch wenn die Gruppe die Liste erst später sieht.'
           : vorschlaege
             ? 'Fr 29.1. – Mo 1.2.2027, drei Nächte, 14 Personen in einer Buchung, höchstens 350 € pro Kopf. Antippen für Details, Daumen hoch bei allem, womit du leben könntest.'
             : 'Trag ein, was du gefunden hast. Fr 29.1. – Mo 1.2.2027, drei Nächte, 14 Personen.'}
