@@ -29,7 +29,20 @@ if (typeof window !== 'undefined' && window.location.search.includes('sw_reset=1
         await Promise.all(keys.map(k => caches.delete(k)));
       }
     } catch { /* ignore */ }
-    window.location.replace('/');
+    // Pfad BEHALTEN und nur den Schalter entfernen. Vorher ging es stur
+    // zurück auf '/' — wer `/ski?unterkuenfte&sw_reset=1` aufrief, um genau
+    // diese Seite vom alten Cache zu befreien, landete auf der Startseite
+    // und sah nie, ob der Reset etwas gebracht hat.
+    let ziel = '/';
+    try {
+      const u = new URL(window.location.href);
+      // Den Schalter aus dem Querystring herausschneiden, statt die Parameter
+      // über URLSearchParams neu zu bauen: die macht aus einem wertlosen
+      // `?unterkuenfte` ein `?unterkuenfte=`.
+      const rest = u.search.slice(1).split('&').filter(p => p && !/^sw_reset(=|$)/.test(p));
+      ziel = u.pathname + (rest.length ? '?' + rest.join('&') : '') + (u.hash || '');
+    } catch { /* ignore */ }
+    window.location.replace(ziel);
   })();
 }
 

@@ -56,6 +56,24 @@ function isTransient(message) {
   return TRANSIENT_PATTERNS.some(rx => rx.test(message));
 }
 
+// Läuft die Seite gerade auf einem Entwicklungsrechner (`npm run dev`)?
+// Von dort wird NICHT gemeldet. Zwei Gründe:
+//   • Beim Bearbeiten tauscht Vite Module im laufenden Betrieb aus. Zwischen
+//     zwei Zuständen ist der Code für Sekundenbruchteile halbfertig und wirft
+//     „x is not defined" — kein Bug, nur ein Zwischenstand, der trotzdem eine
+//     Crash-Mail ausgelöst hat.
+//   • Wer lokal entwickelt, hat die Konsole offen und sieht den Fehler dort.
+//     Eine Mail darüber hilft niemandem und verstopft nur das Postfach.
+// Gemeldet wird damit nur noch, was echten Nutzern auf artcyc.app passiert.
+function istEntwicklung() {
+  try {
+    if (import.meta.env?.DEV) return true;
+    const h = String(location.hostname || '');
+    return h === 'localhost' || h === '127.0.0.1' || h === '::1'
+      || h.endsWith('.local') || h.endsWith('.localhost');
+  } catch { return false; }
+}
+
 function djb2(str) {
   let h = 5381;
   for (let i = 0; i < str.length; i++) h = ((h << 5) + h) ^ str.charCodeAt(i);
@@ -121,6 +139,10 @@ function notify(detail) {
  */
 export async function reportError(err, context = '', extra = null) {
   try {
+    if (istEntwicklung()) {
+      console.warn('[errorReporter] lokal — nicht gemeldet:', err?.message || err, context);
+      return;
+    }
     if (sentInSession >= MAX_PER_SESSION) return;
     const now = Date.now();
     if (now - lastSentAt < MIN_INTERVAL_MS) return;
