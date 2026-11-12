@@ -136,6 +136,7 @@ const CSS = `
 .ski-lz .nm{flex:1;min-width:0;font-size:16px;font-weight:700;line-height:1.25}
 .ski-lz .nt{flex-shrink:0;font-size:12.5px;font-weight:650;color:rgba(255,255,255,.7);white-space:nowrap;font-variant-numeric:tabular-nums}
 .ski-lz .pr{flex-shrink:0;font-size:21px;font-weight:800;color:#4ADE80;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ski-lz .pr small{font-size:11.5px;font-weight:650;color:rgba(255,255,255,.55);margin-left:4px;letter-spacing:.2px}
 .ski-lz .cv{flex-shrink:0;opacity:.55;transition:transform .2s}
 .ski-lz .cv.up{transform:rotate(180deg)}
 .ski-lz .mt{font-size:12.5px;color:rgba(255,255,255,.6);line-height:1.3;min-width:0}
@@ -539,7 +540,11 @@ function Lodge({ l, short, name, dev, votable, onDelete, onLike }) {
           <ChevronDown size={18} className={cx('cv', auf && 'up')} />
         </span>
         <span className="r2">
-          {l.per != null && <span className="pr">{eur(Math.round(l.per))}</span>}
+          {/* „201 €" allein sagt niemandem, ob das der Gesamtpreis ist oder der
+              eigene Anteil — der Hinweis im Einleitungstext steht zu weit weg.
+              Das Kürzel hängt direkt an der Zahl, weil genau dort verglichen
+              wird. Ausgeschrieben („pro Person") bricht die Zeile auf 375 px. */}
+          {l.per != null && <span className="pr">{eur(Math.round(l.per))}<small>p. P.</small></span>}
           {meta && <span className="mt">{meta}</span>}
         </span>
         {geb && <Gebietsband g={geb} />}
@@ -551,6 +556,12 @@ function Lodge({ l, short, name, dev, votable, onDelete, onLike }) {
           {l.badge?.text && <div className={cx('ski-lodge-badge', l.badge.art === 'warn' && 'warn')}>{l.badge.text}</div>}
           {l.kurz && <div className="ski-urteil">{l.kurz}</div>}
           <dl className="ski-kv">
+            {/* Der eigene Anteil zuerst — das ist die Zahl, die zählt. Der
+                Gesamtbetrag steht darunter, weil er nur für die Buchung
+                gebraucht wird. */}
+            {l.per != null && (
+              <><dt>Pro Person</dt><dd>{eur(Math.round(l.per))} für 3 Nächte</dd></>
+            )}
             {l.price_total != null && (
               <><dt>Gesamt</dt><dd>{eur(Number(l.price_total))}{l.persons ? ` für ${l.persons} Personen, 3 Nächte` : ''}</dd></>
             )}
