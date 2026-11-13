@@ -475,15 +475,24 @@ function wegArt(g) {
 // macht „64 km" und „130 km" auf einen Blick vergleichbar — eine Zahl allein
 // sagt niemandem, ob das viel ist.
 function Gebietsband({ g, klein }) {
-  const breite = Math.max(3, Math.min(100, Math.round((Number(g.km) / GEBIET_MAX) * 100)));
+  // Die Pistenkilometer sind optional — zu einem frisch recherchierten Gebiet
+  // liegt die Zahl nicht immer vor. Fehlt sie, wurde aus `Number(undefined)`
+  // ein NaN: die Breite war ungültig, also stand der Balken VOLL ausgeschlagen
+  // da, und daneben ein nacktes „km". Das behauptet das größte Skigebiet der
+  // Liste, wo in Wahrheit gar keine Zahl vorliegt. Ohne Zahl kein Balken.
+  const km = Number(g.km);
+  const hatKm = Number.isFinite(km) && km > 0;
+  const breite = hatKm ? Math.max(3, Math.min(100, Math.round((km / GEBIET_MAX) * 100))) : 0;
   return (
     <span className={cx('ski-geb-band', klein && 'klein')}>
       <span className="gn">{g.name}</span>
       {g.weg && <span className={cx('gw', wegArt(g))}>{g.weg}</span>}
-      <span className="bar">
-        <span className="tr"><span className="fi" style={{ width: breite + '%' }} /></span>
-        <span className="lb">{g.km} km{g.anlagen ? ` · ${g.anlagen} Anlagen` : ''}</span>
-      </span>
+      {hatKm && (
+        <span className="bar">
+          <span className="tr"><span className="fi" style={{ width: breite + '%' }} /></span>
+          <span className="lb">{km} km{g.anlagen ? ` · ${g.anlagen} Anlagen` : ''}</span>
+        </span>
+      )}
     </span>
   );
 }
