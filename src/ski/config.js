@@ -332,8 +332,15 @@ export const SKI_TRIP = {
       name: 'Ruben Geyer',
       rank: 9,
       title: 'Landhaus Bergheimat',
-      url: 'https://www.booking.com/hotel/de/landhaus-bergheimat-burgberg-im-allgau2.de.html?checkin=2027-01-29&checkout=2027-02-01&group_adults=14&no_rooms=1&group_children=0',
-      price_total: 3230,
+      // ⚠️ DIESELBE Unterkunft steht auf BEIDEN Portalen — und die Portale sind
+      // sich nicht einig. Booking: 3.230 € und Note 9,4 aus **7** Stimmen.
+      // Airbnb: 3.070 € und 4,9 aus **123** Stimmen. Hier steht der Airbnb-Link,
+      // weil er 160 € billiger ist UND die Note auf siebzehnmal so vielen
+      // Bewertungen steht. Wer vergleicht, muss BEIDE Portale aufmachen —
+      // sonst zahlt man den Aufschlag fuer die duennere Datenlage.
+      // Booking-Seite: /hotel/de/landhaus-bergheimat-burgberg-im-allgau2
+      url: 'https://www.airbnb.de/rooms/21261609?check_in=2027-01-29&check_out=2027-02-01&adults=14',
+      price_total: 3070,
       persons: 14,
       ort: 'Burgberg im Allgäu',
       fahrzeit: '2:08 h',
@@ -341,11 +348,17 @@ export const SKI_TRIP = {
       // Kein Lift vor der Tuer, dafuer drei Gebiete im gleichen Umkreis.
       gebiet: { name: 'Grünten / Ofterschwang', weg: '10 km' },
       auch: { name: 'Oberjoch', weg: '19 km' },
+      // ⚠️ Hier steht bewusst die BOOKING-Note, obwohl der Link zu Airbnb geht:
+      // Airbnbs 4,9 von 5 waeren umgerechnet 9,8 — neben Bookings 8,8 sieht das
+      // nach „deutlich besser" aus, ist es aber nicht. Airbnb-Noten liegen
+      // systematisch hoeher (fast alles ueber 4,7). Zwei Skalen in einer Spalte
+      // vergleichen heisst, die Reihenfolge zu faelschen. Eine Skala fuer alle,
+      // die 123 Airbnb-Stimmen stehen stattdessen im Satz darunter.
       rating: 9.4,
       reviews: 7,
-      einheiten: ['1 ganzes Ferienhaus: 5 Schlafzimmer, Wohnzimmer, 3 Badezimmer, Küche'],
+      einheiten: ['1 ganzes Ferienhaus: 7 Schlafzimmer, 10 Betten, 3,5 Badezimmer'],
       badge: { text: 'Alle unter einem Dach', art: 'gut' },
-      kurz: 'Das Einzige, das die 14 wirklich in EIN Haus legt — und mit 2:08 h die kürzeste Fahrt der ganzen Liste.',
+      kurz: 'Einziges Haus für alle 14 und kürzeste Fahrt — über Airbnb 160 € billiger, dort mit 4,9 aus 123 Bewertungen statt 7.',
       created_at: '2026-11-13T09:00:00Z',
     },
     {
@@ -448,7 +461,31 @@ export const SKI_TRIP = {
       einheiten: ['1 ganzes Ferienhaus: 6 Schlafzimmer, 5 Badezimmer, 180 m², 13 Betten'],
       gross: 180,
       badge: { text: 'Nur 2 Bewertungen', art: 'warn' },
+      // Steht auch auf Airbnb (/rooms/1749101647984374546) — dort aber 3.297 €
+      // statt 2.467 €. Beim Bergheimat ist es umgekehrt. Es gibt also KEIN
+      // Portal, das grundsaetzlich billiger ist; es hilft nur Nachsehen.
       kurz: 'Zweites Haus für alle 14 und das größte der Liste — die Note steht aber auf nur zwei Stimmen.',
+      created_at: '2026-11-13T09:00:00Z',
+    },
+    {
+      id: 'cfg-mellau-zwei-appartements',
+      name: 'Ruben Geyer',
+      rank: 15,
+      title: 'Zwei Appartements, 250 m²',
+      url: 'https://www.airbnb.de/rooms/50277398?check_in=2027-01-29&check_out=2027-02-01&adults=14',
+      price_total: 3370,
+      persons: 14,
+      ort: 'Mellau (Bregenzerwald)',
+      fahrzeit: '2:44 h',
+      km: '242 km',
+      // Einziger Fund im Bregenzerwald, der fuer 14 Leute ueberhaupt in Frage
+      // kommt — Booking hatte dort nur Bodensee-Adressen ohne Skigebiet.
+      gebiet: { name: 'Damüls – Mellau', weg: 'Bergbahn im Ort' },
+      // Airbnb-Note 4,95 aus 19 Stimmen; hier NICHT auf die Booking-Skala
+      // umgerechnet (siehe Begruendung beim Bergheimat), darum kein `rating`.
+      einheiten: ['2 Appartements mit zusammen 250 m²: 6 Schlafzimmer, 12 Betten, 3 Badezimmer'],
+      gross: 250,
+      kurz: 'Größte Wohnfläche der Liste und Bergbahn im Ort — auf Airbnb mit 4,95 aus 19 Bewertungen.',
       created_at: '2026-11-13T09:00:00Z',
     },
   ],
