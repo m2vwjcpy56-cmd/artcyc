@@ -163,6 +163,8 @@ const CSS = `
 .ski-kv{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:10px 0 0;font-size:13.5px;line-height:1.4}
 .ski-kv dt{color:rgba(255,255,255,.5);white-space:nowrap}
 .ski-kv dd{margin:0;color:rgba(255,255,255,.9)}
+/* Schlafsofas gelb, nicht rot: ein Hinweis, kein Ausschlussgrund. */
+.ski-kv .ski-sofa{color:#FBBF24}
 /* Fünf Knöpfe müssen auf 375 px in EINE Zeile — umgebrochen sehen sie aus wie
    ein Versehen. Darum knappe Beschriftungen und wenig Polsterung. */
 .ski-sort{display:flex;gap:4px;margin:-2px 0 12px;flex-wrap:wrap}
@@ -497,6 +499,22 @@ function Gebietsband({ g, klein }) {
   );
 }
 
+// Die Schlafsofas im Bettentext hervorheben. Sie sind die Angabe, an der sich
+// bei 14 Leuten entscheidet, wer hinterher im Wohnzimmer liegt.
+function BettenText({ text, sofas }) {
+  const t = text || '';
+  const m = /(\d+)\s*Schlafsofas?/i.exec(t);
+  const imText = m ? Number(m[1]) : null;
+  // Nennt der Text die Gesamtzahl schon, wird sie nur eingefärbt — sonst stünde
+  // dort „10 (6 Schlafsofas, …) · davon 6 Schlafsofas". Weicht sie ab, weil der
+  // Text sich auf EINE Einheit bezieht („je Wohnung 1 Schlafsofa", insgesamt
+  // aber vier), kommt die Gesamtzahl zusätzlich dahinter.
+  if (m && imText === sofas) {
+    return <>{t.slice(0, m.index)}<span className="ski-sofa">{m[0]}</span>{t.slice(m.index + m[0].length)}</>;
+  }
+  return <>{t}{sofas ? <span className="ski-sofa"> · zusammen {sofas} Schlafsofas</span> : null}</>;
+}
+
 // Eine Unterkunft: zugeklappt drei Zeilen zum Vergleichen, aufgeklappt alles.
 // Ausgeschriebene Karten untereinander kann niemand überblicken.
 function Lodge({ l, short, name, dev, votable, onDelete, onLike }) {
@@ -577,14 +595,26 @@ function Lodge({ l, short, name, dev, votable, onDelete, onLike }) {
             {l.einheiten?.length > 0 && (
               <><dt>Einheiten</dt><dd>{l.einheiten.join(' · ')}</dd></>
             )}
+            {/* Die Bettenaufteilung ist bei 14 Leuten die eigentliche Frage —
+                „6 Schlafzimmer" sagt nichts darüber, wie viele am Ende auf
+                einem Schlafsofa im Wohnzimmer liegen. Darum steht sie hier
+                im Wortlaut der Unterkunft, und die Zahl der Schlafsofas wird
+                zusätzlich ausgewiesen: Wer das vorher weiß, streitet hinterher
+                nicht darum. */}
+            {l.betten && (<><dt>Betten</dt><dd><BettenText text={l.betten} sofas={l.sofas} /></dd></>)}
+            {l.baeder && (<><dt>Badezimmer</dt><dd>{l.baeder}</dd></>)}
+            {l.kueche && (<><dt>Küche</dt><dd>{l.kueche}</dd></>)}
+            {l.storno && (<><dt>Stornierung</dt><dd>{l.storno}</dd></>)}
             {l.fahrzeit && (
               <><dt>Anfahrt</dt><dd>{l.fahrzeit}{l.km ? ` · ${l.km}` : ''} ab Denkendorf</dd></>
             )}
             {/* Gebiet und Weg stehen getrennt. Zusammen in einer Zeile liest
                 sich „140 km · 25 Min" wie eine Entfernung, gemeint sind aber
                 Pistenkilometer. */}
+            {/* Pistenkilometer sind optional (siehe Gebietsband) — ohne die
+                Zahl stand hier sonst „Jöchelspitze ·  km Pisten". */}
             {geb && (
-              <><dt>Skigebiet</dt><dd>{geb.name} · {geb.km} km Pisten{geb.anlagen ? `, ${geb.anlagen} Anlagen` : ''}</dd></>
+              <><dt>Skigebiet</dt><dd>{geb.name}{Number(geb.km) > 0 ? ` · ${geb.km} km Pisten` : ''}{geb.anlagen ? `, ${geb.anlagen} Anlagen` : ''}</dd></>
             )}
             {geb?.weg && (<><dt>Zum Lift</dt><dd>{geb.weg}</dd></>)}
             {l.auch && (
