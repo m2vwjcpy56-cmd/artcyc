@@ -564,6 +564,68 @@ export const SKI_TRIP = {
       kurz: 'Größte Wohnfläche der Liste und Bergbahn im Ort — auf Airbnb mit 4,95 aus 19 Bewertungen.',
       created_at: '2026-11-13T09:00:00Z',
     },
+    // ===== 13.11.2026, zweite Runde: Tiroler Zugspitz Arena =====
+    // Ausloeser war Rubens Hinweis, dass Warth/Schroecken distanzmaessig gehen.
+    // Der Arlberg selbst ist durchgefallen — dort war fuer 14 Leute NICHTS unter
+    // 4.900 €: billigstes Angebot „Am 12er" 3.118 €, aber nur 6 Betten; alles mit
+    // genug Platz lag zwischen 5.238 € und 37.280 €. Dafuer liegt auf dem Weg
+    // dorthin die Zugspitz Arena, und die ist naeher als das ganze Montafon.
+    {
+      id: 'cfg-zugspitz-lodge-ehrwald',
+      name: 'Ruben Geyer',
+      rank: 16,
+      title: 'Zugspitz Lodge',
+      url: 'https://www.booking.com/hotel/at/zugspitzlodge.de.html?checkin=2027-01-29&checkout=2027-02-01&group_adults=14&no_rooms=1&group_children=0',
+      price_total: 4855,
+      persons: 14,
+      ort: 'Ehrwald',
+      fahrzeit: '2:42 h',
+      km: '240 km',
+      pass: { name: 'Tiroler Zugspitz Arena', km: 143, hinweis: 'sieben Gebiete; mit der Top Snow Card dazu Garmisch und Mittenwald' },
+      gebiet: { name: 'Ehrwalder Alm / Zugspitzplatt', weg: 'im Ort' },
+      betten: '8 auf 4 Chalets (4 große Doppelbetten, 4 Schlafsofas)',
+      sofas: 4,
+      baeder: '4, je Chalet eines',
+      kueche: 'je Chalet eine eigene',
+      storno: 'nicht kostenlos stornierbar',
+      // Beste BELASTBARE Note der Liste: 235 Stimmen. Das Bergheimat steht mit
+      // 9,4 nominell hoeher, hat auf Booking aber nur sieben.
+      rating: 9.3,
+      reviews: 235,
+      einheiten: ['4 eigene Chalets mit je Schlafzimmer, Wohnzimmer, Bad und Küche'],
+      badge: { text: 'Beste Note mit echter Stimmenzahl', art: 'gut' },
+      kurz: 'Die beste belastbare Note der Liste, im Ort am Fuß der Zugspitze — kostet mit 347 € p. P. aber fast den ganzen Deckel.',
+      created_at: '2026-11-13T11:00:00Z',
+    },
+    {
+      id: 'cfg-chalet-rotenstein-berwang',
+      name: 'Ruben Geyer',
+      rank: 17,
+      title: 'Chalet Rotenstein',
+      url: 'https://www.booking.com/hotel/at/chalets-zur-rose-und-rotenstein.de.html?checkin=2027-01-29&checkout=2027-02-01&group_adults=14&no_rooms=1&group_children=0',
+      price_total: 3009,
+      persons: 14,
+      ort: 'Berwang',
+      // ⚠️ 236 km, aber 3:10 h — Berwang liegt auf einer Bergstrasse ueber dem
+      // Tal. Ehrwald ist 4 km WEITER und trotzdem fast eine halbe Stunde naeher.
+      // Nicht nach Kilometern sortieren.
+      fahrzeit: '3:10 h',
+      km: '236 km',
+      pass: { name: 'Tiroler Zugspitz Arena', km: 143, hinweis: 'sieben Gebiete; mit der Top Snow Card dazu Garmisch und Mittenwald' },
+      gebiet: { name: 'Berwang – Bichlbach', km: 38, weg: 'im Ort' },
+      betten: '8 auf 3 Wohnungen (3 Schlafsofas, 4 Doppelbetten, 1 franz. Doppelbett)',
+      sofas: 3,
+      baeder: '3, je Wohnung eines',
+      kueche: 'je Wohnung eine eigene',
+      storno: 'kostenlos stornierbar',
+      rating: 8.4,
+      reviews: 69,
+      einheiten: ['3 Ferienwohnungen: 2× 80 m² mit 2 Schlafzimmern, 1× 45 m²'],
+      gross: 80,
+      badge: { text: '3:10 h trotz nur 236 km', art: 'warn' },
+      kurz: 'Skigebiet im Ort und 215 € p. P. — die Anfahrt ist wegen der Bergstraße aber länger als nach Warth.',
+      created_at: '2026-11-13T11:00:00Z',
+    },
   ],
 
   // ===========================================================
@@ -585,8 +647,15 @@ export const SKI_TRIP = {
       { ort: 'Bludenz', zeit: '2:38 h', km: '260 km' },
       { ort: 'Lorüns', zeit: '2:39 h', km: '262 km' },
       { ort: 'St. Anton im Montafon', zeit: '2:42 h', km: '265 km' },
+      { ort: 'Ehrwald', zeit: '2:42 h', km: '240 km' },
       { ort: 'Brand', zeit: '2:53 h', km: '267 km' },
+      { ort: 'Schröcken', zeit: '3:03 h', km: '272 km' },
       { ort: 'Gargellen', zeit: '3:05 h', km: '286 km' },
+      // ⚠️ Berwang steht hier UNTER Gargellen, obwohl es 50 km naeher liegt:
+      // die letzten Kilometer gehen als Bergstrasse hoch. Deshalb ist diese
+      // Liste nach ZEIT sortiert und nicht nach Entfernung.
+      { ort: 'Berwang', zeit: '3:10 h', km: '236 km' },
+      { ort: 'Warth am Arlberg', zeit: '3:14 h', km: '278 km' },
     ],
 
     passes: [
@@ -628,7 +697,31 @@ export const SKI_TRIP = {
           ['Warth · Schröcken', 'verbunden'],
         ],
         verbunden: true,
-        text: 'Wäre das beste Skifahren — steht hier aber nicht zur Wahl: Für 14 Leute haben wir am Arlberg nichts unter 350 € pro Kopf gefunden. Das Günstigste lag bei 977 €.',
+        // Am 13.11.2026 noch einmal vollstaendig durchgesucht (Warth, Schroecken,
+        // Kloesterle, Lech), nachdem Ruben die Distanz nach Warth als machbar
+        // bezeichnet hat. Ergebnis: Ferienwohnungen fuer 14 Leute gibt es dort
+        // praktisch nicht. Guenstigster Treffer „Am 12er" 3.118 €, aber nur sechs
+        // Betten; die erste Unterkunft mit genug Platz kostet 5.238 € (374 € p. P.),
+        // danach geht es bis 37.280 €. Airbnb hat am Arlberg fuer 14 Gaeste NULL
+        // Angebote — die Trefferliste fuellt sich dort mit Daenemark und Texas.
+        text: 'Wäre das beste Skifahren — nur gibt es dort keine Ferienwohnung für 14 Leute. Die erste mit genug Platz kostet 374 € pro Kopf, und nach oben hin das Zehnfache. Unter dem Deckel bleiben nur Hotelzimmer mit Frühstück, etwa das Landhaus Moosbrugger in Steeg für 280 €.',
+      },
+      {
+        name: 'Tiroler Zugspitz Arena',
+        gross: 'rund 143 km',
+        sub: '7 Gebiete · rund 57 Anlagen',
+        areas: [
+          ['Ehrwalder Alm · Wettersteinbahnen', '36 km'],
+          ['Berwang – Bichlbach', '38 km'],
+          ['Grubigstein Lermoos', '27 km'],
+          ['Zugspitzplatt', '20 km'],
+          ['Marienberg Biberwier, Heiterwang', 'klein'],
+        ],
+        verbunden: false,
+        // Erst am 13.11.2026 dazugekommen. Die Zahlen schwanken je nach Quelle
+        // und Saison (143 km / 105 km beschneit ist der Stand der Region selbst);
+        // die Top Snow Card nennt 89 Anlagen, zaehlt aber Garmisch mit.
+        text: 'Die kürzeste Anfahrt aller österreichischen Gebiete hier — Ehrwald liegt näher als jeder Ort im Montafon. Die sieben Berge sind nicht verbunden, dafür deckt die Top Snow Card zusätzlich Garmisch, Mittenwald und Grainau ab.',
       },
     ],
 
