@@ -157,6 +157,7 @@ export const SKI_TRIP = {
       ort: 'Oberstdorf',
       fahrzeit: '2:16 h',
       km: '215 km',
+      pass: { name: 'Oberstdorf – Kleinwalsertal', km: 130, anlagen: 48 },
       gebiet: { name: 'Oberstdorf – Kleinwalsertal', km: 130, anlagen: 48, weg: 'Nebelhorn 1,2 km' },
       auch: { name: 'Fellhorn – Kanzelwand', km: 36, weg: '6,8 km · 13 Min' },
       betten: '8 auf 4 Wohnungen (4 Schlafsofas, 4 Doppelbetten)',
@@ -185,6 +186,7 @@ export const SKI_TRIP = {
       km: '267 km',
       // Booking: „Skilift Schedlerhof 250 m", dazu Dorfbahn 900 m. Die einzige
       // in der Liste mit „Direkter Zugang zur Skipiste".
+      pass: { name: 'Montafon Brandnertal Card', km: 292, anlagen: 75, hinweis: 'sieben Gebiete, inkl. Skirouten' },
       gebiet: { name: 'Brandnertal', km: 64, anlagen: 13, weg: 'Skilift 250 m', fuss: true },
       betten: 'je Wohnung 2 (1 Etagenbett, 1 Doppelbett)',
       kueche: 'je Wohnung eine eigene',
@@ -208,6 +210,7 @@ export const SKI_TRIP = {
       ort: 'Bürs',
       fahrzeit: '2:36 h',
       km: '259 km',
+      pass: { name: 'Montafon Brandnertal Card', km: 292, anlagen: 75, hinweis: 'sieben Gebiete, inkl. Skirouten' },
       gebiet: { name: 'Brandnertal', km: 64, anlagen: 13, weg: '6,9 km · 9 Min' },
       auch: { name: 'Silvretta Montafon', km: 140, weg: 'rund 25 Min' },
       betten: 'je Wohnung 2 (1 großes Doppelbett, 1 Schlafsofa)',
@@ -234,6 +237,7 @@ export const SKI_TRIP = {
       ort: 'Obermaiselstein',
       fahrzeit: '2:11 h',
       km: '211 km',
+      pass: { name: 'Allgäuer Hörnerdörfer', km: 90, hinweis: 'fünf Orte auf einem Pass' },
       gebiet: { name: 'Hörnerbahn Bolsterlang', km: 17, anlagen: 6, weg: '4,1 km · 7 Min' },
       auch: { name: 'Oberstdorf (Fellhorn)', km: 36, weg: '16,4 km · 22 Min' },
       betten: '9 auf 4 Wohnungen (2 Schlafsofas, 2 Etagenbetten, 4 Doppelbetten, 1 Einzelbett)',
@@ -260,6 +264,7 @@ export const SKI_TRIP = {
       ort: 'Lorüns',
       fahrzeit: '2:39 h',
       km: '262 km',
+      pass: { name: 'Montafon Brandnertal Card', km: 292, anlagen: 75, hinweis: 'sieben Gebiete, inkl. Skirouten' },
       gebiet: { name: 'Golm', km: 44, anlagen: 9, weg: '5,4 km · 8 Min' },
       auch: { name: 'Brandnertal', km: 64, weg: '10,1 km · 11 Min' },
       betten: 'je Haus 3 (2 Einzelbetten, 1 großes Doppelbett)',
@@ -285,6 +290,7 @@ export const SKI_TRIP = {
       ort: 'Bludenz',
       fahrzeit: '2:38 h',
       km: '260 km',
+      pass: { name: 'Montafon Brandnertal Card', km: 292, anlagen: 75, hinweis: 'sieben Gebiete, inkl. Skirouten' },
       gebiet: { name: 'Brandnertal', km: 64, anlagen: 13, weg: '12,8 km · 17 Min' },
       betten: 'je Haus 4 (2 Einzelbetten, 1 Schlafsofa, 1 Doppelbett)',
       sofas: 3,
@@ -310,6 +316,7 @@ export const SKI_TRIP = {
       ort: 'St. Anton im Montafon',
       fahrzeit: '2:42 h',
       km: '265 km',
+      pass: { name: 'Montafon Brandnertal Card', km: 292, anlagen: 75, hinweis: 'sieben Gebiete, inkl. Skirouten' },
       gebiet: { name: 'Golm', km: 44, anlagen: 9, weg: '2,8 km · 5 Min' },
       betten: 'je Wohnung 2 (1 französisches Doppelbett, 1 Schlafsofa)',
       sofas: 4,
@@ -335,6 +342,7 @@ export const SKI_TRIP = {
       ort: 'Gargellen',
       fahrzeit: '3:05 h',
       km: '286 km',
+      pass: { name: 'Montafon Brandnertal Card', km: 292, anlagen: 75, hinweis: 'sieben Gebiete, inkl. Skirouten' },
       gebiet: { name: 'Gargellen', km: 31, anlagen: 8, weg: 'Skilift 250 m', fuss: true },
       betten: 'nicht ausgewiesen; die drei Wohnungen fassen zusammen genau 14',
       baeder: '3, je Wohnung eines',
@@ -381,6 +389,7 @@ export const SKI_TRIP = {
       fahrzeit: '2:08 h',
       km: '202 km',
       // Kein Lift vor der Tuer, dafuer drei Gebiete im gleichen Umkreis.
+      pass: { name: 'Allgäuer Hörnerdörfer', km: 90, hinweis: 'fünf Orte auf einem Pass' },
       gebiet: { name: 'Grünten / Ofterschwang', weg: '10 km' },
       auch: { name: 'Oberjoch', weg: '19 km' },
       // ⚠️ Hier steht bewusst die BOOKING-Note, obwohl der Link zu Airbnb geht:
@@ -410,7 +419,7 @@ export const SKI_TRIP = {
       ort: 'Elbigenalp',
       fahrzeit: '2:51 h',
       km: '253 km',
-      gebiet: { name: 'Jöchelspitze (Lechtal)', weg: '6 km' },
+      gebiet: { name: 'Jöchelspitze (Lechtal)', km: 5, weg: '6 km' },
       auch: { name: 'Warth – Ski Arlberg', weg: 'rund 35 km' },
       betten: '10 (6 Schlafsofas, 4 Doppelbetten)',
       sofas: 6,
@@ -419,8 +428,8 @@ export const SKI_TRIP = {
       rating: 8.7,
       reviews: 138,
       einheiten: ['2 Ferienwohnungen mit zusammen 4 Schlafzimmern, 2 Wohnzimmern'],
-      badge: { text: 'Mit Abstand am günstigsten', art: 'gut' },
-      kurz: 'Günstigster Fund überhaupt — 128 € pro Kopf, also ein Drittel des Deckels, bei 138 Bewertungen.',
+      badge: { text: 'Nur 5 km Pisten vor Ort', art: 'warn' },
+      kurz: 'Mit 128 € pro Kopf der günstigste Fund — aber die Jöchelspitze hat nur 5 km Pisten, für alles andere sind es 50 km nach Warth.',
       created_at: '2026-11-13T09:00:00Z',
     },
     {
@@ -435,7 +444,7 @@ export const SKI_TRIP = {
       fahrzeit: '2:53 h',
       km: '255 km',
       // Booking: „nur 5 Gehminuten von der Seilbahn Joechelspitzbahn".
-      gebiet: { name: 'Jöchelspitze (Lechtal)', weg: 'Seilbahn 5 Gehminuten', fuss: true },
+      gebiet: { name: 'Jöchelspitze (Lechtal)', km: 5, weg: 'Seilbahn 5 Gehminuten', fuss: true },
       auch: { name: 'Warth – Ski Arlberg', weg: 'rund 30 km' },
       betten: 'je Apartment 2 (1 Schlafsofa, 1 Doppelbett)',
       baeder: 'je Apartment eines',
@@ -444,8 +453,8 @@ export const SKI_TRIP = {
       rating: 9.2,
       reviews: 232,
       einheiten: ['Mehrere Apartments im Haus, Sauna und Solarium'],
-      badge: { text: 'Beste Bewertung der Liste', art: 'gut' },
-      kurz: 'Seilbahn zu Fuß und 9,2 aus 232 Bewertungen — die mit Abstand belastbarste Note hier.',
+      badge: { text: 'Nur 5 km Pisten vor Ort', art: 'warn' },
+      kurz: 'Seilbahn zu Fuß und beste Note der Liste — nur führt sie in ein 5-km-Gebiet; für mehr sind es 45 km nach Warth.',
       created_at: '2026-11-13T09:00:00Z',
     },
     {
@@ -461,6 +470,7 @@ export const SKI_TRIP = {
       ort: 'Fischen im Allgäu',
       fahrzeit: '2:12 h',
       km: '205 km',
+      pass: { name: 'Allgäuer Hörnerdörfer', km: 90, hinweis: 'fünf Orte auf einem Pass' },
       gebiet: { name: 'Hörnerdörfer / Fischen', weg: 'im Ort' },
       auch: { name: 'Oberstdorf – Kleinwalsertal', km: 130, weg: 'rund 10 km' },
       betten: '7 auf 4 Wohnungen (1 Schlafsofa, 4 Doppelbetten, 2 Einzelbetten)',
@@ -485,6 +495,7 @@ export const SKI_TRIP = {
       ort: 'St. Anton im Montafon',
       fahrzeit: '2:39 h',
       km: '264 km',
+      pass: { name: 'Montafon Brandnertal Card', km: 292, anlagen: 75, hinweis: 'sieben Gebiete, inkl. Skirouten' },
       gebiet: { name: 'Golm', km: 44, anlagen: 9, weg: 'rund 3 km' },
       betten: '7 (2 Schlafsofas, 5 Doppelbetten)',
       sofas: 2,
@@ -510,7 +521,7 @@ export const SKI_TRIP = {
       ort: 'Häselgehr (Lechtal)',
       fahrzeit: '2:55 h',
       km: '251 km',
-      gebiet: { name: 'Jöchelspitze (Lechtal)', weg: 'rund 10 km' },
+      gebiet: { name: 'Jöchelspitze (Lechtal)', km: 5, weg: 'rund 10 km' },
       auch: { name: 'Warth – Ski Arlberg', weg: 'rund 40 km' },
       betten: '13 (6 Einzelbetten, 3 Schlafsofas, 4 Doppelbetten)',
       sofas: 3,
@@ -521,11 +532,11 @@ export const SKI_TRIP = {
       reviews: 2,
       einheiten: ['1 ganzes Ferienhaus: 6 Schlafzimmer, 5 Badezimmer, 180 m², 13 Betten'],
       gross: 180,
-      badge: { text: 'Nur 2 Bewertungen', art: 'warn' },
+      badge: { text: 'Nur 5 km Pisten vor Ort', art: 'warn' },
       // Steht auch auf Airbnb (/rooms/1749101647984374546) — dort aber 3.297 €
       // statt 2.467 €. Beim Bergheimat ist es umgekehrt. Es gibt also KEIN
       // Portal, das grundsaetzlich billiger ist; es hilft nur Nachsehen.
-      kurz: 'Zweites Haus für alle 14 und das größte der Liste — die Note steht aber auf nur zwei Stimmen.',
+      kurz: '13 echte Betten auf 180 m², das großzügigste Angebot — aber nur 5 km Pisten vor Ort und zwei Bewertungen.',
       created_at: '2026-11-13T09:00:00Z',
     },
     {
@@ -541,6 +552,7 @@ export const SKI_TRIP = {
       km: '242 km',
       // Einziger Fund im Bregenzerwald, der fuer 14 Leute ueberhaupt in Frage
       // kommt — Booking hatte dort nur Bodensee-Adressen ohne Skigebiet.
+      pass: { name: 'Damüls – Mellau', km: 109, anlagen: 29 },
       gebiet: { name: 'Damüls – Mellau', weg: 'Bergbahn im Ort' },
       // Airbnb-Note 4,95 aus 19 Stimmen; hier NICHT auf die Booking-Skala
       // umgerechnet (siehe Begruendung beim Bergheimat), darum kein `rating`.

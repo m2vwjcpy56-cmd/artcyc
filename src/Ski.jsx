@@ -158,6 +158,14 @@ const CSS = `
 .ski-geb-band .bar .tr{flex:1;min-width:40px;height:6px;border-radius:999px;background:rgba(255,255,255,.12);overflow:hidden}
 .ski-geb-band .bar .fi{display:block;height:100%;border-radius:999px;background:#93C5FD}
 .ski-geb-band .bar .lb{flex-shrink:0;font-size:11.5px;color:rgba(255,255,255,.55);white-space:nowrap;font-variant-numeric:tabular-nums}
+/* Unter 50 km: der Balken wird rot statt blau. Rubens Untergrenze soll man
+   sehen, ohne jede Zeile aufzuklappen und Zahlen zu vergleichen. */
+.ski-geb-band .bar .fi.zuklein{background:#F87171}
+.ski-geb-band .bar .lb.zuklein{color:#F87171}
+/* Der Passname steht klein hinter der Zahl — er erklärt sie, dominiert aber
+   nicht die Zeile. Auf schmalen Displays faellt er weg. */
+.ski-geb-band .bar .lb .pz{color:rgba(255,255,255,.4)}
+@media (max-width:400px){.ski-geb-band .bar .lb .pz{display:none}}
 
 /* Aufgeklappt: Zahlen als Paare statt als Absatz. */
 .ski-kv{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:10px 0 0;font-size:13.5px;line-height:1.4}
@@ -456,10 +464,20 @@ const SORTEN = [
   { id: 'note', label: 'Note', cmp: (a, b) => (b.rating ?? -1) - (a.rating ?? -1) },
 ];
 
-// Volle Balkenbreite = 140 km, die Silvretta Montafon. Fester Bezugswert und
-// nicht das Maximum der Liste: sonst springt die Skala, sobald ein Eintrag
-// dazukommt oder wegfällt, und zwei Screenshots sind nicht mehr vergleichbar.
-const GEBIET_MAX = 140;
+// Volle Balkenbreite = 300 km, die Größenordnung der beiden großen Verbünde
+// (Montafon Brandnertal 292, Ski Arlberg ~302). Fester Bezugswert und nicht
+// das Maximum der Liste: sonst springt die Skala, sobald ein Eintrag dazukommt
+// oder wegfällt, und zwei Screenshots sind nicht mehr vergleichbar.
+//
+// Bis 13.11.2026 stand hier 140 (die Silvretta Montafon allein). Seit das Band
+// den REGIONALPASS zeigt statt des Hausbergs, schlug damit alles ab 140 km
+// gleich voll aus — 130 und 292 sahen aus wie dasselbe.
+const GEBIET_MAX = 300;
+
+// Untergrenze aus Rubens Vorgabe vom 13.11.2026: „50+ Pistenkilometer mind,
+// eher mehr". Alles darunter wird im Band als zu klein gekennzeichnet, statt
+// es stillschweigend mitlaufen zu lassen.
+const GEBIET_MIN = 50;
 
 // Ampel auf den Weg zum Lift. An den Kilometern festgemacht, nicht an den
 // Minuten: eine Minutenangabe hat nicht jeder Eintrag, einen Kilometerwert
@@ -476,23 +494,32 @@ function wegArt(g) {
 // Das Skigebiets-Band: welches Gebiet, wie weit, wie groß. Die Balkenlänge
 // macht „64 km" und „130 km" auf einen Blick vergleichbar — eine Zahl allein
 // sagt niemandem, ob das viel ist.
-function Gebietsband({ g, klein }) {
-  // Die Pistenkilometer sind optional — zu einem frisch recherchierten Gebiet
-  // liegt die Zahl nicht immer vor. Fehlt sie, wurde aus `Number(undefined)`
-  // ein NaN: die Breite war ungültig, also stand der Balken VOLL ausgeschlagen
-  // da, und daneben ein nacktes „km". Das behauptet das größte Skigebiet der
-  // Liste, wo in Wahrheit gar keine Zahl vorliegt. Ohne Zahl kein Balken.
-  const km = Number(g.km);
+function Gebietsband({ g, pass, klein }) {
+  // ⚠️ Maßgeblich ist, was der SKIPASS abdeckt — nicht der Hausberg. Im
+  // Montafon sind das 292 km statt der 44 am Golm, und zwar mit genau einer
+  // Karte. Bis 13.11.2026 stand hier nur das Hausgebiet; wer danach nach
+  // Pistenkilometern aussortiert, wirft ausgerechnet die größten Verbünde
+  // weg. Ohne hinterlegten Pass bleibt es beim Hausgebiet.
+  const km = Number(pass?.km ?? g.km);
+  // Kein `??` auf die Anlagen: Hat der Pass keine Anlagenzahl, darf NICHT die
+  // des Hausbergs einspringen — sonst stand bei Haus Alpenland „90 km ·
+  // 6 Anlagen", die Kilometer vom Verbund und die Anlagen vom Hausberg. Lieber
+  // nur die Kilometer zeigen.
+  const anlagen = pass ? pass.anlagen : g.anlagen;
   const hatKm = Number.isFinite(km) && km > 0;
   const breite = hatKm ? Math.max(3, Math.min(100, Math.round((km / GEBIET_MAX) * 100))) : 0;
+  const klein_ = hatKm && km < GEBIET_MIN;
   return (
     <span className={cx('ski-geb-band', klein && 'klein')}>
       <span className="gn">{g.name}</span>
       {g.weg && <span className={cx('gw', wegArt(g))}>{g.weg}</span>}
       {hatKm && (
         <span className="bar">
-          <span className="tr"><span className="fi" style={{ width: breite + '%' }} /></span>
-          <span className="lb">{km} km{g.anlagen ? ` · ${g.anlagen} Anlagen` : ''}</span>
+          <span className="tr"><span className={cx('fi', klein_ && 'zuklein')} style={{ width: breite + '%' }} /></span>
+          <span className={cx('lb', klein_ && 'zuklein')}>
+            {km} km{anlagen ? ` · ${anlagen} Anlagen` : ''}
+            {pass ? <span className="pz"> · {pass.name}</span> : null}
+          </span>
         </span>
       )}
     </span>
@@ -574,7 +601,7 @@ function Lodge({ l, short, name, dev, votable, onDelete, onLike }) {
           {l.per != null && <span className="pr">{eur(Math.round(l.per))}<small>p. P.</small></span>}
           {meta && <span className="mt">{meta}</span>}
         </span>
-        {geb && <Gebietsband g={geb} />}
+        {geb && <Gebietsband g={geb} pass={l.pass} />}
         {!geb && l.note && !auf && <span className="mt">{l.note}</span>}
       </div>
 
@@ -614,7 +641,13 @@ function Lodge({ l, short, name, dev, votable, onDelete, onLike }) {
             {/* Pistenkilometer sind optional (siehe Gebietsband) — ohne die
                 Zahl stand hier sonst „Jöchelspitze ·  km Pisten". */}
             {geb && (
-              <><dt>Skigebiet</dt><dd>{geb.name}{Number(geb.km) > 0 ? ` · ${geb.km} km Pisten` : ''}{geb.anlagen ? `, ${geb.anlagen} Anlagen` : ''}</dd></>
+              <><dt>Hausgebiet</dt><dd>{geb.name}{Number(geb.km) > 0 ? ` · ${geb.km} km Pisten` : ''}{geb.anlagen ? `, ${geb.anlagen} Anlagen` : ''}</dd></>
+            )}
+            {/* Die Zahl, auf die es ankommt: was EIN Skipass abdeckt. Am Golm
+                sind das 292 km statt 44 — ohne diese Zeile sortiert man die
+                größten Verbünde als die kleinsten aus. */}
+            {l.pass && (
+              <><dt>Mit dem Skipass</dt><dd>{l.pass.km} km Pisten{l.pass.anlagen ? `, ${l.pass.anlagen} Anlagen` : ''} · {l.pass.name}{l.pass.hinweis ? ` (${l.pass.hinweis})` : ''}</dd></>
             )}
             {geb?.weg && (<><dt>Zum Lift</dt><dd>{geb.weg}</dd></>)}
             {l.auch && (
