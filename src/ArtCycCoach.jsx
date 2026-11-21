@@ -6768,7 +6768,7 @@ function AuthScreen({ linkError = null, onClearLinkError } = {}) {
             <div className="relative">
               <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
               <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="name@beispiel.de"
+                placeholder={t('auth.emailPlaceholder')}
                 autoComplete="email"
                 inputMode="email"
                 className="auth-field w-full pl-11 pr-4 py-3 rounded-2xl text-[15px] outline-none transition placeholder:text-[#C7C7CC]" />
@@ -6942,18 +6942,18 @@ function SetNewPasswordScreen({ onDone }) {
               <div className="relative">
                 <KeyRound size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
                 <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                  placeholder="Neues Passwort"
+                  placeholder={t('auth.newPassword')}
                   autoComplete="new-password"
                   className="auth-field w-full pl-11 pr-4 py-3 rounded-2xl text-[15px] outline-none transition placeholder:text-[#C7C7CC]" />
               </div>
             </div>
 
             <div>
-              <label className="auth-label block mb-2 px-1">Passwort wiederholen</label>
+              <label className="auth-label block mb-2 px-1">{t('auth.repeatPassword')}</label>
               <div className="relative">
                 <KeyRound size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
                 <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
-                  placeholder="Passwort wiederholen"
+                  placeholder={t('auth.repeatPassword')}
                   autoComplete="new-password"
                   className="auth-field w-full pl-11 pr-4 py-3 rounded-2xl text-[15px] outline-none transition placeholder:text-[#C7C7CC]" />
               </div>
@@ -15424,7 +15424,7 @@ function ProgrammExerciseRow({ ex, discipline, usedCodes, zeilen, zielIndex, age
           </div>
           <div className="grid grid-cols-3 gap-2">
             <input value={ex.name || ''} onChange={e => onUpdate('name', e.target.value)}
-              placeholder="Name"
+              placeholder={t('common.name')}
               className="col-span-2 px-3 py-2 text-[14px] bg-white rounded-xl outline-none border border-slate-200/60" />
             <input type="number" step="0.1" value={ex.points || 0} onChange={e => onUpdate('points', e.target.value)}
               placeholder={t('common.ptsShort')}
