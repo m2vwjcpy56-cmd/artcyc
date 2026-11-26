@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { ArrowLeft, ArrowRight, Check, ThumbsUp, Share2, RefreshCw, Pencil, Trophy, Plus, X, Home, ExternalLink, Users, Wallet, ChevronDown, MapPin, Car, Star, Mountain } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ThumbsUp, Share2, RefreshCw, Pencil, Trophy, Plus, X, Home, ExternalLink, Users, Wallet, ChevronDown, MapPin, Car, Star, Mountain, CalendarDays } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { SKI_TRIP, canonicalVotes, canonicalName } from './ski/config.js';
 import { groupSuggestions } from '../supabase/functions/_shared/ski-suggest.ts';
@@ -224,6 +224,28 @@ button.ski-cmp-t:active{transform:scale(.98)}
 .ski-res-btn svg{display:inline-block;flex-shrink:0}
 .ski-res-btn .t{display:block;font-size:18px;font-weight:800}
 .ski-res-btn .d{display:block;font-size:13px;color:rgba(255,255,255,.7);margin-top:3px}
+.ski-booked{margin-top:18px;border-radius:22px;overflow:hidden;background:rgba(255,255,255,.07);border:1.5px solid rgba(74,222,128,.55)}
+.ski-booked svg{display:inline-block}
+.ski-booked-top{padding:16px 18px;background:linear-gradient(135deg,rgba(74,222,128,.2),rgba(74,222,128,.04))}
+.ski-booked .ok{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:999px;background:#4ADE80;color:#0B1F3A}
+.ski-booked .t{font-size:22px;font-weight:800;margin-top:10px;line-height:1.2}
+.ski-booked .by{font-size:13px;color:rgba(255,255,255,.65);margin-top:2px}
+.ski-booked .row{display:flex;align-items:center;gap:7px;font-size:15px;margin-top:8px;color:rgba(255,255,255,.9)}
+.ski-booked .row.link{color:#fff;text-decoration:none}
+.ski-booked .row.link svg:last-child{opacity:.6}
+.ski-booked-areas{padding:14px 18px 16px;border-top:1px solid rgba(255,255,255,.1)}
+.ski-booked-areas .h{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.6)}
+.ski-booked-areas .grp{margin-top:12px}
+.ski-booked-areas .gt{font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#7DD3FC;margin-bottom:2px}
+.ski-booked-areas .area{display:flex;gap:12px;align-items:center;padding:9px 0;border-top:1px solid rgba(255,255,255,.07)}
+.ski-booked-areas .grp .area:first-of-type{border-top:0}
+.ski-booked-areas .an{font-size:16px;font-weight:700}
+.ski-booked-areas .vb{display:inline-block;margin-left:7px;vertical-align:middle;font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;background:rgba(125,211,252,.18);color:#7DD3FC}
+.ski-booked-areas .ao{font-size:13px;color:rgba(255,255,255,.6);margin-top:1px}
+.ski-booked-areas .am{text-align:right;flex-shrink:0}
+.ski-booked-areas .km{font-size:15px;font-weight:800}
+.ski-booked-areas .fz{font-size:12px;color:rgba(255,255,255,.6)}
+.ski-booked-areas .vt{font-size:12px;color:rgba(255,255,255,.55);margin-top:10px;line-height:1.4}
 .ski-names-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:22px}
 .ski-name{position:relative;text-align:left;padding:12px 14px;border-radius:16px;border:1.5px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;transition:transform .12s,background .15s;-webkit-tap-highlight-color:transparent}
 .ski-name:active{transform:scale(.97)}
@@ -670,6 +692,62 @@ function Lodge({ l, short, name, dev, votable, onDelete, onLike }) {
   );
 }
 
+// ---- Gebucht: Unterkunft, Skigebiete rund herum, Tricount ----------------
+function Booked({ b, tricount }) {
+  if (!b) return null;
+  const tri = tricount?.url && /^https?:\/\//i.test(tricount.url) ? tricount : null;
+  return (
+    <div className="ski-booked">
+      <div className="ski-booked-top">
+        <span className="ok"><Check size={14} strokeWidth={3} /> Gebucht</span>
+        <div className="t">{b.title}</div>
+        {b.by && <div className="by">by {b.by}</div>}
+        {b.dates && <div className="row"><CalendarDays size={15} /> {b.dates}</div>}
+        {b.address && (
+          <a className="row link" href={b.maps || '#'} target="_blank" rel="noopener noreferrer">
+            <MapPin size={15} /> {b.address} <ExternalLink size={13} />
+          </a>
+        )}
+      </div>
+
+      {b.skiGroups?.length > 0 && (
+        <div className="ski-booked-areas">
+          <div className="h"><Mountain size={15} /> Skigebiete ab der Unterkunft</div>
+          {b.skiGroups.map(g => (
+            <div key={g.title} className="grp">
+              <div className="gt">{g.title}</div>
+              {g.areas.map(a => (
+                <div key={a.name} className="area">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="an">{a.name}{a.verbund && <span className="vb">Verbund</span>}</div>
+                    <div className="ao">{a.orte}{a.tipp ? ` · ${a.tipp}` : ''}</div>
+                  </div>
+                  <div className="am">
+                    <div className="km">{a.km}</div>
+                    <div className="fz">{a.fahrt}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+          {b.verbundText && <div className="vt">„Verbund" = {b.verbundText}</div>}
+        </div>
+      )}
+
+      {tri && (
+        <a className="ski-tri" href={tri.url} target="_blank" rel="noopener noreferrer" style={{ marginTop: 0, borderRadius: 0, border: 0, borderTop: '1px solid rgba(45,212,191,.35)' }}>
+          <span className="ic"><Wallet size={22} strokeWidth={2.2} /></span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span className="t">{tri.title || 'Tricount'}</span>
+            {tri.text && <span className="d">{tri.text}</span>}
+            <span className="cta">In Tricount öffnen <ExternalLink size={14} /></span>
+          </span>
+        </a>
+      )}
+    </div>
+  );
+}
+
 function Lodgings({ lodgings, likes, short, name, dev, intro, titel, votable = true, onAdd, onDelete, onLike }) {
   const [open, setOpen] = useState(false);
   const [sorte, setSorte] = useState('rang');
@@ -997,6 +1075,9 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, lodgings, my
         <div className="ski-note">Verbindung fehlgeschlagen. <button className="ski-link" style={{ padding: 0 }} onClick={onReload}><RefreshCw size={14} /> Neu laden</button></div>
       )}
 
+      {/* Gebucht — Unterkunft, Skigebiete, Tricount */}
+      <Booked b={trip.booked} tricount={trip.tricount} />
+
       {/* Vergleich auf einen Blick */}
       {plans.length > 0 && (
         <div className="ski-cmp">
@@ -1052,8 +1133,9 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, lodgings, my
         </div>
       )}
 
-      {/* Tricount — nur wenn in config.js ein Link hinterlegt ist */}
-      {trip.tricount?.url && /^https?:\/\//i.test(trip.tricount.url) && (
+      {/* Tricount — nur wenn in config.js ein Link hinterlegt ist. Ist gebucht,
+          steht Tricount schon oben in der „Gebucht"-Box. */}
+      {!trip.booked && trip.tricount?.url && /^https?:\/\//i.test(trip.tricount.url) && (
         <a className="ski-tri" href={trip.tricount.url} target="_blank" rel="noopener noreferrer">
           <span className="ic"><Wallet size={22} strokeWidth={2.2} /></span>
           <span style={{ flex: 1, minWidth: 0 }}>

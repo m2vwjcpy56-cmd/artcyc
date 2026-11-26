@@ -854,6 +854,43 @@ export const SKI_TRIP = {
     ],
   },
 
+  // ===========================================================
+  // GEBUCHT — erscheint oben auf der Übersicht, sobald `booked` gesetzt ist.
+  // Skigebiete: Fahrzeiten ab Bürs grob geschätzt (ohne Stau), Pisten laut
+  // Betreibern bzw. „rund" wo nur ungefähr bekannt. `verbund: true` = im
+  // Skiverbund Montafon Brandnertal.
+  booked: {
+    title: 'Rosengarten Apartments',
+    by: 'Hello Fewo Apartments',
+    address: 'Hauptstraße 25a, 6706 Bürs',
+    maps: 'https://www.google.com/maps/search/?api=1&query=Rosengarten+Apartments+Hauptstra%C3%9Fe+25a+6706+B%C3%BCrs',
+    dates: 'Anreise Freitag, 29.1.2027',
+    skiGroups: [
+      {
+        title: 'Direkt nebenan',
+        areas: [
+          { name: 'Brandnertal', orte: 'Brand, Bürserberg', km: '64 km', fahrt: 'ca. 10 Min', verbund: true },
+        ],
+      },
+      {
+        title: 'Im Montafon',
+        areas: [
+          { name: 'Golm', orte: 'Vandans, Tschagguns', km: 'rund 40 km', fahrt: 'ca. 15 Min', verbund: true },
+          { name: 'Silvretta Montafon', orte: 'Schruns, St. Gallenkirch, Gaschurn', km: '140 km', fahrt: 'ca. 20–25 Min', verbund: true, tipp: 'Größtes Skigebiet Vorarlbergs' },
+          { name: 'Gargellen', orte: 'Gargellen', km: 'rund 40 km', fahrt: 'ca. 40 Min', verbund: true },
+        ],
+      },
+      {
+        title: 'Etwas weiter, eigener Skipass',
+        areas: [
+          { name: 'Sonnenkopf', orte: 'Klösterle', km: 'rund 30 km', fahrt: 'ca. 20–25 Min' },
+          { name: 'Ski Arlberg', orte: 'Stuben, St. Anton, Lech, Zürs', km: 'rund 300 km', fahrt: 'ca. 30–45 Min', tipp: 'Eines der größten Skigebiete der Alpen' },
+        ],
+      },
+    ],
+    verbundText: 'Brandnertal, Golm, Silvretta Montafon und Gargellen gehören zum Skiverbund Montafon Brandnertal.',
+  },
+
   // Tricount-Box auf der Ergebnis-Seite. Erscheint nur, wenn `url` gesetzt ist.
   tricount: {
     url: 'https://tricount.com/tqoqjHpzgEfgktMAgf',   // Link aus der Tricount-App („Teilen")
