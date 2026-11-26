@@ -111,7 +111,13 @@ export const SKI_TRIP = {
   // false = nur über `/ski?unterkuenfte` (zum Selbst-Durchsehen, bevor die
   // Gruppe sie bekommt). Was Leute über die Seite eintragen, ist davon nicht
   // betroffen und immer für alle sichtbar.
-  lodgingsPublic: false,
+  lodgingsPublic: true,   // seit 26.11.2026 für die Gruppe freigegeben
+
+  // Für wie viele Leute gebucht wird. Steht hier und NUR hier — die Texte über
+  // der Unterkunftsliste bauen sich daraus. Bis 17.11.2026 waren es 14; die Zahl
+  // stand damals dreimal fest in Ski.jsx und blieb beim Umstellen auf zwölf
+  // stehen, während alle Preise schon für zwölf gerechnet waren.
+  persons: 12,
 
   // ===========================================================
   // Unterkünfte, die der Organisator fest einträgt. Sie erscheinen zusätzlich

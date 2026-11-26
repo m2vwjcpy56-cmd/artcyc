@@ -527,7 +527,7 @@ function Gebietsband({ g, pass, klein }) {
 }
 
 // Die Schlafsofas im Bettentext hervorheben. Sie sind die Angabe, an der sich
-// bei 14 Leuten entscheidet, wer hinterher im Wohnzimmer liegt.
+// bei zwölf Leuten entscheidet, wer hinterher im Wohnzimmer liegt.
 function BettenText({ text, sofas }) {
   const t = text || '';
   const m = /(\d+)\s*Schlafsofas?/i.exec(t);
@@ -622,7 +622,7 @@ function Lodge({ l, short, name, dev, votable, onDelete, onLike }) {
             {l.einheiten?.length > 0 && (
               <><dt>Einheiten</dt><dd>{l.einheiten.join(' · ')}</dd></>
             )}
-            {/* Die Bettenaufteilung ist bei 14 Leuten die eigentliche Frage —
+            {/* Die Bettenaufteilung ist bei zwölf Leuten die eigentliche Frage —
                 „6 Schlafzimmer" sagt nichts darüber, wie viele am Ende auf
                 einem Schlafsofa im Wohnzimmer liegen. Darum steht sie hier
                 im Wortlaut der Unterkunft, und die Zahl der Schlafsofas wird
@@ -1036,10 +1036,10 @@ function Results({ trip, short, name, votes: rawVotes, suggestions, lodgings, my
         // bleiben erhalten, wenn später freigegeben wird.
         votable
         intro={vorschau
-          ? 'Fr 29.1. – Mo 1.2.2027, 14 Personen in einer Buchung, höchstens 350 € pro Kopf. Preis pro Person, darunter das Skigebiet vor der Tür. Zeile antippen für Details, Daumen hoch für deine Favoriten — die bleiben gespeichert, auch wenn die Gruppe die Liste erst später sieht.'
+          ? `Fr 29.1. – Mo 1.2.2027, ${trip.persons} Personen in einer Buchung, höchstens 350 € pro Kopf. Preis pro Person, darunter das Skigebiet vor der Tür. Zeile antippen für Details, Daumen hoch für deine Favoriten — die bleiben gespeichert, auch wenn die Gruppe die Liste erst später sieht.`
           : vorschlaege
-            ? 'Fr 29.1. – Mo 1.2.2027, drei Nächte, 14 Personen in einer Buchung, höchstens 350 € pro Kopf. Antippen für Details, Daumen hoch bei allem, womit du leben könntest.'
-            : 'Trag ein, was du gefunden hast. Fr 29.1. – Mo 1.2.2027, drei Nächte, 14 Personen.'}
+            ? `Fr 29.1. – Mo 1.2.2027, drei Nächte, ${trip.persons} Personen in einer Buchung, höchstens 350 € pro Kopf. Antippen für Details, Daumen hoch bei allem, womit du leben könntest.`
+            : `Trag ein, was du gefunden hast. Fr 29.1. – Mo 1.2.2027, drei Nächte, ${trip.persons} Personen.`}
         onAdd={onAddLodging} onDelete={onDeleteLodging} onLike={onLike} />
 
       {/* Skigebiete & Anfahrt — Hintergrund zu den Vorschlägen, zugeklappt */}
