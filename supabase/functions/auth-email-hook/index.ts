@@ -8,6 +8,24 @@ const REPLY_TO = "info@artcyc.app";
 const ACCENT = "#F58C21"; // App-Orange (iOS Brand.accent), NICHT das rötliche #FF7A00
 const INK = "#0F172A";
 
+// Wie lange Links und Codes gelten. Entspricht `mailer_otp_exp` (259200 s) in der
+// Supabase-Auth-Konfiguration und gilt dort für ALLE Mail-Arten gleich. Wird der
+// Wert in Supabase geändert, muss er hier mitziehen — sonst steht in der Mail eine
+// Zusage, die nicht stimmt.
+const GUELTIG_STUNDEN = 72;
+
+// „Gültig bis Sonntag, 29.11. um 12:04 Uhr" — ein Datum, keine Stundenzahl:
+// niemand rechnet im Kopf aus, wann 72 Stunden um sind.
+function gueltigBis(): string {
+  const d = new Date(Date.now() + GUELTIG_STUNDEN * 3600 * 1000);
+  const teile = new Intl.DateTimeFormat("de-DE", {
+    timeZone: "Europe/Berlin", weekday: "long", day: "numeric",
+    month: "numeric", hour: "2-digit", minute: "2-digit",
+  }).formatToParts(d);
+  const g = (t: string) => teile.find((p) => p.type === t)?.value ?? "";
+  return `${g("weekday")}, ${g("day")}.${g("month")}. um ${g("hour")}:${g("minute")} Uhr`;
+}
+
 async function verifySignature(body: string, headers: Headers): Promise<boolean> {
   const id = headers.get("webhook-id");
   const ts = headers.get("webhook-timestamp");
@@ -46,7 +64,9 @@ function build(p: Payload): Mail {
       heading: "Passwort zurücksetzen", intro: "Klicke auf den Button, um ein neues Passwort für dein ArtCyc-Konto zu vergeben.",
       cta: "Neues Passwort vergeben", link: verifyLink(d.token_hash, "recovery", d.redirect_to),
       code: d.token,
-      outro: "Wenn du das nicht angefragt hast, ignoriere diese E-Mail — dein Passwort bleibt unverändert.",
+      // Erst die Beruhigung, dann die Erklärung — wer das hier liest, hat die Mail
+      // nicht angefordert und will zuerst wissen, dass nichts passiert ist.
+      outro: "Du hast das nicht angefragt? Dann ist nichts passiert — dein Passwort bleibt unverändert, und die Mail kann weg.",
     };
     case "magiclink": return {
       subject: "Dein Login-Link", preheader: "Mit einem Klick bei ArtCyc anmelden.",
@@ -86,30 +106,57 @@ function build(p: Payload): Mail {
 }
 
 function html(m: Mail): string {
-  // Code-Kasten — steht bei Link-Mails UNTER dem Button (zweiter Weg), bei
-  // reinen Code-Mails allein.
+  const bis = gueltigBis();
+
+  // Code-Kasten — Schreibmaschinenschrift, damit 0 und O auseinanderzuhalten
+  // sind, und auf Normalmaß: vorher stand er mit 30px/10px größer da als die
+  // Überschrift und schrie den Leser an.
   const codeBox = m.code
-    ? `<tr><td style="padding:4px 0 ${m.link ? "20px" : "24px"};">
-         <div style="display:inline-block;font-size:30px;font-weight:700;letter-spacing:10px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:16px 26px;color:${INK};">${m.code}</div>
+    ? `<tr><td style="padding:0 0 22px;">
+         <div class="codebox" style="display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:21px;font-weight:600;letter-spacing:5px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;padding:11px 18px;color:${INK};">${m.code}</div>
        </td></tr>`
     : "";
-  const codeHint = m.code && m.link
-    ? `<tr><td style="font-size:13px;color:#94a3b8;padding-bottom:6px;">Oder gib diesen Code in der App ein:</td></tr>`
-    : "";
+  const gueltigZeile = `<tr><td class="muted" style="font-size:13px;color:#94a3b8;padding-bottom:20px;">Gültig bis <strong class="strong" style="color:#475569;font-weight:600;">${bis}</strong>.</td></tr>`;
+
+  // Ersatzweg, falls der Button klemmt (manche Anbieter schreiben Links um):
+  // Gibt es einen Code, ist ER der Ersatzweg und der Roh-Link entfällt — der
+  // stand vorher über vier Zeilen Zeichensalat da. Gibt es KEINEN Code
+  // (Einladung, E-Mail-Wechsel), muss der Link bleiben, sonst steht der
+  // Empfänger ohne Ausweg da.
+  const ersatzweg = m.code
+    ? `<tr><td class="muted" style="font-size:13px;color:#94a3b8;padding-bottom:7px;">Button geht nicht? Gib diesen Code in der App ein:</td></tr>${codeBox}`
+    : `<tr><td class="muted" style="font-size:13px;color:#94a3b8;padding-bottom:6px;">Button geht nicht? Dann öffne diesen Link:</td></tr>
+       <tr><td style="font-size:12px;padding-bottom:18px;word-break:break-all;"><a href="${m.link}" class="link" style="color:${ACCENT};">${m.link}</a></td></tr>`;
+
   const action = m.link
-    ? `<tr><td style="padding:4px 0 24px;">
+    ? `<tr><td style="padding:4px 0 10px;">
          <a href="${m.link}" style="display:inline-block;background:${ACCENT};color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;line-height:1;padding:15px 30px;border-radius:12px;">${m.cta}</a>
        </td></tr>
-       <tr><td style="font-size:13px;color:#94a3b8;padding-bottom:6px;">Falls der Button nicht funktioniert, öffne diesen Link:</td></tr>
-       <tr><td style="font-size:12px;padding-bottom:16px;word-break:break-all;"><a href="${m.link}" style="color:${ACCENT};">${m.link}</a></td></tr>
-       ${codeHint}${codeBox}`
-    : codeBox;
-  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
-  <body style="margin:0;padding:0;background:#eef0f3;">
+       ${gueltigZeile}${ersatzweg}`
+    : `${codeBox}${gueltigZeile}`;
+
+  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
+  <style>
+    /* Dunkelmodus. Inline-Stile lassen sich von außen nicht überschreiben,
+       deshalb trägt jedes Element, das umschlagen muss, zusätzlich eine Klasse. */
+    @media (prefers-color-scheme: dark) {
+      .bg      { background:#0b0e13 !important; }
+      .card    { background:#161b22 !important; }
+      .h       { color:#e9edf4 !important; }
+      .t       { color:#aeb9c8 !important; }
+      .muted   { color:#7d8a9c !important; }
+      .strong  { color:#d6dde7 !important; }
+      .codebox { background:#1e252f !important; border-color:#2d3743 !important; color:#e9edf4 !important; }
+      .foot    { background:#11161d !important; border-top-color:#232b35 !important; }
+      .divider { border-top-color:#232b35 !important; }
+    }
+  </style></head>
+  <body class="bg" style="margin:0;padding:0;background:#eef0f3;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${m.preheader}</div>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef0f3;padding:32px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="bg" style="background:#eef0f3;padding:32px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
       <tr><td align="center">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.08);">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="card" style="max-width:480px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.08);">
           <tr><td style="background:${INK};padding:22px 30px;">
             <table role="presentation" cellpadding="0" cellspacing="0"><tr>
               <td style="vertical-align:middle;"><img src="https://artcyc.app/pwa-192.png" width="40" height="40" alt="ArtCyc" style="display:block;border:0;border-radius:10px;"></td>
@@ -117,12 +164,12 @@ function html(m: Mail): string {
             </tr></table>
           </td></tr>
           <tr><td style="padding:32px 34px 34px;">
-            <div style="font-size:22px;font-weight:700;color:${INK};padding-bottom:12px;">${m.heading}</div>
-            <div style="font-size:15px;color:#475569;line-height:1.55;padding-bottom:22px;">${m.intro}</div>
+            <div class="h" style="font-size:22px;font-weight:700;color:${INK};padding-bottom:12px;">${m.heading}</div>
+            <div class="t" style="font-size:15px;color:#475569;line-height:1.55;padding-bottom:22px;">${m.intro}</div>
             <table role="presentation" cellpadding="0" cellspacing="0" width="100%">${action}</table>
-            <div style="border-top:1px solid #eef0f3;margin-top:8px;padding-top:16px;font-size:13px;color:#94a3b8;line-height:1.5;">${m.outro}</div>
+            <div class="divider muted" style="border-top:1px solid #eef0f3;margin-top:8px;padding-top:16px;font-size:13px;color:#94a3b8;line-height:1.5;">${m.outro}</div>
           </td></tr>
-          <tr><td style="padding:18px 34px;background:#f8fafc;border-top:1px solid #eef0f3;font-size:12px;color:#94a3b8;">ArtCyc Coach · Coaching-Tool für Kunstradsport · <a href="https://artcyc.app" style="color:#94a3b8;text-decoration:underline;">artcyc.app</a></td></tr>
+          <tr><td class="foot muted" style="padding:18px 34px;background:#f8fafc;border-top:1px solid #eef0f3;font-size:12px;color:#94a3b8;">ArtCyc Coach · Coaching-Tool für Kunstradsport · <a href="https://artcyc.app" class="muted" style="color:#94a3b8;text-decoration:underline;">artcyc.app</a></td></tr>
         </table>
       </td></tr>
     </table>
@@ -130,10 +177,12 @@ function html(m: Mail): string {
 }
 
 function text(m: Mail): string {
+  // In der Nur-Text-Fassung bleibt der Link immer stehen — hier gibt es keinen
+  // Button, der ihn ersetzen könnte.
   const body = m.link
     ? `${m.cta}:\n${m.link}` + (m.code ? `\n\nOder Code in der App eingeben: ${m.code}` : "")
     : `Code: ${m.code}`;
-  return `ArtCyc\n\n${m.heading}\n\n${m.intro}\n\n${body}\n\n${m.outro}\n\n—\nArtCyc · Coaching-Tool für Kunstradsport · https://artcyc.app`;
+  return `ArtCyc\n\n${m.heading}\n\n${m.intro}\n\n${body}\n\nGültig bis ${gueltigBis()}.\n\n${m.outro}\n\n—\nArtCyc · Coaching-Tool für Kunstradsport · https://artcyc.app`;
 }
 
 Deno.serve(async (req) => {
